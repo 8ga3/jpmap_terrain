@@ -1,0 +1,6 @@
+node_modules
+dist
+/test-results/
+/tests/validation.spec.ts-snapshots
+/playwright-report/
+/playwright/.cache/

@@ -1,0 +1,42 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+        {
+            "label": "Run npm start",
+            "type": "npm",
+            "script": "start",
+            "presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "dedicated",
+				"close": false,
+				"showReuseMessage": true,
+				"clear": true
+			},
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "ardupilot-sim",
+				"pattern": {
+					"regexp": ".*"
+				},
+				"background": {
+					"activeOnStart": true,
+                    "beginsPattern": "^asset index.html*$",
+                    "endsPattern": "^.* compiled successfully .*$"
+                }
+            }
+        },
+		{
+			"label": "Stop npm start",
+			"type": "shell",
+			"command": "lsof -ti:8080 | xargs kill",
+			"presentation": {
+				"reveal": "silent",
+				"panel": "shared",
+				"close": true
+			},
+			"problemMatcher": []
+		}
+	]
+}
