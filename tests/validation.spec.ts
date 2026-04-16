@@ -23,7 +23,11 @@ for (const scene of scenes) {
         test(`Render ${scene.name} with ${engine}`, async ({
             page,
         }, testInfo) => {
-            await page.goto(scene.url);
+            const sceneUrl = new URL(scene.url, "http://localhost");
+            sceneUrl.searchParams.set("engine", engine);
+            await page.goto(
+                `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`
+            );
             if (scene.waitForNetworkIdle) {
                 await page.waitForLoadState("networkidle");
             }
