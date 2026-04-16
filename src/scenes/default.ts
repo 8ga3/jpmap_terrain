@@ -8,7 +8,6 @@ import { CreateSceneClass } from "../createScene";
 
 // If you don't need the standard material you will still need to import it since the scene requires it.
 // import "@babylonjs/core/Materials/standardMaterial";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
