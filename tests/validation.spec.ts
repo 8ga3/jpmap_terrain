@@ -49,7 +49,7 @@ for (const scene of scenes) {
             });
             // await page.waitForFunction(() => (window as any).renderCount === scene.renderCount || 1, { timeout: 5000 });
             await expect(page).toHaveScreenshot({
-                timeout: 0,
+                timeout: 30000,
             });
             expect(testInfo.errors).toHaveLength(0);
         });
