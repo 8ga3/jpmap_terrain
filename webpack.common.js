@@ -96,6 +96,6 @@ module.exports = {
             },
         },
         usedExports: true,
-        minimize: true,
+        minimize: process.env.NODE_ENV === "production",
     },
 };
