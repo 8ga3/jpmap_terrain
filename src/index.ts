@@ -35,8 +35,8 @@ export const babylonInit = async (): Promise<void> => {
     const scene = await createSceneModule.createScene(engine, canvas);
 
     // Expose scene only in development/test builds for debugging and Playwright tests.
-    // In production builds, webpack's mode:'production' sets process.env.NODE_ENV to "production",
-    // and this block is removed by dead-code elimination.
+    // This assignment is guarded by a NODE_ENV check so production-targeted builds
+    // can omit it when that condition is compiled away by the bundler/minifier.
     if (process.env.NODE_ENV !== "production") {
         (window as any).scene = scene;
     }
