@@ -34,8 +34,12 @@ export const babylonInit = async (): Promise<void> => {
     // Create the scene
     const scene = await createSceneModule.createScene(engine, canvas);
 
-    // JUST FOR TESTING. Not needed for anything else
-    (window as any).scene = scene;
+    // Expose scene only in development/test builds for debugging and Playwright tests.
+    // In production builds, webpack's mode:'production' sets process.env.NODE_ENV to "production",
+    // and this block is removed by dead-code elimination.
+    if (process.env.NODE_ENV !== "production") {
+        (window as any).scene = scene;
+    }
 
     // Register a render loop to repeatedly render the scene
     engine.runRenderLoop(function () {
