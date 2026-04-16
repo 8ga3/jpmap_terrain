@@ -30,7 +30,7 @@
 		{
 			"label": "Stop npm start",
 			"type": "shell",
-			"command": "lsof -ti:8080 | xargs kill",
+			"command": "npx kill-port 8080",
 			"presentation": {
 				"reveal": "silent",
 				"panel": "shared",
