@@ -6,7 +6,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 export const babylonInit = async (): Promise<void> => {
     const createSceneModule = getSceneModule();
     const engineType =
-        location.search.split("engine=")[1]?.split("&")[0] || "webgl";
+        new URLSearchParams(location.search).get("engine") ?? "webgl";
     // Execute the pretasks, if defined
     await Promise.all(createSceneModule.preTasks || []);
     // Get the canvas element
