@@ -17,6 +17,10 @@
         "skipLibCheck": true,         // node_modules内の型エラーで止まらないために必須
         "isolatedModules": true       // 他のトランスパイラとの互換性を確保
     },
-    "include": ["src/**/*"],
+    "include": [
+        "src/**/*",
+        "playwright.config.ts",
+        "tests/**/*.ts"
+    ],
     "exclude": ["node_modules/**", "dist/**", "webpack.*"]
 }
