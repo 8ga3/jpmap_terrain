@@ -1,56 +1,112 @@
 # jpmap_terrain
-地理院タイルの標高タイルからTerrain作成
 
-## スタート
+地理院タイルの標高データをもとに、Babylon.js で 3D 地形表現を構築するためのフロントエンドプロジェクトです。
+
+## 概要
+
+- 目的: 標高タイルを使った地形可視化の実装と検証
+- 技術スタック: TypeScript / Babylon.js / Webpack / Playwright / Jest
+- バージョン: 0.0.1（開発初期）
+
+## クイックスタート
 
 ```shell
 npm install
 npm start
 ```
-http://localhost:8080 ブラウザが自動的に開き、シーンが表示されます。
 
-実行すると、npm startホットリロードが有効になった状態でwebpack開発サーバーが起動します。お好みのエディタ（私はVS Codeを使っていますが、nanoでも構いません。区別はしません）を開いて編集を開始してください。
+`http://localhost:8080` が自動的に開き、開発サーバーがホットリロード付きで起動します。
 
-TypeScript アプリケーション全体のエントリポイントは ./src/index.ts です。このファイルでインポートされた他のファイルもビルドに含まれます。
+## 実行モード（WebGPU / WebGL2）
 
-デバッグするには、ブラウザの開発者ツールを開きます。ソースマップはすぐに使用できます。
-VS Codeを使用している場合は、**Launch to integrated browser** を使用してデバッグを開始できます。
+`engine` クエリパラメータでエンジンを切り替えられます。
 
-## WebGPUとWebGL2
+- WebGPU: `http://localhost:8080/?scene=default&engine=webgpu`
+- WebGL2: `http://localhost:8080/?scene=default&engine=webgl2`
 
-WebGPU対応ブラウザでURLを開き、URLに「?engine=webgpu」を追加します。
-WebGL2の場合は、URLに「?engine=webgl2」を追加します。
-URLは
-http://localhost:8080/?scene=default&engine=webgpu
-になります。
+`webgpu` 指定時に未対応ブラウザの場合は WebGL にフォールバックします。
 
-## Running validation tests
+## 開発ガイド
 
-Playwright を使用してシーンの検証テストを実行できます。
+### エントリポイント
 
-先に比較用のスナップショットを更新します。
+- アプリ開始点: `src/index.ts`
+- シーン生成インターフェース: `src/createScene.ts`
+- 既定シーン実装: `src/scenes/default.ts`
+
+### 主要ディレクトリ
+
+```text
+.
+├─ src/                  # アプリ本体（TypeScript）
+│  ├─ index.ts           # 起動処理とエンジン選択
+│  ├─ createScene.ts     # シーン生成インターフェース
+│  └─ scenes/default.ts  # デフォルトシーン
+├─ tests/                # Playwright の Visual Regression Test
+├─ spec/                 # 仕様・開発フロー文書
+└─ webpack*.js           # ビルド設定
+```
+
+### 開発コマンド
+
+| コマンド | 説明 |
+| --- | --- |
+| `npm start` | 開発サーバー起動（ホットリロード） |
+| `npm run build:dev` | 開発ビルド（typecheck 実行後に bundle） |
+| `npm run build` | 本番ビルド（typecheck 実行後に最適化 build） |
+| `npm run lint` | ESLint 実行 |
+| `npm run typecheck` | TypeScript 型チェック |
+| `npm run test:visuals` | Visual Regression Test 実行 |
+| `npm run test:visuals -- --update-snapshots` | Visual テスト基準画像の更新 |
+| `npm run test:unit` | ユニットテスト（Jest） |
+
+### デバッグ
+
+- ブラウザの開発者ツールで source map を利用してデバッグ可能
+- VS Code では `Launch to integrated browser` で統合デバッグ可能
+- 開発/テストビルド時は `window.scene` からシーン参照可能
+
+## テスト
+
+### Visual Regression Test
 
 ```shell
 npm run test:visuals -- --update-snapshots
-```
-
-ヘッドレスモードで実行します。
-
-```shell
 npm run test:visuals
 ```
 
-テストの設定については、`/tests/validation.spec.ts`ファイルを参照してください。
+設定ファイルは `tests/validation.spec.ts` です。
 
-## ユニットテスト
+### ユニットテスト
 
 ```shell
 npm run test:unit
 ```
 
-これにより、テストはヘッドレスモードで実行されます。
-新しいテストを追加するには、ソースフォルダ内の任意の場所に`FILENAME.unit.spec.ts`という名前のファイルを追加します。テストはjestによって自動的に認識されます。
+テストファイルは `*.unit.spec.ts` 命名で自動検出されます。
 
-## オリジナル
+## 品質基準
 
-このリポジトリは[babylonjs-webpack-es6](https://github.com/RaananW/babylonjs-webpack-es6)をテンプレートして作成しています。
+このリポジトリでは、実装完了時に以下を満たすことを推奨します。
+
+- 定義済みテストを実行し、成功していること
+- `npm run lint` と `npm run typecheck` が成功すること
+- 仕様整合性、型品質、変更影響をレビューで確認すること
+
+詳細は `AGENTS.md` を参照してください。
+
+## ドキュメント
+
+- 機能仕様入口: `spec/README.md`
+- 開発フロー: `spec/development.md`
+- 運用ガイド: `AGENTS.md`
+
+## ライセンス
+
+Apache-2.0
+
+## 参考
+
+- Babylon.js: https://doc.babylonjs.com/
+- 地理院地図: https://maps.gsi.go.jp/
+- Template: https://github.com/RaananW/babylonjs-webpack-es6
