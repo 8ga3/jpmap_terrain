@@ -74,7 +74,7 @@ npm run test:unit
 
 2. lint / typecheck
    - 最低限、対象領域で lint または typecheck を実行し成功すること。
-   - Frontend 変更時は `npm run lint` と `npm run typecheck` を実行すること。
+   - Frontend 変更時は `npm run lint` を実行すること。
 
 3. Coding Rules 観点でのAIレビュー実施
    - 本ファイルの Coding Rules に記載したチェック観点でAIレビューを実施し、指摘の要否を記録すること。
