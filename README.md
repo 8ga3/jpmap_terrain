@@ -73,8 +73,16 @@ npm start
 通常は `npm run test:visuals` のみを実行します。
 `npm run test:visuals -- --update-snapshots` は毎回実行するものではなく、UIや描画結果に意図した変更が入ったときに、開発者が基準画像を更新するために実行します。
 
+
+**UIや描画結果に意図した変更が入ったときのみ実行**
+
 ```shell
 npm run test:visuals -- --update-snapshots
+```
+
+**通常の実行**
+
+```shell
 npm run test:visuals
 ```
 
