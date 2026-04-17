@@ -42,9 +42,10 @@
   "scripts": {
     "start": "npx webpack serve --config webpack.dev.js",
     "start:test": "npx webpack serve --config webpack.tests.js",
-    "build:dev": "npx webpack --config webpack.dev.js",
-    "build": "npx webpack --config webpack.prod.js",
+    "build:dev": "npm run typecheck && npx webpack --config webpack.dev.js",
+    "build": "npm run typecheck && npx webpack --config webpack.prod.js",
     "lint": "npx eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
     "test:visuals": "npx playwright test",
     "test:unit": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest",
     "prepare": "husky"
