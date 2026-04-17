@@ -27,6 +27,9 @@ npm run test:visuals
 
 Visual Regression Test の基準更新が必要な場合:
 
+- `npm run test:visuals -- --update-snapshots` は毎回実行しない
+- 画面表示（UI/描画結果）に意図した変更がある場合にのみ、開発者が基準画像を更新する
+
 ```shell
 npm run test:visuals -- --update-snapshots
 ```

@@ -57,7 +57,7 @@ npm start
 | `npm run lint` | ESLint 実行 |
 | `npm run typecheck` | TypeScript 型チェック |
 | `npm run test:visuals` | Visual Regression Test 実行 |
-| `npm run test:visuals -- --update-snapshots` | Visual テスト基準画像の更新 |
+| `npm run test:visuals -- --update-snapshots` | Visual テスト基準画像の更新（画面表示変更時のみ） |
 | `npm run test:unit` | ユニットテスト（Jest） |
 
 ### デバッグ
@@ -69,6 +69,9 @@ npm start
 ## テスト
 
 ### Visual Regression Test
+
+通常は `npm run test:visuals` のみを実行します。
+`npm run test:visuals -- --update-snapshots` は毎回実行するものではなく、UIや描画結果に意図した変更が入ったときに、開発者が基準画像を更新するために実行します。
 
 ```shell
 npm run test:visuals -- --update-snapshots
