@@ -1,4 +1,3 @@
-## .github/agents/00_orchestrator.md
 ---
 title: Orchestrator Agent (Local)
 role: orchestrator
