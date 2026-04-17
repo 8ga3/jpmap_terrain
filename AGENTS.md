@@ -28,7 +28,7 @@ npm run lint
 ### Visual Regression Test
 
 ```shell
-npm run test:visual
+npm run test:visuals
 ```
 
 ### Unit Test
