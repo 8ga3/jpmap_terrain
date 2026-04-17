@@ -52,6 +52,9 @@ for (const scene of scenes) {
                 (window as any).renderCount = 0;
             });
             // await page.waitForFunction(() => (window as any).renderCount === scene.renderCount || 1, { timeout: 5000 });
+            // 注意:
+            // スナップショット更新（--update-snapshots）は定常手順ではありません。
+            // UI/描画結果に意図した変更が入った場合のみ実行します。
             await expect(page).toHaveScreenshot({
                 timeout: 30000,
             });
