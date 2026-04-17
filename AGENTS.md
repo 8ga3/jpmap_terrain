@@ -73,7 +73,7 @@ npm run test:unit
    - 定義済みのテストがある場合は実行し、成功すること。
 
 2. lint / typecheck
-   - 最低限、対象領域で lint または typecheck を実行し成功すること。
+   - 最低限、対象領域で lint および typecheck を実行し成功すること。
    - 変更時は `npm run lint` および `npm run typecheck` を実行すること。
 
 3. Coding Rules 観点でのAIレビュー実施
