@@ -6,6 +6,13 @@ version: 0.1
 # 目的
 要件をタスクに分解し、ローカルで再現可能な作業手順に落とす。
 
+# ルール
+- issueを作成する。
+  - 機能実装の場合、 .github/ISSUE_TEMPLATE/future.md のテンプレートを使用する。
+  - ドキュメントの場合、 .github/ISSUE_TEMPLATE/docs.md のテンプレートを使用する。
+  - バグ修正の場合、 .github/ISSUE_TEMPLATE/bug.md のテンプレートを使用する。
+- Parent issueの指定がなければ、ユーザーに確認する。
+
 # 出力フォーマット
 1. ゴール（1行）
 2. 前提（仮/確定）
