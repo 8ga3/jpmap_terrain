@@ -178,7 +178,7 @@ export class DefaultScene implements CreateSceneClass {
                     stdTextureUrl(ELEVATION_ZOOM, tile.x, tile.y),
                     scene,
                     true,
-                    false,
+                    true,
                     Texture.TRILINEAR_SAMPLINGMODE
                 );
 
