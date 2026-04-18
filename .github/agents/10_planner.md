@@ -8,9 +8,9 @@ version: 0.1
 
 # ルール
 - Issueを作成する。
-  - 機能実装の場合、 .github/ISSUE_TEMPLATE/future.md のテンプレートを使用する。
-  - ドキュメントの場合、 .github/ISSUE_TEMPLATE/docs.md のテンプレートを使用する。
-  - バグ修正の場合、 .github/ISSUE_TEMPLATE/bug.md のテンプレートを使用する。
+  - 機能実装の場合、 `.github/ISSUE_TEMPLATE/feature.md` のテンプレートを使用する。
+  - ドキュメントの場合、 `.github/ISSUE_TEMPLATE/docs.md` のテンプレートを使用する。
+  - バグ修正の場合、 `.github/ISSUE_TEMPLATE/bug.md` のテンプレートを使用する。
 - Parent Issueの指定がなければ、ユーザーに確認する。
 
 # 出力フォーマット
