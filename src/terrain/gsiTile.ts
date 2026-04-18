@@ -32,8 +32,10 @@ export const toTileXY = (
 
 /** タイル1辺の実距離[m] */
 export const tileEdgeMeters = (lat: number, zoom: number): number => {
+    const latClamped = clamp(lat, -85.05112878, 85.05112878);
     const metersPerPixel =
-        (156543.03392804097 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
+        (156543.03392804097 * Math.cos((latClamped * Math.PI) / 180)) /
+        2 ** zoom;
     return metersPerPixel * TILE_SIZE;
 };
 
