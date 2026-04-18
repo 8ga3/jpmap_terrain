@@ -14,13 +14,18 @@ export const toTileXY = (
     zoom: number
 ): { x: number; y: number } => {
     const latClamped = clamp(lat, -85.05112878, 85.05112878);
+    const lonNormalized = ((((lon + 180) % 360) + 360) % 360) - 180;
     const n = 2 ** zoom;
-    const x = Math.floor(((lon + 180) / 360) * n);
+    const x = clamp(Math.floor(((lonNormalized + 180) / 360) * n), 0, n - 1);
     const latRad = (latClamped * Math.PI) / 180;
-    const y = Math.floor(
-        ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) /
-            2) *
-            n
+    const y = clamp(
+        Math.floor(
+            ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) /
+                2) *
+                n
+        ),
+        0,
+        n - 1
     );
     return { x, y };
 };
