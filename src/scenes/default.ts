@@ -202,7 +202,20 @@ export class DefaultScene implements CreateSceneClass {
             camera.beta = Number(ui.cameraBetaInput.value);
             camera.radius = Number(ui.cameraRadiusInput.value);
         };
+        let prevAlpha = camera.alpha;
+        let prevBeta = camera.beta;
+        let prevRadius = camera.radius;
         const syncUIFromCamera = (): void => {
+            if (
+                camera.alpha === prevAlpha &&
+                camera.beta === prevBeta &&
+                camera.radius === prevRadius
+            ) {
+                return;
+            }
+            prevAlpha = camera.alpha;
+            prevBeta = camera.beta;
+            prevRadius = camera.radius;
             ui.cameraAlphaInput.value = String(camera.alpha);
             ui.cameraBetaInput.value = String(camera.beta);
             ui.cameraRadiusInput.value = String(camera.radius);
@@ -221,7 +234,7 @@ export class DefaultScene implements CreateSceneClass {
         ui.cameraBetaInput.addEventListener("input", applyCameraFromUI);
         ui.cameraRadiusInput.addEventListener("input", applyCameraFromUI);
 
-        scene.onBeforeRenderObservable.add(syncUIFromCamera);
+        camera.onViewMatrixChangedObservable.add(syncUIFromCamera);
 
         // 初回ロード
         await refreshTerrain();
