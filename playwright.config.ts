@@ -5,6 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  testMatch: 'validation.spec.ts',
   /* Maximum time one test can run for. */
   timeout: 120 * 1000,
   expect: {

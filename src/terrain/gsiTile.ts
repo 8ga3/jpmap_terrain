@@ -97,9 +97,12 @@ const fillInvalidPixels = (
     }
 };
 
+/** fetch タイムアウト [ms] */
+const FETCH_TIMEOUT_MS = 15000;
+
 /** ImageData を fetch して返す（Canvas経由） */
 const loadImageData = async (url: string): Promise<ImageData> => {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`Tile fetch failed: ${url}`);
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
