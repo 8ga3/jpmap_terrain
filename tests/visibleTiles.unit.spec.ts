@@ -104,4 +104,34 @@ describe("computeVisibleTiles", () => {
         expect(result).toHaveLength(1);
         expect(result[0]).toEqual(center);
     });
+
+    it("maxElevation を指定すると AABB の maxY に反映される", () => {
+        // y >= 500 のみ許容する Frustum で maxElevation の差を検証する
+        const highFloorPlanes: FrustumPlane[] = [
+            { normal: { x: 1, y: 0, z: 0 }, d: 1e9 },
+            { normal: { x: -1, y: 0, z: 0 }, d: 1e9 },
+            { normal: { x: 0, y: 1, z: 0 }, d: -500 },    // y >= 500
+            { normal: { x: 0, y: -1, z: 0 }, d: 1e9 },
+            { normal: { x: 0, y: 0, z: 1 }, d: 1e9 },
+            { normal: { x: 0, y: 0, z: -1 }, d: 1e9 },
+        ];
+
+        // maxElevation=100 → AABB maxY=100, P-vertex y=100, 100-500 = -400 < 0 → 不可視
+        const resultLow = computeVisibleTiles({
+            center,
+            tileSize: 100,
+            frustumPlanes: highFloorPlanes,
+            maxElevation: 100,
+        });
+        expect(resultLow).toHaveLength(0);
+
+        // maxElevation=1000 → AABB maxY=1000, P-vertex y=1000, 1000-500 = 500 >= 0 → 可視
+        const resultHigh = computeVisibleTiles({
+            center,
+            tileSize: 100,
+            frustumPlanes: highFloorPlanes,
+            maxElevation: 1000,
+        });
+        expect(resultHigh.length).toBeGreaterThan(0);
+    });
 });
