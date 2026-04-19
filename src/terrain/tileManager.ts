@@ -117,11 +117,15 @@ const extractSubTileElevation = (
             // 子タイルの (x,y) → 親タイルのピクセル座標
             const srcX = Math.min(
                 tileSize - 1,
-                Math.round(originX + (x / tileSize) * subSize)
+                tileSize > 1
+                    ? Math.round(originX + (x / (tileSize - 1)) * (subSize - 1))
+                    : Math.round(originX)
             );
             const srcY = Math.min(
                 tileSize - 1,
-                Math.round(originY + (y / tileSize) * subSize)
+                tileSize > 1
+                    ? Math.round(originY + (y / (tileSize - 1)) * (subSize - 1))
+                    : Math.round(originY)
             );
             result[y * tileSize + x] = parentElev[srcY * tileSize + srcX];
         }
