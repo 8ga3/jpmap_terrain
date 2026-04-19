@@ -55,6 +55,8 @@ const DEFAULT_MAX_CONCURRENT = 4;
 const DEFAULT_MAX_TILES = 25;
 const DEFAULT_CACHE_CAPACITY = 64;
 const DEFAULT_DEBOUNCE_MS = 200;
+/** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
+const MAX_BASE_ELEVATION = 4000;
 
 /** 頂点Y座標を標高値で更新 */
 const applyElevation = (
@@ -317,12 +319,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // Frustum planes 取得
         const frustumPlanes = extractFrustumPlanes(camera);
 
+        // AABB maxY: (想定最大標高 + 高度オフセット) * heightScale
+        const maxElevation =
+            (MAX_BASE_ELEVATION + Math.max(0, altitudeOffset)) * heightScale;
+
         // 可視タイル算出
         const visibleCoords = computeVisibleTiles({
             center: currentCenter,
             tileSize,
             frustumPlanes,
             maxTiles,
+            maxElevation,
         });
         const visibleKeys = new Set(visibleCoords.map(toTileKey));
 
@@ -355,11 +362,15 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const rid = ++requestId;
 
         const frustumPlanes = extractFrustumPlanes(camera);
+        const maxElevation =
+            (MAX_BASE_ELEVATION + Math.max(0, currentAltitudeOffset)) *
+            heightScale;
         const visibleCoords = computeVisibleTiles({
             center: currentCenter,
             tileSize: currentTileSize,
             frustumPlanes,
             maxTiles,
+            maxElevation,
         });
         const visibleKeys = new Set(visibleCoords.map(toTileKey));
 

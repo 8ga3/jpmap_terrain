@@ -13,12 +13,14 @@ export interface VisibleTilesOptions {
     frustumPlanes: readonly FrustumPlane[];
     maxTiles?: number;
     searchRadius?: number;
+    /** AABB の maxY に使う値。省略時は DEFAULT_MAX_ELEVATION (4000) */
+    maxElevation?: number;
 }
 
 const DEFAULT_MAX_TILES = 25;
 const DEFAULT_SEARCH_RADIUS = 4;
 /** 日本の標高上限概算（富士山 3776m + マージン） */
-const MAX_ELEVATION = 4000;
+const DEFAULT_MAX_ELEVATION = 4000;
 
 /** AABB が Frustum の全平面の内側または交差にあるか判定 */
 const isAABBInFrustum = (
@@ -55,6 +57,7 @@ export const computeVisibleTiles = (opts: VisibleTilesOptions): TileCoord[] => {
         frustumPlanes,
         maxTiles = DEFAULT_MAX_TILES,
         searchRadius = DEFAULT_SEARCH_RADIUS,
+        maxElevation = DEFAULT_MAX_ELEVATION,
     } = opts;
 
     const half = tileSize / 2;
@@ -71,7 +74,7 @@ export const computeVisibleTiles = (opts: VisibleTilesOptions): TileCoord[] => {
             if (
                 isAABBInFrustum(
                     minX, 0, minZ,
-                    maxX, MAX_ELEVATION, maxZ,
+                    maxX, maxElevation, maxZ,
                     frustumPlanes
                 )
             ) {
