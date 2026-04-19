@@ -95,7 +95,7 @@ const applyElevation = (
  * 親タイルの標高データから子タイルに対応する領域を切り出す。
  * 最近傍補間で TILE_SIZE × TILE_SIZE に拡大。
  */
-const extractSubTileElevation = (
+export const extractSubTileElevation = (
     parentElev: Float32Array,
     childCoord: TileCoord,
     parentZoom: number,
