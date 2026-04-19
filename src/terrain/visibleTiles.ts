@@ -116,7 +116,7 @@ export interface MultiLodTilesOptions {
     /** タイル総数の上限 */
     maxTiles?: number;
     maxElevation?: number;
-    /** 各zoomレベルの探索半径（省略時 14） */
+    /** baseZoom 格子の探索半径（省略時 14）。Far-field sweep 側の半径には影響しない。 */
     searchRadius?: number;
 }
 
