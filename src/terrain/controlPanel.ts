@@ -1,26 +1,15 @@
-/** 操作UIパネル（緯度・経度・高度・カメラ制御） */
+/** 操作UIパネル（緯度・経度）と方位磁針 */
 
 export interface ControlPanelElements {
     panel: HTMLDivElement;
-    status: HTMLDivElement;
     latInput: HTMLInputElement;
     lonInput: HTMLInputElement;
-    altitudeInput: HTMLInputElement;
-    cameraAlphaInput: HTMLInputElement;
-    cameraBetaInput: HTMLInputElement;
-    cameraRadiusInput: HTMLInputElement;
     updateButton: HTMLButtonElement;
+    compass: HTMLDivElement;
 }
 
 const css = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
     Object.assign(el.style, styles);
-};
-
-const createLabel = (text: string): HTMLLabelElement => {
-    const label = document.createElement("label");
-    label.textContent = text;
-    css(label, { display: "grid", gap: "4px" });
-    return label;
 };
 
 const numberInput = (
@@ -35,124 +24,113 @@ const numberInput = (
     input.min = String(min);
     input.max = String(max);
     input.step = step;
-    css(input, { width: "100%" });
+    css(input, { width: "90px", fontSize: "10px" });
     return input;
 };
 
-const rangeInput = (
-    value: number,
-    min: number,
-    max: number,
-    step: string
-): HTMLInputElement => {
-    const input = document.createElement("input");
-    input.type = "range";
-    input.value = String(value);
-    input.min = String(min);
-    input.max = String(max);
-    input.step = step;
-    css(input, { width: "100%" });
-    return input;
-};
+const createCompass = (): HTMLDivElement => {
+    const container = document.createElement("div");
+    css(container, {
+        position: "absolute",
+        top: "12px",
+        right: "12px",
+        width: "40px",
+        height: "40px",
+        borderRadius: "50%",
+        background: "rgba(9,18,32,0.72)",
+        backdropFilter: "blur(6px)",
+        zIndex: "10",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+    });
 
-export interface CameraDefaults {
-    alpha: number;
-    beta: number;
-    radius: number;
-}
+    // SVG コンパス矢印（北=赤、南=グレー）
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", "28");
+    svg.setAttribute("height", "28");
+    svg.setAttribute("viewBox", "0 0 28 28");
+
+    // 北（赤い三角）
+    const north = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "polygon"
+    );
+    north.setAttribute("points", "14,2 9,14 19,14");
+    north.setAttribute("fill", "#e53935");
+
+    // 南（グレーの三角）
+    const south = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "polygon"
+    );
+    south.setAttribute("points", "14,26 9,14 19,14");
+    south.setAttribute("fill", "#9e9e9e");
+
+    svg.appendChild(north);
+    svg.appendChild(south);
+    container.appendChild(svg);
+
+    document.body.appendChild(container);
+    return container;
+};
 
 export const createControlPanel = (
     initialLat: number,
-    initialLon: number,
-    cameraDefaults: CameraDefaults
+    initialLon: number
 ): ControlPanelElements => {
     const panel = document.createElement("div");
     css(panel, {
         position: "absolute",
-        top: "12px",
-        left: "12px",
-        padding: "12px",
-        borderRadius: "8px",
+        top: "8px",
+        left: "8px",
+        padding: "4px 6px",
+        borderRadius: "6px",
         background: "rgba(9,18,32,0.72)",
         color: "#f2f7ff",
         display: "grid",
-        gap: "8px",
-        minWidth: "280px",
+        gridTemplateColumns: "auto auto auto",
+        gap: "2px 4px",
+        alignItems: "center",
         fontFamily: "'Helvetica Neue',Helvetica,Arial,sans-serif",
-        fontSize: "13px",
+        fontSize: "10px",
         backdropFilter: "blur(6px)",
         zIndex: "10",
     });
     document.body.appendChild(panel);
 
-    // ステータス
-    const status = document.createElement("div");
-    status.textContent = "タイル読込待機中…";
-    css(status, { fontSize: "12px" });
-    panel.appendChild(status);
-
     // 緯度
-    const latLabel = createLabel("緯度");
-    const latInput = numberInput(initialLat, 20, 46, "0.0001");
-    latLabel.appendChild(latInput);
+    const latLabel = document.createElement("span");
+    latLabel.textContent = "緯度";
     panel.appendChild(latLabel);
+    const latInput = numberInput(initialLat, 20, 46, "0.0001");
+    panel.appendChild(latInput);
 
     // 経度
-    const lonLabel = createLabel("経度");
-    const lonInput = numberInput(initialLon, 122, 154, "0.0001");
-    lonLabel.appendChild(lonInput);
+    const lonLabel = document.createElement("span");
+    lonLabel.textContent = "経度";
     panel.appendChild(lonLabel);
+    const lonInput = numberInput(initialLon, 122, 154, "0.0001");
+    panel.appendChild(lonInput);
 
-    // 高度オフセット
-    const altLabel = createLabel("高度オフセット [m]");
-    const altitudeInput = numberInput(0, -2000, 8000, "1");
-    altLabel.appendChild(altitudeInput);
-    panel.appendChild(altLabel);
-
-    // カメラパン
-    const alphaLabel = createLabel("カメラパン（方位）");
-    const cameraAlphaInput = rangeInput(
-        cameraDefaults.alpha,
-        -Math.PI,
-        Math.PI,
-        "0.01"
-    );
-    alphaLabel.appendChild(cameraAlphaInput);
-    panel.appendChild(alphaLabel);
-
-    // カメラチルト
-    const betaLabel = createLabel("カメラチルト");
-    const cameraBetaInput = rangeInput(cameraDefaults.beta, 0.2, 1.5, "0.01");
-    betaLabel.appendChild(cameraBetaInput);
-    panel.appendChild(betaLabel);
-
-    // カメラズーム
-    const radiusLabel = createLabel("カメラズーム");
-    const cameraRadiusInput = rangeInput(
-        cameraDefaults.radius,
-        250,
-        15000,
-        "10"
-    );
-    radiusLabel.appendChild(cameraRadiusInput);
-    panel.appendChild(radiusLabel);
-
-    // 更新ボタン
+    // 更新ボタン（3列目に縦並び）
     const updateButton = document.createElement("button");
     updateButton.type = "button";
-    updateButton.textContent = "地形を更新";
-    css(updateButton, { cursor: "pointer", padding: "8px 10px" });
+    updateButton.textContent = "✓";
+    css(updateButton, {
+        cursor: "pointer",
+        padding: "1px 6px",
+        gridRow: "1 / 3",
+        gridColumn: "3",
+        alignSelf: "stretch",
+        fontSize: "12px",
+        lineHeight: "1",
+    });
     panel.appendChild(updateButton);
 
-    return {
-        panel,
-        status,
-        latInput,
-        lonInput,
-        altitudeInput,
-        cameraAlphaInput,
-        cameraBetaInput,
-        cameraRadiusInput,
-        updateButton,
-    };
+    // 方位磁針（画面右上に独立配置）
+    const compass = createCompass();
+
+    return { panel, latInput, lonInput, updateButton, compass };
 };
