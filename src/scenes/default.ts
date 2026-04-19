@@ -148,18 +148,20 @@ export class DefaultScene implements CreateSceneClass {
             screenY: number,
             planeY: number
         ): { x: number; z: number } | null => {
-            const w = canvas.clientWidth;
-            const h = canvas.clientHeight;
+            const renderW = engine.getRenderWidth();
+            const renderH = engine.getRenderHeight();
+            const scaleX = renderW / canvas.clientWidth;
+            const scaleY = renderH / canvas.clientHeight;
             const view = camera.getViewMatrix();
             const proj = camera.getProjectionMatrix();
             const identity = Matrix.Identity();
             const near = Vector3.Unproject(
-                new Vector3(screenX, screenY, 0),
-                w, h, identity, view, proj
+                new Vector3(screenX * scaleX, screenY * scaleY, 0),
+                renderW, renderH, identity, view, proj
             );
             const far = Vector3.Unproject(
-                new Vector3(screenX, screenY, 1),
-                w, h, identity, view, proj
+                new Vector3(screenX * scaleX, screenY * scaleY, 1),
+                renderW, renderH, identity, view, proj
             );
             const dirY = far.y - near.y;
             if (Math.abs(dirY) < 1e-6) return null;
