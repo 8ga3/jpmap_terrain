@@ -217,7 +217,7 @@ export class DefaultScene implements CreateSceneClass {
                     camera.upperBetaLimit ?? Math.PI
                 );
             } else if (dragAnchor) {
-                // 通常ドラッグ: メッシュ座標を掴んで移動
+                // 通常ドラッグ: 逐次差分でパン（毎フレームanchor更新）
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
@@ -225,6 +225,7 @@ export class DefaultScene implements CreateSceneClass {
                 if (current) {
                     camera.target.x += dragAnchor.x - current.x;
                     camera.target.z += dragAnchor.z - current.z;
+                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                 }
             }
             lastPointerX = e.clientX;
