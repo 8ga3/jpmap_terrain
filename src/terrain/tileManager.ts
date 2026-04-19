@@ -341,7 +341,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const repositionActiveTiles = (): void => {
         if (!currentCenter) return;
         for (const [key, tile] of activeTiles) {
-            const { mesh, coord, tileSize } = tile;
+            const { mesh, coord } = tile;
+
+            // tileSize を現在の緯度で再計算
+            const tileSize = tileSizeForZoom(coord.zoom);
+            tile.tileSize = tileSize;
 
             // スケーリング
             mesh.scaling.x = tileSize;
