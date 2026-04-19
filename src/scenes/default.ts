@@ -5,15 +5,13 @@ import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
-import { clamp, toTileXY, tileEdgeMeters } from "../terrain/gsiTile";
+import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { createControlPanel } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const ELEVATION_ZOOM = 14;
 const HEIGHT_SCALE = 1.0;
-
-const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 };
 
 /** 1度の緯度あたりのメートル数（概算） */
 const METERS_PER_DEGREE_LAT = 111320;

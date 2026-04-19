@@ -2,6 +2,8 @@
 
 export const TILE_SIZE = 256;
 
+export const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 } as const;
+
 const DEM_LAYERS = ["dem5a_png", "dem5b_png", "dem_png"] as const;
 
 export const clamp = (value: number, min: number, max: number): number =>
