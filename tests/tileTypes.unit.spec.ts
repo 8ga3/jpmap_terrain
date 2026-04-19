@@ -36,6 +36,11 @@ describe("tileOffsetToWorld", () => {
         expect(wx).toBe(-150);
         expect(wz).toBe(150);
     });
+
+    it("NaN 入力はそのまま伝播する", () => {
+        const { wz } = tileOffsetToWorld(0, NaN, 100);
+        expect(wz).toBeNaN();
+    });
 });
 
 describe("worldToTileOffset", () => {
@@ -43,6 +48,11 @@ describe("worldToTileOffset", () => {
         const { dx, dy } = worldToTileOffset(0, 0, 100);
         expect(dx).toBe(0);
         expect(dy).toBe(0);
+    });
+
+    it("NaN 入力はそのまま伝播する", () => {
+        const { dy } = worldToTileOffset(0, NaN, 100);
+        expect(dy).toBeNaN();
     });
 
     it("tileOffsetToWorld の逆変換が一致する", () => {
