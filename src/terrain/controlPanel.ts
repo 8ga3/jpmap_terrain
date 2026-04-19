@@ -1,5 +1,7 @@
 /** 操作UIパネル（緯度・経度）と方位磁針 */
 
+import { JAPAN_BOUNDS } from "./gsiTile";
+
 export interface ControlPanelElements {
     panel: HTMLDivElement;
     latInput: HTMLInputElement;
@@ -120,7 +122,7 @@ export const createControlPanel = (
     latLabel.textContent = "緯度";
     css(latLabel, { gridColumn: "1", gridRow: "1" });
     panel.appendChild(latLabel);
-    const latInput = numberInput(initialLat, 20, 46, "0.0001");
+    const latInput = numberInput(initialLat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat, "0.0001");
     latInput.id = "cp-lat";
     css(latInput, { gridColumn: "2", gridRow: "1" });
     panel.appendChild(latInput);
@@ -131,7 +133,7 @@ export const createControlPanel = (
     lonLabel.textContent = "経度";
     css(lonLabel, { gridColumn: "1", gridRow: "2" });
     panel.appendChild(lonLabel);
-    const lonInput = numberInput(initialLon, 122, 154, "0.0001");
+    const lonInput = numberInput(initialLon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon, "0.0001");
     lonInput.id = "cp-lon";
     css(lonInput, { gridColumn: "2", gridRow: "2" });
     panel.appendChild(lonInput);
