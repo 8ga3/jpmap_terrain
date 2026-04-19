@@ -1,10 +1,11 @@
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
-import { clamp } from "../terrain/gsiTile";
+import { clamp, toTileXY, tileEdgeMeters } from "../terrain/gsiTile";
 import { createControlPanel } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 
@@ -13,6 +14,9 @@ const ELEVATION_ZOOM = 14;
 const HEIGHT_SCALE = 1.0;
 
 const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 };
+
+/** 1度の緯度あたりのメートル数（概算） */
+const METERS_PER_DEGREE_LAT = 111320;
 
 export class DefaultScene implements CreateSceneClass {
     createScene = async (
@@ -34,8 +38,15 @@ export class DefaultScene implements CreateSceneClass {
         camera.lowerRadiusLimit = 250;
         camera.upperRadiusLimit = 40000;
         camera.maxZ = 100000;
-        camera.wheelDeltaPercentage = 0.02;
-        camera.panningSensibility = 1500;
+
+        // チルト制限（地面から20° = beta上限 7π/18）
+        camera.upperBetaLimit = Math.PI / 2 - Math.PI / 9;
+        camera.lowerBetaLimit = 0.1;
+
+        // デフォルト入力をすべて無効化（カスタムハンドラで制御）
+        camera.inputs.removeByType("ArcRotateCameraPointersInput");
+        camera.inputs.removeByType("ArcRotateCameraKeyboardMoveInput");
+        camera.inputs.removeByType("ArcRotateCameraMouseWheelInput");
         camera.attachControl(canvas, true);
 
         // ライト
@@ -51,11 +62,7 @@ export class DefaultScene implements CreateSceneClass {
         const initialLon = 139.767125;
 
         // UIパネル
-        const ui = createControlPanel(initialLat, initialLon, {
-            alpha: camera.alpha,
-            beta: camera.beta,
-            radius: camera.radius,
-        });
+        const ui = createControlPanel(initialLat, initialLon);
 
         // TileManager 生成
         const tileManager = createTileManager({
@@ -66,9 +73,9 @@ export class DefaultScene implements CreateSceneClass {
             heightScale: HEIGHT_SCALE,
         });
 
-        tileManager.onStatusChange = (status: string) => {
-            ui.status.textContent = status;
-        };
+        let currentAltitudeOffset = 0;
+        let gridResidualX = 0;
+        let gridResidualZ = 0;
 
         const refreshTerrain = async (): Promise<void> => {
             const lat = clamp(
@@ -81,53 +88,269 @@ export class DefaultScene implements CreateSceneClass {
                 JAPAN_BOUNDS.minLon,
                 JAPAN_BOUNDS.maxLon
             );
-            const altOff = Number(ui.altitudeInput.value) || 0;
-
             ui.latInput.value = lat.toFixed(6);
             ui.lonInput.value = lon.toFixed(6);
-
-            await tileManager.setCenter(lat, lon, altOff);
+            await tileManager.setCenter(lat, lon, currentAltitudeOffset);
         };
 
-        // カメラ ↔ UI 同期
-        const applyCameraFromUI = (): void => {
-            camera.alpha = Number(ui.cameraAlphaInput.value);
-            camera.beta = Number(ui.cameraBetaInput.value);
-            camera.radius = Number(ui.cameraRadiusInput.value);
-        };
-        let prevAlpha = camera.alpha;
-        let prevBeta = camera.beta;
-        let prevRadius = camera.radius;
-        const syncUIFromCamera = (): void => {
-            if (
-                camera.alpha === prevAlpha &&
-                camera.beta === prevBeta &&
-                camera.radius === prevRadius
-            ) {
+        // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
+        const commitPanOffset = (): void => {
+            const tx = camera.target.x;
+            const tz = camera.target.z;
+            if (tx === 0 && tz === 0) return;
+
+            // 新規オフセット = 全体 - 既知のグリッド残差
+            const newOffsetX = tx - gridResidualX;
+            const newOffsetZ = tz - gridResidualZ;
+            if (Math.abs(newOffsetX) < 0.01 && Math.abs(newOffsetZ) < 0.01) {
                 return;
             }
-            prevAlpha = camera.alpha;
-            prevBeta = camera.beta;
-            prevRadius = camera.radius;
-            ui.cameraAlphaInput.value = String(camera.alpha);
-            ui.cameraBetaInput.value = String(camera.beta);
-            ui.cameraRadiusInput.value = String(camera.radius);
+
+            const oldLat = Number(ui.latInput.value);
+            const oldLon = Number(ui.lonInput.value);
+            const metersPerDegreeLon =
+                METERS_PER_DEGREE_LAT *
+                Math.cos((oldLat * Math.PI) / 180);
+
+            const newLat = clamp(
+                oldLat + newOffsetZ / METERS_PER_DEGREE_LAT,
+                JAPAN_BOUNDS.minLat,
+                JAPAN_BOUNDS.maxLat
+            );
+            const newLon = clamp(
+                oldLon + newOffsetX / metersPerDegreeLon,
+                JAPAN_BOUNDS.minLon,
+                JAPAN_BOUNDS.maxLon
+            );
+
+            const oldTile = toTileXY(oldLat, oldLon, ELEVATION_ZOOM);
+            const newTile = toTileXY(newLat, newLon, ELEVATION_ZOOM);
+            const tileSize = tileEdgeMeters(newLat, ELEVATION_ZOOM);
+            const gridShiftX = (newTile.x - oldTile.x) * tileSize;
+            const gridShiftZ = -((newTile.y - oldTile.y) * tileSize);
+
+            // 残差更新: 旧残差 + 新規オフセット - グリッドシフト
+            gridResidualX = gridResidualX + newOffsetX - gridShiftX;
+            gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
+
+            camera.target.x = gridResidualX;
+            camera.target.y = 0;
+            camera.target.z = gridResidualZ;
+
+            ui.latInput.value = newLat.toFixed(6);
+            ui.lonInput.value = newLon.toFixed(6);
+            void refreshTerrain();
         };
 
-        // イベント接続
-        ui.updateButton.addEventListener("click", () => void refreshTerrain());
-        ui.latInput.addEventListener("change", () => void refreshTerrain());
-        ui.lonInput.addEventListener("change", () => void refreshTerrain());
-        ui.altitudeInput.addEventListener(
-            "change",
-            () => void refreshTerrain()
+        // ---------- レイ-平面交差ユーティリティ ----------
+        const intersectPlane = (
+            screenX: number,
+            screenY: number,
+            planeY: number
+        ): { x: number; z: number } | null => {
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            const view = camera.getViewMatrix();
+            const proj = camera.getProjectionMatrix();
+            const identity = Matrix.Identity();
+            const near = Vector3.Unproject(
+                new Vector3(screenX, screenY, 0),
+                w, h, identity, view, proj
+            );
+            const far = Vector3.Unproject(
+                new Vector3(screenX, screenY, 1),
+                w, h, identity, view, proj
+            );
+            const dirY = far.y - near.y;
+            if (Math.abs(dirY) < 1e-6) return null;
+            const t = (planeY - near.y) / dirY;
+            if (t <= 0) return null;
+            return {
+                x: near.x + (far.x - near.x) * t,
+                z: near.z + (far.z - near.z) * t,
+            };
+        };
+
+        // ---------- カスタムマウスハンドラ ----------
+        let pointerDown = false;
+        let lastPointerX = 0;
+        let lastPointerY = 0;
+        let activePointerId = -1;
+        let dragAnchor: { x: number; z: number } | null = null;
+        let dragPlaneY = 0;
+
+        canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+        canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+            if (e.button !== 0) return;
+            pointerDown = true;
+            lastPointerX = e.clientX;
+            lastPointerY = e.clientY;
+            activePointerId = e.pointerId;
+            canvas.setPointerCapture(e.pointerId);
+
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const pick = scene.pick(sx, sy);
+            dragPlaneY =
+                pick?.hit && pick.pickedPoint ? pick.pickedPoint.y : 0;
+            dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+        });
+
+        canvas.addEventListener("pointermove", (e: PointerEvent) => {
+            if (!pointerDown || e.pointerId !== activePointerId) return;
+
+            if (e.ctrlKey || e.metaKey) {
+                // Ctrl/Cmd + ドラッグ: 水平=パン(alpha)、垂直=チルト(beta)
+                const dx = e.clientX - lastPointerX;
+                const dy = e.clientY - lastPointerY;
+                lastPointerX = e.clientX;
+                lastPointerY = e.clientY;
+                camera.alpha -= dx * 0.003;
+                camera.beta -= dy * 0.003;
+                camera.beta = clamp(
+                    camera.beta,
+                    camera.lowerBetaLimit ?? 0,
+                    camera.upperBetaLimit ?? Math.PI
+                );
+            } else if (dragAnchor) {
+                // 通常ドラッグ: メッシュ座標を掴んで移動
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const current = intersectPlane(sx, sy, dragPlaneY);
+                if (current) {
+                    camera.target.x += dragAnchor.x - current.x;
+                    camera.target.z += dragAnchor.z - current.z;
+                }
+            }
+            lastPointerX = e.clientX;
+            lastPointerY = e.clientY;
+        });
+
+        canvas.addEventListener("pointerup", (e: PointerEvent) => {
+            if (e.pointerId !== activePointerId) return;
+            pointerDown = false;
+            canvas.releasePointerCapture(e.pointerId);
+            commitPanOffset();
+        });
+
+        // ホイール / ダブルクリック: ポインタ方向にズーム
+        const zoomTowardPoint = (
+            worldX: number,
+            worldZ: number,
+            factor: number
+        ): void => {
+            camera.target.x += (worldX - camera.target.x) * (1 - factor);
+            camera.target.z += (worldZ - camera.target.z) * (1 - factor);
+            camera.radius *= factor;
+            camera.radius = clamp(
+                camera.radius,
+                camera.lowerRadiusLimit ?? 250,
+                camera.upperRadiusLimit ?? 40000
+            );
+            commitPanOffset();
+        };
+
+        /** メッシュまたは y=0 平面との交点を返す。空なら null */
+        const pickOrPlane = (
+            clientX: number,
+            clientY: number
+        ): { worldX: number; worldZ: number } | null => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = clientX - rect.left;
+            const sy = clientY - rect.top;
+            const pick = scene.pick(sx, sy);
+            if (pick?.hit && pick.pickedPoint) {
+                return {
+                    worldX: pick.pickedPoint.x,
+                    worldZ: pick.pickedPoint.z,
+                };
+            }
+            const plane = intersectPlane(sx, sy, 0);
+            return plane ? { worldX: plane.x, worldZ: plane.z } : null;
+        };
+
+        canvas.addEventListener(
+            "wheel",
+            (e: WheelEvent) => {
+                if (e.deltaY === 0) return;
+                e.preventDefault();
+                const hit = pickOrPlane(e.clientX, e.clientY);
+                if (hit) {
+                    const factor = e.deltaY < 0 ? 0.95 : 1 / 0.95;
+                    zoomTowardPoint(hit.worldX, hit.worldZ, factor);
+                } else {
+                    const delta = e.deltaY > 0 ? -50 : 50;
+                    currentAltitudeOffset = clamp(
+                        currentAltitudeOffset + delta,
+                        -2000,
+                        8000
+                    );
+                    void refreshTerrain();
+                }
+            },
+            { passive: false }
         );
 
-        ui.cameraAlphaInput.addEventListener("input", applyCameraFromUI);
-        ui.cameraBetaInput.addEventListener("input", applyCameraFromUI);
-        ui.cameraRadiusInput.addEventListener("input", applyCameraFromUI);
+        canvas.addEventListener("dblclick", (e: MouseEvent) => {
+            const hit = pickOrPlane(e.clientX, e.clientY);
+            if (hit) {
+                zoomTowardPoint(hit.worldX, hit.worldZ, 0.7);
+            } else {
+                currentAltitudeOffset = clamp(
+                    currentAltitudeOffset + 100,
+                    -2000,
+                    8000
+                );
+                void refreshTerrain();
+            }
+        });
 
-        camera.onViewMatrixChangedObservable.add(syncUIFromCamera);
+        // 方位磁針の回転同期
+        const syncCompass = (): void => {
+            const degrees = (camera.alpha * 180) / Math.PI + 90;
+            ui.compass.style.transform = `rotate(${degrees}deg)`;
+        };
+        camera.onViewMatrixChangedObservable.add(syncCompass);
+
+        // 方位磁針クリック: 北向き・真下にスムーズアニメーション
+        ui.compass.style.cursor = "pointer";
+        ui.compass.addEventListener("click", () => {
+            const targetAlpha = -Math.PI / 2; // 北向き
+            const targetBeta = 0.1;           // ほぼ真下
+            const duration = 400;             // ms
+            const startAlpha = camera.alpha;
+            const startBeta = camera.beta;
+            const startTime = performance.now();
+
+            const animate = (now: number): void => {
+                const elapsed = now - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                // ease-out cubic
+                const ease = 1 - Math.pow(1 - t, 3);
+                camera.alpha = startAlpha + (targetAlpha - startAlpha) * ease;
+                camera.beta = startBeta + (targetBeta - startBeta) * ease;
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                }
+            };
+            requestAnimationFrame(animate);
+        });
+
+        // イベント接続
+        const resetAndRefresh = (): void => {
+            camera.target.x = 0;
+            camera.target.y = 0;
+            camera.target.z = 0;
+            gridResidualX = 0;
+            gridResidualZ = 0;
+            void refreshTerrain();
+        };
+        ui.updateButton.addEventListener("click", resetAndRefresh);
+        ui.latInput.addEventListener("change", resetAndRefresh);
+        ui.lonInput.addEventListener("change", resetAndRefresh);
 
         // カメラ移動時の自動タイル更新
         tileManager.attachCamera();
