@@ -101,20 +101,24 @@ export const createControlPanel = (
     document.body.appendChild(panel);
 
     // 緯度
-    const latLabel = document.createElement("span");
+    const latLabel = document.createElement("label");
+    latLabel.htmlFor = "cp-lat";
     latLabel.textContent = "緯度";
     css(latLabel, { gridColumn: "1", gridRow: "1" });
     panel.appendChild(latLabel);
     const latInput = numberInput(initialLat, 20, 46, "0.0001");
+    latInput.id = "cp-lat";
     css(latInput, { gridColumn: "2", gridRow: "1" });
     panel.appendChild(latInput);
 
     // 経度
-    const lonLabel = document.createElement("span");
+    const lonLabel = document.createElement("label");
+    lonLabel.htmlFor = "cp-lon";
     lonLabel.textContent = "経度";
     css(lonLabel, { gridColumn: "1", gridRow: "2" });
     panel.appendChild(lonLabel);
     const lonInput = numberInput(initialLon, 122, 154, "0.0001");
+    lonInput.id = "cp-lon";
     css(lonInput, { gridColumn: "2", gridRow: "2" });
     panel.appendChild(lonInput);
 
@@ -122,6 +126,7 @@ export const createControlPanel = (
     const updateButton = document.createElement("button");
     updateButton.type = "button";
     updateButton.textContent = "✓";
+    updateButton.setAttribute("aria-label", "地形を更新");
     css(updateButton, {
         cursor: "pointer",
         padding: "1px 6px",
