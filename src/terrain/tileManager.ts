@@ -236,6 +236,50 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
+    /** 既存 activeTiles の position/scaling/標高を現在の中心・タイルサイズ・高度オフセットに合わせて再配置 */
+    const repositionActiveTiles = (): void => {
+        if (!currentCenter) return;
+        for (const [key, tile] of activeTiles) {
+            const { mesh, coord } = tile;
+
+            // スケーリング
+            mesh.scaling.x = currentTileSize;
+            mesh.scaling.z = currentTileSize;
+            mesh.scaling.y = 1;
+
+            // 位置
+            const dx = coord.x - currentCenter.x;
+            const dy = coord.y - currentCenter.y;
+            const { wx, wz } = tileOffsetToWorld(dx, dy, currentTileSize);
+            mesh.position.x = wx;
+            mesh.position.z = wz;
+
+            // キャッシュから標高データを取得し再適用
+            const entry = cache.get(key);
+            if (entry) {
+                const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
+                const idx = mesh.getIndices();
+                if (pos && idx) {
+                    const typed =
+                        pos instanceof Float32Array
+                            ? pos
+                            : new Float32Array(pos);
+                    applyElevation(
+                        typed,
+                        entry.elevation,
+                        currentAltitudeOffset,
+                        heightScale,
+                        subdivisions
+                    );
+                    mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
+                    const normals = new Float32Array(typed.length);
+                    VertexData.ComputeNormals(typed, idx, normals);
+                    mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
+                }
+            }
+        }
+    };
+
     /** 並列数制限付きのロードキュー */
     const loadTilesInQueue = async (
         coords: TileCoord[],
@@ -289,6 +333,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 activeTiles.delete(key);
             }
         }
+
+        // 既存タイルの position/scaling/標高を新しい中心基準で再配置
+        repositionActiveTiles();
 
         // 新規タイルのみロード
         const toLoad = visibleCoords.filter(
