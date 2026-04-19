@@ -413,12 +413,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     ): LodTileEntry[] => {
         if (!currentCenter) return [];
 
-        // カメラ→ターゲット距離（チルトに依存せず安定）
-        const cameraDistance = Math.sqrt(
-            camera.position.x ** 2 +
-            camera.position.y ** 2 +
-            camera.position.z ** 2
-        );
+        // カメラ→ターゲット距離（チルトやパンに依存せず安定）
+        const cameraDistance = camera.radius;
 
         const baseZoom = computeBaseZoom(
             cameraDistance,
