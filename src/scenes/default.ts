@@ -238,6 +238,16 @@ export class DefaultScene implements CreateSceneClass {
             commitPanOffset();
         });
 
+        const resetPointerState = (): void => {
+            pointerDown = false;
+            activePointerId = -1;
+            dragAnchor = null;
+            commitPanOffset();
+        };
+
+        canvas.addEventListener("pointercancel", resetPointerState);
+        canvas.addEventListener("lostpointercapture", resetPointerState);
+
         // ホイール / ダブルクリック: ポインタ方向にズーム
         const zoomTowardPoint = (
             worldX: number,
