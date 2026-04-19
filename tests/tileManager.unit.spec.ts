@@ -107,6 +107,7 @@ const createMockCamera = () => {
         alpha: 0,
         beta: 0,
         radius: 4000,
+        position: { x: 0, y: 4000, z: 0 },
         getScene: jest.fn(() => ({
             getEngine: jest.fn(() => ({})),
         })),
