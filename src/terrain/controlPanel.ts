@@ -103,15 +103,19 @@ export const createControlPanel = (
     // 緯度
     const latLabel = document.createElement("span");
     latLabel.textContent = "緯度";
+    css(latLabel, { gridColumn: "1", gridRow: "1" });
     panel.appendChild(latLabel);
     const latInput = numberInput(initialLat, 20, 46, "0.0001");
+    css(latInput, { gridColumn: "2", gridRow: "1" });
     panel.appendChild(latInput);
 
     // 経度
     const lonLabel = document.createElement("span");
     lonLabel.textContent = "経度";
+    css(lonLabel, { gridColumn: "1", gridRow: "2" });
     panel.appendChild(lonLabel);
     const lonInput = numberInput(initialLon, 122, 154, "0.0001");
+    css(lonInput, { gridColumn: "2", gridRow: "2" });
     panel.appendChild(lonInput);
 
     // 更新ボタン（3列目に縦並び）
