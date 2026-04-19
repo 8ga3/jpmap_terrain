@@ -69,10 +69,10 @@ export const createMeshPool = (opts: MeshPoolOptions): MeshPool => {
 
         dispose(): void {
             for (const mesh of active) {
-                mesh.dispose();
+                mesh.dispose(false, true);
             }
             for (const mesh of pool) {
-                mesh.dispose();
+                mesh.dispose(false, true);
             }
             active.clear();
             pool.length = 0;
