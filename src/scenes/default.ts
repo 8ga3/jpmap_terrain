@@ -10,8 +10,10 @@ import { createControlPanel } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 
 const TERRAIN_SUBDIVISIONS = 128;
-const ELEVATION_ZOOM = 14;
+const MAX_ZOOM = 18;
+const MAX_ELEVATION_ZOOM = 17;
 const HEIGHT_SCALE = 1.0;
+const MIN_ZOOM = 8;
 
 /** 1度の緯度あたりのメートル数（概算） */
 const METERS_PER_DEGREE_LAT = 111320;
@@ -35,6 +37,7 @@ export class DefaultScene implements CreateSceneClass {
         );
         camera.lowerRadiusLimit = 250;
         camera.upperRadiusLimit = 40000;
+        camera.minZ = 10;
         camera.maxZ = 100000;
 
         // チルト制限（地面から20° = beta上限 7π/18）
@@ -66,9 +69,13 @@ export class DefaultScene implements CreateSceneClass {
         const tileManager = createTileManager({
             scene,
             camera,
-            zoom: ELEVATION_ZOOM,
+            zoom: MAX_ZOOM,
             subdivisions: TERRAIN_SUBDIVISIONS,
             heightScale: HEIGHT_SCALE,
+            minZoom: MIN_ZOOM,
+            maxElevationZoom: MAX_ELEVATION_ZOOM,
+            maxTiles: 160,
+            cacheCapacity: 256,
         });
 
         let currentAltitudeOffset = 0;
@@ -121,9 +128,9 @@ export class DefaultScene implements CreateSceneClass {
                 JAPAN_BOUNDS.maxLon
             );
 
-            const oldTile = toTileXY(oldLat, oldLon, ELEVATION_ZOOM);
-            const newTile = toTileXY(newLat, newLon, ELEVATION_ZOOM);
-            const tileSize = tileEdgeMeters(newLat, ELEVATION_ZOOM);
+            const oldTile = toTileXY(oldLat, oldLon, MAX_ZOOM);
+            const newTile = toTileXY(newLat, newLon, MAX_ZOOM);
+            const tileSize = tileEdgeMeters(newLat, MAX_ZOOM);
             const gridShiftX = (newTile.x - oldTile.x) * tileSize;
             const gridShiftZ = -((newTile.y - oldTile.y) * tileSize);
 

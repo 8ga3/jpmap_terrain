@@ -11,8 +11,8 @@ import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
 
-import { TileCoord, TileKey, toTileKey, tileOffsetToWorld } from "./tileTypes";
-import { computeVisibleTiles, FrustumPlane } from "./visibleTiles";
+import { TileCoord, TileKey, toTileKey, tileOffsetToWorld, convertTileZoom, computeSubTileOffset } from "./tileTypes";
+import { computeMultiLodTiles, computeBaseZoom, FrustumPlane, LodTileEntry } from "./visibleTiles";
 import { createTileCache, TileCache } from "./tileCache";
 import { createMeshPool, MeshPool } from "./meshPool";
 import {
@@ -33,6 +33,10 @@ export interface TileManagerOptions {
     maxTiles?: number;
     cacheCapacity?: number;
     debounceMs?: number;
+    /** 遠景LODの最小ズームレベル（省略時は zoom - 2） */
+    minZoom?: number;
+    /** 標高タイルの最大ズームレベル（省略時は zoom） */
+    maxElevationZoom?: number;
 }
 
 export interface TileManager {
@@ -49,11 +53,12 @@ interface ActiveTile {
     key: TileKey;
     coord: TileCoord;
     mesh: Mesh;
+    tileSize: number;
 }
 
 const DEFAULT_MAX_CONCURRENT = 4;
-const DEFAULT_MAX_TILES = 25;
-const DEFAULT_CACHE_CAPACITY = 64;
+const DEFAULT_MAX_TILES = 60;
+const DEFAULT_CACHE_CAPACITY = 96;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
@@ -86,6 +91,44 @@ const applyElevation = (
     }
 };
 
+/**
+ * 親タイルの標高データから子タイルに対応する領域を切り出す。
+ * 最近傍補間で TILE_SIZE × TILE_SIZE に拡大。
+ */
+const extractSubTileElevation = (
+    parentElev: Float32Array,
+    childCoord: TileCoord,
+    parentZoom: number,
+    tileSize: number,
+): Float32Array => {
+    const diff = childCoord.zoom - parentZoom;
+    const scale = 1 << diff; // 子タイル数（片辺）
+    // 親タイル内での子タイルオフセット (0..scale-1)
+    const subX = childCoord.x - ((childCoord.x >> diff) << diff);
+    const subY = childCoord.y - ((childCoord.y >> diff) << diff);
+
+    const result = new Float32Array(tileSize * tileSize);
+    const subSize = tileSize / scale; // 親タイル内の子タイルピクセルサイズ
+    const originX = subX * subSize;
+    const originY = subY * subSize;
+
+    for (let y = 0; y < tileSize; y++) {
+        for (let x = 0; x < tileSize; x++) {
+            // 子タイルの (x,y) → 親タイルのピクセル座標
+            const srcX = Math.min(
+                tileSize - 1,
+                Math.round(originX + (x / tileSize) * subSize)
+            );
+            const srcY = Math.min(
+                tileSize - 1,
+                Math.round(originY + (y / tileSize) * subSize)
+            );
+            result[y * tileSize + x] = parentElev[srcY * tileSize + srcX];
+        }
+    }
+    return result;
+};
+
 /** Babylon.js Frustum planes を FrustumPlane[] に変換 */
 const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
     const transform = Matrix.Identity();
@@ -112,7 +155,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         maxTiles = DEFAULT_MAX_TILES,
         cacheCapacity = DEFAULT_CACHE_CAPACITY,
         debounceMs = DEFAULT_DEBOUNCE_MS,
+        minZoom: minZoomOpt,
+        maxElevationZoom: maxElevationZoomOpt,
     } = opts;
+
+    const minZoom = minZoomOpt ?? Math.max(0, zoom - 2);
+    const maxElevationZoom = maxElevationZoomOpt ?? zoom;
 
     const cache: TileCache = createTileCache(cacheCapacity);
     const meshPool: MeshPool = createMeshPool({
@@ -132,8 +180,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     // 現在の中心情報
     let currentCenter: TileCoord | null = null;
-    let currentTileSize = 0;
     let currentAltitudeOffset = 0;
+    let currentLat = 0;
 
     const emitStatus = (): void => {
         if (!statusCallback) return;
@@ -151,24 +199,70 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 単一タイルをロードしてメッシュに適用 */
     const loadTile = async (
         coord: TileCoord,
+        tileSize: number,
         rid: number
     ): Promise<void> => {
         const key = toTileKey(coord);
-        if (activeTiles.has(key)) return;
+        if (activeTiles.has(key) || !currentCenter) return;
 
         loadingCount++;
         emitStatus();
 
         try {
-            // キャッシュ or fetch
+            // キャッシュ or fetch（標高zoomは maxElevationZoom で制限）
+            const elevZoom = Math.min(coord.zoom, maxElevationZoom);
+
             let entry = cache.get(key);
             if (!entry) {
-                const elevation = await loadElevationTile(
-                    coord.zoom,
-                    coord.x,
-                    coord.y
-                );
-                if (rid !== requestId) return;
+                // 標高データを取得（maxElevationZoomから段階的にフォールバック）
+                let elevData: Float32Array | null = null;
+                let actualElevZoom = elevZoom;
+
+                for (let tryZoom = elevZoom; tryZoom >= minZoom; tryZoom--) {
+                    const tryCoord = convertTileZoom(coord, tryZoom);
+                    const tryKey = toTileKey(tryCoord);
+
+                    // キャッシュにあればそれを使う
+                    const cached = cache.get(tryKey);
+                    if (cached) {
+                        elevData = cached.elevation;
+                        actualElevZoom = tryZoom;
+                        break;
+                    }
+
+                    try {
+                        elevData = await loadElevationTile(
+                            tryCoord.zoom,
+                            tryCoord.x,
+                            tryCoord.y
+                        );
+                        if (rid !== requestId) return;
+                        // 成功した標高データをキャッシュ
+                        cache.set(tryKey, { coord: tryCoord, elevation: elevData });
+                        actualElevZoom = tryZoom;
+                        break;
+                    } catch {
+                        // このzoomでは利用不可 → 1段下げて再試行
+                        if (rid !== requestId) return;
+                    }
+                }
+
+                if (!elevData) {
+                    // 全zoomで失敗 → フラット標高で表示
+                    elevData = new Float32Array(TILE_SIZE * TILE_SIZE);
+                    actualElevZoom = coord.zoom;
+                }
+
+                // zoom差がある場合、親タイルの該当領域を切り出し
+                let elevation: Float32Array;
+                if (actualElevZoom < coord.zoom) {
+                    elevation = extractSubTileElevation(
+                        elevData, coord, actualElevZoom, TILE_SIZE
+                    );
+                } else {
+                    elevation = elevData;
+                }
+
                 entry = { coord, elevation };
                 cache.set(key, entry);
             }
@@ -178,17 +272,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
             // メッシュ取得・配置
             const mesh = meshPool.acquire();
-            const tileSize = currentTileSize;
 
             // スケーリング
             mesh.scaling.x = tileSize;
             mesh.scaling.z = tileSize;
             mesh.scaling.y = 1;
 
-            // 中心タイルからのオフセット
-            const dx = coord.x - currentCenter!.x;
-            const dy = coord.y - currentCenter!.y;
-            const { wx, wz } = tileOffsetToWorld(dx, dy, tileSize);
+            // 中心タイルからのオフセット（サブタイルオフセット補正込み）
+            const center = convertTileZoom(currentCenter, coord.zoom);
+            const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+            const dx = coord.x - center.x;
+            const dy = coord.y - center.y;
+            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
             mesh.position.x = wx;
             mesh.position.z = wz;
 
@@ -226,7 +321,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 Texture.TRILINEAR_SAMPLINGMODE
             );
 
-            activeTiles.set(key, { key, coord, mesh });
+            activeTiles.set(key, { key, coord, mesh, tileSize });
         } catch (e) {
             if (rid !== requestId) return;
             statusCallback?.(
@@ -238,21 +333,23 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
-    /** 既存 activeTiles の position/scaling/標高を現在の中心・タイルサイズ・高度オフセットに合わせて再配置 */
+    /** 既存 activeTiles の position/scaling/標高を現在の中心・高度オフセットに合わせて再配置 */
     const repositionActiveTiles = (): void => {
         if (!currentCenter) return;
         for (const [key, tile] of activeTiles) {
-            const { mesh, coord } = tile;
+            const { mesh, coord, tileSize } = tile;
 
             // スケーリング
-            mesh.scaling.x = currentTileSize;
-            mesh.scaling.z = currentTileSize;
+            mesh.scaling.x = tileSize;
+            mesh.scaling.z = tileSize;
             mesh.scaling.y = 1;
 
-            // 位置
-            const dx = coord.x - currentCenter.x;
-            const dy = coord.y - currentCenter.y;
-            const { wx, wz } = tileOffsetToWorld(dx, dy, currentTileSize);
+            // 位置（サブタイルオフセット補正込み）
+            const center = convertTileZoom(currentCenter, coord.zoom);
+            const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+            const dx = coord.x - center.x;
+            const dy = coord.y - center.y;
+            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
             mesh.position.x = wx;
             mesh.position.z = wz;
 
@@ -284,22 +381,90 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** 並列数制限付きのロードキュー */
     const loadTilesInQueue = async (
-        coords: TileCoord[],
+        entries: readonly LodTileEntry[],
         rid: number
     ): Promise<void> => {
         let idx = 0;
         const next = async (): Promise<void> => {
-            while (idx < coords.length && rid === requestId) {
-                const coord = coords[idx++];
-                await loadTile(coord, rid);
+            while (idx < entries.length && rid === requestId) {
+                const { coord, tileSize } = entries[idx++];
+                await loadTile(coord, tileSize, rid);
             }
         };
 
         const workers = Array.from(
-            { length: Math.min(maxConcurrent, coords.length) },
+            { length: Math.min(maxConcurrent, entries.length) },
             () => next()
         );
         await Promise.all(workers);
+    };
+
+    /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
+    const tileSizeForZoom = (z: number): number => tileEdgeMeters(currentLat, z);
+
+    /** 可視タイルを算出する共通ヘルパー */
+    const computeVisible = (
+        frustumPlanes: FrustumPlane[],
+        maxElevation: number
+    ): LodTileEntry[] => {
+        if (!currentCenter) return [];
+
+        // カメラ→ターゲット距離（チルトに依存せず安定）
+        const cameraDistance = Math.sqrt(
+            camera.position.x ** 2 +
+            camera.position.y ** 2 +
+            camera.position.z ** 2
+        );
+
+        const baseZoom = computeBaseZoom(
+            cameraDistance,
+            tileSizeForZoom,
+            zoom,
+            minZoom
+        );
+
+        return computeMultiLodTiles({
+            baseCenter: currentCenter,
+            tileSizeForZoom,
+            frustumPlanes,
+            cameraDistance,
+            baseZoom,
+            minZoom,
+            maxTiles,
+            maxElevation,
+        });
+    };
+
+    /** 可視タイルリストから不要タイルを解放し、新規タイルをロード */
+    const applyVisibleTiles = async (
+        visibleEntries: readonly LodTileEntry[],
+        rid: number,
+        reposition: boolean
+    ): Promise<void> => {
+        const visibleKeys = new Set(visibleEntries.map((e) => toTileKey(e.coord)));
+
+        // 不要タイルを解放
+        for (const [key, tile] of activeTiles) {
+            if (!visibleKeys.has(key)) {
+                meshPool.release(tile.mesh);
+                activeTiles.delete(key);
+            }
+        }
+
+        if (reposition) {
+            repositionActiveTiles();
+        }
+
+        // 新規タイルのみロード
+        const toLoad = visibleEntries.filter(
+            (e) => !activeTiles.has(toTileKey(e.coord))
+        );
+
+        if (toLoad.length > 0) {
+            await loadTilesInQueue(toLoad, rid);
+        }
+
+        emitStatus();
     };
 
     /** 可視タイルを再計算し、不要タイルを解放・新規タイルをロード */
@@ -311,49 +476,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const rid = ++requestId;
 
         const center = toTileXY(lat, lon, zoom);
-        const tileSize = tileEdgeMeters(lat, zoom);
         currentCenter = { zoom, x: center.x, y: center.y };
-        currentTileSize = tileSize;
         currentAltitudeOffset = altitudeOffset;
+        currentLat = lat;
 
-        // Frustum planes 取得
         const frustumPlanes = extractFrustumPlanes(camera);
-
-        // AABB maxY: (想定最大標高 + 高度オフセット) * heightScale
         const maxElevation =
             (MAX_BASE_ELEVATION + Math.max(0, altitudeOffset)) * heightScale;
 
-        // 可視タイル算出
-        const visibleCoords = computeVisibleTiles({
-            center: currentCenter,
-            tileSize,
-            frustumPlanes,
-            maxTiles,
-            maxElevation,
-        });
-        const visibleKeys = new Set(visibleCoords.map(toTileKey));
-
-        // 不要タイルを解放
-        for (const [key, tile] of activeTiles) {
-            if (!visibleKeys.has(key)) {
-                meshPool.release(tile.mesh);
-                activeTiles.delete(key);
-            }
-        }
-
-        // 既存タイルの position/scaling/標高を新しい中心基準で再配置
-        repositionActiveTiles();
-
-        // 新規タイルのみロード
-        const toLoad = visibleCoords.filter(
-            (c) => !activeTiles.has(toTileKey(c))
-        );
-
-        if (toLoad.length > 0) {
-            await loadTilesInQueue(toLoad, rid);
-        }
-
-        emitStatus();
+        const visibleEntries = computeVisible(frustumPlanes, maxElevation);
+        await applyVisibleTiles(visibleEntries, rid, true);
     };
 
     // カメラ変更時のリフレッシュ（中心座標を保持して使用）
@@ -365,33 +497,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const maxElevation =
             (MAX_BASE_ELEVATION + Math.max(0, currentAltitudeOffset)) *
             heightScale;
-        const visibleCoords = computeVisibleTiles({
-            center: currentCenter,
-            tileSize: currentTileSize,
-            frustumPlanes,
-            maxTiles,
-            maxElevation,
-        });
-        const visibleKeys = new Set(visibleCoords.map(toTileKey));
 
-        // 不要タイルを解放
-        for (const [key, tile] of activeTiles) {
-            if (!visibleKeys.has(key)) {
-                meshPool.release(tile.mesh);
-                activeTiles.delete(key);
-            }
-        }
-
-        // 新規タイルのみロード
-        const toLoad = visibleCoords.filter(
-            (c) => !activeTiles.has(toTileKey(c))
-        );
-
-        if (toLoad.length > 0) {
-            await loadTilesInQueue(toLoad, rid);
-        }
-
-        emitStatus();
+        const visibleEntries = computeVisible(frustumPlanes, maxElevation);
+        await applyVisibleTiles(visibleEntries, rid, false);
     };
 
     return {

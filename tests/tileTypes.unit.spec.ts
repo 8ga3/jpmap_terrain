@@ -1,4 +1,4 @@
-import { toTileKey, tileOffsetToWorld, worldToTileOffset } from "../src/terrain/tileTypes";
+import { toTileKey, tileOffsetToWorld, worldToTileOffset, convertTileZoom, isChildOf, computeSubTileOffset } from "../src/terrain/tileTypes";
 import type { TileCoord } from "../src/terrain/tileTypes";
 
 describe("toTileKey", () => {
@@ -63,5 +63,97 @@ describe("worldToTileOffset", () => {
             expect(dx).toBe(origDx);
             expect(dy).toBe(origDy);
         }
+    });
+});
+
+describe("convertTileZoom", () => {
+    it("同じzoomなら同じ座標を返す", () => {
+        const coord: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        expect(convertTileZoom(coord, 14)).toEqual(coord);
+    });
+
+    it("高zoom → 低zoom（1段階）はビット右シフト相当", () => {
+        const coord: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const result = convertTileZoom(coord, 13);
+        expect(result).toEqual({ zoom: 13, x: 7273, y: 3226 });
+    });
+
+    it("高zoom → 低zoom（2段階）", () => {
+        const coord: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const result = convertTileZoom(coord, 12);
+        expect(result).toEqual({ zoom: 12, x: 3636, y: 1613 });
+    });
+
+    it("低zoom → 高zoom（1段階）は左シフト（左上隅）", () => {
+        const coord: TileCoord = { zoom: 12, x: 3636, y: 1613 };
+        const result = convertTileZoom(coord, 14);
+        expect(result).toEqual({ zoom: 14, x: 14544, y: 6452 });
+    });
+});
+
+describe("isChildOf", () => {
+    it("直接の子タイルを判定", () => {
+        const child: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const parent: TileCoord = { zoom: 13, x: 7273, y: 3226 };
+        expect(isChildOf(child, parent)).toBe(true);
+    });
+
+    it("2段階上の親タイルを判定", () => {
+        const child: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const parent: TileCoord = { zoom: 12, x: 3636, y: 1613 };
+        expect(isChildOf(child, parent)).toBe(true);
+    });
+
+    it("異なる親タイルにはfalse", () => {
+        const child: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const parent: TileCoord = { zoom: 13, x: 7274, y: 3226 };
+        expect(isChildOf(child, parent)).toBe(false);
+    });
+
+    it("同じzoomまたは子のzoomが低い場合はfalse", () => {
+        const coord: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        expect(isChildOf(coord, coord)).toBe(false);
+        expect(isChildOf({ zoom: 12, x: 3636, y: 1613 }, coord)).toBe(false);
+    });
+});
+
+describe("computeSubTileOffset", () => {
+    it("同じzoomではオフセット0", () => {
+        const center: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const { fracX, fracY } = computeSubTileOffset(center, 14);
+        expect(fracX).toBe(0);
+        expect(fracY).toBe(0);
+    });
+
+    it("zoom 14→13 のサブタイルオフセット", () => {
+        const center: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const { fracX, fracY } = computeSubTileOffset(center, 13);
+        // (14547+0.5)/2 - (7273+0.5) = 7273.75 - 7273.5 = 0.25
+        expect(fracX).toBeCloseTo(0.25);
+        // (6452+0.5)/2 - (3226+0.5) = 3226.25 - 3226.5 = -0.25
+        expect(fracY).toBeCloseTo(-0.25);
+    });
+
+    it("zoom 14→12 のサブタイルオフセット", () => {
+        const center: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+        const { fracX, fracY } = computeSubTileOffset(center, 12);
+        // (14547+0.5)/4 - (3636+0.5) = 3636.875 - 3636.5 = 0.375
+        expect(fracX).toBeCloseTo(0.375);
+        // (6452+0.5)/4 - (1613+0.5) = 1613.125 - 1613.5 = -0.375
+        expect(fracY).toBeCloseTo(-0.375);
+    });
+
+    it("偶数タイル座標ではオフセットが-0.25になる", () => {
+        const center: TileCoord = { zoom: 14, x: 14546, y: 6452 };
+        const { fracX } = computeSubTileOffset(center, 13);
+        // (14546+0.5)/2 - (7273+0.5) = 7273.25 - 7273.5 = -0.25
+        expect(fracX).toBeCloseTo(-0.25);
+    });
+
+    it("低zoom→高zoom（diff<=0）ではオフセット0", () => {
+        const center: TileCoord = { zoom: 12, x: 3636, y: 1613 };
+        const { fracX, fracY } = computeSubTileOffset(center, 14);
+        expect(fracX).toBe(0);
+        expect(fracY).toBe(0);
     });
 });
