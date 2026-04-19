@@ -72,6 +72,20 @@ const createCompass = (): HTMLDivElement => {
     svg.appendChild(south);
     container.appendChild(svg);
 
+    // アクセシビリティ
+    container.setAttribute("role", "button");
+    container.tabIndex = 0;
+    container.setAttribute("aria-label", "方位磁針: クリックで北向きにリセット");
+    container.style.outline = "none";
+    container.addEventListener("focus", () => {
+        if (container.matches(":focus-visible")) {
+            container.style.boxShadow = "0 0 0 2px #90caf9";
+        }
+    });
+    container.addEventListener("blur", () => {
+        container.style.boxShadow = "";
+    });
+
     document.body.appendChild(container);
     return container;
 };
