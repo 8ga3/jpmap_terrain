@@ -328,9 +328,9 @@ export class DefaultScene implements CreateSceneClass {
         };
         camera.onViewMatrixChangedObservable.add(syncCompass);
 
-        // 方位磁針クリック: 北向き・真下にスムーズアニメーション
+        // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
-        ui.compass.addEventListener("click", () => {
+        const resetCompassView = (): void => {
             const targetAlpha = -Math.PI / 2; // 北向き
             const targetBeta = 0.1;           // ほぼ真下
             const duration = 400;             // ms
@@ -350,6 +350,13 @@ export class DefaultScene implements CreateSceneClass {
                 }
             };
             requestAnimationFrame(animate);
+        };
+        ui.compass.addEventListener("click", resetCompassView);
+        ui.compass.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                resetCompassView();
+            }
         });
 
         // イベント接続
