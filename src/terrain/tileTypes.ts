@@ -17,13 +17,17 @@ export const toTileKey = (coord: TileCoord): TileKey =>
  * 中心タイルからの相対オフセットをワールド座標(x, z)に変換。
  * タイルY軸は南向き、Babylon.js Z軸は北向きのため符号を反転。
  */
+/** -0 を +0 に正規化する（NaN はそのまま伝播） */
+const normalizeNegZero = (v: number): number =>
+    Object.is(v, -0) ? 0 : v;
+
 export const tileOffsetToWorld = (
     dx: number,
     dy: number,
     tileSize: number
 ): { wx: number; wz: number } => ({
     wx: dx * tileSize,
-    wz: -(dy * tileSize) || 0,
+    wz: normalizeNegZero(-(dy * tileSize)),
 });
 
 /** ワールド座標(x, z) → 中心タイルからの相対タイルオフセット */
@@ -33,5 +37,5 @@ export const worldToTileOffset = (
     tileSize: number
 ): { dx: number; dy: number } => ({
     dx: Math.round(wx / tileSize),
-    dy: -(Math.round(wz / tileSize)) || 0,
+    dy: normalizeNegZero(-(Math.round(wz / tileSize))),
 });
