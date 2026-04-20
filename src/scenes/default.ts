@@ -8,6 +8,7 @@ import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { createControlPanel } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
+import { createSkybox } from "../terrain/skybox";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -60,6 +61,9 @@ export class DefaultScene implements CreateSceneClass {
             scene
         );
         light.intensity = 1.0;
+
+        // スカイボックス
+        createSkybox(scene);
 
         // 初期位置（東京駅付近）
         const initialLat = 35.681236;
