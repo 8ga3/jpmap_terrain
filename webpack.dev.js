@@ -13,6 +13,9 @@ module.exports = merge(common, {
         static: path.resolve(appDirectory, "public"),
         compress: true,
         hot: true,
+        historyApiFallback: {
+            disableDotRule: true,
+        },
         // publicPath: '/',
         open: false,
         // host: '0.0.0.0', // enable to access from other devices on the network

@@ -9,6 +9,7 @@ import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTil
 import { createControlPanel } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
+import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -65,9 +66,13 @@ export class DefaultScene implements CreateSceneClass {
         // スカイボックス
         createSkybox(scene);
 
-        // 初期位置（東京駅付近）
-        const initialLat = 35.681236;
-        const initialLon = 139.767125;
+        // 初期位置（URLパラメータ優先、なければ東京駅付近）
+        const urlLatLon = parseLatLonFromUrl(window.location.href);
+        const initialLat = urlLatLon?.lat ?? 35.681236;
+        const initialLon = urlLatLon?.lon ?? 139.767125;
+
+        // URL 自動更新
+        const updateUrl = createUrlUpdater(200);
 
         // UIパネル
         const ui = createControlPanel(initialLat, initialLon);
@@ -101,6 +106,7 @@ export class DefaultScene implements CreateSceneClass {
             );
             ui.latInput.value = lat.toFixed(6);
             ui.lonInput.value = lon.toFixed(6);
+            updateUrl(lat, lon);
             await tileManager.setCenter(lat, lon, 0);
         };
 
@@ -150,6 +156,7 @@ export class DefaultScene implements CreateSceneClass {
 
             ui.latInput.value = newLat.toFixed(6);
             ui.lonInput.value = newLon.toFixed(6);
+            updateUrl(newLat, newLon);
             void refreshTerrain();
         };
 
