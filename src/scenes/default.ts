@@ -429,6 +429,19 @@ export class DefaultScene implements CreateSceneClass {
         ui.latInput.addEventListener("change", resetAndRefresh);
         ui.lonInput.addEventListener("change", resetAndRefresh);
 
+        // 地図切替ボタン
+        ui.mapToggle.addEventListener("click", () => {
+            const next = tileManager.mapType === "std" ? "photo" : "std";
+            tileManager.setMapType(next);
+            ui.mapToggle.textContent = next === "std" ? "写真" : "標準";
+            ui.mapToggle.setAttribute(
+                "aria-label",
+                next === "std"
+                    ? "地図切替: 写真地図に変更"
+                    : "地図切替: 標準地図に変更"
+            );
+        });
+
         // カメラ移動時の自動タイル更新
         tileManager.attachCamera();
 

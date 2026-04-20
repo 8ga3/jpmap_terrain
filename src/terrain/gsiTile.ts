@@ -149,9 +149,29 @@ export const loadElevationTile = async (
     );
 };
 
+/** 地図タイプ */
+export type MapType = "std" | "photo";
+
 /** 標準地図テクスチャURL */
 export const stdTextureUrl = (
     zoom: number,
     x: number,
     y: number
 ): string => `https://cyberjapandata.gsi.go.jp/xyz/std/${zoom}/${x}/${y}.png`;
+
+/** 写真地図テクスチャURL */
+export const photoTextureUrl = (
+    zoom: number,
+    x: number,
+    y: number
+): string => `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${zoom}/${x}/${y}.jpg`;
+
+/** 地図タイプに応じたテクスチャURLを返す */
+export const textureUrl = (
+    mapType: MapType,
+    zoom: number,
+    x: number,
+    y: number
+): string => mapType === "photo"
+    ? photoTextureUrl(zoom, x, y)
+    : stdTextureUrl(zoom, x, y);

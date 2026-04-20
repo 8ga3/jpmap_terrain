@@ -6,6 +6,8 @@ import {
     tileEdgeMeters,
     decodeGsiElevation,
     stdTextureUrl,
+    photoTextureUrl,
+    textureUrl,
 } from "../src/terrain/gsiTile";
 
 describe("TILE_SIZE", () => {
@@ -175,6 +177,34 @@ describe("stdTextureUrl", () => {
     it("zoom=0 でもURLを生成できる", () => {
         expect(stdTextureUrl(0, 0, 0)).toBe(
             "https://cyberjapandata.gsi.go.jp/xyz/std/0/0/0.png"
+        );
+    });
+});
+
+describe("photoTextureUrl", () => {
+    it("地理院写真地図タイルURLを返す", () => {
+        expect(photoTextureUrl(14, 14547, 6452)).toBe(
+            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg"
+        );
+    });
+
+    it("zoom=0 でもURLを生成できる", () => {
+        expect(photoTextureUrl(0, 0, 0)).toBe(
+            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/0/0/0.jpg"
+        );
+    });
+});
+
+describe("textureUrl", () => {
+    it("std タイプで標準地図URLを返す", () => {
+        expect(textureUrl("std", 14, 14547, 6452)).toBe(
+            "https://cyberjapandata.gsi.go.jp/xyz/std/14/14547/6452.png"
+        );
+    });
+
+    it("photo タイプで写真地図URLを返す", () => {
+        expect(textureUrl("photo", 14, 14547, 6452)).toBe(
+            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg"
         );
     });
 });

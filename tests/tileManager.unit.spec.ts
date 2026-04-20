@@ -97,6 +97,8 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
         () => Promise.resolve(new Float32Array(256 * 256))
     ),
     stdTextureUrl: jest.fn(() => "https://example.com/tile.png"),
+    photoTextureUrl: jest.fn(() => "https://example.com/photo.jpg"),
+    textureUrl: jest.fn(() => "https://example.com/tile.png"),
 }));
 
 const { createTileManager, extractSubTileElevation } = await import("../src/terrain/tileManager");
@@ -334,7 +336,7 @@ describe("extractSubTileElevation", () => {
  * ================================================================ */
 describe("LOD連携", () => {
     beforeEach(() => {
-        (gsiTileMock.stdTextureUrl as jest.Mock).mockClear();
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
         (gsiTileMock.loadElevationTile as jest.Mock).mockClear();
     });
 
@@ -410,11 +412,11 @@ describe("LOD連携", () => {
         });
         await tmNear.setCenter(35.68, 139.77);
 
-        const zoomsNear = (gsiTileMock.stdTextureUrl as jest.Mock).mock.calls
-            .map((c) => (c as number[])[0]);
+        const zoomsNear = (gsiTileMock.textureUrl as jest.Mock).mock.calls
+            .map((c) => (c as number[])[1]);
         tmNear.dispose();
 
-        (gsiTileMock.stdTextureUrl as jest.Mock).mockClear();
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
 
         // 遠距離: radius=6000 → baseZoom=12, 全タイルzoom12
         const cameraFar = createMockCamera();
@@ -431,8 +433,8 @@ describe("LOD連携", () => {
         });
         await tmFar.setCenter(35.68, 139.77);
 
-        const zoomsFar = (gsiTileMock.stdTextureUrl as jest.Mock).mock.calls
-            .map((c) => (c as number[])[0]);
+        const zoomsFar = (gsiTileMock.textureUrl as jest.Mock).mock.calls
+            .map((c) => (c as number[])[1]);
         tmFar.dispose();
 
         // 近距離ではzoom14が含まれる
@@ -533,5 +535,69 @@ describe("標高ズーム段階フォールバック", () => {
         await tm.setCenter(35.68, 139.77);
         // zoom 13, 14 でのフェッチは発生しない
         expect(fetchedZooms.every((z) => z <= 12)).toBe(true);
+    });
+});
+
+/* ================================================================
+ * setMapType テスト
+ * ================================================================ */
+describe("setMapType", () => {
+    beforeEach(() => {
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+    });
+
+    it("setMapType で地図タイプを切り替えると textureUrl が新しいタイプで呼ばれる", async () => {
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+
+        // 初期状態では std で呼ばれている
+        const initialCalls = (gsiTileMock.textureUrl as jest.Mock).mock.calls;
+        expect(initialCalls.length).toBeGreaterThan(0);
+        expect(initialCalls[0][0]).toBe("std");
+
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+
+        // photo に切り替え
+        tm.setMapType("photo");
+
+        // retextureAll が呼ばれ、photo タイプで textureUrl が呼ばれる
+        const photoCalls = (gsiTileMock.textureUrl as jest.Mock).mock.calls;
+        expect(photoCalls.length).toBeGreaterThan(0);
+        expect(photoCalls.every((c: unknown[]) => c[0] === "photo")).toBe(true);
+
+        tm.dispose();
+    });
+
+    it("同じ地図タイプを設定しても textureUrl は呼ばれない", async () => {
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+
+        // 同じタイプを再設定
+        tm.setMapType("std");
+
+        expect((gsiTileMock.textureUrl as jest.Mock).mock.calls.length).toBe(0);
+
+        tm.dispose();
     });
 });
