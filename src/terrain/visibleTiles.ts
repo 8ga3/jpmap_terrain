@@ -220,28 +220,37 @@ export const computeMultiLodTiles = (
         }
     }
 
-    // Step 2: 低zoomタイルがカバーする全セルのzoomを統一（重なり防止）
+    // Step 2: ズーム境界の重なり防止（昇格方式）
+    // 親タイル内に高zoomセルが混在する場合、低zoomセルを z+1 に昇格。
+    // 全セルが同一低zoomの親タイルはそのまま維持（遠方LODを保持）。
+    // 処理は baseZoom-1 → minZoom の降順。
     const cellZoomMap = new Map<string, number>();
     for (const cell of gridCells) {
         cellZoomMap.set(`${cell.dx},${cell.dy}`, cell.targetZoom);
     }
 
-    for (let z = minZoom; z < baseZoom; z++) {
-        const parentTiles = new Set<string>();
+    for (let z = baseZoom - 1; z >= minZoom; z--) {
         const diff = baseZoom - z;
+        const parentHasHigher = new Set<string>();
+
+        // 親タイル内に z より高いzoomのセルがあるか確認
         for (const cell of gridCells) {
-            if (cellZoomMap.get(`${cell.dx},${cell.dy}`) === z) {
+            const cellZoom = cellZoomMap.get(`${cell.dx},${cell.dy}`)!;
+            if (cellZoom > z) {
                 const gx = gridCenter.x + cell.dx;
                 const gy = gridCenter.y + cell.dy;
-                parentTiles.add(`${gx >> diff},${gy >> diff}`);
+                parentHasHigher.add(`${gx >> diff},${gy >> diff}`);
             }
         }
-        if (parentTiles.size > 0) {
+
+        // 高zoomセルと混在する親タイル内の低zoomセルを z+1 に昇格
+        if (parentHasHigher.size > 0) {
             for (const cell of gridCells) {
+                if (cellZoomMap.get(`${cell.dx},${cell.dy}`) !== z) continue;
                 const gx = gridCenter.x + cell.dx;
                 const gy = gridCenter.y + cell.dy;
-                if (parentTiles.has(`${gx >> diff},${gy >> diff}`)) {
-                    cellZoomMap.set(`${cell.dx},${cell.dy}`, z);
+                if (parentHasHigher.has(`${gx >> diff},${gy >> diff}`)) {
+                    cellZoomMap.set(`${cell.dx},${cell.dy}`, z + 1);
                 }
             }
         }
