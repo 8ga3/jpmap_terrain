@@ -20,7 +20,8 @@ import {
     toTileXY,
     tileEdgeMeters,
     loadElevationTile,
-    stdTextureUrl,
+    textureUrl,
+    MapType,
 } from "./gsiTile";
 
 export interface TileManagerOptions {
@@ -41,6 +42,8 @@ export interface TileManagerOptions {
 
 export interface TileManager {
     setCenter(lat: number, lon: number, altitudeOffset?: number): Promise<void>;
+    setMapType(mapType: MapType): void;
+    readonly mapType: MapType;
     attachCamera(): void;
     detachCamera(): void;
     dispose(): void;
@@ -186,6 +189,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     let currentCenter: TileCoord | null = null;
     let currentAltitudeOffset = 0;
     let currentLat = 0;
+    let currentMapType: MapType = "std";
 
     const emitStatus = (): void => {
         if (!statusCallback) return;
@@ -313,17 +317,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
 
             // テクスチャ
-            const mat = mesh.material as StandardMaterial;
-            if (mat.diffuseTexture) {
-                mat.diffuseTexture.dispose();
-            }
-            mat.diffuseTexture = new Texture(
-                stdTextureUrl(coord.zoom, coord.x, coord.y),
-                scene,
-                true,
-                true,
-                Texture.TRILINEAR_SAMPLINGMODE
-            );
+            applyTexture(mesh, coord);
 
             activeTiles.set(key, { key, coord, mesh, tileSize });
         } catch (e) {
@@ -409,6 +403,28 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
     const tileSizeForZoom = (z: number): number => tileEdgeMeters(currentLat, z);
+
+    /** メッシュにテクスチャを適用する */
+    const applyTexture = (mesh: Mesh, coord: TileCoord): void => {
+        const mat = mesh.material as StandardMaterial;
+        if (mat.diffuseTexture) {
+            mat.diffuseTexture.dispose();
+        }
+        mat.diffuseTexture = new Texture(
+            textureUrl(currentMapType, coord.zoom, coord.x, coord.y),
+            scene,
+            true,
+            true,
+            Texture.TRILINEAR_SAMPLINGMODE
+        );
+    };
+
+    /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */
+    const retextureAll = (): void => {
+        for (const [, tile] of activeTiles) {
+            applyTexture(tile.mesh, tile.coord);
+        }
+    };
 
     /** 可視タイルを算出する共通ヘルパー */
     const computeVisible = (
@@ -513,6 +529,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             altitudeOffset = 0
         ): Promise<void> {
             await refresh(lat, lon, altitudeOffset);
+        },
+
+        setMapType(mapType: MapType): void {
+            if (mapType === currentMapType) return;
+            currentMapType = mapType;
+            retextureAll();
+        },
+
+        get mapType(): MapType {
+            return currentMapType;
         },
 
         attachCamera(): void {

@@ -10,6 +10,7 @@ export interface ControlPanelElements {
     compass: HTMLDivElement;
     zoomIn: HTMLButtonElement;
     zoomOut: HTMLButtonElement;
+    mapToggle: HTMLButtonElement;
 }
 
 const css = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
@@ -156,6 +157,45 @@ const createZoomButtons = (): {
     return { zoomIn, zoomOut };
 };
 
+const createMapToggleButton = (): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "写真";
+    btn.tabIndex = 0;
+    btn.setAttribute("aria-label", "地図切替: 写真地図に変更");
+    css(btn, {
+        position: "absolute",
+        bottom: "12px",
+        left: "12px",
+        width: "48px",
+        height: "32px",
+        border: "none",
+        borderRadius: "4px",
+        background: "rgba(9,18,32,0.72)",
+        backdropFilter: "blur(6px)",
+        color: "#f2f7ff",
+        fontSize: "11px",
+        lineHeight: "1",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        outline: "none",
+        padding: "0",
+        zIndex: "10",
+    });
+    btn.addEventListener("focus", () => {
+        if (btn.matches(":focus-visible")) {
+            btn.style.boxShadow = "0 0 0 2px #90caf9";
+        }
+    });
+    btn.addEventListener("blur", () => {
+        btn.style.boxShadow = "";
+    });
+    document.body.appendChild(btn);
+    return btn;
+};
+
 export const createControlPanel = (
     initialLat: number,
     initialLon: number
@@ -224,5 +264,8 @@ export const createControlPanel = (
     // ズームボタン（画面右下に独立配置）
     const { zoomIn, zoomOut } = createZoomButtons();
 
-    return { panel, latInput, lonInput, updateButton, compass, zoomIn, zoomOut };
+    // 地図切替ボタン（画面左下に配置）
+    const mapToggle = createMapToggleButton();
+
+    return { panel, latInput, lonInput, updateButton, compass, zoomIn, zoomOut, mapToggle };
 };
