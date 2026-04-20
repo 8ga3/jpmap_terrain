@@ -378,8 +378,7 @@ export class DefaultScene implements CreateSceneClass {
         const zoomFromCenter = (factor: number): void => {
             const cx = canvas.clientWidth / 2;
             const cy = canvas.clientHeight / 2;
-            const rect = canvas.getBoundingClientRect();
-            const hit = pickOrPlane(rect.left + cx, rect.top + cy);
+            const hit = pickOrPlane(cx, cy);
             if (hit && isPickNearTarget(hit)) {
                 zoomTowardPoint(hit.worldX, hit.worldZ, factor);
             }
