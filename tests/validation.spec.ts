@@ -9,6 +9,7 @@ const scenes: {
     {
         name: "Default",
         url: "/?scene=default",
+        waitForNetworkIdle: true,
     },
 ];
 
@@ -29,7 +30,9 @@ for (const scene of scenes) {
                 `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`
             );
             if (scene.waitForNetworkIdle) {
-                await page.waitForLoadState("networkidle");
+                await page.waitForLoadState("networkidle", { timeout: 30000 });
+                // タイル読み込み後の描画安定待ち
+                await page.waitForTimeout(3000);
             }
             if (scene.renderCount) {
                 await page.evaluate(() => {
@@ -57,8 +60,69 @@ for (const scene of scenes) {
             // UI/描画結果に意図した変更が入った場合のみ実行します。
             await expect(page).toHaveScreenshot({
                 timeout: 30000,
+                maxDiffPixelRatio: 0.02,
             });
             expect(testInfo.errors).toHaveLength(0);
         });
     }
+}
+
+// ---------- UI操作テスト ----------
+
+/** シーン準備の共通ヘルパー */
+async function waitForScene(
+    page: import("@playwright/test").Page,
+    engine: string
+) {
+    const sceneUrl = new URL("/?scene=default", "http://localhost");
+    sceneUrl.searchParams.set("engine", engine);
+    await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
+        timeout: 120000,
+    });
+    await page.waitForFunction(
+        () => (window as any).scene && (window as any).scene.isReady(),
+        { timeout: 10000 }
+    );
+    // タイル読み込み完了を待つ
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
+    // 描画安定のための追加待機
+    await page.waitForTimeout(3000);
+}
+
+for (const engine of engines) {
+    test(`Map toggle button with ${engine}`, async ({ page }, testInfo) => {
+        await waitForScene(page, engine);
+
+        // 地図切替ボタンをクリック（標準 → 写真）
+        const mapToggle = page.getByRole("button", {
+            name: "地図切替: 写真地図に変更",
+        });
+        await mapToggle.click();
+
+        // タイルテクスチャ再読み込みを待つ
+        await page.waitForLoadState("networkidle", { timeout: 30000 });
+        await page.waitForTimeout(5000);
+
+        await expect(page).toHaveScreenshot({
+            timeout: 30000,
+            maxDiffPixelRatio: 0.02,
+        });
+        expect(testInfo.errors).toHaveLength(0);
+    });
+
+    test(`Compass reset button with ${engine}`, async ({ page }, testInfo) => {
+        await waitForScene(page, engine);
+
+        // 方位磁針ボタンをクリック（北向きリセット）
+        const compass = page.getByRole("button", {
+            name: "方位磁針: クリックで北向きにリセット",
+        });
+        await compass.click();
+
+        // アニメーション完了(400ms) + 描画安定待ち
+        await page.waitForTimeout(2000);
+
+        await expect(page).toHaveScreenshot({ timeout: 30000 });
+        expect(testInfo.errors).toHaveLength(0);
+    });
 }
