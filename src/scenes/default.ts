@@ -274,12 +274,9 @@ export class DefaultScene implements CreateSceneClass {
 
         /** メッシュまたは y=0 平面との交点を返す。空なら null */
         const pickOrPlane = (
-            clientX: number,
-            clientY: number
+            sx: number,
+            sy: number
         ): { worldX: number; worldZ: number } | null => {
-            const rect = canvas.getBoundingClientRect();
-            const sx = clientX - rect.left;
-            const sy = clientY - rect.top;
             const pick = scene.pick(sx, sy);
             if (pick?.hit && pick.pickedPoint) {
                 return {
@@ -296,7 +293,8 @@ export class DefaultScene implements CreateSceneClass {
             (e: WheelEvent) => {
                 if (e.deltaY === 0) return;
                 e.preventDefault();
-                const hit = pickOrPlane(e.clientX, e.clientY);
+                const rect = canvas.getBoundingClientRect();
+                const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
                 if (hit) {
                     const factor = e.deltaY < 0 ? 0.95 : 1 / 0.95;
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
@@ -314,7 +312,8 @@ export class DefaultScene implements CreateSceneClass {
         );
 
         canvas.addEventListener("dblclick", (e: MouseEvent) => {
-            const hit = pickOrPlane(e.clientX, e.clientY);
+            const rect = canvas.getBoundingClientRect();
+            const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
             if (hit) {
                 zoomTowardPoint(hit.worldX, hit.worldZ, 0.7);
             } else {
