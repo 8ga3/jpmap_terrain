@@ -260,14 +260,15 @@ export class DefaultScene implements CreateSceneClass {
             worldZ: number,
             factor: number
         ): void => {
+            const upper = camera.upperRadiusLimit ?? 40000;
+            const lower = camera.lowerRadiusLimit ?? 250;
+            if (factor > 1 && camera.radius >= upper) return;
+            if (factor < 1 && camera.radius <= lower) return;
+
             camera.target.x += (worldX - camera.target.x) * (1 - factor);
             camera.target.z += (worldZ - camera.target.z) * (1 - factor);
             camera.radius *= factor;
-            camera.radius = clamp(
-                camera.radius,
-                camera.lowerRadiusLimit ?? 250,
-                camera.upperRadiusLimit ?? 40000
-            );
+            camera.radius = clamp(camera.radius, lower, upper);
             commitPanOffset();
         };
 
