@@ -3,9 +3,9 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { SkyMaterial } from "@babylonjs/materials/sky/skyMaterial";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 
-const SKYBOX_SIZE = 1000000;
-
 export function createSkybox(scene: Scene): Mesh {
+    const skyboxSize = (scene.activeCamera?.maxZ ?? 100000) * 10;
+
     const skyMaterial = new SkyMaterial("sky-material", scene);
     skyMaterial.backFaceCulling = false;
     skyMaterial.turbidity = 10;
@@ -16,7 +16,7 @@ export function createSkybox(scene: Scene): Mesh {
     skyMaterial.inclination = 0.25;
     skyMaterial.azimuth = 0.25;
 
-    const skybox = CreateBox("skybox", { size: SKYBOX_SIZE }, scene);
+    const skybox = CreateBox("skybox", { size: skyboxSize }, scene);
     skybox.material = skyMaterial;
     skybox.isPickable = false;
     skybox.infiniteDistance = true;
