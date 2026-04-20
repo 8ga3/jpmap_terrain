@@ -8,6 +8,8 @@ export interface ControlPanelElements {
     lonInput: HTMLInputElement;
     updateButton: HTMLButtonElement;
     compass: HTMLDivElement;
+    zoomIn: HTMLButtonElement;
+    zoomOut: HTMLButtonElement;
 }
 
 const css = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
@@ -92,6 +94,64 @@ const createCompass = (): HTMLDivElement => {
     return container;
 };
 
+const createZoomButtons = (): {
+    zoomIn: HTMLButtonElement;
+    zoomOut: HTMLButtonElement;
+} => {
+    const container = document.createElement("div");
+    css(container, {
+        position: "absolute",
+        bottom: "12px",
+        right: "12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "2px",
+        zIndex: "10",
+    });
+
+    const makeBtn = (label: string, ariaLabel: string): HTMLButtonElement => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = label;
+        btn.tabIndex = 0;
+        btn.setAttribute("aria-label", ariaLabel);
+        css(btn, {
+            width: "32px",
+            height: "32px",
+            border: "none",
+            borderRadius: "4px",
+            background: "rgba(9,18,32,0.72)",
+            backdropFilter: "blur(6px)",
+            color: "#f2f7ff",
+            fontSize: "16px",
+            lineHeight: "1",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            outline: "none",
+            padding: "0",
+        });
+        btn.addEventListener("focus", () => {
+            if (btn.matches(":focus-visible")) {
+                btn.style.boxShadow = "0 0 0 2px #90caf9";
+            }
+        });
+        btn.addEventListener("blur", () => {
+            btn.style.boxShadow = "";
+        });
+        return btn;
+    };
+
+    const zoomIn = makeBtn("+", "ズームイン");
+    const zoomOut = makeBtn("−", "ズームアウト");
+    container.appendChild(zoomIn);
+    container.appendChild(zoomOut);
+    document.body.appendChild(container);
+
+    return { zoomIn, zoomOut };
+};
+
 export const createControlPanel = (
     initialLat: number,
     initialLon: number
@@ -157,5 +217,8 @@ export const createControlPanel = (
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();
 
-    return { panel, latInput, lonInput, updateButton, compass };
+    // ズームボタン（画面右下に独立配置）
+    const { zoomIn, zoomOut } = createZoomButtons();
+
+    return { panel, latInput, lonInput, updateButton, compass, zoomIn, zoomOut };
 };
