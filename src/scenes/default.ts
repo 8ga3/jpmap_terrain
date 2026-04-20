@@ -75,7 +75,10 @@ export class DefaultScene implements CreateSceneClass {
         const updateUrl = createUrlUpdater(200);
 
         // UIパネル
-        const ui = createControlPanel(initialLat, initialLon);
+        const ui = createControlPanel();
+
+        let currentLat = initialLat;
+        let currentLon = initialLon;
 
         // TileManager 生成
         const tileManager = createTileManager({
@@ -94,20 +97,18 @@ export class DefaultScene implements CreateSceneClass {
         let gridResidualZ = 0;
 
         const refreshTerrain = async (): Promise<void> => {
-            const lat = clamp(
-                Number(ui.latInput.value),
+            currentLat = clamp(
+                currentLat,
                 JAPAN_BOUNDS.minLat,
                 JAPAN_BOUNDS.maxLat
             );
-            const lon = clamp(
-                Number(ui.lonInput.value),
+            currentLon = clamp(
+                currentLon,
                 JAPAN_BOUNDS.minLon,
                 JAPAN_BOUNDS.maxLon
             );
-            ui.latInput.value = lat.toFixed(6);
-            ui.lonInput.value = lon.toFixed(6);
-            updateUrl(lat, lon);
-            await tileManager.setCenter(lat, lon, 0);
+            updateUrl(currentLat, currentLon);
+            await tileManager.setCenter(currentLat, currentLon, 0);
         };
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
@@ -123,8 +124,8 @@ export class DefaultScene implements CreateSceneClass {
                 return;
             }
 
-            const oldLat = Number(ui.latInput.value);
-            const oldLon = Number(ui.lonInput.value);
+            const oldLat = currentLat;
+            const oldLon = currentLon;
             const metersPerDegreeLon =
                 METERS_PER_DEGREE_LAT *
                 Math.cos((oldLat * Math.PI) / 180);
@@ -154,8 +155,8 @@ export class DefaultScene implements CreateSceneClass {
             camera.target.y = 0;
             camera.target.z = gridResidualZ;
 
-            ui.latInput.value = newLat.toFixed(6);
-            ui.lonInput.value = newLon.toFixed(6);
+            currentLat = newLat;
+            currentLon = newLon;
             updateUrl(newLat, newLon);
             void refreshTerrain();
         };
@@ -422,19 +423,6 @@ export class DefaultScene implements CreateSceneClass {
         };
         ui.zoomIn.addEventListener("click", () => zoomFromCenter(0.7));
         ui.zoomOut.addEventListener("click", () => zoomFromCenter(1 / 0.7));
-
-        // イベント接続
-        const resetAndRefresh = (): void => {
-            camera.target.x = 0;
-            camera.target.y = 0;
-            camera.target.z = 0;
-            gridResidualX = 0;
-            gridResidualZ = 0;
-            void refreshTerrain();
-        };
-        ui.updateButton.addEventListener("click", resetAndRefresh);
-        ui.latInput.addEventListener("change", resetAndRefresh);
-        ui.lonInput.addEventListener("change", resetAndRefresh);
 
         // 地図切替ボタン
         ui.mapToggle.addEventListener("click", () => {

@@ -1,12 +1,6 @@
-/** 操作UIパネル（緯度・経度）と方位磁針 */
-
-import { JAPAN_BOUNDS } from "./gsiTile";
+/** 操作UI（方位磁針・ズーム・地図切替） */
 
 export interface ControlPanelElements {
-    panel: HTMLDivElement;
-    latInput: HTMLInputElement;
-    lonInput: HTMLInputElement;
-    updateButton: HTMLButtonElement;
     compass: HTMLDivElement;
     zoomIn: HTMLButtonElement;
     zoomOut: HTMLButtonElement;
@@ -15,22 +9,6 @@ export interface ControlPanelElements {
 
 const css = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
     Object.assign(el.style, styles);
-};
-
-const numberInput = (
-    value: number,
-    min: number,
-    max: number,
-    step: string
-): HTMLInputElement => {
-    const input = document.createElement("input");
-    input.type = "number";
-    input.value = String(value);
-    input.min = String(min);
-    input.max = String(max);
-    input.step = step;
-    css(input, { width: "90px", fontSize: "10px" });
-    return input;
 };
 
 const createCompass = (): HTMLDivElement => {
@@ -196,68 +174,7 @@ const createMapToggleButton = (): HTMLButtonElement => {
     return btn;
 };
 
-export const createControlPanel = (
-    initialLat: number,
-    initialLon: number
-): ControlPanelElements => {
-    const panel = document.createElement("div");
-    css(panel, {
-        position: "absolute",
-        top: "8px",
-        left: "8px",
-        padding: "4px 6px",
-        borderRadius: "6px",
-        background: "rgba(9,18,32,0.72)",
-        color: "#f2f7ff",
-        display: "grid",
-        gridTemplateColumns: "auto auto auto",
-        gap: "2px 4px",
-        alignItems: "center",
-        fontFamily: "'Helvetica Neue',Helvetica,Arial,sans-serif",
-        fontSize: "10px",
-        backdropFilter: "blur(6px)",
-        zIndex: "10",
-    });
-    document.body.appendChild(panel);
-
-    // 緯度
-    const latLabel = document.createElement("label");
-    latLabel.htmlFor = "cp-lat";
-    latLabel.textContent = "緯度";
-    css(latLabel, { gridColumn: "1", gridRow: "1" });
-    panel.appendChild(latLabel);
-    const latInput = numberInput(initialLat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat, "0.0001");
-    latInput.id = "cp-lat";
-    css(latInput, { gridColumn: "2", gridRow: "1" });
-    panel.appendChild(latInput);
-
-    // 経度
-    const lonLabel = document.createElement("label");
-    lonLabel.htmlFor = "cp-lon";
-    lonLabel.textContent = "経度";
-    css(lonLabel, { gridColumn: "1", gridRow: "2" });
-    panel.appendChild(lonLabel);
-    const lonInput = numberInput(initialLon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon, "0.0001");
-    lonInput.id = "cp-lon";
-    css(lonInput, { gridColumn: "2", gridRow: "2" });
-    panel.appendChild(lonInput);
-
-    // 更新ボタン（3列目に縦並び）
-    const updateButton = document.createElement("button");
-    updateButton.type = "button";
-    updateButton.textContent = "✓";
-    updateButton.setAttribute("aria-label", "地形を更新");
-    css(updateButton, {
-        cursor: "pointer",
-        padding: "1px 6px",
-        gridRow: "1 / 3",
-        gridColumn: "3",
-        alignSelf: "stretch",
-        fontSize: "12px",
-        lineHeight: "1",
-    });
-    panel.appendChild(updateButton);
-
+export const createControlPanel = (): ControlPanelElements => {
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();
 
@@ -267,5 +184,5 @@ export const createControlPanel = (
     // 地図切替ボタン（画面左下に配置）
     const mapToggle = createMapToggleButton();
 
-    return { panel, latInput, lonInput, updateButton, compass, zoomIn, zoomOut, mapToggle };
+    return { compass, zoomIn, zoomOut, mapToggle };
 };
