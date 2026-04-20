@@ -15,6 +15,9 @@ const MAX_ELEVATION_ZOOM = 17;
 const HEIGHT_SCALE = 1.0;
 const MIN_ZOOM = 8;
 
+/** Phase 2（垂直移動）に切り替えるカメラ高度の閾値（メートル） */
+const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
+
 /** 1度の緯度あたりのメートル数（概算） */
 const METERS_PER_DEGREE_LAT = 111320;
 
@@ -78,7 +81,6 @@ export class DefaultScene implements CreateSceneClass {
             cacheCapacity: 256,
         });
 
-        let currentAltitudeOffset = 0;
         let gridResidualX = 0;
         let gridResidualZ = 0;
 
@@ -95,7 +97,7 @@ export class DefaultScene implements CreateSceneClass {
             );
             ui.latInput.value = lat.toFixed(6);
             ui.lonInput.value = lon.toFixed(6);
-            await tileManager.setCenter(lat, lon, currentAltitudeOffset);
+            await tileManager.setCenter(lat, lon, 0);
         };
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
@@ -310,13 +312,34 @@ export class DefaultScene implements CreateSceneClass {
                     const factor = e.deltaY < 0 ? 0.95 : 1 / 0.95;
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                 } else {
-                    const delta = e.deltaY > 0 ? -50 : 50;
-                    currentAltitudeOffset = clamp(
-                        currentAltitudeOffset + delta,
-                        -2000,
-                        8000
-                    );
-                    void refreshTerrain();
+                    // 空のホイール操作: カメラ高度ベースの2段階ズーム
+                    const upper = camera.upperRadiusLimit ?? 40000;
+                    const lower = camera.lowerRadiusLimit ?? 250;
+                    const zoomIn = e.deltaY < 0;
+                    const factor = zoomIn ? 0.95 : 1 / 0.95;
+                    const cameraHeight = camera.radius * Math.cos(camera.beta);
+                    const useVertical = zoomIn
+                        ? cameraHeight <= SKY_ZOOM_ALTITUDE_THRESHOLD
+                        : cameraHeight < SKY_ZOOM_ALTITUDE_THRESHOLD;
+
+                    if (useVertical) {
+                        // Phase 2: 垂直移動（カメラの緯度経度固定）
+                        if (zoomIn && camera.radius <= lower) return;
+                        if (!zoomIn && camera.radius >= upper) return;
+                        const sinB = Math.sin(camera.beta);
+                        const camX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
+                        const camZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
+                        const newRadius = clamp(camera.radius * factor, lower, upper);
+                        camera.target.x = camX - newRadius * sinB * Math.cos(camera.alpha);
+                        camera.target.z = camZ - newRadius * sinB * Math.sin(camera.alpha);
+                        camera.radius = newRadius;
+                        commitPanOffset();
+                    } else {
+                        // Phase 1: ターゲットに向かってズーム
+                        if (zoomIn && camera.radius <= lower) return;
+                        if (!zoomIn && camera.radius >= upper) return;
+                        camera.radius = clamp(camera.radius * factor, lower, upper);
+                    }
                 }
             },
             { passive: false }
@@ -328,12 +351,14 @@ export class DefaultScene implements CreateSceneClass {
             if (hit && isPickNearTarget(hit)) {
                 zoomTowardPoint(hit.worldX, hit.worldZ, 0.7);
             } else {
-                currentAltitudeOffset = clamp(
-                    currentAltitudeOffset + 100,
-                    -2000,
-                    8000
+                // 空のダブルクリック: ターゲットに向かってズーム
+                const lower = camera.lowerRadiusLimit ?? 250;
+                if (camera.radius <= lower) return;
+                camera.radius = clamp(
+                    camera.radius * 0.7,
+                    lower,
+                    camera.upperRadiusLimit ?? 40000
                 );
-                void refreshTerrain();
             }
         });
 
