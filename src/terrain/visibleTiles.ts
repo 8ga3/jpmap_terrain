@@ -146,7 +146,8 @@ export const computeBaseZoom = (
 /**
  * カメラ距離ベースのマルチLOD可視タイルを算出する。
  * baseZoom格子を基準に探索し、距離に応じて低zoomの親タイルに集約。
- * LOD境界では低zoom側に統一し、メッシュの重なりを防ぐ。
+ * LOD境界では昇格方式で重なりを防止：親タイル内に高zoomセルが混在する場合、
+ * 低zoomセルを z+1 に昇格して同一親タイルのメッシュ重複を排除する。
  */
 export const computeMultiLodTiles = (
     opts: MultiLodTilesOptions
