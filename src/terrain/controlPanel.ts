@@ -80,15 +80,19 @@ const createCompass = (): HTMLDivElement => {
     container.setAttribute("role", "button");
     container.tabIndex = 0;
     container.setAttribute("aria-label", "方位磁針: クリックで北向きにリセット");
-    container.style.outline = "none";
-    container.addEventListener("focus", () => {
-        if (container.matches(":focus-visible")) {
-            container.style.boxShadow = "0 0 0 2px #90caf9";
-        }
-    });
-    container.addEventListener("blur", () => {
-        container.style.boxShadow = "";
-    });
+    container.classList.add("cp-compass");
+
+    // :focus-visible スタイルを CSS で適用（JS の matches() 例外を回避）
+    if (!document.getElementById("cp-compass-style")) {
+        const style = document.createElement("style");
+        style.id = "cp-compass-style";
+        style.textContent = [
+            ".cp-compass { outline: none; }",
+            ".cp-compass:focus { box-shadow: 0 0 0 2px #90caf9; }",
+            ".cp-compass:focus:not(:focus-visible) { box-shadow: none; }",
+        ].join("\n");
+        document.head.appendChild(style);
+    }
 
     document.body.appendChild(container);
     return container;
