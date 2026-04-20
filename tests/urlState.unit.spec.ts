@@ -60,6 +60,19 @@ describe("urlState", () => {
         it("lon のみ指定の場合は null を返す", () => {
             expect(parseLatLonFromUrl("http://localhost/?lon=139.0")).toBeNull();
         });
+
+        it("userinfo 内の @ を座標として誤検出しない", () => {
+            expect(parseLatLonFromUrl("http://user@host/path")).toBeNull();
+        });
+
+        it("クエリ値内の @lat,lon を座標として誤検出しない", () => {
+            expect(parseLatLonFromUrl("http://localhost/?ref=@35.0,139.0")).toBeNull();
+        });
+
+        it("ハッシュ内の @lat,lon をパースできる", () => {
+            const result = parseLatLonFromUrl("http://localhost/#/@35.681236,139.767125");
+            expect(result).toEqual({ lat: 35.681236, lon: 139.767125 });
+        });
     });
 
     describe("toAtPath", () => {

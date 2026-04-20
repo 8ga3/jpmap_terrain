@@ -19,25 +19,26 @@ const AT_PATTERN = /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/;
  * いずれも無い場合は null を返す。
  */
 export const parseLatLonFromUrl = (url: string): LatLon | null => {
-    // パス（またはURL全体）内の @lat,lon
-    const atMatch = url.match(AT_PATTERN);
-    if (atMatch) {
-        const lat = Number(atMatch[1]);
-        const lon = Number(atMatch[2]);
-        if (isFinite(lat) && isFinite(lon)) {
-            return {
-                lat: clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat),
-                lon: clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon),
-            };
-        }
-    }
-
-    // クエリパラメータ: ?lat=&lon=
     try {
-        const searchStr = url.includes("?") ? url.slice(url.indexOf("?")) : "";
-        const params = new URLSearchParams(searchStr);
-        const latStr = params.get("lat");
-        const lonStr = params.get("lon");
+        const parsed = new URL(url, "http://localhost");
+
+        // pathname + hash のみに @lat,lon を適用（userinfo やクエリ値の @ を誤検出しない）
+        const target = parsed.pathname + parsed.hash;
+        const atMatch = target.match(AT_PATTERN);
+        if (atMatch) {
+            const lat = Number(atMatch[1]);
+            const lon = Number(atMatch[2]);
+            if (isFinite(lat) && isFinite(lon)) {
+                return {
+                    lat: clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat),
+                    lon: clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon),
+                };
+            }
+        }
+
+        // クエリパラメータ: ?lat=&lon=
+        const latStr = parsed.searchParams.get("lat");
+        const lonStr = parsed.searchParams.get("lon");
         if (latStr !== null && lonStr !== null) {
             const lat = Number(latStr);
             const lon = Number(lonStr);
@@ -49,7 +50,7 @@ export const parseLatLonFromUrl = (url: string): LatLon | null => {
             }
         }
     } catch {
-        // URLSearchParams 解析失敗時は無視
+        // URL 解析失敗時は無視
     }
 
     return null;
