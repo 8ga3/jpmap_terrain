@@ -288,6 +288,16 @@ export class DefaultScene implements CreateSceneClass {
             return plane ? { worldX: plane.x, worldZ: plane.z } : null;
         };
 
+        /** ピック結果がカメラターゲットから近いかどうか */
+        const isPickNearTarget = (
+            hit: { worldX: number; worldZ: number }
+        ): boolean => {
+            const dx = hit.worldX - camera.target.x;
+            const dz = hit.worldZ - camera.target.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            return dist < camera.radius * 3;
+        };
+
         canvas.addEventListener(
             "wheel",
             (e: WheelEvent) => {
@@ -295,7 +305,7 @@ export class DefaultScene implements CreateSceneClass {
                 e.preventDefault();
                 const rect = canvas.getBoundingClientRect();
                 const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
-                if (hit) {
+                if (hit && isPickNearTarget(hit)) {
                     const factor = e.deltaY < 0 ? 0.95 : 1 / 0.95;
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                 } else {
@@ -314,7 +324,7 @@ export class DefaultScene implements CreateSceneClass {
         canvas.addEventListener("dblclick", (e: MouseEvent) => {
             const rect = canvas.getBoundingClientRect();
             const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
-            if (hit) {
+            if (hit && isPickNearTarget(hit)) {
                 zoomTowardPoint(hit.worldX, hit.worldZ, 0.7);
             } else {
                 currentAltitudeOffset = clamp(
@@ -370,7 +380,7 @@ export class DefaultScene implements CreateSceneClass {
             const cy = canvas.clientHeight / 2;
             const rect = canvas.getBoundingClientRect();
             const hit = pickOrPlane(rect.left + cx, rect.top + cy);
-            if (hit) {
+            if (hit && isPickNearTarget(hit)) {
                 zoomTowardPoint(hit.worldX, hit.worldZ, factor);
             }
         };
