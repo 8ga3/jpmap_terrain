@@ -294,8 +294,9 @@ export class DefaultScene implements CreateSceneClass {
         ): boolean => {
             const dx = hit.worldX - camera.target.x;
             const dz = hit.worldZ - camera.target.z;
-            const dist = Math.sqrt(dx * dx + dz * dz);
-            return dist < camera.radius * 3;
+            const dist2 = dx * dx + dz * dz;
+            const threshold = camera.radius * 3;
+            return dist2 < threshold * threshold;
         };
 
         canvas.addEventListener(
