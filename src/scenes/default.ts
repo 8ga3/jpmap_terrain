@@ -365,6 +365,19 @@ export class DefaultScene implements CreateSceneClass {
             }
         });
 
+        // ズームボタン: 画面中央に向かってズーム
+        const zoomFromCenter = (factor: number): void => {
+            const cx = canvas.clientWidth / 2;
+            const cy = canvas.clientHeight / 2;
+            const rect = canvas.getBoundingClientRect();
+            const hit = pickOrPlane(rect.left + cx, rect.top + cy);
+            if (hit) {
+                zoomTowardPoint(hit.worldX, hit.worldZ, factor);
+            }
+        };
+        ui.zoomIn.addEventListener("click", () => zoomFromCenter(0.7));
+        ui.zoomOut.addEventListener("click", () => zoomFromCenter(1 / 0.7));
+
         // イベント接続
         const resetAndRefresh = (): void => {
             camera.target.x = 0;
