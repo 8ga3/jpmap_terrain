@@ -311,4 +311,93 @@ describe("computeMultiLodTiles", () => {
             expect(avgDist(z14Tiles)).toBeLessThan(avgDist(z13Tiles));
         }
     });
+
+    it("grid center 奇数座標でも中心付近のタイルzoomがbaseZoomを維持する", () => {
+        // baseCenter.x が奇数のケース
+        const oddCenter: TileCoord = { zoom: 14, x: 14547, y: 6453 };
+        const result = computeMultiLodTiles({
+            baseCenter: oddCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 200,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 500,
+            searchRadius: 6,
+        });
+
+        // 中心タイル自体が baseZoom で含まれること
+        const centerTile = result.find(
+            (e) => e.coord.zoom === 14 && e.coord.x === oddCenter.x && e.coord.y === oddCenter.y
+        );
+        expect(centerTile).toBeDefined();
+        expect(centerTile!.coord.zoom).toBe(14);
+    });
+
+    it("カメラ距離を段階的に変化させても中心付近のzoomがbaseZoomを下回らない", () => {
+        const distances = [500, 1000, 1500, 2000];
+        for (const dist of distances) {
+            const result = computeMultiLodTiles({
+                baseCenter,
+                tileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: dist,
+                baseZoom: 14,
+                minZoom: 12,
+                maxTiles: 500,
+                searchRadius: 6,
+            });
+
+            // 中心タイル (dx=0, dy=0 相当) が baseZoom であること
+            const centerTile = result.find(
+                (e) => e.coord.zoom === 14 && e.coord.x === baseCenter.x && e.coord.y === baseCenter.y
+            );
+            expect(centerTile).toBeDefined();
+            expect(centerTile!.coord.zoom).toBe(14);
+        }
+    });
+
+    it("昇格後にタイル領域の重なりがない", () => {
+        const result = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 200,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 500,
+            searchRadius: 8,
+        });
+
+        // 主格子の内側セルのみで重なりを検証。
+        // Far-field sweep が境界で部分的に重なるのは既存動作のため、
+        // 内側（searchRadius - 2^(baseZoom-minZoom) = 4）に限定する。
+        const innerRadius = 4;
+        const coveredCells = new Set<string>();
+        let hasOverlap = false;
+
+        for (const entry of result) {
+            const { coord } = entry;
+            const diff = 14 - coord.zoom;
+            const cellCount = 1 << diff;
+            const baseX = coord.x << diff;
+            const baseY = coord.y << diff;
+
+            for (let cy = 0; cy < cellCount; cy++) {
+                for (let cx = 0; cx < cellCount; cx++) {
+                    const dx = (baseX + cx) - baseCenter.x;
+                    const dy = (baseY + cy) - baseCenter.y;
+                    if (Math.abs(dx) > innerRadius || Math.abs(dy) > innerRadius) continue;
+
+                    const cellKey = `${baseX + cx},${baseY + cy}`;
+                    if (coveredCells.has(cellKey)) {
+                        hasOverlap = true;
+                    }
+                    coveredCells.add(cellKey);
+                }
+            }
+        }
+
+        expect(hasOverlap).toBe(false);
+    });
 });
