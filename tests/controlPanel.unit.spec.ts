@@ -14,9 +14,10 @@ describe("createControlPanel attribution", () => {
         const link = panel.scaleBar.attribution;
         expect(link.tagName).toBe("A");
         expect(link.textContent).toBe("地理院タイル");
-        expect(link.href).toBe("https://maps.gsi.go.jp/development/ichiran.html");
+        expect(link.getAttribute("href")).toBe("https://maps.gsi.go.jp/development/ichiran.html");
         expect(link.target).toBe("_blank");
-        expect(link.rel).toBe("noopener noreferrer");
+        expect(link.relList.contains("noopener")).toBe(true);
+        expect(link.relList.contains("noreferrer")).toBe(true);
     });
 
     it("attribution が scaleContainer の先頭子要素である", () => {
