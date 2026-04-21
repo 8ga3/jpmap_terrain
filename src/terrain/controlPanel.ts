@@ -71,13 +71,13 @@ const createCompass = (): HTMLDivElement => {
     container.classList.add("cp-compass");
 
     // :focus-visible スタイルを CSS で適用（JS の matches() 例外を回避）
-    if (!document.getElementById("cp-compass-style")) {
+    if (!document.getElementById("cp-focus-style")) {
         const style = document.createElement("style");
-        style.id = "cp-compass-style";
+        style.id = "cp-focus-style";
         style.textContent = [
-            ".cp-compass { outline: none; }",
-            ".cp-compass:focus { box-shadow: 0 0 0 2px #90caf9; }",
-            ".cp-compass:focus:not(:focus-visible) { box-shadow: none; }",
+            ".cp-compass, .cp-btn { outline: none; }",
+            ".cp-compass:focus, .cp-btn:focus { box-shadow: 0 0 0 2px #90caf9; }",
+            ".cp-compass:focus:not(:focus-visible), .cp-btn:focus:not(:focus-visible) { box-shadow: none; }",
         ].join("\n");
         document.head.appendChild(style);
     }
@@ -127,14 +127,7 @@ const createZoomButtons = (): {
             outline: "none",
             padding: "0",
         });
-        btn.addEventListener("focus", () => {
-            if (btn.matches(":focus-visible")) {
-                btn.style.boxShadow = "0 0 0 2px #90caf9";
-            }
-        });
-        btn.addEventListener("blur", () => {
-            btn.style.boxShadow = "";
-        });
+        btn.classList.add("cp-btn");
         return btn;
     };
 
@@ -260,14 +253,7 @@ const createMapToggleButton = (): HTMLButtonElement => {
         padding: "0",
         zIndex: "10",
     });
-    btn.addEventListener("focus", () => {
-        if (btn.matches(":focus-visible")) {
-            btn.style.boxShadow = "0 0 0 2px #90caf9";
-        }
-    });
-    btn.addEventListener("blur", () => {
-        btn.style.boxShadow = "";
-    });
+    btn.classList.add("cp-btn");
     document.body.appendChild(btn);
     return btn;
 };
