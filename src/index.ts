@@ -2,6 +2,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import { getSceneModule } from "./createScene";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import { showToast } from "./terrain/controlPanel";
 
 export const babylonInit = async (): Promise<void> => {
     const createSceneModule = getSceneModule();
@@ -39,6 +40,7 @@ export const babylonInit = async (): Promise<void> => {
     // can omit it when that condition is compiled away by the bundler/minifier.
     if (process.env.NODE_ENV !== "production") {
         (window as any).scene = scene;
+        (window as any).showToast = showToast;
     }
 
     // Register a render loop to repeatedly render the scene

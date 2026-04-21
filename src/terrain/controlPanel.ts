@@ -276,6 +276,53 @@ export const formatScale = (meters: number): string => {
     return `${meters} m`;
 };
 
+let activeToast: HTMLDivElement | null = null;
+
+export const showToast = (message: string, durationMs = 3000): void => {
+    if (activeToast) {
+        activeToast.remove();
+        activeToast = null;
+    }
+
+    const el = document.createElement("div");
+    el.textContent = message;
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "polite");
+    css(el, {
+        position: "fixed",
+        bottom: "60px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: "rgba(9,18,32,0.85)",
+        backdropFilter: "blur(6px)",
+        color: "#f2f7ff",
+        fontSize: "13px",
+        lineHeight: "1.4",
+        padding: "10px 16px",
+        borderRadius: "8px",
+        zIndex: "100",
+        opacity: "0",
+        transition: "opacity 0.3s ease",
+        pointerEvents: "none",
+        whiteSpace: "nowrap",
+    });
+    document.body.appendChild(el);
+    activeToast = el;
+
+    // フェードイン（強制リフローでトランジションを確実に発火）
+    void el.offsetWidth;
+    el.style.opacity = "1";
+
+    // フェードアウト → DOM 削除
+    setTimeout(() => {
+        el.style.opacity = "0";
+        el.addEventListener("transitionend", () => {
+            el.remove();
+            if (activeToast === el) activeToast = null;
+        }, { once: true });
+    }, durationMs);
+};
+
 export const createControlPanel = (): ControlPanelElements => {
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();

@@ -6,7 +6,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
-import { createControlPanel, snapScale, formatScale } from "../terrain/controlPanel";
+import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
 import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
@@ -458,8 +458,18 @@ export class DefaultScene implements CreateSceneClass {
             }
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    currentLat = position.coords.latitude;
-                    currentLon = position.coords.longitude;
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    if (
+                        lat < JAPAN_BOUNDS.minLat ||
+                        lat > JAPAN_BOUNDS.maxLat ||
+                        lon < JAPAN_BOUNDS.minLon ||
+                        lon > JAPAN_BOUNDS.maxLon
+                    ) {
+                        showToast("現在地は対応エリア外のため、最も近い地点を表示します");
+                    }
+                    currentLat = lat;
+                    currentLon = lon;
                     camera.target.x = 0;
                     camera.target.z = 0;
                     gridResidualX = 0;
