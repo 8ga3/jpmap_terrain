@@ -58,11 +58,14 @@ export const createMeshPool = (opts: MeshPoolOptions): MeshPool => {
             if (!active.has(mesh)) return;
             active.delete(mesh);
             mesh.setEnabled(false);
-            // テクスチャを解放
+            // テクスチャを解放、diffuseColor をリセット
             const mat = mesh.material as StandardMaterial | null;
-            if (mat?.diffuseTexture) {
-                mat.diffuseTexture.dispose();
-                mat.diffuseTexture = null;
+            if (mat) {
+                if (mat.diffuseTexture) {
+                    mat.diffuseTexture.dispose();
+                    mat.diffuseTexture = null;
+                }
+                mat.diffuseColor = Color3.White();
             }
             pool.push(mesh);
         },

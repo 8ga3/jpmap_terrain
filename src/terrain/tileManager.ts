@@ -7,6 +7,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
@@ -57,6 +58,7 @@ interface ActiveTile {
     coord: TileCoord;
     mesh: Mesh;
     tileSize: number;
+    isOcean: boolean;
 }
 
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -65,6 +67,9 @@ const DEFAULT_CACHE_CAPACITY = 96;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
+
+/** 海タイルの表示色 (#3a6b9e) */
+const OCEAN_COLOR = new Color3(0xbe / 255, 0xd3 / 255, 0xff / 255);
 
 /** 頂点Y座標を標高値で更新 */
 const applyElevation = (
@@ -221,6 +226,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const elevZoom = Math.min(coord.zoom, maxElevationZoom);
 
             let entry = cache.get(key);
+            let isOcean = false;
             if (!entry) {
                 // 標高データを取得（maxElevationZoomから段階的にフォールバック）
                 let elevData: Float32Array | null = null;
@@ -235,6 +241,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     if (cached) {
                         elevData = cached.elevation;
                         actualElevZoom = tryZoom;
+                        if (cached.isOcean) isOcean = true;
                         break;
                     }
 
@@ -256,9 +263,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 }
 
                 if (!elevData) {
-                    // 全zoomで失敗 → フラット標高で表示
+                    // 全zoomで失敗 → 海タイル（フラット標高 0m）
                     elevData = new Float32Array(TILE_SIZE * TILE_SIZE);
                     actualElevZoom = coord.zoom;
+                    isOcean = true;
                 }
 
                 // zoom差がある場合、親タイルの該当領域を切り出し
@@ -271,8 +279,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     elevation = elevData;
                 }
 
-                entry = { coord, elevation };
+                entry = { coord, elevation, isOcean };
                 cache.set(key, entry);
+            }
+
+            if (!isOcean && entry.isOcean) {
+                isOcean = true;
             }
 
             if (rid !== requestId) return;
@@ -316,10 +328,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
             }
 
-            // テクスチャ
-            applyTexture(mesh, coord);
+            // テクスチャ or 海色
+            if (isOcean) {
+                applyOceanMaterial(mesh);
+            } else {
+                applyTexture(mesh, coord);
+            }
 
-            activeTiles.set(key, { key, coord, mesh, tileSize });
+            activeTiles.set(key, { key, coord, mesh, tileSize, isOcean });
         } catch (e) {
             if (rid !== requestId) return;
             statusCallback?.(
@@ -404,24 +420,48 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
     const tileSizeForZoom = (z: number): number => tileEdgeMeters(currentLat, z);
 
+    /** 海タイル用の青色マテリアルを適用する */
+    const applyOceanMaterial = (mesh: Mesh): void => {
+        const mat = mesh.material as StandardMaterial;
+        if (mat.diffuseTexture) {
+            mat.diffuseTexture.dispose();
+            mat.diffuseTexture = null;
+        }
+        mat.diffuseColor = OCEAN_COLOR;
+    };
+
     /** メッシュにテクスチャを適用する */
     const applyTexture = (mesh: Mesh, coord: TileCoord): void => {
         const mat = mesh.material as StandardMaterial;
         if (mat.diffuseTexture) {
             mat.diffuseTexture.dispose();
+            mat.diffuseTexture = null;
         }
-        mat.diffuseTexture = new Texture(
+        const key = toTileKey(coord);
+        const tex = new Texture(
             textureUrl(currentMapType, coord.zoom, coord.x, coord.y),
             scene,
             true,
             true,
-            Texture.TRILINEAR_SAMPLINGMODE
+            Texture.TRILINEAR_SAMPLINGMODE,
+            () => {
+                // テクスチャ読込成功 → マテリアルに適用
+                mat.diffuseTexture = tex;
+            },
+            () => {
+                // テクスチャ読込失敗 → 海色にフォールバック
+                tex.dispose();
+                applyOceanMaterial(mesh);
+                const tile = activeTiles.get(key);
+                if (tile) tile.isOcean = true;
+            }
         );
     };
 
     /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */
     const retextureAll = (): void => {
         for (const [, tile] of activeTiles) {
+            if (tile.isOcean) continue;
             applyTexture(tile.mesh, tile.coord);
         }
     };

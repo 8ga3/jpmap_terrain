@@ -5,6 +5,7 @@ import { TileKey, TileCoord } from "./tileTypes";
 export interface TileCacheEntry {
     coord: TileCoord;
     elevation: Float32Array;
+    isOcean?: boolean;
 }
 
 export interface TileCache {

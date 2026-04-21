@@ -301,7 +301,48 @@ export const computeMultiLodTiles = (
     // baseZoom格子の既存タイルと重複する親タイルは子がカバー済みなのでスキップ。
     const allKeys = new Set(results.map(r => toTileKey(r.coord)));
 
-    // baseZoom格子でカバー済みのセル座標を記録（重複判定用）
+    // 既存タイルのzoom別座標を記録（祖先/子孫の重複判定用）
+    const tilesByZoomForOverlap = new Map<number, Set<string>>();
+    for (const r of results) {
+        const { zoom, x, y } = r.coord;
+        if (!tilesByZoomForOverlap.has(zoom)) tilesByZoomForOverlap.set(zoom, new Set());
+        tilesByZoomForOverlap.get(zoom)!.add(`${x},${y}`);
+    }
+
+    /** 指定タイルの領域が既存タイル（より高いzoom）によってカバーされているか判定 */
+    const hasDescendantTile = (coord: TileCoord): boolean => {
+        for (const [z, coords] of tilesByZoomForOverlap) {
+            if (z <= coord.zoom) continue;
+            const diff = z - coord.zoom;
+            // 子孫タイルの座標範囲
+            const childBaseX = coord.x << diff;
+            const childBaseY = coord.y << diff;
+            for (const key of coords) {
+                const [cxStr, cyStr] = key.split(",");
+                const cx = Number(cxStr);
+                const cy = Number(cyStr);
+                if (cx >= childBaseX && cx < childBaseX + (1 << diff) &&
+                    cy >= childBaseY && cy < childBaseY + (1 << diff)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    /** 指定タイルの祖先が既存タイル（より低いzoom）に含まれているか判定 */
+    const hasAncestorTile = (coord: TileCoord): boolean => {
+        for (const [z, coords] of tilesByZoomForOverlap) {
+            if (z >= coord.zoom) continue;
+            const diff = coord.zoom - z;
+            const ancestorX = coord.x >> diff;
+            const ancestorY = coord.y >> diff;
+            if (coords.has(`${ancestorX},${ancestorY}`)) return true;
+        }
+        return false;
+    };
+
+    // baseZoom格子でカバー済みのセル座標を記録（完全カバー判定用）
     const coveredBaseZoomCells = new Set<string>();
     for (const cell of gridCells) {
         coveredBaseZoomCells.add(`${gridCenter.x + cell.dx},${gridCenter.y + cell.dy}`);
@@ -349,6 +390,9 @@ export const computeMultiLodTiles = (
                 const key = toTileKey(coord);
                 if (allKeys.has(key)) continue;
 
+                // 既存タイルとの祖先/子孫関係による重複チェック
+                if (hasDescendantTile(coord) || hasAncestorTile(coord)) continue;
+
                 // この親タイルがbaseZoom格子で完全にカバー済みか確認
                 // カバー済みならスキップ（重なり防止）
                 const diff = baseZoom - z;
@@ -378,6 +422,9 @@ export const computeMultiLodTiles = (
             if (results.length >= maxTiles) break;
             results.push({ coord, tileSize: farTileSize });
             allKeys.add(toTileKey(coord));
+            // 重複判定用のzoom別座標も更新
+            if (!tilesByZoomForOverlap.has(z)) tilesByZoomForOverlap.set(z, new Set());
+            tilesByZoomForOverlap.get(z)!.add(`${coord.x},${coord.y}`);
         }
     }
 

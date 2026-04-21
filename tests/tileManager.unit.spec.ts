@@ -9,6 +9,7 @@ const mockMeshInstance = () => ({
     material: {
         specularColor: null,
         diffuseTexture: null,
+        diffuseColor: { r: 1, g: 1, b: 1 },
         dispose: jest.fn(),
     },
     setEnabled: jest.fn(),
@@ -28,6 +29,7 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
     StandardMaterial: jest.fn().mockImplementation(() => ({
         specularColor: null,
         diffuseTexture: null,
+        diffuseColor: { r: 1, g: 1, b: 1 },
         dispose: jest.fn(),
     })),
 }));
@@ -38,10 +40,14 @@ jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => ({
     })),
 }));
 
+const Color3Mock = jest.fn().mockImplementation((r = 0, g = 0, b = 0) => ({ r, g, b }));
+Object.assign(Color3Mock, {
+    Black: jest.fn(() => ({ r: 0, g: 0, b: 0 })),
+    White: jest.fn(() => ({ r: 1, g: 1, b: 1 })),
+});
+
 jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
-    Color3: {
-        Black: jest.fn(() => ({ r: 0, g: 0, b: 0 })),
-    },
+    Color3: Color3Mock,
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Meshes/mesh.vertexData", () => ({
@@ -103,6 +109,7 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
 
 const { createTileManager, extractSubTileElevation } = await import("../src/terrain/tileManager");
 const gsiTileMock = await import("../src/terrain/gsiTile");
+const { Texture: TextureMock } = await import("@babylonjs/core/Materials/Textures/texture") as unknown as { Texture: jest.Mock };
 
 const createMockCamera = () => {
     const observers: Array<() => void> = [];
@@ -597,6 +604,137 @@ describe("setMapType", () => {
         tm.setMapType("std");
 
         expect((gsiTileMock.textureUrl as jest.Mock).mock.calls.length).toBe(0);
+
+        tm.dispose();
+    });
+});
+
+/* ================================================================
+ * 海タイル描画テスト
+ * ================================================================ */
+describe("海タイル描画", () => {
+    afterEach(() => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+        (gsiTileMock.tileEdgeMeters as jest.Mock).mockImplementation(
+            () => 1000
+        );
+    });
+
+    it("全zoomで標高取得失敗時はテクスチャURLが呼ばれない", async () => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.reject(new Error("all fail"))
+        );
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+        TextureMock.mockClear();
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+        // 海タイルではテクスチャURLが呼ばれない
+        expect(gsiTileMock.textureUrl).not.toHaveBeenCalled();
+        // Texture コンストラクタも呼ばれない
+        expect(TextureMock).not.toHaveBeenCalled();
+
+        tm.dispose();
+    });
+
+    it("setMapType で海タイルはテクスチャ差替えされない", async () => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.reject(new Error("all fail"))
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+
+        tm.setMapType("photo");
+        // 海タイルのみの場合、retextureAll でもテクスチャURLが呼ばれない
+        expect(gsiTileMock.textureUrl).not.toHaveBeenCalled();
+
+        tm.dispose();
+    });
+
+    it("海タイルは標高0mのフラットメッシュとして表示される", async () => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.reject(new Error("all fail"))
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // 海タイルでもメッシュは生成される
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+
+        tm.dispose();
+    });
+
+    it("海陸混在時に setMapType は陸タイルのみテクスチャ差替えする", async () => {
+        // 最初の loadElevationTile 呼び出しのみ成功、以降は全て失敗
+        let elevCallCount = 0;
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(() => {
+            elevCallCount++;
+            if (elevCallCount === 1) return Promise.resolve(new Float32Array(256 * 256));
+            return Promise.reject(new Error("ocean"));
+        });
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 10,
+            minZoom: 12,
+            maxConcurrent: 1,
+        });
+
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+        await tm.setCenter(35.68, 139.77);
+
+        const totalTiles = tm.activeTileCount;
+        const landTextureCount = (gsiTileMock.textureUrl as jest.Mock).mock.calls.length;
+
+        // 陸タイル（テクスチャあり）と海タイル（テクスチャなし）が混在
+        expect(totalTiles).toBeGreaterThan(landTextureCount);
+        expect(landTextureCount).toBeGreaterThan(0);
+
+        // setMapType で陸タイルのみ差替え
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+        tm.setMapType("photo");
+        const retexturedCount = (gsiTileMock.textureUrl as jest.Mock).mock.calls.length;
+        expect(retexturedCount).toBe(landTextureCount);
 
         tm.dispose();
     });

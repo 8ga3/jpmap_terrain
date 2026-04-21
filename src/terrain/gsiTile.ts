@@ -138,6 +138,12 @@ export const loadElevationTile = async (
                     img.data[i + 2]
                 );
             }
+            // 全ピクセルが無効値（海洋タイル等）の場合はスキップ
+            let hasValid = false;
+            for (let i = 0; i < elev.length; i++) {
+                if (!Number.isNaN(elev[i])) { hasValid = true; break; }
+            }
+            if (!hasValid) throw new Error(`All pixels invalid for ${url}`);
             fillInvalidPixels(elev, img.width, img.height);
             return elev;
         } catch (e) {

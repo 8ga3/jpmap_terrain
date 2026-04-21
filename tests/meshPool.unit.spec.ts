@@ -21,6 +21,7 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
     StandardMaterial: jest.fn().mockImplementation(() => ({
         specularColor: null,
         diffuseTexture: null,
+        diffuseColor: { r: 1, g: 1, b: 1 },
         dispose: jest.fn(),
     })),
 }));
@@ -28,6 +29,7 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
 jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
     Color3: {
         Black: jest.fn(() => ({ r: 0, g: 0, b: 0 })),
+        White: jest.fn(() => ({ r: 1, g: 1, b: 1 })),
     },
 }));
 
@@ -108,5 +110,37 @@ describe("createMeshPool", () => {
         expect(pool.pooledCount).toBe(0);
         expect(mesh1.dispose).toHaveBeenCalled();
         expect(mesh2.dispose).toHaveBeenCalled();
+    });
+
+    it("release で diffuseColor がデフォルト（白）にリセットされる", () => {
+        const pool = createMeshPool({
+            scene: mockScene,
+            subdivisions: 128,
+            tileSize: 100,
+        });
+
+        const mesh = pool.acquire();
+        // 海タイル使用をシミュレート: diffuseColor を変更
+        (mesh.material as any).diffuseColor = { r: 0.2, g: 0.4, b: 0.6 };
+
+        pool.release(mesh);
+        // diffuseColor がリセットされていること
+        expect((mesh.material as any).diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
+    });
+
+    it("release で diffuseTexture が解放される", () => {
+        const pool = createMeshPool({
+            scene: mockScene,
+            subdivisions: 128,
+            tileSize: 100,
+        });
+
+        const mesh = pool.acquire();
+        const mockDispose = jest.fn();
+        (mesh.material as any).diffuseTexture = { dispose: mockDispose };
+
+        pool.release(mesh);
+        expect(mockDispose).toHaveBeenCalled();
+        expect((mesh.material as any).diffuseTexture).toBeNull();
     });
 });
