@@ -68,7 +68,7 @@ const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
 
-/** 海タイルの表示色 (#3a6b9e) */
+/** 海タイルの表示色 (#bed3ff) */
 const OCEAN_COLOR = new Color3(0xbe / 255, 0xd3 / 255, 0xff / 255);
 
 /** 頂点Y座標を標高値で更新 */
