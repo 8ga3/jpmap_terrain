@@ -1,4 +1,35 @@
-import { snapScale, formatScale, SCALE_STEPS } from "../src/terrain/controlPanel";
+/**
+ * @jest-environment jsdom
+ */
+import { snapScale, formatScale, SCALE_STEPS, createControlPanel } from "../src/terrain/controlPanel";
+
+describe("createControlPanel attribution", () => {
+    afterEach(() => {
+        document.body.innerHTML = "";
+        document.head.querySelectorAll("#cp-compass-style").forEach((el) => el.remove());
+    });
+
+    it("scaleBar.attribution が地理院タイルへのリンクである", () => {
+        const panel = createControlPanel();
+        const link = panel.scaleBar.attribution;
+        expect(link.tagName).toBe("A");
+        expect(link.textContent).toBe("地理院タイル");
+        expect(link.href).toBe("https://maps.gsi.go.jp/development/ichiran.html");
+        expect(link.target).toBe("_blank");
+        expect(link.rel).toBe("noopener noreferrer");
+    });
+
+    it("attribution が scaleContainer の先頭子要素である", () => {
+        const panel = createControlPanel();
+        const firstChild = panel.scaleBar.container.firstElementChild;
+        expect(firstChild).toBe(panel.scaleBar.attribution);
+    });
+
+    it("attribution に pointerEvents: auto が設定されている", () => {
+        const panel = createControlPanel();
+        expect(panel.scaleBar.attribution.style.pointerEvents).toBe("auto");
+    });
+});
 
 describe("snapScale", () => {
     it("小さい値は最小ステップ (1) にスナップされる", () => {
