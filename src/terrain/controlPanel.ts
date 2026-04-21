@@ -1,10 +1,17 @@
 /** 操作UI（方位磁針・ズーム・地図切替） */
 
+export interface ScaleBarElement {
+    container: HTMLDivElement;
+    bar: HTMLDivElement;
+    label: HTMLSpanElement;
+}
+
 export interface ControlPanelElements {
     compass: HTMLDivElement;
     zoomIn: HTMLButtonElement;
     zoomOut: HTMLButtonElement;
     mapToggle: HTMLButtonElement;
+    scaleBar: ScaleBarElement;
 }
 
 const css = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
@@ -80,6 +87,7 @@ const createCompass = (): HTMLDivElement => {
 const createZoomButtons = (): {
     zoomIn: HTMLButtonElement;
     zoomOut: HTMLButtonElement;
+    scaleBar: ScaleBarElement;
 } => {
     const container = document.createElement("div");
     css(container, {
@@ -89,6 +97,7 @@ const createZoomButtons = (): {
         display: "flex",
         flexDirection: "column",
         gap: "2px",
+        alignItems: "flex-end",
         zIndex: "10",
     });
 
@@ -128,11 +137,54 @@ const createZoomButtons = (): {
 
     const zoomIn = makeBtn("+", "ズームイン");
     const zoomOut = makeBtn("−", "ズームアウト");
+
+    // スケールバー（マイナスボタンの下、横一列）
+    const scaleContainer = document.createElement("div");
+    css(scaleContainer, {
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: "4px",
+        marginTop: "4px",
+        pointerEvents: "none",
+    });
+
+    const scaleLabel = document.createElement("span");
+    css(scaleLabel, {
+        color: "#222",
+        fontSize: "10px",
+        fontWeight: "bold",
+        lineHeight: "1",
+        whiteSpace: "nowrap",
+        textShadow:
+            "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff",
+    });
+    scaleLabel.textContent = "";
+
+    const scaleBar = document.createElement("div");
+    css(scaleBar, {
+        height: "4px",
+        background: "#222",
+        borderRadius: "1px",
+        boxShadow:
+            "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff",
+        minWidth: "20px",
+        width: "60px",
+    });
+
+    scaleContainer.appendChild(scaleLabel);
+    scaleContainer.appendChild(scaleBar);
+
     container.appendChild(zoomIn);
     container.appendChild(zoomOut);
+    container.appendChild(scaleContainer);
     document.body.appendChild(container);
 
-    return { zoomIn, zoomOut };
+    return {
+        zoomIn,
+        zoomOut,
+        scaleBar: { container: scaleContainer, bar: scaleBar, label: scaleLabel },
+    };
 };
 
 const createMapToggleButton = (): HTMLButtonElement => {
@@ -174,15 +226,35 @@ const createMapToggleButton = (): HTMLButtonElement => {
     return btn;
 };
 
+/** きれいな数値にスナップ */
+export const SCALE_STEPS = [
+    1, 2, 5, 10, 20, 50, 100, 200, 500,
+    1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000,
+];
+
+export const snapScale = (meters: number): number => {
+    for (const step of SCALE_STEPS) {
+        if (step >= meters) return step;
+    }
+    return SCALE_STEPS[SCALE_STEPS.length - 1];
+};
+
+export const formatScale = (meters: number): string => {
+    if (meters >= 1000) return `${meters / 1000} km`;
+    return `${meters} m`;
+};
+
 export const createControlPanel = (): ControlPanelElements => {
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();
 
-    // ズームボタン（画面右下に独立配置）
-    const { zoomIn, zoomOut } = createZoomButtons();
+    // ズームボタン＋スケールバー（画面右下に独立配置）
+    const { zoomIn, zoomOut, scaleBar } = createZoomButtons();
 
     // 地図切替ボタン（画面左下に配置）
     const mapToggle = createMapToggleButton();
 
-    return { compass, zoomIn, zoomOut, mapToggle };
+    // スケールバー（ズームボタンコンテナ内に統合済み）
+
+    return { compass, zoomIn, zoomOut, mapToggle, scaleBar };
 };
