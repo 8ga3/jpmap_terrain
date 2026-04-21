@@ -302,11 +302,14 @@ export const computeMultiLodTiles = (
     const allKeys = new Set(results.map(r => toTileKey(r.coord)));
 
     // 既存タイルのzoom別座標を記録（祖先/子孫の重複判定用）
-    const tilesByZoomForOverlap = new Map<number, Set<string>>();
+    // 文字列キーを避け、数値エンコードでホットパスの文字列処理を排除
+    const PACK_SHIFT = 0x1000000; // 2^24: zoom 23 まで安全
+    const packXY = (x: number, y: number): number => x * PACK_SHIFT + y;
+    const tilesByZoomForOverlap = new Map<number, Set<number>>();
     for (const r of results) {
         const { zoom, x, y } = r.coord;
         if (!tilesByZoomForOverlap.has(zoom)) tilesByZoomForOverlap.set(zoom, new Set());
-        tilesByZoomForOverlap.get(zoom)!.add(`${x},${y}`);
+        tilesByZoomForOverlap.get(zoom)!.add(packXY(x, y));
     }
 
     /** 指定タイルの領域が既存タイル（より高いzoom）によってカバーされているか判定 */
@@ -317,12 +320,13 @@ export const computeMultiLodTiles = (
             // 子孫タイルの座標範囲
             const childBaseX = coord.x << diff;
             const childBaseY = coord.y << diff;
-            for (const key of coords) {
-                const [cxStr, cyStr] = key.split(",");
-                const cx = Number(cxStr);
-                const cy = Number(cyStr);
-                if (cx >= childBaseX && cx < childBaseX + (1 << diff) &&
-                    cy >= childBaseY && cy < childBaseY + (1 << diff)) {
+            const childEndX = childBaseX + (1 << diff);
+            const childEndY = childBaseY + (1 << diff);
+            for (const packed of coords) {
+                const cx = Math.floor(packed / PACK_SHIFT);
+                const cy = packed % PACK_SHIFT;
+                if (cx >= childBaseX && cx < childEndX &&
+                    cy >= childBaseY && cy < childEndY) {
                     return true;
                 }
             }
@@ -337,15 +341,15 @@ export const computeMultiLodTiles = (
             const diff = coord.zoom - z;
             const ancestorX = coord.x >> diff;
             const ancestorY = coord.y >> diff;
-            if (coords.has(`${ancestorX},${ancestorY}`)) return true;
+            if (coords.has(packXY(ancestorX, ancestorY))) return true;
         }
         return false;
     };
 
     // baseZoom格子でカバー済みのセル座標を記録（完全カバー判定用）
-    const coveredBaseZoomCells = new Set<string>();
+    const coveredBaseZoomCells = new Set<number>();
     for (const cell of gridCells) {
-        coveredBaseZoomCells.add(`${gridCenter.x + cell.dx},${gridCenter.y + cell.dy}`);
+        coveredBaseZoomCells.add(packXY(gridCenter.x + cell.dx, gridCenter.y + cell.dy));
     }
 
     for (let z = baseZoom - 1; z >= minZoom && results.length < maxTiles; z--) {
@@ -405,7 +409,7 @@ export const computeMultiLodTiles = (
                     fullyCovered = true;
                     for (let cy = 0; cy < childCount && fullyCovered; cy++) {
                         for (let cx = 0; cx < childCount && fullyCovered; cx++) {
-                            if (!coveredBaseZoomCells.has(`${childBaseX + cx},${childBaseY + cy}`)) {
+                            if (!coveredBaseZoomCells.has(packXY(childBaseX + cx, childBaseY + cy))) {
                                 fullyCovered = false;
                             }
                         }
@@ -424,7 +428,7 @@ export const computeMultiLodTiles = (
             allKeys.add(toTileKey(coord));
             // 重複判定用のzoom別座標も更新
             if (!tilesByZoomForOverlap.has(z)) tilesByZoomForOverlap.set(z, new Set());
-            tilesByZoomForOverlap.get(z)!.add(`${coord.x},${coord.y}`);
+            tilesByZoomForOverlap.get(z)!.add(packXY(coord.x, coord.y));
         }
     }
 
