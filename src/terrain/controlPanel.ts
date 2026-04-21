@@ -189,6 +189,13 @@ const createZoomButtons = (): {
             "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff",
         pointerEvents: "auto",
     });
+    attribution.addEventListener("mouseenter", () => {
+        attribution.style.textDecoration = "underline";
+        attribution.style.textDecorationColor = "#222";
+    });
+    attribution.addEventListener("mouseleave", () => {
+        attribution.style.textDecoration = "none";
+    });
 
     scaleContainer.appendChild(attribution);
     scaleContainer.appendChild(scaleLabel);
