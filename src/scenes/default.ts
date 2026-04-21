@@ -450,6 +450,28 @@ export class DefaultScene implements CreateSceneClass {
         ui.zoomIn.addEventListener("click", () => zoomFromCenter(0.7));
         ui.zoomOut.addEventListener("click", () => zoomFromCenter(1 / 0.7));
 
+        // 現在地を表示ボタン
+        ui.locateMe.addEventListener("click", () => {
+            if (!navigator.geolocation) {
+                console.warn("Geolocation API is not supported by this browser.");
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    currentLat = position.coords.latitude;
+                    currentLon = position.coords.longitude;
+                    camera.target.x = 0;
+                    camera.target.z = 0;
+                    gridResidualX = 0;
+                    gridResidualZ = 0;
+                    void refreshTerrain();
+                },
+                (error) => {
+                    console.warn("Geolocation error:", error.message);
+                },
+            );
+        });
+
         // 地図切替ボタン
         ui.mapToggle.addEventListener("click", () => {
             const next = tileManager.mapType === "std" ? "photo" : "std";

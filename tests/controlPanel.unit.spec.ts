@@ -3,6 +3,44 @@
  */
 import { snapScale, formatScale, SCALE_STEPS, createControlPanel } from "../src/terrain/controlPanel";
 
+describe("createControlPanel locateMe ボタン", () => {
+    afterEach(() => {
+        document.body.innerHTML = "";
+        document.head.querySelectorAll("#cp-compass-style").forEach((el) => el.remove());
+    });
+
+    it("locateMe ボタンが存在する", () => {
+        const panel = createControlPanel();
+        expect(panel.locateMe).toBeInstanceOf(HTMLButtonElement);
+    });
+
+    it("locateMe の aria-label が '現在地を表示' である", () => {
+        const panel = createControlPanel();
+        expect(panel.locateMe.getAttribute("aria-label")).toBe("現在地を表示");
+    });
+
+    it("locateMe が zoomIn の前に配置されている", () => {
+        const panel = createControlPanel();
+        const parent = panel.locateMe.parentElement!;
+        const children = Array.from(parent.children);
+        const locateIdx = children.indexOf(panel.locateMe);
+        const zoomInIdx = children.indexOf(panel.zoomIn);
+        expect(locateIdx).toBeLessThan(zoomInIdx);
+    });
+
+    it("locateMe に SVG アイコンが含まれている", () => {
+        const panel = createControlPanel();
+        const svg = panel.locateMe.querySelector("svg");
+        expect(svg).not.toBeNull();
+    });
+
+    it("locateMe のサイズが 32×32px である", () => {
+        const panel = createControlPanel();
+        expect(panel.locateMe.style.width).toBe("32px");
+        expect(panel.locateMe.style.height).toBe("32px");
+    });
+});
+
 describe("createControlPanel attribution", () => {
     afterEach(() => {
         document.body.innerHTML = "";
