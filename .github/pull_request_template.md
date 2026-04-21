@@ -27,5 +27,5 @@ Closes #<!-- issue番号 -->
 ## 確認事項
 
 - [ ] Copilot レビューを日本語で実施し、指摘を修正した
-- [ ] `npm run test:visuals -- --update-snapshots` は毎回実行していない
+- [ ] `npm run test:visuals:update` は毎回実行していない
 - [ ] 画面表示の意図した変更がある場合のみ、開発者がスナップショットを更新した
