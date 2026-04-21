@@ -197,7 +197,7 @@ const createZoomButtons = (): {
         attribution.style.textDecoration = "none";
     });
 
-    scaleContainer.appendChild(attribution);
+    scaleContainer.prepend(attribution);
     scaleContainer.appendChild(scaleLabel);
     scaleContainer.appendChild(scaleBar);
 
