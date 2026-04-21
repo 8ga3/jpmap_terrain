@@ -6,7 +6,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
-import { createControlPanel } from "../terrain/controlPanel";
+import { createControlPanel, snapScale, formatScale } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
 import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
@@ -380,6 +380,29 @@ export class DefaultScene implements CreateSceneClass {
             ui.compass.style.transform = `rotate(${degrees}deg)`;
         };
         camera.onViewMatrixChangedObservable.add(syncCompass);
+
+        // スケールバー更新
+        const SCALE_BAR_BASE_PX = 100;
+        let prevScaleText = "";
+        const updateScaleBar = (): void => {
+            const altitude = camera.radius * Math.cos(camera.beta);
+            const fov = camera.fov; // 垂直FOV
+            const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+            const visibleWidthM = 2 * altitude * Math.tan(fov / 2) * aspect;
+            const canvasWidth = engine.getRenderWidth();
+            const metersPerPx = visibleWidthM / canvasWidth;
+            const rawMeters = metersPerPx * SCALE_BAR_BASE_PX;
+            const snapped = snapScale(rawMeters);
+            const barPx = Math.round(snapped / metersPerPx);
+            const text = formatScale(snapped);
+            if (text !== prevScaleText) {
+                ui.scaleBar.label.textContent = text;
+                prevScaleText = text;
+            }
+            ui.scaleBar.bar.style.width = `${barPx}px`;
+        };
+        camera.onViewMatrixChangedObservable.add(updateScaleBar);
+        engine.onResizeObservable.add(updateScaleBar);
 
         // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
