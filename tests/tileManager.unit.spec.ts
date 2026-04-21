@@ -110,6 +110,7 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
 const { createTileManager, extractSubTileElevation } = await import("../src/terrain/tileManager");
 const gsiTileMock = await import("../src/terrain/gsiTile");
 const { Texture: TextureMock } = await import("@babylonjs/core/Materials/Textures/texture") as unknown as { Texture: jest.Mock };
+const { CreateGround: CreateGroundMock } = await import("@babylonjs/core/Meshes/Builders/groundBuilder") as unknown as { CreateGround: jest.Mock };
 
 const createMockCamera = () => {
     const observers: Array<() => void> = [];
@@ -681,6 +682,9 @@ describe("海タイル描画", () => {
             () => Promise.reject(new Error("all fail"))
         );
 
+        // このテストで生成されたメッシュだけを取得するために開始位置を記録
+        const meshCountBefore = CreateGroundMock.mock.results.length;
+
         const camera = createMockCamera();
         const tm = createTileManager({
             scene: {} as never,
@@ -695,6 +699,22 @@ describe("海タイル描画", () => {
         await tm.setCenter(35.68, 139.77);
         // 海タイルでもメッシュは生成される
         expect(tm.activeTileCount).toBeGreaterThan(0);
+
+        // updateVerticesData("position", ...) に渡された Position 配列の Y 成分がすべて 0
+        const meshes = CreateGroundMock.mock.results
+            .slice(meshCountBefore)
+            .map((r) => (r as { type: string; value: ReturnType<typeof mockMeshInstance> }).value);
+        expect(meshes.length).toBeGreaterThan(0);
+        for (const mesh of meshes) {
+            const calls = (mesh.updateVerticesData as jest.Mock).mock.calls as Array<[string, Float32Array]>;
+            const positionCalls = calls.filter((c) => c[0] === "position");
+            expect(positionCalls.length).toBeGreaterThan(0);
+            for (const [, posArray] of positionCalls) {
+                for (let i = 1; i < posArray.length; i += 3) {
+                    expect(posArray[i]).toBe(0);
+                }
+            }
+        }
 
         tm.dispose();
     });
