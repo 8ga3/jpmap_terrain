@@ -18,10 +18,6 @@ const engines = [
     { name: "WebGPU", param: "webgpu" },
 ];
 
-test.beforeEach(async ({ page }) => {
-    await page.goto("/", { timeout: 120000 });
-});
-
 for (const scene of scenes) {
     for (const engine of engines) {
         test(`Render ${scene.name} with ${engine.name}`, async ({
