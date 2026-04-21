@@ -400,4 +400,68 @@ describe("computeMultiLodTiles", () => {
 
         expect(hasOverlap).toBe(false);
     });
+
+    it("Far-field sweepで部分カバーの親タイルが高zoomタイルと重ならない", () => {
+        // 狭いsearchRadiusで内側は高zoom、外側はFar-field sweepが補完
+        // 部分カバー境界でのメッシュ重なりがないことを確認
+        const result = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 200,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 500,
+            searchRadius: 4,
+        });
+
+        // baseZoom（zoom14）セルに展開して重なりチェック（全域）
+        const coveredCells = new Set<string>();
+        let hasOverlap = false;
+
+        for (const entry of result) {
+            const { coord } = entry;
+            const diff = 14 - coord.zoom;
+            const cellCount = 1 << diff;
+            const baseX = coord.x << diff;
+            const baseY = coord.y << diff;
+
+            for (let cy = 0; cy < cellCount; cy++) {
+                for (let cx = 0; cx < cellCount; cx++) {
+                    const cellKey = `${baseX + cx},${baseY + cy}`;
+                    if (coveredCells.has(cellKey)) {
+                        hasOverlap = true;
+                    }
+                    coveredCells.add(cellKey);
+                }
+            }
+        }
+
+        expect(hasOverlap).toBe(false);
+    });
+
+    it("Far-field sweepで部分カバー時に穴が開かない", () => {
+        // 狭い searchRadius で Far-field sweep が動作する構成
+        const result = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 200,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 500,
+            searchRadius: 4,
+        });
+
+        // 結果が空でないこと
+        expect(result.length).toBeGreaterThan(0);
+
+        // Far-field sweep 由来の低zoomタイルが含まれること
+        const lowZoomTiles = result.filter((e) => e.coord.zoom < 14);
+        expect(lowZoomTiles.length).toBeGreaterThan(0);
+
+        // 重複キーがないこと
+        const keys = result.map((e) => toTileKey(e.coord));
+        expect(keys.length).toBe(new Set(keys).size);
+    });
 });

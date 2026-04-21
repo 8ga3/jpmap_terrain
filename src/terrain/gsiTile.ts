@@ -41,6 +41,14 @@ export const tileEdgeMeters = (lat: number, zoom: number): number => {
     return metersPerPixel * TILE_SIZE;
 };
 
+/** 全ピクセルが NaN かどうか判定する */
+export const isAllNaN = (data: Float32Array): boolean => {
+    for (let i = 0; i < data.length; i++) {
+        if (!Number.isNaN(data[i])) return false;
+    }
+    return true;
+};
+
 /** 地理院標高タイルのRGBデコード（無効値は NaN） */
 export const decodeGsiElevation = (
     r: number,
@@ -137,6 +145,11 @@ export const loadElevationTile = async (
                     img.data[i + 1],
                     img.data[i + 2]
                 );
+            }
+            // 全NaNのタイルはこのレイヤーでは使えない → 次のレイヤーへ
+            if (isAllNaN(elev)) {
+                lastErr = new Error(`All NaN tile: ${url}`);
+                continue;
             }
             fillInvalidPixels(elev, img.width, img.height);
             return elev;
