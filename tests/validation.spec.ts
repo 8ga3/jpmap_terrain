@@ -98,9 +98,27 @@ for (const engine of engines) {
         });
         await mapToggle.click();
 
+        // ARIAラベルが切り替わるのを待ち、操作反映を確定
+        await expect(
+            page.getByRole("button", { name: "地図切替: 標準地図に変更" })
+        ).toBeVisible({ timeout: 10000 });
+
         // タイルテクスチャ再読み込みを待つ
         await page.waitForLoadState("networkidle", { timeout: 30000 });
-        await page.waitForTimeout(5000);
+
+        // 描画安定のため数フレーム待機
+        await page.waitForFunction(
+            () =>
+                new Promise((resolve) => {
+                    let count = 0;
+                    const tick = () => {
+                        if (++count >= 5) return resolve(true);
+                        requestAnimationFrame(tick);
+                    };
+                    requestAnimationFrame(tick);
+                }),
+            { timeout: 5000 }
+        );
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,
