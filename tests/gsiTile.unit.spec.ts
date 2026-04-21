@@ -5,6 +5,7 @@ import {
     toTileXY,
     tileEdgeMeters,
     decodeGsiElevation,
+    isAllNaN,
     stdTextureUrl,
     photoTextureUrl,
     textureUrl,
@@ -164,6 +165,38 @@ describe("decodeGsiElevation", () => {
         expect(decodeGsiElevation(128, 0, 0)).toBeNaN(); // これは無効値
         // raw = 128*65536 + 0*256 + 1 = 8388609 → (8388609 - 16777216) * 0.01 = -83886.07
         expect(decodeGsiElevation(128, 0, 1)).toBeCloseTo(-83886.07, 2);
+    });
+});
+
+describe("isAllNaN", () => {
+    it("全要素が NaN なら true を返す", () => {
+        const data = new Float32Array([NaN, NaN, NaN, NaN]);
+        expect(isAllNaN(data)).toBe(true);
+    });
+
+    it("有効値が1つでもあれば false を返す", () => {
+        const data = new Float32Array([NaN, NaN, 0, NaN]);
+        expect(isAllNaN(data)).toBe(false);
+    });
+
+    it("全要素が有効値なら false を返す", () => {
+        const data = new Float32Array([1, 2, 3, 4]);
+        expect(isAllNaN(data)).toBe(false);
+    });
+
+    it("空配列は true を返す", () => {
+        const data = new Float32Array(0);
+        expect(isAllNaN(data)).toBe(true);
+    });
+
+    it("先頭のみ有効値の場合 false を返す", () => {
+        const data = new Float32Array([0, NaN, NaN, NaN]);
+        expect(isAllNaN(data)).toBe(false);
+    });
+
+    it("末尾のみ有効値の場合 false を返す", () => {
+        const data = new Float32Array([NaN, NaN, NaN, 100]);
+        expect(isAllNaN(data)).toBe(false);
     });
 });
 

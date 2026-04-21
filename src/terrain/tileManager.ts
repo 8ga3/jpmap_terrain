@@ -95,6 +95,30 @@ const applyElevation = (
 };
 
 /**
+ * 低zoomテクスチャ使用時のUVパラメータを算出する。
+ * tileZoom のタイルに対し textureZoom のテクスチャを適用する際の
+ * uScale/vScale/uOffset/vOffset を返す。
+ */
+export const computeTextureUvParams = (
+    tileZoom: number,
+    tileX: number,
+    tileY: number,
+    textureZoom: number,
+): { uScale: number; vScale: number; uOffset: number; vOffset: number } => {
+    const diff = tileZoom - textureZoom;
+    if (diff <= 0) return { uScale: 1, vScale: 1, uOffset: 0, vOffset: 0 };
+    const scale = 1 << diff;
+    const subX = tileX & (scale - 1);
+    const subY = tileY & (scale - 1);
+    return {
+        uScale: 1 / scale,
+        vScale: 1 / scale,
+        uOffset: subX / scale,
+        vOffset: subY / scale,
+    };
+};
+
+/**
  * 親タイルの標高データから子タイルに対応する領域を切り出す。
  * 最近傍補間で TILE_SIZE × TILE_SIZE に拡大。
  */
@@ -404,19 +428,39 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
     const tileSizeForZoom = (z: number): number => tileEdgeMeters(currentLat, z);
 
-    /** メッシュにテクスチャを適用する */
-    const applyTexture = (mesh: Mesh, coord: TileCoord): void => {
+    /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック） */
+    const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
+        const targetZoom = fallbackZoom ?? coord.zoom;
+        const targetCoord = convertTileZoom(coord, targetZoom);
+
         const mat = mesh.material as StandardMaterial;
         if (mat.diffuseTexture) {
             mat.diffuseTexture.dispose();
         }
-        mat.diffuseTexture = new Texture(
-            textureUrl(currentMapType, coord.zoom, coord.x, coord.y),
+
+        const tex = new Texture(
+            textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y),
             scene,
             true,
             true,
-            Texture.TRILINEAR_SAMPLINGMODE
+            Texture.TRILINEAR_SAMPLINGMODE,
+            undefined,
+            () => {
+                // テクスチャ取得失敗 → 低zoomへフォールバック
+                if (targetZoom > minZoom) {
+                    applyTexture(mesh, coord, targetZoom - 1);
+                }
+            }
         );
+
+        // UV補正（低zoomテクスチャ使用時）
+        const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
+        tex.uScale = uv.uScale;
+        tex.vScale = uv.vScale;
+        tex.uOffset = uv.uOffset;
+        tex.vOffset = uv.vOffset;
+
+        mat.diffuseTexture = tex;
     };
 
     /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */

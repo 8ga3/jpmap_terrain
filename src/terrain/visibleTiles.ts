@@ -298,14 +298,86 @@ export const computeMultiLodTiles = (
     // Step 5: Far-field sweep — baseZoom格子のカバー範囲外を低zoom格子で補完
     // 水平に近いチルト時、frustumはbaseZoom格子の探索範囲を大きく超える。
     // 各低zoom層のタイルサイズで独自に探索し、遠方の欠けを埋める。
-    // baseZoom格子の既存タイルと重複する親タイルは子がカバー済みなのでスキップ。
+    // 部分カバー時は親タイルではなく未カバーの子セルのみを追加（重なり防止）。
     const allKeys = new Set(results.map(r => toTileKey(r.coord)));
 
-    // baseZoom格子でカバー済みのセル座標を記録（重複判定用）
+    // Step 1-4 の全結果タイルが覆う baseZoom セルを記録（重複判定用）
     const coveredBaseZoomCells = new Set<string>();
-    for (const cell of gridCells) {
-        coveredBaseZoomCells.add(`${gridCenter.x + cell.dx},${gridCenter.y + cell.dy}`);
+    for (const r of results) {
+        const rDiff = baseZoom - r.coord.zoom;
+        if (rDiff > 0) {
+            const rCount = 1 << rDiff;
+            const rBaseX = r.coord.x << rDiff;
+            const rBaseY = r.coord.y << rDiff;
+            for (let ry = 0; ry < rCount; ry++) {
+                for (let rx = 0; rx < rCount; rx++) {
+                    coveredBaseZoomCells.add(`${rBaseX + rx},${rBaseY + ry}`);
+                }
+            }
+        } else {
+            coveredBaseZoomCells.add(`${r.coord.x},${r.coord.y}`);
+        }
     }
+
+    /**
+     * 低zoomタイルのうち、baseZoom格子で未カバーの子セルを
+     * 再帰的に zoom+1 へ分割し、重なりのないタイル群を返す。
+     * 完全カバー → 空配列、カバーなし → null（親タイルをそのまま使う）
+     */
+    const findUncoveredChildren = (
+        parentCoord: TileCoord,
+        parentDist: number,
+    ): { coord: TileCoord; dist: number; tileSize: number }[] | null => {
+        const diff = baseZoom - parentCoord.zoom;
+        // diff > 4 は子タイル数が多すぎるため親タイルをそのまま使う
+        if (diff <= 0 || diff > 4) return null;
+
+        const childCount = 1 << diff;
+        const childBaseX = parentCoord.x << diff;
+        const childBaseY = parentCoord.y << diff;
+
+        let coveredCount = 0;
+        for (let cy = 0; cy < childCount; cy++) {
+            for (let cx = 0; cx < childCount; cx++) {
+                if (coveredBaseZoomCells.has(`${childBaseX + cx},${childBaseY + cy}`)) {
+                    coveredCount++;
+                }
+            }
+        }
+
+        // カバーなし → 親タイルをそのまま追加
+        if (coveredCount === 0) return null;
+        // 完全カバー → スキップ
+        if (coveredCount === childCount * childCount) return [];
+
+        // 部分カバー → zoom+1 の子タイルに分割し再帰判定
+        const nextZoom = parentCoord.zoom + 1;
+        const nextTileSize = tileSizeForZoom(nextZoom);
+        const uncovered: { coord: TileCoord; dist: number; tileSize: number }[] = [];
+
+        for (let sy = 0; sy < 2; sy++) {
+            for (let sx = 0; sx < 2; sx++) {
+                const childCoord: TileCoord = {
+                    zoom: nextZoom,
+                    x: parentCoord.x * 2 + sx,
+                    y: parentCoord.y * 2 + sy,
+                };
+                const childKey = toTileKey(childCoord);
+                if (allKeys.has(childKey)) continue;
+
+                // 再帰: この子タイルも部分カバーなら更に分割
+                const childResult = findUncoveredChildren(childCoord, parentDist);
+                if (childResult === null) {
+                    // カバーなし → この子タイルをそのまま追加
+                    uncovered.push({ coord: childCoord, dist: parentDist, tileSize: nextTileSize });
+                } else {
+                    // 部分/完全カバー → 再帰結果をそのまま追加
+                    uncovered.push(...childResult);
+                }
+            }
+        }
+        return uncovered;
+    };
 
     for (let z = baseZoom - 1; z >= minZoom && results.length < maxTiles; z--) {
         const farTileSize = tileSizeForZoom(z);
@@ -321,7 +393,7 @@ export const computeMultiLodTiles = (
             30
         );
 
-        const candidates: { coord: TileCoord; dist: number }[] = [];
+        const candidates: { coord: TileCoord; dist: number; tileSize: number }[] = [];
 
         for (let dy = -farSearchRadius; dy <= farSearchRadius; dy++) {
             for (let dx = -farSearchRadius; dx <= farSearchRadius; dx++) {
@@ -349,35 +421,45 @@ export const computeMultiLodTiles = (
                 const key = toTileKey(coord);
                 if (allKeys.has(key)) continue;
 
-                // この親タイルがbaseZoom格子で完全にカバー済みか確認
-                // カバー済みならスキップ（重なり防止）
-                const diff = baseZoom - z;
-                // diff > 4 は子タイル 16×16=256 以上。完全カバーは事実上ないのでスキップ
-                let fullyCovered = false;
-                if (diff <= 4) {
-                    const childCount = 1 << diff;
-                    const childBaseX = coord.x << diff;
-                    const childBaseY = coord.y << diff;
-                    fullyCovered = true;
-                    for (let cy = 0; cy < childCount && fullyCovered; cy++) {
-                        for (let cx = 0; cx < childCount && fullyCovered; cx++) {
-                            if (!coveredBaseZoomCells.has(`${childBaseX + cx},${childBaseY + cy}`)) {
-                                fullyCovered = false;
-                            }
+                // 部分カバー判定
+                const uncovered = findUncoveredChildren(coord, dist);
+                if (uncovered === null) {
+                    // カバーなし → 親タイルをそのまま候補に追加
+                    candidates.push({ coord, dist, tileSize: farTileSize });
+                } else if (uncovered.length > 0) {
+                    // 部分カバー → 未カバーの子タイルのみ追加
+                    for (const child of uncovered) {
+                        if (!allKeys.has(toTileKey(child.coord))) {
+                            candidates.push(child);
                         }
                     }
                 }
-                if (fullyCovered) continue;
-
-                candidates.push({ coord, dist });
+                // uncovered.length === 0 → 完全カバー → スキップ
             }
         }
 
         candidates.sort((a, b) => a.dist - b.dist);
-        for (const { coord } of candidates) {
+        for (const entry of candidates) {
             if (results.length >= maxTiles) break;
-            results.push({ coord, tileSize: farTileSize });
-            allKeys.add(toTileKey(coord));
+            const key = toTileKey(entry.coord);
+            if (allKeys.has(key)) continue;
+            results.push({ coord: entry.coord, tileSize: entry.tileSize });
+            allKeys.add(key);
+
+            // coveredBaseZoomCells を更新（後続zoom反復での重複防止）
+            const addedDiff = baseZoom - entry.coord.zoom;
+            if (addedDiff > 0 && addedDiff <= 4) {
+                const addedCount = 1 << addedDiff;
+                const addedBaseX = entry.coord.x << addedDiff;
+                const addedBaseY = entry.coord.y << addedDiff;
+                for (let ay = 0; ay < addedCount; ay++) {
+                    for (let ax = 0; ax < addedCount; ax++) {
+                        coveredBaseZoomCells.add(`${addedBaseX + ax},${addedBaseY + ay}`);
+                    }
+                }
+            } else if (addedDiff === 0) {
+                coveredBaseZoomCells.add(`${entry.coord.x},${entry.coord.y}`);
+            }
         }
     }
 

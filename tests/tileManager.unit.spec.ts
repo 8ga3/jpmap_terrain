@@ -25,18 +25,26 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/groundBuilder", () => 
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
-    StandardMaterial: jest.fn().mockImplementation(() => ({
+    StandardMaterial: jest.fn<(...args: unknown[]) => unknown>().mockImplementation(() => ({
         specularColor: null,
         diffuseTexture: null,
         dispose: jest.fn(),
     })),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => ({
-    Texture: jest.fn().mockImplementation(() => ({
-        dispose: jest.fn(),
-    })),
-}));
+jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
+    const TextureMock = jest.fn<(...args: unknown[]) => unknown>().mockImplementation(
+        () => ({
+            dispose: jest.fn(),
+            uScale: 1,
+            vScale: 1,
+            uOffset: 0,
+            vOffset: 0,
+        })
+    ) as jest.Mock & { TRILINEAR_SAMPLINGMODE: number };
+    TextureMock.TRILINEAR_SAMPLINGMODE = 3;
+    return { Texture: TextureMock };
+});
 
 jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
     Color3: {
@@ -80,7 +88,7 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => ({
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Maths/math.plane", () => ({
-    Plane: jest.fn().mockImplementation(() => ({
+    Plane: jest.fn<(...args: unknown[]) => unknown>().mockImplementation(() => ({
         normal: { x: 0, y: 0, z: 0 },
         d: 0,
     })),
@@ -96,12 +104,18 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
     loadElevationTile: jest.fn(
         () => Promise.resolve(new Float32Array(256 * 256))
     ),
+    isAllNaN: jest.fn((data: Float32Array) => {
+        for (let i = 0; i < data.length; i++) {
+            if (!Number.isNaN(data[i])) return false;
+        }
+        return true;
+    }),
     stdTextureUrl: jest.fn(() => "https://example.com/tile.png"),
     photoTextureUrl: jest.fn(() => "https://example.com/photo.jpg"),
     textureUrl: jest.fn(() => "https://example.com/tile.png"),
 }));
 
-const { createTileManager, extractSubTileElevation } = await import("../src/terrain/tileManager");
+const { createTileManager, extractSubTileElevation, computeTextureUvParams } = await import("../src/terrain/tileManager");
 const gsiTileMock = await import("../src/terrain/gsiTile");
 
 const createMockCamera = () => {
@@ -597,6 +611,98 @@ describe("setMapType", () => {
         tm.setMapType("std");
 
         expect((gsiTileMock.textureUrl as jest.Mock).mock.calls.length).toBe(0);
+
+        tm.dispose();
+    });
+});
+
+/* ================================================================
+ * computeTextureUvParams 単体テスト
+ * ================================================================ */
+describe("computeTextureUvParams", () => {
+    it("zoom差がない場合はデフォルト値を返す", () => {
+        const uv = computeTextureUvParams(14, 100, 200, 14);
+        expect(uv).toEqual({ uScale: 1, vScale: 1, uOffset: 0, vOffset: 0 });
+    });
+
+    it("textureZoomがtileZoomより大きい場合はデフォルト値を返す", () => {
+        const uv = computeTextureUvParams(12, 50, 100, 14);
+        expect(uv).toEqual({ uScale: 1, vScale: 1, uOffset: 0, vOffset: 0 });
+    });
+
+    it("zoom差1で左上子タイル(0,0)のUV値が正しい", () => {
+        // tile zoom=15, x=200(even), y=200(even) → subX=0, subY=0
+        const uv = computeTextureUvParams(15, 200, 200, 14);
+        expect(uv.uScale).toBeCloseTo(0.5);
+        expect(uv.vScale).toBeCloseTo(0.5);
+        expect(uv.uOffset).toBeCloseTo(0);
+        expect(uv.vOffset).toBeCloseTo(0);
+    });
+
+    it("zoom差1で右下子タイル(1,1)のUV値が正しい", () => {
+        // tile zoom=15, x=201(odd), y=201(odd) → subX=1, subY=1
+        const uv = computeTextureUvParams(15, 201, 201, 14);
+        expect(uv.uScale).toBeCloseTo(0.5);
+        expect(uv.vScale).toBeCloseTo(0.5);
+        expect(uv.uOffset).toBeCloseTo(0.5);
+        expect(uv.vOffset).toBeCloseTo(0.5);
+    });
+
+    it("zoom差2で4分の1領域のUV値が正しい", () => {
+        // tile zoom=16, x=401, y=402 → subX=1, subY=2
+        // scale=4, uScale=vScale=0.25
+        const uv = computeTextureUvParams(16, 401, 402, 14);
+        expect(uv.uScale).toBeCloseTo(0.25);
+        expect(uv.vScale).toBeCloseTo(0.25);
+        expect(uv.uOffset).toBeCloseTo(0.25);  // 1/4
+        expect(uv.vOffset).toBeCloseTo(0.5);   // 2/4
+    });
+});
+
+/* ================================================================
+ * 標高データ全NaN時のフォールバック
+ * ================================================================ */
+describe("標高データ全NaNフォールバック", () => {
+    afterEach(() => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+        (gsiTileMock.tileEdgeMeters as jest.Mock).mockImplementation(
+            () => 1000
+        );
+    });
+
+    it("全NaN標高データを返すzoomから低zoomにフォールバックする", async () => {
+        // zoom 14: 全NaN（throwされる想定）, zoom 13以下: 有効データ
+        const validElev = new Float32Array(256 * 256).fill(300);
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom) => {
+                if (zoom >= 14) {
+                    return Promise.reject(new Error("All NaN tile"));
+                }
+                return Promise.resolve(validElev);
+            }
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+            maxElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+
+        // zoom 13以下で成功していることを確認
+        const calls = (gsiTileMock.loadElevationTile as jest.Mock).mock.calls;
+        const lowZoomCalls = calls.filter((c) => (c as number[])[0] < 14);
+        expect(lowZoomCalls.length).toBeGreaterThan(0);
 
         tm.dispose();
     });
