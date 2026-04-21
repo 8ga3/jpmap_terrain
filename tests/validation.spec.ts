@@ -30,8 +30,19 @@ for (const scene of scenes) {
             );
             if (scene.waitForNetworkIdle) {
                 await page.waitForLoadState("networkidle", { timeout: 30000 });
-                // タイル読み込み後の描画安定待ち
-                await page.waitForTimeout(3000);
+                // タイル読み込み後の描画安定待ち（数フレーム経過で確認）
+                await page.waitForFunction(
+                    () =>
+                        new Promise((resolve) => {
+                            let count = 0;
+                            const tick = () => {
+                                if (++count >= 10) return resolve(true);
+                                requestAnimationFrame(tick);
+                            };
+                            requestAnimationFrame(tick);
+                        }),
+                    { timeout: 10000 }
+                );
             }
             if (scene.renderCount) {
                 await page.evaluate(() => {
@@ -84,8 +95,19 @@ async function waitForScene(
     );
     // タイル読み込み完了を待つ
     await page.waitForLoadState("networkidle", { timeout: 30000 });
-    // 描画安定のための追加待機
-    await page.waitForTimeout(3000);
+    // 描画安定待ち（数フレーム経過で確認）
+    await page.waitForFunction(
+        () =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = () => {
+                    if (++count >= 10) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        { timeout: 10000 }
+    );
 }
 
 for (const engine of engines) {
