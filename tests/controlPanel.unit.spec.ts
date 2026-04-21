@@ -167,4 +167,26 @@ describe("showToast", () => {
         expect(toasts.length).toBe(1);
         expect(toasts[0].textContent).toBe("2つ目");
     });
+
+    it("置き換え時に古いタイマーが発火しない", () => {
+        showToast("古い", 1000);
+        jest.advanceTimersByTime(500);
+        showToast("新しい", 1000);
+        // 古い setTimeout の残り 500ms を経過させても新しいトーストは残る
+        jest.advanceTimersByTime(500);
+        const current = document.querySelector("[role='status']") as HTMLElement;
+        expect(current.textContent).toBe("新しい");
+        expect(current.style.opacity).toBe("1");
+    });
+
+    it("transitionend が来ない場合でもフォールバックタイマーで除去される", () => {
+        showToast("テスト", 1000);
+        const toast = document.querySelector("[role='status']") as HTMLElement;
+        // フェードアウト開始
+        jest.advanceTimersByTime(1000);
+        expect(toast.style.opacity).toBe("0");
+        // transitionend を発火させず、フォールバック 500ms を経過
+        jest.advanceTimersByTime(500);
+        expect(document.querySelector("[role='status']")).toBeNull();
+    });
 });

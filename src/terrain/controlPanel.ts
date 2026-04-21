@@ -277,8 +277,27 @@ export const formatScale = (meters: number): string => {
 };
 
 let activeToast: HTMLDivElement | null = null;
+let toastFadeTimer: ReturnType<typeof setTimeout> | null = null;
+let toastRemoveTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearToastTimers = (): void => {
+    if (toastFadeTimer !== null) {
+        clearTimeout(toastFadeTimer);
+        toastFadeTimer = null;
+    }
+    if (toastRemoveTimer !== null) {
+        clearTimeout(toastRemoveTimer);
+        toastRemoveTimer = null;
+    }
+};
+
+const removeToastElement = (el: HTMLDivElement): void => {
+    el.remove();
+    if (activeToast === el) activeToast = null;
+};
 
 export const showToast = (message: string, durationMs = 3000): void => {
+    clearToastTimers();
     if (activeToast) {
         activeToast.remove();
         activeToast = null;
@@ -314,12 +333,21 @@ export const showToast = (message: string, durationMs = 3000): void => {
     el.style.opacity = "1";
 
     // フェードアウト → DOM 削除
-    setTimeout(() => {
+    toastFadeTimer = setTimeout(() => {
+        toastFadeTimer = null;
         el.style.opacity = "0";
         el.addEventListener("transitionend", () => {
-            el.remove();
-            if (activeToast === el) activeToast = null;
+            if (toastRemoveTimer !== null) {
+                clearTimeout(toastRemoveTimer);
+                toastRemoveTimer = null;
+            }
+            removeToastElement(el);
         }, { once: true });
+        // transitionend が発火しない場合のフォールバック（トランジション時間 + 余裕）
+        toastRemoveTimer = setTimeout(() => {
+            toastRemoveTimer = null;
+            removeToastElement(el);
+        }, 500);
     }, durationMs);
 };
 
