@@ -328,14 +328,15 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
             }
 
+            // activeTiles を先に登録（applyTexture の非同期コールバックで参照するため）
+            activeTiles.set(key, { key, coord, mesh, tileSize, isOcean });
+
             // テクスチャ or 海色
             if (isOcean) {
                 applyOceanMaterial(mesh);
             } else {
                 applyTexture(mesh, coord);
             }
-
-            activeTiles.set(key, { key, coord, mesh, tileSize, isOcean });
         } catch (e) {
             if (rid !== requestId) return;
             statusCallback?.(
@@ -445,15 +446,22 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             true,
             Texture.TRILINEAR_SAMPLINGMODE,
             () => {
+                // タイルが既に解放済み or メッシュが別タイルに再利用されている場合はスキップ
+                const tile = activeTiles.get(key);
+                if (!tile || tile.mesh !== mesh) {
+                    tex.dispose();
+                    return;
+                }
                 // テクスチャ読込成功 → マテリアルに適用
                 mat.diffuseTexture = tex;
             },
             () => {
                 // テクスチャ読込失敗 → 海色にフォールバック
                 tex.dispose();
-                applyOceanMaterial(mesh);
                 const tile = activeTiles.get(key);
-                if (tile) tile.isOcean = true;
+                if (!tile || tile.mesh !== mesh) return;
+                applyOceanMaterial(mesh);
+                tile.isOcean = true;
             }
         );
     };
