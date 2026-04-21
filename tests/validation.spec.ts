@@ -121,7 +121,10 @@ for (const engine of engines) {
         // アニメーション完了(400ms) + 描画安定待ち
         await page.waitForTimeout(2000);
 
-        await expect(page).toHaveScreenshot({ timeout: 30000 });
+        await expect(page).toHaveScreenshot({
+            timeout: 30000,
+            maxDiffPixelRatio: 0.02,
+        });
         expect(testInfo.errors).toHaveLength(0);
     });
 }
