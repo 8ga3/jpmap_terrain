@@ -201,6 +201,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     });
 
     const activeTiles = new Map<TileKey, ActiveTile>();
+    /** テクスチャ適用の競合を防ぐためのリクエストID（mesh単位） */
+    const textureRequestIds = new Map<Mesh, number>();
     let requestId = 0;
     let loadingCount = 0;
     let statusCallback: ((status: string) => void) | null = null;
@@ -433,6 +435,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const targetZoom = fallbackZoom ?? coord.zoom;
         const targetCoord = convertTileZoom(coord, targetZoom);
 
+        // このリクエストのIDを発行し、meshに紐付ける
+        const texReqId = (textureRequestIds.get(mesh) ?? 0) + 1;
+        textureRequestIds.set(mesh, texReqId);
+
         const mat = mesh.material as StandardMaterial;
         if (mat.diffuseTexture) {
             mat.diffuseTexture.dispose();
@@ -446,6 +452,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             Texture.TRILINEAR_SAMPLINGMODE,
             undefined,
             () => {
+                // meshが既に別タイルへ再利用されていたらフォールバックしない
+                if (textureRequestIds.get(mesh) !== texReqId) return;
                 // テクスチャ取得失敗 → 低zoomへフォールバック
                 if (targetZoom > minZoom) {
                     applyTexture(mesh, coord, targetZoom - 1);
@@ -510,6 +518,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // 不要タイルを解放
         for (const [key, tile] of activeTiles) {
             if (!visibleKeys.has(key)) {
+                textureRequestIds.delete(tile.mesh);
                 meshPool.release(tile.mesh);
                 activeTiles.delete(key);
             }
@@ -614,6 +623,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 meshPool.release(tile.mesh);
             }
             activeTiles.clear();
+            textureRequestIds.clear();
             cache.clear();
             meshPool.dispose();
         },
