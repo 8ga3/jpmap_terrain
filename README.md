@@ -57,7 +57,7 @@ npm start
 | `npm run lint` | ESLint 実行 |
 | `npm run typecheck` | TypeScript 型チェック |
 | `npm run test:visuals` | Visual Regression Test 実行 |
-| `npm run test:visuals -- --update-snapshots` | Visual テスト基準画像の更新（画面表示変更時のみ） |
+| `npm run test:visuals:update` | Visual テスト基準画像の強制更新（画面表示変更時のみ） |
 | `npm run test:unit` | ユニットテスト（Jest） |
 
 ### デバッグ
@@ -71,14 +71,16 @@ npm start
 ### Visual Regression Test
 
 通常は `npm run test:visuals` のみを実行します。
-`npm run test:visuals -- --update-snapshots` は毎回実行するものではなく、UIや描画結果に意図した変更が入ったときに、開発者が基準画像を更新するために実行します。
+`npm run test:visuals:update` は毎回実行するものではなく、UIや描画結果に意図した変更が入ったときに、開発者が基準画像を更新するために実行します。
 
 
 **UIや描画結果に意図した変更が入ったときのみ実行**
 
 ```shell
-npm run test:visuals -- --update-snapshots
+npm run test:visuals:update
 ```
+
+> **Note:** Playwright 1.59+ では `--update-snapshots` のデフォルトが `missing`（不足分のみ追加）に変更されました。既存スナップショットを上書きするには `--update-snapshots=all` が必要です。`test:visuals:update` スクリプトはこのオプションを使用します。
 
 **通常の実行**
 

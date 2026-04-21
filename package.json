@@ -48,6 +48,7 @@
     "lint": "npx eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "test:visuals": "npx playwright test",
+    "test:visuals:update": "npx playwright test --update-snapshots=all",
     "test:unit": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest",
     "prepare": "husky"
   },
