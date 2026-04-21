@@ -158,8 +158,20 @@ for (const engine of engines) {
         });
         await compass.click();
 
-        // アニメーション完了(400ms) + 描画安定待ち
-        await page.waitForTimeout(2000);
+        // アニメーション完了をカメラ状態で判定（alpha→-π/2, beta→0.1）
+        await page.waitForFunction(
+            () => {
+                const cam = (window as any).scene?.activeCamera;
+                if (!cam) return false;
+                const targetAlpha = -Math.PI / 2;
+                const targetBeta = 0.1;
+                return (
+                    Math.abs(cam.alpha - targetAlpha) < 0.01 &&
+                    Math.abs(cam.beta - targetBeta) < 0.01
+                );
+            },
+            { timeout: 5000 }
+        );
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,
