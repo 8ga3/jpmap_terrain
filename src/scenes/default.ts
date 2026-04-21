@@ -471,6 +471,7 @@ export class DefaultScene implements CreateSceneClass {
                     currentLat = lat;
                     currentLon = lon;
                     camera.target.x = 0;
+                    camera.target.y = 0;
                     camera.target.z = 0;
                     gridResidualX = 0;
                     gridResidualZ = 0;
