@@ -405,6 +405,7 @@ export class DefaultScene implements CreateSceneClass {
         };
         camera.onViewMatrixChangedObservable.add(updateScaleBar);
         engine.onResizeObservable.add(updateScaleBar);
+        updateScaleBar();
 
         // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
