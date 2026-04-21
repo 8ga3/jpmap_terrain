@@ -1,7 +1,8 @@
 /**
  * @jest-environment jsdom
  */
-import { snapScale, formatScale, SCALE_STEPS, createControlPanel } from "../src/terrain/controlPanel";
+import { jest } from "@jest/globals";
+import { snapScale, formatScale, SCALE_STEPS, createControlPanel, showToast } from "../src/terrain/controlPanel";
 
 describe("createControlPanel locateMe ボタン", () => {
     afterEach(() => {
@@ -117,5 +118,53 @@ describe("formatScale", () => {
 
     it("2000m は 2 km と表示", () => {
         expect(formatScale(2000)).toBe("2 km");
+    });
+});
+
+describe("showToast", () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+        document.body.innerHTML = "";
+    });
+
+    it("DOM にトースト要素が追加される", () => {
+        showToast("テストメッセージ");
+        const toast = document.querySelector("[role='status']");
+        expect(toast).not.toBeNull();
+        expect(toast!.textContent).toBe("テストメッセージ");
+    });
+
+    it("aria-live=polite が設定されている", () => {
+        showToast("テスト");
+        const toast = document.querySelector("[role='status']");
+        expect(toast!.getAttribute("aria-live")).toBe("polite");
+    });
+
+    it("指定時間後に opacity が 0 になる", () => {
+        showToast("テスト", 2000);
+        const toast = document.querySelector("[role='status']") as HTMLElement;
+        jest.advanceTimersByTime(2000);
+        expect(toast.style.opacity).toBe("0");
+    });
+
+    it("transitionend 発火後に要素が DOM から除去される", () => {
+        showToast("テスト", 1000);
+        const toast = document.querySelector("[role='status']") as HTMLElement;
+        jest.advanceTimersByTime(1000);
+        toast.dispatchEvent(new Event("transitionend"));
+        expect(document.querySelector("[role='status']")).toBeNull();
+    });
+
+    it("複数呼び出し時に前のトーストが除去される", () => {
+        showToast("1つ目");
+        showToast("2つ目");
+        const toasts = document.querySelectorAll("[role='status']");
+        expect(toasts.length).toBe(1);
+        expect(toasts[0].textContent).toBe("2つ目");
     });
 });
