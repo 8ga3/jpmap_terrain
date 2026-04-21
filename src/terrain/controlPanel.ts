@@ -4,6 +4,7 @@ export interface ScaleBarElement {
     container: HTMLDivElement;
     bar: HTMLDivElement;
     label: HTMLSpanElement;
+    attribution: HTMLAnchorElement;
 }
 
 export interface ControlPanelElements {
@@ -172,6 +173,24 @@ const createZoomButtons = (): {
         width: "60px",
     });
 
+    const attribution = document.createElement("a");
+    attribution.href = "https://maps.gsi.go.jp/development/ichiran.html";
+    attribution.target = "_blank";
+    attribution.rel = "noopener noreferrer";
+    attribution.textContent = "地理院タイル";
+    css(attribution, {
+        color: "#222",
+        fontSize: "10px",
+        fontWeight: "bold",
+        lineHeight: "1",
+        whiteSpace: "nowrap",
+        textDecoration: "none",
+        textShadow:
+            "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff",
+        pointerEvents: "auto",
+    });
+
+    scaleContainer.appendChild(attribution);
     scaleContainer.appendChild(scaleLabel);
     scaleContainer.appendChild(scaleBar);
 
@@ -183,7 +202,7 @@ const createZoomButtons = (): {
     return {
         zoomIn,
         zoomOut,
-        scaleBar: { container: scaleContainer, bar: scaleBar, label: scaleLabel },
+        scaleBar: { container: scaleContainer, bar: scaleBar, label: scaleLabel, attribution },
     };
 };
 
