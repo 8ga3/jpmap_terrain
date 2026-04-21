@@ -13,7 +13,10 @@ const scenes: {
     },
 ];
 
-const engines = ["WebGL2", "WebGPU"];
+const engines = [
+    { name: "WebGL2", param: "webgl" },
+    { name: "WebGPU", param: "webgpu" },
+];
 
 test.beforeEach(async ({ page }) => {
     await page.goto("/", { timeout: 120000 });
@@ -21,11 +24,11 @@ test.beforeEach(async ({ page }) => {
 
 for (const scene of scenes) {
     for (const engine of engines) {
-        test(`Render ${scene.name} with ${engine}`, async ({
+        test(`Render ${scene.name} with ${engine.name}`, async ({
             page,
         }, testInfo) => {
             const sceneUrl = new URL(scene.url, "http://localhost");
-            sceneUrl.searchParams.set("engine", engine);
+            sceneUrl.searchParams.set("engine", engine.param);
             await page.goto(
                 `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`
             );
@@ -90,8 +93,8 @@ async function waitForScene(
 }
 
 for (const engine of engines) {
-    test(`Map toggle button with ${engine}`, async ({ page }, testInfo) => {
-        await waitForScene(page, engine);
+    test(`Map toggle button with ${engine.name}`, async ({ page }, testInfo) => {
+        await waitForScene(page, engine.param);
 
         // 地図切替ボタンをクリック（標準 → 写真）
         const mapToggle = page.getByRole("button", {
@@ -110,8 +113,8 @@ for (const engine of engines) {
         expect(testInfo.errors).toHaveLength(0);
     });
 
-    test(`Compass reset button with ${engine}`, async ({ page }, testInfo) => {
-        await waitForScene(page, engine);
+    test(`Compass reset button with ${engine.name}`, async ({ page }, testInfo) => {
+        await waitForScene(page, engine.param);
 
         // 方位磁針ボタンをクリック（北向きリセット）
         const compass = page.getByRole("button", {
