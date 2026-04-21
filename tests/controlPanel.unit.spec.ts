@@ -7,7 +7,7 @@ import { snapScale, formatScale, SCALE_STEPS, createControlPanel, showToast } fr
 describe("createControlPanel locateMe ボタン", () => {
     afterEach(() => {
         document.body.innerHTML = "";
-        document.head.querySelectorAll("#cp-compass-style").forEach((el) => el.remove());
+        document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
     });
 
     it("locateMe ボタンが存在する", () => {
@@ -45,7 +45,7 @@ describe("createControlPanel locateMe ボタン", () => {
 describe("createControlPanel attribution", () => {
     afterEach(() => {
         document.body.innerHTML = "";
-        document.head.querySelectorAll("#cp-compass-style").forEach((el) => el.remove());
+        document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
     });
 
     it("scaleBar.attribution が地理院タイルへのリンクである", () => {
