@@ -66,10 +66,10 @@ for (const scene of scenes) {
             });
             // await page.waitForFunction(() => (window as any).renderCount === scene.renderCount || 1, { timeout: 5000 });
             // 注意:
-            // スナップショット更新（--update-snapshots=all）は定常手順ではありません。
+            // スナップショット更新（`--update-snapshots=all`）は定常手順ではありません。
             // UI/描画結果に意図した変更が入った場合のみ実行します。
-            // Playwright 1.59+ では --update-snapshots のデフォルトが missing のため、
-            // 既存画像を上書きするには npm run test:visuals:update を使用してください。
+            // Playwright 1.59+ では `--update-snapshots` のデフォルトが `missing` のため、
+            // 既存画像を上書きするには `npm run test:visuals:update` を使用してください。
             await expect(page).toHaveScreenshot({
                 timeout: 30000,
                 maxDiffPixelRatio: 0.02,
