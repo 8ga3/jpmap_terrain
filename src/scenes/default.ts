@@ -385,13 +385,15 @@ export class DefaultScene implements CreateSceneClass {
         const SCALE_BAR_BASE_PX = 100;
         let prevScaleText = "";
         const updateScaleBar = (): void => {
-            const altitude = camera.radius * Math.cos(camera.beta);
-            const fov = camera.fov; // 垂直FOV
-            const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-            const visibleWidthM = 2 * altitude * Math.tan(fov / 2) * aspect;
-            const canvasWidth = engine.getRenderWidth();
-            const metersPerPx = visibleWidthM / canvasWidth;
-            const rawMeters = metersPerPx * SCALE_BAR_BASE_PX;
+            const cx = canvas.clientWidth / 2;
+            const cy = canvas.clientHeight / 2;
+            const center = intersectPlane(cx, cy, 0);
+            const offset = intersectPlane(cx + SCALE_BAR_BASE_PX, cy, 0);
+            if (!center || !offset) return;
+            const dx = offset.x - center.x;
+            const dz = offset.z - center.z;
+            const rawMeters = Math.sqrt(dx * dx + dz * dz);
+            const metersPerPx = rawMeters / SCALE_BAR_BASE_PX;
             const snapped = snapScale(rawMeters);
             const barPx = Math.round(snapped / metersPerPx);
             const text = formatScale(snapped);
