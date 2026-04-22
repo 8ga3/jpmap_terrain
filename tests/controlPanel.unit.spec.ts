@@ -4,11 +4,13 @@
 import { jest } from "@jest/globals";
 import { snapScale, formatScale, SCALE_STEPS, createControlPanel, showToast } from "../src/terrain/controlPanel";
 
+function cleanupDOM(): void {
+    document.body.innerHTML = "";
+    document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
+}
+
 describe("createControlPanel locateMe ボタン", () => {
-    afterEach(() => {
-        document.body.innerHTML = "";
-        document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
-    });
+    afterEach(cleanupDOM);
 
     it("locateMe ボタンが存在する", () => {
         const panel = createControlPanel();
@@ -43,10 +45,7 @@ describe("createControlPanel locateMe ボタン", () => {
 });
 
 describe("createControlPanel attribution", () => {
-    afterEach(() => {
-        document.body.innerHTML = "";
-        document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
-    });
+    afterEach(cleanupDOM);
 
     it("scaleBar.attribution が地理院タイルへのリンクである", () => {
         const panel = createControlPanel();
@@ -72,10 +71,7 @@ describe("createControlPanel attribution", () => {
 });
 
 describe("createControlPanel pointerEvents 透過", () => {
-    afterEach(() => {
-        document.body.innerHTML = "";
-        document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
-    });
+    afterEach(cleanupDOM);
 
     it("ズームボタンのコンテナ div に pointerEvents: none が設定されている", () => {
         const panel = createControlPanel();
@@ -157,7 +153,7 @@ describe("showToast", () => {
 
     afterEach(() => {
         jest.useRealTimers();
-        document.body.innerHTML = "";
+        cleanupDOM();
     });
 
     it("DOM にトースト要素が追加される", () => {
