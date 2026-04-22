@@ -18,6 +18,8 @@ export interface VisibleTilesOptions {
 }
 
 const DEFAULT_MAX_TILES = 50;
+/** coveredBaseZoomCells / findUncoveredChildren で許容するzoom差の上限 */
+const MAX_COVERAGE_DIFF = 6;
 const DEFAULT_SEARCH_RADIUS = 4;
 /** 日本の標高上限概算（富士山 3776m + マージン） */
 const DEFAULT_MAX_ELEVATION = 4000;
@@ -305,7 +307,7 @@ export const computeMultiLodTiles = (
     const coveredBaseZoomCells = new Set<string>();
     for (const r of results) {
         const rDiff = baseZoom - r.coord.zoom;
-        if (rDiff > 0) {
+        if (rDiff > 0 && rDiff <= MAX_COVERAGE_DIFF) {
             const rCount = 1 << rDiff;
             const rBaseX = r.coord.x << rDiff;
             const rBaseY = r.coord.y << rDiff;
@@ -329,8 +331,8 @@ export const computeMultiLodTiles = (
         parentDist: number,
     ): { coord: TileCoord; dist: number; tileSize: number }[] | null => {
         const diff = baseZoom - parentCoord.zoom;
-        // diff > 4 は子タイル数が多すぎるため親タイルをそのまま使う
-        if (diff <= 0 || diff > 4) return null;
+        // diff が大きい場合は子タイル数が多すぎるため親タイルをそのまま使う
+        if (diff <= 0 || diff > MAX_COVERAGE_DIFF) return null;
 
         const childCount = 1 << diff;
         const childBaseX = parentCoord.x << diff;
@@ -448,7 +450,7 @@ export const computeMultiLodTiles = (
 
             // coveredBaseZoomCells を更新（後続zoom反復での重複防止）
             const addedDiff = baseZoom - entry.coord.zoom;
-            if (addedDiff > 0 && addedDiff <= 4) {
+            if (addedDiff > 0 && addedDiff <= MAX_COVERAGE_DIFF) {
                 const addedCount = 1 << addedDiff;
                 const addedBaseX = entry.coord.x << addedDiff;
                 const addedBaseY = entry.coord.y << addedDiff;

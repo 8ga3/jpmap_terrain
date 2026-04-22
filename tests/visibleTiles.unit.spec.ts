@@ -464,4 +464,74 @@ describe("computeMultiLodTiles", () => {
         const keys = result.map((e) => toTileKey(e.coord));
         expect(keys.length).toBe(new Set(keys).size);
     });
+
+    describe("超遠方タイル（低zoom）", () => {
+        // zoom18基準: zoom18=64m, zoom9≈32km, zoom2≈4160km
+        const farCenter: TileCoord = { zoom: 18, x: 232757, y: 103240 };
+        const farTileSizeForZoom = (z: number): number => 64 * Math.pow(2, 18 - z);
+
+        it("minZoom=2 で zoom 7 以下のタイルが結果に含まれる", () => {
+            const result = computeMultiLodTiles({
+                baseCenter: farCenter,
+                tileSizeForZoom: farTileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 40000,
+                baseZoom: 9,
+                minZoom: 2,
+                maxTiles: 160,
+                searchRadius: 14,
+            });
+
+            expect(result.length).toBeGreaterThan(0);
+            const lowZoomTiles = result.filter((e) => e.coord.zoom <= 7);
+            expect(lowZoomTiles.length).toBeGreaterThan(0);
+        });
+
+        it("低zoom タイルでも TileKey の重複がない", () => {
+            const result = computeMultiLodTiles({
+                baseCenter: farCenter,
+                tileSizeForZoom: farTileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 40000,
+                baseZoom: 9,
+                minZoom: 2,
+                maxTiles: 160,
+                searchRadius: 14,
+            });
+
+            const keys = result.map((e) => toTileKey(e.coord));
+            expect(keys.length).toBe(new Set(keys).size);
+        });
+
+        it("低zoom タイル追加後も maxTiles を超えない", () => {
+            const result = computeMultiLodTiles({
+                baseCenter: farCenter,
+                tileSizeForZoom: farTileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 40000,
+                baseZoom: 9,
+                minZoom: 2,
+                maxTiles: 160,
+                searchRadius: 14,
+            });
+
+            expect(result.length).toBeLessThanOrEqual(160);
+        });
+
+        it("近景タイル（baseZoom付近）が低zoom導入後も存在する", () => {
+            const result = computeMultiLodTiles({
+                baseCenter: farCenter,
+                tileSizeForZoom: farTileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 40000,
+                baseZoom: 9,
+                minZoom: 2,
+                maxTiles: 160,
+                searchRadius: 14,
+            });
+
+            const highZoomTiles = result.filter((e) => e.coord.zoom >= 8);
+            expect(highZoomTiles.length).toBeGreaterThan(0);
+        });
+    });
 });
