@@ -19,7 +19,7 @@ export interface VisibleTilesOptions {
 
 const DEFAULT_MAX_TILES = 50;
 /** coveredBaseZoomCells / findUncoveredChildren で許容するzoom差の上限 */
-const MAX_COVERAGE_DIFF = 6;
+const MAX_COVERAGE_DIFF = 7;
 const DEFAULT_SEARCH_RADIUS = 4;
 /** 日本の標高上限概算（富士山 3776m + マージン） */
 const DEFAULT_MAX_ELEVATION = 4000;
@@ -226,25 +226,28 @@ export const computeMultiLodTiles = (
     // Step 2: ズーム境界の重なり防止（昇格方式）
     // 親タイル内に高zoomセルが混在する場合、低zoomセルを z+1 に昇格。
     // 全セルが同一低zoomの親タイルはそのまま維持（遠方LODを保持）。
-    // 処理は baseZoom-1 → minZoom の降順。
+    // 降順パスで昇格 → カスケード昇格が発生しうるため収束まで反復。
     const cellZoomMap = new Map<string, number>();
     for (const cell of gridCells) {
         cellZoomMap.set(`${cell.dx},${cell.dy}`, cell.targetZoom);
     }
 
-    for (let z = baseZoom - 1; z >= minZoom; z--) {
-        const diff = baseZoom - z;
-        const parentHasHigher = new Set<string>();
+    let promotionsOccurred = true;
+    while (promotionsOccurred) {
+        promotionsOccurred = false;
+        for (let z = baseZoom - 1; z >= minZoom; z--) {
+            const diff = baseZoom - z;
+            const parentHasHigher = new Set<string>();
 
-        // 親タイル内に z より高いzoomのセルがあるか確認
-        for (const cell of gridCells) {
-            const cellZoom = cellZoomMap.get(`${cell.dx},${cell.dy}`)!;
-            if (cellZoom > z) {
-                const gx = gridCenter.x + cell.dx;
-                const gy = gridCenter.y + cell.dy;
-                parentHasHigher.add(`${gx >> diff},${gy >> diff}`);
+            // 親タイル内に z より高いzoomのセルがあるか確認
+            for (const cell of gridCells) {
+                const cellZoom = cellZoomMap.get(`${cell.dx},${cell.dy}`)!;
+                if (cellZoom > z) {
+                    const gx = gridCenter.x + cell.dx;
+                    const gy = gridCenter.y + cell.dy;
+                    parentHasHigher.add(`${gx >> diff},${gy >> diff}`);
+                }
             }
-        }
 
         // 高zoomセルと混在する親タイル内の低zoomセルを z+1 に昇格
         if (parentHasHigher.size > 0) {
@@ -254,8 +257,10 @@ export const computeMultiLodTiles = (
                 const gy = gridCenter.y + cell.dy;
                 if (parentHasHigher.has(`${gx >> diff},${gy >> diff}`)) {
                     cellZoomMap.set(`${cell.dx},${cell.dy}`, z + 1);
+                    promotionsOccurred = true;
                 }
             }
+        }
         }
     }
 
