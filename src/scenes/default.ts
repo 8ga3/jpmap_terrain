@@ -15,7 +15,7 @@ const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
 const MAX_ELEVATION_ZOOM = 17;
 const HEIGHT_SCALE = 1.0;
-const MIN_ZOOM = 8;
+const MIN_ZOOM = 2;
 
 /** Phase 2（垂直移動）に切り替えるカメラ高度の閾値（メートル） */
 const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
@@ -43,7 +43,7 @@ export class DefaultScene implements CreateSceneClass {
         camera.lowerRadiusLimit = 250;
         camera.upperRadiusLimit = 40000;
         camera.minZ = 10;
-        camera.maxZ = 100000;
+        camera.maxZ = 200000;
 
         // チルト制限（地面から20° = beta上限 7π/18）
         camera.upperBetaLimit = Math.PI / 2 - Math.PI / 9;
