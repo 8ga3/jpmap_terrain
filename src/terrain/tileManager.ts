@@ -670,7 +670,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 const tileXInt = Math.floor(tileXFloat);
                 const tileYInt = Math.floor(tileYFloat);
 
-                const key: TileKey = `${z}/${tileXInt}/${tileYInt}`;
+                const key: TileKey = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
                 const entry = cache.get(key);
                 if (!entry) continue;
 
