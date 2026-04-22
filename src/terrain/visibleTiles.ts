@@ -331,8 +331,10 @@ export const computeMultiLodTiles = (
         parentDist: number,
     ): { coord: TileCoord; dist: number; tileSize: number }[] | null => {
         const diff = baseZoom - parentCoord.zoom;
-        // diff が大きい場合は子タイル数が多すぎるため親タイルをそのまま使う
-        if (diff <= 0 || diff > MAX_COVERAGE_DIFF) return null;
+        if (diff <= 0) return null;
+        // diff が大きすぎて部分カバー判定を諦める場合は、
+        // 親タイルを追加すると高zoom側と重なり得るため、このzoomの親タイル追加をスキップする
+        if (diff > MAX_COVERAGE_DIFF) return [];
 
         const childCount = 1 << diff;
         const childBaseX = parentCoord.x << diff;
