@@ -71,6 +71,34 @@ describe("createControlPanel attribution", () => {
     });
 });
 
+describe("createControlPanel pointerEvents 透過", () => {
+    afterEach(() => {
+        document.body.innerHTML = "";
+        document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
+    });
+
+    it("ズームボタンのコンテナ div に pointerEvents: none が設定されている", () => {
+        const panel = createControlPanel();
+        const container = panel.zoomIn.parentElement!;
+        expect(container.style.pointerEvents).toBe("none");
+    });
+
+    it("zoomIn ボタンに pointerEvents: auto が設定されている", () => {
+        const panel = createControlPanel();
+        expect(panel.zoomIn.style.pointerEvents).toBe("auto");
+    });
+
+    it("zoomOut ボタンに pointerEvents: auto が設定されている", () => {
+        const panel = createControlPanel();
+        expect(panel.zoomOut.style.pointerEvents).toBe("auto");
+    });
+
+    it("locateMe ボタンに pointerEvents: auto が設定されている", () => {
+        const panel = createControlPanel();
+        expect(panel.locateMe.style.pointerEvents).toBe("auto");
+    });
+});
+
 describe("snapScale", () => {
     it("小さい値は最小ステップ (1) にスナップされる", () => {
         expect(snapScale(0.5)).toBe(1);
