@@ -550,6 +550,66 @@ describe("標高ズーム段階フォールバック", () => {
         // zoom 13, 14 でのフェッチは発生しない
         expect(fetchedZooms.every((z) => z <= 12)).toBe(true);
     });
+
+    it("minElevationZoomを下回るzoomでは標高フェッチを試みない", async () => {
+        const fetchedZooms: number[] = [];
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom) => {
+                fetchedZooms.push(zoom);
+                // 全zoomで失敗させてフォールバックを最大まで試行させる
+                return Promise.reject(new Error("not available"));
+            }
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 3,
+            maxElevationZoom: 14,
+            minZoom: 2,
+            minElevationZoom: 10,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // zoom 9以下でのフェッチは発生しない（minElevationZoom=10が下限）
+        expect(fetchedZooms.every((z) => z >= 10)).toBe(true);
+        // フォールバック幅は 14→10 の5段以内
+        const uniqueZooms = new Set(fetchedZooms);
+        expect(uniqueZooms.size).toBeLessThanOrEqual(5);
+        tm.dispose();
+    });
+
+    it("minElevationZoom省略時はデフォルト値 max(minZoom, maxElevationZoom-4) が適用される", async () => {
+        const fetchedZooms: number[] = [];
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom) => {
+                fetchedZooms.push(zoom);
+                return Promise.reject(new Error("not available"));
+            }
+        );
+
+        const camera = createMockCamera();
+        // maxElevationZoom=14, minZoom=2 → デフォルト minElevationZoom = max(2, 14-4) = 10
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 3,
+            maxElevationZoom: 14,
+            minZoom: 2,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // zoom 9以下でのフェッチは発生しない
+        expect(fetchedZooms.every((z) => z >= 10)).toBe(true);
+        tm.dispose();
+    });
 });
 
 /* ================================================================

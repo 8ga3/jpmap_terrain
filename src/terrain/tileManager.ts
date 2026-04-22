@@ -38,6 +38,8 @@ export interface TileManagerOptions {
     minZoom?: number;
     /** 標高タイルの最大ズームレベル（省略時は zoom） */
     maxElevationZoom?: number;
+    /** 標高フォールバックの最小ズームレベル（省略時は max(minZoom, maxElevationZoom - 4)） */
+    minElevationZoom?: number;
 }
 
 export interface TileManager {
@@ -188,10 +190,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         debounceMs = DEFAULT_DEBOUNCE_MS,
         minZoom: minZoomOpt,
         maxElevationZoom: maxElevationZoomOpt,
+        minElevationZoom: minElevationZoomOpt,
     } = opts;
 
     const minZoom = minZoomOpt ?? Math.max(0, zoom - 2);
     const maxElevationZoom = maxElevationZoomOpt ?? zoom;
+    const minElevationZoom = minElevationZoomOpt ?? Math.max(minZoom, maxElevationZoom - 4);
 
     const cache: TileCache = createTileCache(cacheCapacity);
     const meshPool: MeshPool = createMeshPool({
@@ -252,7 +256,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 let elevData: Float32Array | null = null;
                 let actualElevZoom = elevZoom;
 
-                for (let tryZoom = elevZoom; tryZoom >= minZoom; tryZoom--) {
+                for (let tryZoom = elevZoom; tryZoom >= minElevationZoom; tryZoom--) {
                     const tryCoord = convertTileZoom(coord, tryZoom);
                     const tryKey = toTileKey(tryCoord);
 
