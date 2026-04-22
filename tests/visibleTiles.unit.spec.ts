@@ -533,5 +533,85 @@ describe("computeMultiLodTiles", () => {
             const highZoomTiles = result.filter((e) => e.coord.zoom >= 8);
             expect(highZoomTiles.length).toBeGreaterThan(0);
         });
+
+        it("超遠方条件でもbaseZoomセル展開でタイル領域の重なりがない（Z-fighting防止）", () => {
+            const result = computeMultiLodTiles({
+                baseCenter: farCenter,
+                tileSizeForZoom: farTileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 40000,
+                baseZoom: 9,
+                minZoom: 2,
+                maxTiles: 160,
+                searchRadius: 14,
+            });
+
+            expect(result.length).toBeGreaterThan(0);
+
+            // baseZoom（zoom9）セルに展開して重なりチェック（全域）
+            const coveredCells = new Set<string>();
+            let hasOverlap = false;
+
+            for (const entry of result) {
+                const { coord } = entry;
+                const diff = 9 - coord.zoom;
+                if (diff < 0) continue;
+                const cellCount = 1 << diff;
+                const baseX = coord.x << diff;
+                const baseY = coord.y << diff;
+
+                for (let cy = 0; cy < cellCount; cy++) {
+                    for (let cx = 0; cx < cellCount; cx++) {
+                        const cellKey = `${baseX + cx},${baseY + cy}`;
+                        if (coveredCells.has(cellKey)) {
+                            hasOverlap = true;
+                        }
+                        coveredCells.add(cellKey);
+                    }
+                }
+            }
+
+            expect(hasOverlap).toBe(false);
+        });
+
+        it("カメラ距離を変えてもタイル領域の重なりがない", () => {
+            const distances = [20000, 40000, 80000];
+            for (const dist of distances) {
+                const result = computeMultiLodTiles({
+                    baseCenter: farCenter,
+                    tileSizeForZoom: farTileSizeForZoom,
+                    frustumPlanes: allVisiblePlanes,
+                    cameraDistance: dist,
+                    baseZoom: 9,
+                    minZoom: 2,
+                    maxTiles: 160,
+                    searchRadius: 14,
+                });
+
+                const coveredCells = new Set<string>();
+                let hasOverlap = false;
+
+                for (const entry of result) {
+                    const { coord } = entry;
+                    const diff = 9 - coord.zoom;
+                    if (diff < 0) continue;
+                    const cellCount = 1 << diff;
+                    const baseX = coord.x << diff;
+                    const baseY = coord.y << diff;
+
+                    for (let cy = 0; cy < cellCount; cy++) {
+                        for (let cx = 0; cx < cellCount; cx++) {
+                            const cellKey = `${baseX + cx},${baseY + cy}`;
+                            if (coveredCells.has(cellKey)) {
+                                hasOverlap = true;
+                            }
+                            coveredCells.add(cellKey);
+                        }
+                    }
+                }
+
+                expect(hasOverlap).toBe(false);
+            }
+        });
     });
 });
