@@ -246,12 +246,22 @@ export class DefaultScene implements CreateSceneClass {
                 Math.max(camY + 1000, CAMERA_LOWER_RADIUS + 1000)
             );
             const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
-            if (!pick?.hit || !pick.pickedPoint) {
+
+            // レイキャストによる地形高さ
+            let terrainY: number | null =
+                pick?.hit && pick.pickedPoint ? pick.pickedPoint.y : null;
+
+            // キャッシュ済み標高データから高精度な値を補完
+            const cacheElev = tileManager.queryElevationAtWorld(camX, camZ);
+            if (cacheElev !== null) {
+                terrainY = terrainY !== null ? Math.max(terrainY, cacheElev) : cacheElev;
+            }
+
+            if (terrainY === null) {
                 cachedMinRadius = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 return cachedMinRadius;
             }
 
-            const terrainY = pick.pickedPoint.y;
             const minCamY = terrainY + CAMERA_LOWER_RADIUS;
             cachedMinRadius = (minCamY - ty) / cosB;
             return cachedMinRadius;
@@ -587,6 +597,11 @@ export class DefaultScene implements CreateSceneClass {
             camera.radius = minR;
         };
         scene.onBeforeRenderObservable.add(clampCameraAboveTerrain);
+
+        // メッシュ標高更新時にキャッシュを無効化して即座に再チェック
+        tileManager.onTerrainUpdated = () => {
+            prevAlpha = NaN; // terrainMinRadius のキャッシュを無効化
+        };
 
         // カメラ移動時の自動タイル更新
         tileManager.attachCamera();

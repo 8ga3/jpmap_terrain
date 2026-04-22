@@ -52,6 +52,10 @@ export interface TileManager {
     readonly activeTileCount: number;
     readonly loadingCount: number;
     onStatusChange: ((status: string) => void) | null;
+    /** キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null） */
+    queryElevationAtWorld(wx: number, wz: number): number | null;
+    /** メッシュ頂点の標高が更新されたときに呼ばれるコールバック */
+    onTerrainUpdated: (() => void) | null;
 }
 
 interface ActiveTile {
@@ -210,6 +214,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     let requestId = 0;
     let loadingCount = 0;
     let statusCallback: ((status: string) => void) | null = null;
+    let terrainUpdatedCallback: (() => void) | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let cameraObserver: ReturnType<
         typeof camera.onViewMatrixChangedObservable.add
@@ -351,6 +356,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             applyTexture(mesh, coord);
 
             activeTiles.set(key, { key, coord, mesh, tileSize });
+            terrainUpdatedCallback?.();
         } catch (e) {
             if (rid !== requestId) return;
             statusCallback?.(
@@ -411,6 +417,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 }
             }
         }
+        terrainUpdatedCallback?.();
     };
 
     /** 並列数制限付きのロードキュー */
@@ -647,6 +654,49 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         },
         get onStatusChange(): ((status: string) => void) | null {
             return statusCallback;
+        },
+
+        queryElevationAtWorld(wx: number, wz: number): number | null {
+            if (!currentCenter) return null;
+
+            for (let z = maxElevationZoom; z >= minElevationZoom; z--) {
+                const tileSize = tileSizeForZoom(z);
+                const center = convertTileZoom(currentCenter, z);
+                const { fracX, fracY } = computeSubTileOffset(currentCenter, z);
+
+                const tileXFloat = center.x + fracX + wx / tileSize;
+                const tileYFloat = center.y + fracY - wz / tileSize;
+
+                const tileXInt = Math.floor(tileXFloat);
+                const tileYInt = Math.floor(tileYFloat);
+
+                const key: TileKey = `${z}/${tileXInt}/${tileYInt}`;
+                const entry = cache.get(key);
+                if (!entry) continue;
+
+                const fracTileX = tileXFloat - tileXInt;
+                const fracTileY = tileYFloat - tileYInt;
+                const px = Math.min(
+                    TILE_SIZE - 1,
+                    Math.max(0, Math.round(fracTileX * (TILE_SIZE - 1)))
+                );
+                const py = Math.min(
+                    TILE_SIZE - 1,
+                    Math.max(0, Math.round(fracTileY * (TILE_SIZE - 1)))
+                );
+
+                const rawElev = entry.elevation[py * TILE_SIZE + px];
+                return (rawElev + currentAltitudeOffset) * heightScale;
+            }
+
+            return null;
+        },
+
+        set onTerrainUpdated(cb: (() => void) | null) {
+            terrainUpdatedCallback = cb;
+        },
+        get onTerrainUpdated(): (() => void) | null {
+            return terrainUpdatedCallback;
         },
     };
 };
