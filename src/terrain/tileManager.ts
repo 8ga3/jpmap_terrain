@@ -344,6 +344,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 const normals = new Float32Array(typed.length);
                 VertexData.ComputeNormals(typed, idx, normals);
                 mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
+                mesh.refreshBoundingInfo();
             }
 
             // テクスチャ
@@ -406,6 +407,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     const normals = new Float32Array(typed.length);
                     VertexData.ComputeNormals(typed, idx, normals);
                     mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
+                    mesh.refreshBoundingInfo();
                 }
             }
         }
