@@ -14,6 +14,7 @@ import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
 const MAX_ELEVATION_ZOOM = 17;
+const MIN_ELEVATION_ZOOM = 10;
 const HEIGHT_SCALE = 1.0;
 const MIN_ZOOM = 2;
 
@@ -89,6 +90,7 @@ export class DefaultScene implements CreateSceneClass {
             heightScale: HEIGHT_SCALE,
             minZoom: MIN_ZOOM,
             maxElevationZoom: MAX_ELEVATION_ZOOM,
+            minElevationZoom: MIN_ELEVATION_ZOOM,
             maxTiles: 160,
             cacheCapacity: 256,
         });
