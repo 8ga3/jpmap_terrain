@@ -3,7 +3,7 @@ import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import "@babylonjs/core/Culling/ray";
+import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
@@ -201,6 +201,28 @@ export class DefaultScene implements CreateSceneClass {
             };
         };
 
+        /** 現在のカメラ位置直下の地形高さから、衝突回避に必要な最小 radius を返す */
+        const terrainMinRadius = (): number => {
+            const cosB = Math.cos(camera.beta);
+            if (Math.abs(cosB) < 1e-6) return camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            const sinB = Math.sin(camera.beta);
+            const camX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
+            const camY = camera.target.y + camera.radius * cosB;
+            const camZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
+
+            const ray = new Ray(
+                new Vector3(camX, camY, camZ),
+                Vector3.Down(),
+                Math.max(camY + 1000, CAMERA_LOWER_RADIUS + 1000)
+            );
+            const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
+            if (!pick?.hit || !pick.pickedPoint) return camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+
+            const terrainY = pick.pickedPoint.y;
+            const minCamY = terrainY + CAMERA_LOWER_RADIUS;
+            return (minCamY - camera.target.y) / cosB;
+        };
+
         // ---------- カスタムマウスハンドラ ----------
         let pointerDown = false;
         let lastPointerX = 0;
@@ -238,12 +260,17 @@ export class DefaultScene implements CreateSceneClass {
                 lastPointerX = e.clientX;
                 lastPointerY = e.clientY;
                 camera.alpha -= dx * 0.003;
+                const prevBeta = camera.beta;
                 camera.beta -= dy * 0.003;
                 camera.beta = clamp(
                     camera.beta,
                     camera.lowerBetaLimit ?? 0,
                     camera.upperBetaLimit ?? Math.PI
                 );
+                // チルト変更で地形に衝突するなら beta を復元
+                if (camera.radius < terrainMinRadius()) {
+                    camera.beta = prevBeta;
+                }
             } else if (dragAnchor) {
                 // 通常ドラッグ: 逐次差分でパン（毎フレームanchor更新）
                 const rect = canvas.getBoundingClientRect();
@@ -288,10 +315,15 @@ export class DefaultScene implements CreateSceneClass {
             if (factor > 1 && camera.radius >= upper) return;
             if (factor < 1 && camera.radius <= lower) return;
 
-            camera.target.x += (worldX - camera.target.x) * (1 - factor);
-            camera.target.z += (worldZ - camera.target.z) * (1 - factor);
-            camera.radius *= factor;
-            camera.radius = clamp(camera.radius, lower, upper);
+            // 衝突制限を考慮した実効 lower を算出
+            const effectiveLower = Math.max(lower, terrainMinRadius());
+            const newRadius = clamp(camera.radius * factor, effectiveLower, upper);
+            if (Math.abs(newRadius - camera.radius) < 0.01) return;
+
+            const actualFactor = newRadius / camera.radius;
+            camera.target.x += (worldX - camera.target.x) * (1 - actualFactor);
+            camera.target.z += (worldZ - camera.target.z) * (1 - actualFactor);
+            camera.radius = newRadius;
             commitPanOffset();
         };
 
@@ -345,21 +377,23 @@ export class DefaultScene implements CreateSceneClass {
 
                     if (useVertical) {
                         // Phase 2: 垂直移動（カメラの緯度経度固定）
-                        if (zoomIn && camera.radius <= lower) return;
+                        const effectiveLower2 = Math.max(lower, terrainMinRadius());
+                        if (zoomIn && camera.radius <= effectiveLower2) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         const sinB = Math.sin(camera.beta);
                         const camX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
                         const camZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
-                        const newRadius = clamp(camera.radius * factor, lower, upper);
+                        const newRadius = clamp(camera.radius * factor, effectiveLower2, upper);
                         camera.target.x = camX - newRadius * sinB * Math.cos(camera.alpha);
                         camera.target.z = camZ - newRadius * sinB * Math.sin(camera.alpha);
                         camera.radius = newRadius;
                         commitPanOffset();
                     } else {
                         // Phase 1: ターゲットに向かってズーム
-                        if (zoomIn && camera.radius <= lower) return;
+                        const effectiveLower1 = Math.max(lower, terrainMinRadius());
+                        if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
-                        camera.radius = clamp(camera.radius * factor, lower, upper);
+                        camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
                     }
                 }
             },
@@ -504,6 +538,14 @@ export class DefaultScene implements CreateSceneClass {
                     : "地図切替: 標準地図に変更"
             );
         });
+
+        // カメラ-地形衝突回避: 地面にめり込まないよう radius を補正してストップ
+        const clampCameraAboveTerrain = (): void => {
+            const minR = terrainMinRadius();
+            if (camera.radius >= minR) return;
+            camera.radius = minR;
+        };
+        scene.onBeforeRenderObservable.add(clampCameraAboveTerrain);
 
         // カメラ移動時の自動タイル更新
         tileManager.attachCamera();

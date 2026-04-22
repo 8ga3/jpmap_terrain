@@ -18,6 +18,7 @@ const mockMeshInstance = () => ({
     getVerticesData: jest.fn(() => new Float32Array(3 * 129 * 129)),
     getIndices: jest.fn(() => new Uint32Array(6 * 128 * 128)),
     updateVerticesData: jest.fn(),
+    refreshBoundingInfo: jest.fn(),
 });
 
 jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/groundBuilder", () => ({
