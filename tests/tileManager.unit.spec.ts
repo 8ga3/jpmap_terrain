@@ -768,3 +768,205 @@ describe("標高データ全NaNフォールバック", () => {
         tm.dispose();
     });
 });
+
+/* ================================================================
+ * queryElevationAtWorld 単体テスト
+ * ================================================================ */
+describe("queryElevationAtWorld", () => {
+    afterEach(() => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+        (gsiTileMock.tileEdgeMeters as jest.Mock).mockImplementation(
+            () => 1000
+        );
+    });
+
+    /**
+     * camera.radius が小さいとき computeBaseZoom が maxZoom(=14) を返し、
+     * タイルが zoom 14 でロードされる。
+     * minZoom=14 にすることで LOD による低zoom混在を防止。
+     */
+    const createNearCamera = () => {
+        const cam = createMockCamera();
+        (cam as any).radius = 500;
+        (cam as any).position = { x: 0, y: 500, z: 0 };
+        return cam;
+    };
+
+    it("setCenter前はnullを返す", () => {
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            minZoom: 14,
+        });
+
+        expect(tm.queryElevationAtWorld(0, 0)).toBeNull();
+        tm.dispose();
+    });
+
+    it("中心座標でキャッシュ済み標高値を返す", async () => {
+        const elevData = new Float32Array(256 * 256);
+        elevData[0] = 100; // pixel (0,0) = 100m
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(elevData)
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // ワールド原点 (0,0) は中心タイルのピクセル (0,0) に対応
+        const result = tm.queryElevationAtWorld(0, 0);
+        expect(result).toBe(100);
+        tm.dispose();
+    });
+
+    it("heightScaleが標高値に反映される", async () => {
+        const elevData = new Float32Array(256 * 256);
+        elevData[0] = 100;
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(elevData)
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 2.0,
+            maxTiles: 5,
+            minZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // (100 + 0) * 2.0 = 200
+        expect(tm.queryElevationAtWorld(0, 0)).toBe(200);
+        tm.dispose();
+    });
+
+    it("altitudeOffsetが標高値に反映される", async () => {
+        const elevData = new Float32Array(256 * 256);
+        elevData[0] = 100;
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(elevData)
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77, 50); // altitudeOffset = 50
+        // (100 + 50) * 1.0 = 150
+        expect(tm.queryElevationAtWorld(0, 0)).toBe(150);
+        tm.dispose();
+    });
+
+    it("heightScaleとaltitudeOffsetが同時に反映される", async () => {
+        const elevData = new Float32Array(256 * 256);
+        elevData[0] = 100;
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(elevData)
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 2.0,
+            maxTiles: 5,
+            minZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77, 50);
+        // (100 + 50) * 2.0 = 300
+        expect(tm.queryElevationAtWorld(0, 0)).toBe(300);
+        tm.dispose();
+    });
+
+    it("全zoomレベルでキャッシュ未ヒットの座標はnullを返す", async () => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 1,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 14, // フォールバック無し
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // 中心から十分離れた座標（50タイル分）はキャッシュに存在しない
+        const result = tm.queryElevationAtWorld(50000, 50000);
+        expect(result).toBeNull();
+        tm.dispose();
+    });
+
+    it("zoomフォールバック: 高zoom未ヒットでも低zoomキャッシュから値を返す", async () => {
+        // zoom依存の tileEdgeMeters: z14=1000, z13=2000
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        const elevData13 = new Float32Array(256 * 256);
+        // zoom13タイルのピクセル(64,64)に既知の値を設定
+        // wx=0, wz=-1000 → zoom13で fracTile=(0.25,0.25) → px=64, py=64
+        elevData13[64 * 256 + 64] = 777;
+
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom) => {
+                if (zoom >= 14) return Promise.reject(new Error("not available"));
+                return Promise.resolve(elevData13);
+            }
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: {} as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 1,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 13,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // wx=0, wz=-1000 → zoom14キー"14/14547/6453"は未キャッシュ
+        // → zoom13キー"13/7273/3226"にフォールバックしてヒット
+        const result = tm.queryElevationAtWorld(0, -1000);
+        expect(result).toBe(777);
+        tm.dispose();
+    });
+});
