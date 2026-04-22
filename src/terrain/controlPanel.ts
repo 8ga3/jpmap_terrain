@@ -102,6 +102,7 @@ const createZoomButtons = (): {
         gap: "2px",
         alignItems: "flex-end",
         zIndex: "10",
+        pointerEvents: "none",
     });
 
     const makeBtn = (label: string, ariaLabel: string): HTMLButtonElement => {
@@ -126,6 +127,7 @@ const createZoomButtons = (): {
             justifyContent: "center",
             outline: "none",
             padding: "0",
+            pointerEvents: "auto",
         });
         btn.classList.add("cp-btn");
         return btn;
