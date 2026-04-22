@@ -320,6 +320,13 @@ export class DefaultScene implements CreateSceneClass {
             const newRadius = clamp(camera.radius * factor, effectiveLower, upper);
             if (Math.abs(newRadius - camera.radius) < 0.01) return;
 
+            // ズームイン操作なのに半径が増える場合はターゲット移動せず半径だけ補正
+            if (factor < 1 && newRadius > camera.radius) {
+                camera.radius = newRadius;
+                commitPanOffset();
+                return;
+            }
+
             const actualFactor = newRadius / camera.radius;
             camera.target.x += (worldX - camera.target.x) * (1 - actualFactor);
             camera.target.z += (worldZ - camera.target.z) * (1 - actualFactor);
