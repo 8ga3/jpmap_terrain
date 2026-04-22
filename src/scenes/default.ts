@@ -18,6 +18,13 @@ const MIN_ELEVATION_ZOOM = 10;
 const HEIGHT_SCALE = 1.0;
 const MIN_ZOOM = 2;
 
+/** カメラ最小距離（メートル） */
+const CAMERA_LOWER_RADIUS = 250;
+/** カメラ最大距離（メートル） */
+const CAMERA_UPPER_RADIUS = 75000;
+/** 遠クリッピング面（メートル） */
+const CAMERA_FAR_CLIP = 400000;
+
 /** Phase 2（垂直移動）に切り替えるカメラ高度の閾値（メートル） */
 const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
 
@@ -41,10 +48,10 @@ export class DefaultScene implements CreateSceneClass {
             Vector3.Zero(),
             scene
         );
-        camera.lowerRadiusLimit = 250;
-        camera.upperRadiusLimit = 40000;
+        camera.lowerRadiusLimit = CAMERA_LOWER_RADIUS;
+        camera.upperRadiusLimit = CAMERA_UPPER_RADIUS;
         camera.minZ = 10;
-        camera.maxZ = 200000;
+        camera.maxZ = CAMERA_FAR_CLIP;
 
         // チルト制限（地面から20° = beta上限 7π/18）
         camera.upperBetaLimit = Math.PI / 2 - Math.PI / 9;
@@ -276,8 +283,8 @@ export class DefaultScene implements CreateSceneClass {
             worldZ: number,
             factor: number
         ): void => {
-            const upper = camera.upperRadiusLimit ?? 40000;
-            const lower = camera.lowerRadiusLimit ?? 250;
+            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
             if (factor > 1 && camera.radius >= upper) return;
             if (factor < 1 && camera.radius <= lower) return;
 
@@ -327,8 +334,8 @@ export class DefaultScene implements CreateSceneClass {
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
-                    const upper = camera.upperRadiusLimit ?? 40000;
-                    const lower = camera.lowerRadiusLimit ?? 250;
+                    const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                    const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                     const zoomIn = e.deltaY < 0;
                     const factor = zoomIn ? 0.95 : 1 / 0.95;
                     const cameraHeight = camera.radius * Math.cos(camera.beta);
@@ -366,12 +373,12 @@ export class DefaultScene implements CreateSceneClass {
                 zoomTowardPoint(hit.worldX, hit.worldZ, 0.7);
             } else {
                 // 空のダブルクリック: ターゲットに向かってズーム
-                const lower = camera.lowerRadiusLimit ?? 250;
+                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 if (camera.radius <= lower) return;
                 camera.radius = clamp(
                     camera.radius * 0.7,
                     lower,
-                    camera.upperRadiusLimit ?? 40000
+                    camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS
                 );
             }
         });
