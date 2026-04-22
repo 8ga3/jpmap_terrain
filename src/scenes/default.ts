@@ -202,13 +202,43 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         /** 現在のカメラ位置直下の地形高さから、衝突回避に必要な最小 radius を返す */
+        let cachedMinRadius = CAMERA_LOWER_RADIUS;
+        let prevAlpha = NaN;
+        let prevBeta = NaN;
+        let prevRadius = NaN;
+        let prevTargetX = NaN;
+        let prevTargetY = NaN;
+        let prevTargetZ = NaN;
+
         const terrainMinRadius = (): number => {
-            const cosB = Math.cos(camera.beta);
-            if (Math.abs(cosB) < 1e-6) return camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-            const sinB = Math.sin(camera.beta);
-            const camX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
-            const camY = camera.target.y + camera.radius * cosB;
-            const camZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
+            const { alpha, beta, radius } = camera;
+            const { x: tx, y: ty, z: tz } = camera.target;
+            if (
+                alpha === prevAlpha &&
+                beta === prevBeta &&
+                radius === prevRadius &&
+                tx === prevTargetX &&
+                ty === prevTargetY &&
+                tz === prevTargetZ
+            ) {
+                return cachedMinRadius;
+            }
+            prevAlpha = alpha;
+            prevBeta = beta;
+            prevRadius = radius;
+            prevTargetX = tx;
+            prevTargetY = ty;
+            prevTargetZ = tz;
+
+            const cosB = Math.cos(beta);
+            if (Math.abs(cosB) < 1e-6) {
+                cachedMinRadius = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                return cachedMinRadius;
+            }
+            const sinB = Math.sin(beta);
+            const camX = tx + radius * sinB * Math.cos(alpha);
+            const camY = ty + radius * cosB;
+            const camZ = tz + radius * sinB * Math.sin(alpha);
 
             const ray = new Ray(
                 new Vector3(camX, camY, camZ),
@@ -216,11 +246,15 @@ export class DefaultScene implements CreateSceneClass {
                 Math.max(camY + 1000, CAMERA_LOWER_RADIUS + 1000)
             );
             const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
-            if (!pick?.hit || !pick.pickedPoint) return camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            if (!pick?.hit || !pick.pickedPoint) {
+                cachedMinRadius = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                return cachedMinRadius;
+            }
 
             const terrainY = pick.pickedPoint.y;
             const minCamY = terrainY + CAMERA_LOWER_RADIUS;
-            return (minCamY - camera.target.y) / cosB;
+            cachedMinRadius = (minCamY - ty) / cosB;
+            return cachedMinRadius;
         };
 
         // ---------- カスタムマウスハンドラ ----------
