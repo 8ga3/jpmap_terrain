@@ -442,6 +442,7 @@ export class DefaultScene implements CreateSceneClass {
             sx: number,
             sy: number
         ): { worldX: number; worldZ: number } | null => {
+            // scene.pick() は内部で DPR スケーリングを行うため CSS 座標をそのまま渡す
             const pick = scene.pick(sx, sy);
             if (pick?.hit && pick.pickedPoint) {
                 return {
