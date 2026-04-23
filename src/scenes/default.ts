@@ -349,6 +349,48 @@ export class DefaultScene implements CreateSceneClass {
         canvas.addEventListener("lostpointercapture", resetPointerState);
 
         // ホイール / ダブルクリック: ポインタ方向にズーム
+
+        /** カメラ→ターゲット方向のレイで地形メッシュとの交差距離を返す（ミス時は null） */
+        const queryViewRayDistance = (): number | null => {
+            const { alpha, beta, radius } = camera;
+            const { x: tx, y: ty, z: tz } = camera.target;
+            const sinB = Math.sin(beta);
+            const cosB = Math.cos(beta);
+            const camX = tx + radius * sinB * Math.sin(alpha);
+            const camY = ty + radius * cosB;
+            const camZ = tz + radius * sinB * Math.cos(alpha);
+
+            const origin = new Vector3(camX, camY, camZ);
+
+            // ターゲット直下の地形標高でレイ目標点を補正
+            const terrainY = tileManager.queryElevationAtWorld(tx, tz);
+            const aimY = terrainY !== null ? Math.max(ty, terrainY) : ty;
+            const aim = new Vector3(tx, aimY, tz);
+
+            const direction = aim.subtract(origin);
+            const length = direction.length();
+            if (length < 1e-6) return null;
+            direction.scaleInPlace(1 / length);
+
+            const ray = new Ray(origin, direction, length * 2);
+            const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
+            if (pick?.hit && pick.distance > 0) {
+                return pick.distance;
+            }
+            return null;
+        };
+
+        /** レイキャスト距離の一定割合を1ステップとするホイールfactorを返す */
+        const WHEEL_STEP = 0.05;
+        const computeWheelFactor = (zoomIn: boolean): number => {
+            const rayDist = queryViewRayDistance();
+            const dist = rayDist ?? camera.radius;
+            const delta = dist * WHEEL_STEP;
+            return zoomIn
+                ? (camera.radius - delta) / camera.radius
+                : (camera.radius + delta) / camera.radius;
+        };
+
         const zoomTowardPoint = (
             worldX: number,
             worldZ: number,
@@ -413,14 +455,14 @@ export class DefaultScene implements CreateSceneClass {
                 const rect = canvas.getBoundingClientRect();
                 const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
                 if (hit && isPickNearTarget(hit)) {
-                    const factor = e.deltaY < 0 ? 0.95 : 1 / 0.95;
+                    const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
                     const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                     const zoomIn = e.deltaY < 0;
-                    const factor = zoomIn ? 0.95 : 1 / 0.95;
+                    const factor = computeWheelFactor(zoomIn);
                     const cameraHeight = camera.radius * Math.cos(camera.beta);
                     const useVertical = zoomIn
                         ? cameraHeight <= SKY_ZOOM_ALTITUDE_THRESHOLD
