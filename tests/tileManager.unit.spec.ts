@@ -146,6 +146,7 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
     stdTextureUrl: jest.fn(() => "https://example.com/tile.png"),
     photoTextureUrl: jest.fn(() => "https://example.com/photo.jpg"),
     textureUrl: jest.fn(() => "https://example.com/tile.png"),
+    fillInvalidPixels: jest.fn(),
 }));
 
 const { createTileManager, extractSubTileElevation, computeTextureUvParams } = await import("../src/terrain/tileManager");

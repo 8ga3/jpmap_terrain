@@ -22,7 +22,9 @@ import {
     loadElevationTile,
     textureUrl,
     MapType,
+    fillInvalidPixels,
 } from "./gsiTile";
+import { stitchTileEdges } from "./tileStitching";
 
 export interface TileManagerOptions {
     scene: Scene;
@@ -332,32 +334,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             mesh.position.x = wx;
             mesh.position.z = wz;
 
-            // 標高適用
-            const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
-            const idx = mesh.getIndices();
-            if (pos && idx) {
-                const typed =
-                    pos instanceof Float32Array
-                        ? pos
-                        : new Float32Array(pos);
-                applyElevation(
-                    typed,
-                    entry.elevation,
-                    currentAltitudeOffset,
-                    heightScale,
-                    subdivisions
-                );
-                mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
-                const normals = new Float32Array(typed.length);
-                VertexData.ComputeNormals(typed, idx, normals);
-                mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
-                mesh.refreshBoundingInfo();
-            }
+            // 標高適用（ステッチ＋NaN埋め）
+            applyStitchedElevation(mesh, entry.elevation, coord);
 
             // テクスチャ
             applyTexture(mesh, coord);
 
             activeTiles.set(key, { key, coord, mesh, tileSize });
+
+            // 隣接タイルのメッシュも再ステッチ
+            restitchNeighbors(coord);
+
             terrainUpdatedCallback?.();
         } catch (e) {
             if (rid !== requestId) return;
@@ -394,29 +381,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             mesh.position.x = wx;
             mesh.position.z = wz;
 
-            // キャッシュから標高データを取得し再適用
+            // キャッシュから標高データを取得し再適用（ステッチ＋NaN埋め）
             const entry = cache.get(key);
             if (entry) {
-                const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
-                const idx = mesh.getIndices();
-                if (pos && idx) {
-                    const typed =
-                        pos instanceof Float32Array
-                            ? pos
-                            : new Float32Array(pos);
-                    applyElevation(
-                        typed,
-                        entry.elevation,
-                        currentAltitudeOffset,
-                        heightScale,
-                        subdivisions
-                    );
-                    mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
-                    const normals = new Float32Array(typed.length);
-                    VertexData.ComputeNormals(typed, idx, normals);
-                    mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
-                    mesh.refreshBoundingInfo();
-                }
+                applyStitchedElevation(mesh, entry.elevation, coord);
             }
         }
         terrainUpdatedCallback?.();
@@ -493,6 +461,76 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
+    /** 同じzoomの隣接タイル標高をキャッシュから取得 */
+    const getNeighborElevations = (coord: TileCoord): {
+        top?: Float32Array; bottom?: Float32Array;
+        left?: Float32Array; right?: Float32Array;
+        topLeft?: Float32Array; topRight?: Float32Array;
+        bottomLeft?: Float32Array; bottomRight?: Float32Array;
+    } => {
+        const { zoom: z, x, y } = coord;
+        const get = (nx: number, ny: number): Float32Array | undefined =>
+            cache.get(toTileKey({ zoom: z, x: nx, y: ny }))?.elevation;
+        return {
+            top: get(x, y - 1),
+            bottom: get(x, y + 1),
+            left: get(x - 1, y),
+            right: get(x + 1, y),
+            topLeft: get(x - 1, y - 1),
+            topRight: get(x + 1, y - 1),
+            bottomLeft: get(x - 1, y + 1),
+            bottomRight: get(x + 1, y + 1),
+        };
+    };
+
+    /** タイルの標高データをステッチ＋NaN埋めしてメッシュに適用 */
+    const applyStitchedElevation = (
+        mesh: Mesh,
+        elevation: Float32Array,
+        coord: TileCoord,
+    ): void => {
+        const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
+        const idx = mesh.getIndices();
+        if (!pos || !idx) return;
+
+        const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
+
+        // 標高データのコピーを作成（キャッシュの元データを保持するため）
+        const stitched = new Float32Array(elevation);
+
+        // 隣接タイルと辺を縫い合わせ
+        const neighbors = getNeighborElevations(coord);
+        stitchTileEdges(stitched, neighbors, TILE_SIZE);
+
+        // NaN を埋める
+        fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
+
+        // メッシュに適用
+        applyElevation(typed, stitched, currentAltitudeOffset, heightScale, subdivisions);
+        mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
+        const normals = new Float32Array(typed.length);
+        VertexData.ComputeNormals(typed, idx, normals);
+        mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
+        mesh.refreshBoundingInfo();
+    };
+
+    /** 新タイルの隣接タイル（同zoom、アクティブなもの）の標高を再適用 */
+    const restitchNeighbors = (coord: TileCoord): void => {
+        const { zoom: z, x, y } = coord;
+        const deltas = [
+            [0, -1], [0, 1], [-1, 0], [1, 0],
+            [-1, -1], [1, -1], [-1, 1], [1, 1],
+        ];
+        for (const [ddx, ddy] of deltas) {
+            const neighborKey = toTileKey({ zoom: z, x: x + ddx, y: y + ddy });
+            const neighborTile = activeTiles.get(neighborKey);
+            if (!neighborTile) continue;
+            const entry = cache.get(neighborKey);
+            if (!entry) continue;
+            applyStitchedElevation(neighborTile.mesh, entry.elevation, neighborTile.coord);
+        }
+    };
+
     /** キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null） */
     const queryLocalElevation = (wx: number, wz: number): number | null => {
         if (!currentCenter) return null;
@@ -511,7 +549,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const fy = tileYFloat - tileYInt;
             const px = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fx * (TILE_SIZE - 1))));
             const py = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fy * (TILE_SIZE - 1))));
-            return (entry.elevation[py * TILE_SIZE + px] + currentAltitudeOffset) * heightScale;
+            const val = entry.elevation[py * TILE_SIZE + px];
+            if (Number.isNaN(val)) continue;
+            return (val + currentAltitudeOffset) * heightScale;
         }
         return null;
     };
