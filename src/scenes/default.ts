@@ -54,8 +54,9 @@ export class DefaultScene implements CreateSceneClass {
         camera.minZ = 1;
         camera.maxZ = CAMERA_FAR_CLIP;
 
-        // チルト制限（地面から20° = beta上限 7π/18）
-        camera.upperBetaLimit = Math.PI / 2 - Math.PI / 9;
+        // チルト制限（地面から15° = beta上限 5π/12）
+        camera.upperBetaLimit = Math.PI / 2 - Math.PI / 12;
+        // beta=0（真下視点）はArcRotateCameraのジンバルロック・数値不安定を招くため最小値を設定
         camera.lowerBetaLimit = 0.1;
 
         // デフォルト入力をすべて無効化（カスタムハンドラで制御）
