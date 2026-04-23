@@ -11,9 +11,13 @@ updates:
       # devDependenciesをまとめて1つのPRにする
       dev-dependencies:
         dependency-type: "development"
+        patterns:
+          - "*"
       # productionの依存はpatchとminorをグループ化
       production-minor-patch:
         dependency-type: "production"
         update-types:
           - "minor"
           - "patch"
+        patterns:
+          - "*"
