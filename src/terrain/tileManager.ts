@@ -539,6 +539,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             minZoom
         );
 
+        // カメラ地上投影点（ターゲット基準のワールド座標）。
+        // チルトで見える手前側タイルをカメラ直下タイルと同じ zoom に揃えるために使用。
+        const sinB = Math.sin(camera.beta);
+        const cameraGroundOffset = {
+            x: rawCameraDistance * sinB * Math.sin(camera.alpha),
+            z: rawCameraDistance * sinB * Math.cos(camera.alpha),
+        };
+
         return computeMultiLodTiles({
             baseCenter: currentCenter,
             tileSizeForZoom,
@@ -548,6 +556,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             minZoom,
             maxTiles,
             maxElevation,
+            cameraGroundOffset,
         });
     };
 

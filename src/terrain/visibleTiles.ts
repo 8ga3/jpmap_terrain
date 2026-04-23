@@ -120,6 +120,12 @@ export interface MultiLodTilesOptions {
     maxElevation?: number;
     /** baseZoom 格子の探索半径（省略時 14）。Far-field sweep 側の半径には影響しない。 */
     searchRadius?: number;
+    /**
+     * カメラの地上投影点（ターゲット基準のワールド座標）。
+     * 指定時は「ターゲットまたはカメラ地上投影点の近い方」の距離で zoom を決定する。
+     * チルトで見えてくる手前側タイルをカメラ直下と同じ zoom に揃える目的。
+     */
+    cameraGroundOffset?: { x: number; z: number };
 }
 
 const DEFAULT_SEARCH_RADIUS_LOD = 14;
@@ -164,6 +170,7 @@ export const computeMultiLodTiles = (
         maxTiles = DEFAULT_MAX_TILES,
         maxElevation = DEFAULT_MAX_ELEVATION,
         searchRadius = DEFAULT_SEARCH_RADIUS_LOD,
+        cameraGroundOffset,
     } = opts;
 
     if (baseZoom < minZoom) return [];
@@ -189,9 +196,13 @@ export const computeMultiLodTiles = (
     const gridHalf = gridTileSize / 2;
     const gridCenter = convertTileZoom(baseCenter, baseZoom);
 
-    // 探索半径: 画面をカバーできる最小半径と設定値の大きい方
-    const minRadiusForCoverage = Math.ceil(cameraDistance * 1.5 / gridTileSize);
-    const effectiveRadius = Math.max(searchRadius, Math.min(minRadiusForCoverage, 30));
+    // 探索半径: 画面をカバーできる最小半径と設定値の大きい方。
+    // cameraGroundOffset 指定時は、ターゲット〜カメラ地上投影点の距離も含めて広げる。
+    const offsetReach = cameraGroundOffset
+        ? Math.sqrt(cameraGroundOffset.x ** 2 + cameraGroundOffset.z ** 2)
+        : 0;
+    const minRadiusForCoverage = Math.ceil((cameraDistance * 1.5 + offsetReach) / gridTileSize);
+    const effectiveRadius = Math.max(searchRadius, Math.min(minRadiusForCoverage, 60));
 
     // baseCenter→gridCenter 変換で生じるサブタイルオフセット
     const { fracX, fracY } = computeSubTileOffset(baseCenter, baseZoom);
@@ -217,7 +228,31 @@ export const computeMultiLodTiles = (
                 )
             ) continue;
 
-            const dist = Math.sqrt(wx ** 2 + wz ** 2);
+            const distFromTarget = Math.sqrt(wx ** 2 + wz ** 2);
+            let dist = distFromTarget;
+            if (cameraGroundOffset) {
+                // 線分 [target(0,0) → cameraGround] からの距離。
+                // チルト時にカメラとターゲットの間に並ぶ手前側タイル群を
+                // 全て「近い」と判定し、カメラ直下と同じ zoom に揃える。
+                const cx = cameraGroundOffset.x;
+                const cz = cameraGroundOffset.z;
+                const segLenSq = cx * cx + cz * cz;
+                if (segLenSq > 1e-6) {
+                    // t = clamp((P - target) · (cameraGround - target) / |segment|², 0, 1)
+                    const tParam = Math.max(0, Math.min(1, (wx * cx + wz * cz) / segLenSq));
+                    const closestX = tParam * cx;
+                    const closestZ = tParam * cz;
+                    const distFromSegment = Math.sqrt(
+                        (wx - closestX) ** 2 + (wz - closestZ) ** 2,
+                    );
+                    dist = Math.min(dist, distFromSegment);
+                } else {
+                    dist = Math.min(
+                        dist,
+                        Math.sqrt((wx - cx) ** 2 + (wz - cz) ** 2),
+                    );
+                }
+            }
             const targetZoom = zoomForDist(dist);
             gridCells.push({ dx, dy, targetZoom, dist });
         }

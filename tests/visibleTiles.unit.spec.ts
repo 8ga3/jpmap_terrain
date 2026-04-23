@@ -666,4 +666,137 @@ describe("computeMultiLodTiles", () => {
             expect(lowZoomTiles.length).toBeGreaterThan(0);
         });
     });
+
+    it("cameraGroundOffset 指定時、カメラ地上投影点付近の手前側タイルは高zoomになる", () => {
+        // チルトでカメラが X=-600 地点の上空にある状況を想定。
+        // ターゲット(0,0)からは 600 離れているが、カメラ地上投影点の近くになる。
+        const withOffset = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 100,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 1000,
+            searchRadius: 10,
+            cameraGroundOffset: { x: -600, z: 0 },
+        });
+
+        const withoutOffset = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 100,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 1000,
+            searchRadius: 10,
+        });
+
+        const covers = (entries: typeof withOffset, dx: number, dy: number): number | null => {
+            const targetX = baseCenter.x + dx;
+            const targetY = baseCenter.y + dy;
+            for (const e of entries) {
+                const diff = 14 - e.coord.zoom;
+                const minX = e.coord.x << diff;
+                const minY = e.coord.y << diff;
+                const maxX = minX + (1 << diff);
+                const maxY = minY + (1 << diff);
+                if (targetX >= minX && targetX < maxX && targetY >= minY && targetY < maxY) {
+                    return e.coord.zoom;
+                }
+            }
+            return null;
+        };
+
+        const zoomWith = covers(withOffset, -6, 0);
+        const zoomWithout = covers(withoutOffset, -6, 0);
+
+        expect(zoomWith).toBe(14);
+        expect(zoomWithout).not.toBeNull();
+        expect(zoomWith!).toBeGreaterThan(zoomWithout!);
+    });
+
+    it("cameraGroundOffset: 近傍平準化範囲外の手前側タイルも高zoomになる", () => {
+        const withOffset = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 1000,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 2000,
+            searchRadius: 40,
+            cameraGroundOffset: { x: -3500, z: 0 },
+        });
+
+        const withoutOffset = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 1000,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 2000,
+            searchRadius: 40,
+        });
+
+        const covers = (entries: typeof withOffset, dx: number, dy: number): number | null => {
+            const targetX = baseCenter.x + dx;
+            const targetY = baseCenter.y + dy;
+            for (const e of entries) {
+                const diff = 14 - e.coord.zoom;
+                const minX = e.coord.x << diff;
+                const minY = e.coord.y << diff;
+                const maxX = minX + (1 << diff);
+                const maxY = minY + (1 << diff);
+                if (targetX >= minX && targetX < maxX && targetY >= minY && targetY < maxY) {
+                    return e.coord.zoom;
+                }
+            }
+            return null;
+        };
+
+        const zoomWith = covers(withOffset, -35, 0);
+        const zoomWithout = covers(withoutOffset, -35, 0);
+
+        expect(zoomWith).not.toBeNull();
+        expect(zoomWithout).not.toBeNull();
+        expect(zoomWith!).toBeGreaterThan(zoomWithout!);
+    });
+
+    it("cameraGroundOffset: ターゲットとカメラ地上投影点の中間タイルも高zoomになる", () => {
+        const withOffset = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 500,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 2000,
+            searchRadius: 50,
+            cameraGroundOffset: { x: -4000, z: 0 },
+        });
+
+        const covers = (entries: typeof withOffset, dx: number, dy: number): number | null => {
+            const targetX = baseCenter.x + dx;
+            const targetY = baseCenter.y + dy;
+            for (const e of entries) {
+                const diff = 14 - e.coord.zoom;
+                const minX = e.coord.x << diff;
+                const minY = e.coord.y << diff;
+                const maxX = minX + (1 << diff);
+                const maxY = minY + (1 << diff);
+                if (targetX >= minX && targetX < maxX && targetY >= minY && targetY < maxY) {
+                    return e.coord.zoom;
+                }
+            }
+            return null;
+        };
+
+        for (const dx of [-10, -20, -30, -40]) {
+            const z = covers(withOffset, dx, 0);
+            expect(z).toBe(14);
+        }
+    });
 });
