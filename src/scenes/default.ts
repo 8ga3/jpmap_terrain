@@ -276,6 +276,7 @@ export class DefaultScene implements CreateSceneClass {
         let activePointerId = -1;
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
+        let isOrbiting = false;
 
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -294,13 +295,44 @@ export class DefaultScene implements CreateSceneClass {
             dragPlaneY =
                 pick?.hit && pick.pickedPoint ? pick.pickedPoint.y : 0;
             dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+            isOrbiting = false;
         });
 
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
             if (!pointerDown || e.pointerId !== activePointerId) return;
 
             if (e.ctrlKey || e.metaKey) {
-                // Ctrl/Cmd + ドラッグ: 水平=パン(alpha)、垂直=チルト(beta)
+                // Ctrl/Cmd + ドラッグ: 光軸上メッシュ交差点を中心に回転
+                if (!isOrbiting) {
+                    // 初回: 光軸レイキャストで回転中心を決定
+                    const { alpha: a, beta: b, radius: r } = camera;
+                    const sinB = Math.sin(b);
+                    const cosB = Math.cos(b);
+                    const camX = camera.target.x + r * sinB * Math.cos(a);
+                    const camY = camera.target.y + r * cosB;
+                    const camZ = camera.target.z + r * sinB * Math.sin(a);
+                    const origin = new Vector3(camX, camY, camZ);
+                    const dir = new Vector3(
+                        camera.target.x - camX,
+                        camera.target.y - camY,
+                        camera.target.z - camZ,
+                    );
+                    const len = dir.length();
+                    if (len > 1e-6) {
+                        dir.scaleInPlace(1 / len);
+                        const ray = new Ray(origin, dir, CAMERA_FAR_CLIP);
+                        const hit = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
+                        if (hit?.hit && hit.pickedPoint) {
+                            const pivot = hit.pickedPoint;
+                            const dx2 = camX - pivot.x;
+                            const dy2 = camY - pivot.y;
+                            const dz2 = camZ - pivot.z;
+                            camera.target.copyFrom(pivot);
+                            camera.radius = Math.sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
+                            isOrbiting = true;
+                        }
+                    }
+                }
                 const dx = e.clientX - lastPointerX;
                 const dy = e.clientY - lastPointerY;
                 lastPointerX = e.clientX;
@@ -333,12 +365,34 @@ export class DefaultScene implements CreateSceneClass {
                     }
                 }
             } else if (dragAnchor) {
+                // 回転モードから通常パンに切り替わった場合、target を復元
+                if (isOrbiting) {
+                    const ty = camera.target.y;
+                    if (Math.abs(ty) > 1e-6) {
+                        const cosB = Math.cos(camera.beta);
+                        if (Math.abs(cosB) > 1e-6) {
+                            const tanB = Math.sin(camera.beta) / cosB;
+                            camera.target.x -= ty * tanB * Math.cos(camera.alpha);
+                            camera.target.z -= ty * tanB * Math.sin(camera.alpha);
+                            camera.radius += ty / cosB;
+                        }
+                        camera.target.y = 0;
+                    }
+                    isOrbiting = false;
+                    // ジャンプ防止: dragAnchor を現在位置にリセット
+                    const rect2 = canvas.getBoundingClientRect();
+                    dragAnchor = intersectPlane(
+                        e.clientX - rect2.left,
+                        e.clientY - rect2.top,
+                        dragPlaneY,
+                    );
+                }
                 // 通常ドラッグ: 逐次差分でパン（毎フレームanchor更新）
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
                 const current = intersectPlane(sx, sy, dragPlaneY);
-                if (current) {
+                if (current && dragAnchor) {
                     camera.target.x += dragAnchor.x - current.x;
                     camera.target.z += dragAnchor.z - current.z;
                     dragAnchor = intersectPlane(sx, sy, dragPlaneY);
@@ -352,6 +406,21 @@ export class DefaultScene implements CreateSceneClass {
             if (e.pointerId !== activePointerId) return;
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
+            // 回転モード終了: target.y を 0 に復元しカメラ位置を保持
+            if (isOrbiting) {
+                const ty = camera.target.y;
+                if (Math.abs(ty) > 1e-6) {
+                    const cosB = Math.cos(camera.beta);
+                    if (Math.abs(cosB) > 1e-6) {
+                        const tanB = Math.sin(camera.beta) / cosB;
+                        camera.target.x -= ty * tanB * Math.cos(camera.alpha);
+                        camera.target.z -= ty * tanB * Math.sin(camera.alpha);
+                        camera.radius += ty / cosB;
+                    }
+                    camera.target.y = 0;
+                }
+                isOrbiting = false;
+            }
             commitPanOffset();
         });
 
@@ -359,6 +428,20 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
+            if (isOrbiting) {
+                const ty = camera.target.y;
+                if (Math.abs(ty) > 1e-6) {
+                    const cosB = Math.cos(camera.beta);
+                    if (Math.abs(cosB) > 1e-6) {
+                        const tanB = Math.sin(camera.beta) / cosB;
+                        camera.target.x -= ty * tanB * Math.cos(camera.alpha);
+                        camera.target.z -= ty * tanB * Math.sin(camera.alpha);
+                        camera.radius += ty / cosB;
+                    }
+                    camera.target.y = 0;
+                }
+                isOrbiting = false;
+            }
             commitPanOffset();
         };
 
