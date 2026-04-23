@@ -1,7 +1,7 @@
 /**
  * チルト操作による地形コリジョン解決結果
  * - "none": コリジョンなし（変更不要）
- * - "zoomOut": 自動ズームアウトで解決可能（radius を返す）
+ * - "zoomOut": ズームアウトを試行（radius を needed まで増やして再検証）
  * - "revert": ズームアウト量が過大（チルト中止）
  */
 export type TiltCollisionResult =
