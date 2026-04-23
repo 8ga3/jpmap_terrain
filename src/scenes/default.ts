@@ -10,6 +10,7 @@ import { createControlPanel, snapScale, formatScale, showToast } from "../terrai
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
 import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
+import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -311,9 +312,24 @@ export class DefaultScene implements CreateSceneClass {
                     camera.lowerBetaLimit ?? 0,
                     camera.upperBetaLimit ?? Math.PI
                 );
-                // チルト変更で地形に衝突するなら beta を復元
-                if (camera.radius < terrainMinRadius()) {
+                // チルト変更で地形に衝突するなら自動ズームアウトで回避
+                const prevRadius = camera.radius;
+                const tiltResult = resolveTiltCollision(
+                    camera.radius,
+                    terrainMinRadius(),
+                    camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
+                    TILT_MAX_RADIUS_INCREASE_RATIO,
+                );
+                if (tiltResult.action === "revert") {
                     camera.beta = prevBeta;
+                } else if (tiltResult.action === "zoomOut") {
+                    camera.radius = tiltResult.radius;
+                    // radius 変更でカメラ位置が移動するため再検証
+                    // 新位置でまだ衝突するなら beta・radius 両方を復元
+                    if (camera.radius < terrainMinRadius()) {
+                        camera.beta = prevBeta;
+                        camera.radius = prevRadius;
+                    }
                 }
             } else if (dragAnchor) {
                 // 通常ドラッグ: 逐次差分でパン（毎フレームanchor更新）
