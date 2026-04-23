@@ -549,7 +549,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
-    /** キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null） */
+    /**
+     * キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null）。
+     * メッシュ適用時（fillInvalidPixels）と同様に、NaN ピクセルは近傍8方向から補間する。
+     * 近傍にも有効値がなければ低 zoom へフォールバックし、全 zoom で見つからなければ null。
+     */
     const queryLocalElevation = (wx: number, wz: number): number | null => {
         if (!currentCenter) return null;
         for (let z = maxElevationZoom; z >= minElevationZoom; z--) {
@@ -568,8 +572,30 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const px = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fx * (TILE_SIZE - 1))));
             const py = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fy * (TILE_SIZE - 1))));
             const val = entry.elevation[py * TILE_SIZE + px];
-            if (Number.isNaN(val)) continue;
-            return (val + currentAltitudeOffset) * heightScale;
+            if (!Number.isNaN(val)) {
+                return (val + currentAltitudeOffset) * heightScale;
+            }
+            // NaN の場合は近傍8ピクセルから補間（fillInvalidPixels と同等の方針）。
+            // 近傍にも有効値がなければ低 zoom へフォールバックする。
+            let sum = 0;
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = px + dx;
+                    const ny = py + dy;
+                    if (nx < 0 || nx >= TILE_SIZE || ny < 0 || ny >= TILE_SIZE) continue;
+                    const nv = entry.elevation[ny * TILE_SIZE + nx];
+                    if (!Number.isNaN(nv)) {
+                        sum += nv;
+                        count++;
+                    }
+                }
+            }
+            if (count > 0) {
+                return (sum / count + currentAltitudeOffset) * heightScale;
+            }
+            // 近傍全て NaN → 低 zoom へフォールバック
         }
         return null;
     };
