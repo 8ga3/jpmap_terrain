@@ -224,6 +224,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         typeof camera.onViewMatrixChangedObservable.add
     > | null = null;
 
+    /** 再ステッチ待ちの隣接タイルキーを蓄積し、同一フレームで一括処理する */
+    const pendingRestitch = new Set<TileKey>();
+    let restitchRafId: number | null = null;
+
     // 現在の中心情報
     let currentCenter: TileCoord | null = null;
     let currentAltitudeOffset = 0;
@@ -514,7 +518,21 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         mesh.refreshBoundingInfo();
     };
 
-    /** 新タイルの隣接タイル（同zoom、アクティブなもの）の標高を再適用 */
+    /** 蓄積された再ステッチ対象タイルを一括処理する */
+    const flushRestitch = (): void => {
+        restitchRafId = null;
+        for (const key of pendingRestitch) {
+            const neighborTile = activeTiles.get(key);
+            if (!neighborTile) continue;
+            const entry = cache.get(key);
+            if (!entry) continue;
+            applyStitchedElevation(neighborTile.mesh, entry.elevation, neighborTile.coord);
+        }
+        pendingRestitch.clear();
+        terrainUpdatedCallback?.();
+    };
+
+    /** 新タイルの隣接タイル（同zoom、アクティブなもの）を再ステッチキューに追加 */
     const restitchNeighbors = (coord: TileCoord): void => {
         const { zoom: z, x, y } = coord;
         const deltas = [
@@ -523,11 +541,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         ];
         for (const [ddx, ddy] of deltas) {
             const neighborKey = toTileKey({ zoom: z, x: x + ddx, y: y + ddy });
-            const neighborTile = activeTiles.get(neighborKey);
-            if (!neighborTile) continue;
-            const entry = cache.get(neighborKey);
-            if (!entry) continue;
-            applyStitchedElevation(neighborTile.mesh, entry.elevation, neighborTile.coord);
+            if (!activeTiles.has(neighborKey)) continue;
+            pendingRestitch.add(neighborKey);
+        }
+        if (restitchRafId === null) {
+            restitchRafId = requestAnimationFrame(flushRestitch);
         }
     };
 
@@ -716,6 +734,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         dispose(): void {
             this.detachCamera();
+            if (restitchRafId !== null) {
+                cancelAnimationFrame(restitchRafId);
+                restitchRafId = null;
+            }
+            pendingRestitch.clear();
             for (const [, tile] of activeTiles) {
                 meshPool.release(tile.mesh);
             }
