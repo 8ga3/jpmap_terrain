@@ -564,7 +564,7 @@ export class DefaultScene implements CreateSceneClass {
         ui.compass.style.cursor = "pointer";
         const resetCompassView = (): void => {
             const targetAlpha = -Math.PI / 2; // 北向き
-            const targetBeta = 0.1;           // ほぼ真下
+            const targetBeta = camera.lowerBetaLimit ?? 0.1; // ほぼ真下
             const duration = 400;             // ms
             const startAlpha = camera.alpha;
             const startBeta = camera.beta;
