@@ -122,7 +122,7 @@ export interface MultiLodTilesOptions {
     searchRadius?: number;
     /**
      * カメラの地上投影点（ターゲット基準のワールド座標）。
-     * 指定時は「ターゲットまたはカメラ地上投影点の近い方」の距離で zoom を決定する。
+     * 指定時は「線分 [target → cameraGround] への最短距離」で zoom を決定する。
      * チルトで見えてくる手前側タイルをカメラ直下と同じ zoom に揃える目的。
      */
     cameraGroundOffset?: { x: number; z: number };
