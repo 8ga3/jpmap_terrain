@@ -61,7 +61,7 @@ export const decodeGsiElevation = (
 };
 
 /** 無効値(NaN)を周囲の有効ピクセルから補間する */
-const fillInvalidPixels = (
+export const fillInvalidPixels = (
     elev: Float32Array,
     width: number,
     height: number
@@ -151,7 +151,6 @@ export const loadElevationTile = async (
                 lastErr = new Error(`All NaN tile: ${url}`);
                 continue;
             }
-            fillInvalidPixels(elev, img.width, img.height);
             return elev;
         } catch (e) {
             lastErr = e;
