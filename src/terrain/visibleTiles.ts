@@ -458,9 +458,9 @@ export const computeMultiLodTiles = (
         const farCenter = convertTileZoom(baseCenter, z);
         const { fracX: farFracX, fracY: farFracY } = computeSubTileOffset(baseCenter, z);
 
-        // zoom z の距離上限: cameraDistance × 1.3 × 2^(baseZoom − z)
+        // zoom z の距離上限: zoomRefDistance × 1.3 × 2^(baseZoom − z)
         const zoomSteps = baseZoom - z;
-        const maxDistForZoom = cameraDistance * 1.3 * Math.pow(2, zoomSteps);
+        const maxDistForZoom = zoomRefDistance * 1.3 * Math.pow(2, zoomSteps);
         const farSearchRadius = Math.min(
             Math.ceil(maxDistForZoom / farTileSize) + 1,
             30
