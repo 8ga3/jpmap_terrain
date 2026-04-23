@@ -17,7 +17,7 @@ export interface VisibleTilesOptions {
     maxElevation?: number;
 }
 
-const DEFAULT_MAX_TILES = 50;
+const DEFAULT_MAX_TILES = 120;
 /** coveredBaseZoomCells / findUncoveredChildren で許容するzoom差の上限 */
 const MAX_COVERAGE_DIFF = 7;
 const DEFAULT_SEARCH_RADIUS = 4;
