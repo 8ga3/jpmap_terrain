@@ -543,8 +543,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // チルトで見える手前側タイルをカメラ直下タイルと同じ zoom に揃えるために使用。
         const sinB = Math.sin(camera.beta);
         const cameraGroundOffset = {
-            x: rawCameraDistance * sinB * Math.sin(camera.alpha),
-            z: rawCameraDistance * sinB * Math.cos(camera.alpha),
+            x: rawCameraDistance * sinB * Math.cos(camera.alpha),
+            z: rawCameraDistance * sinB * Math.sin(camera.alpha),
         };
 
         return computeMultiLodTiles({
