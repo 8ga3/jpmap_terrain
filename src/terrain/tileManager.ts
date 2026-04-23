@@ -71,6 +71,8 @@ const DEFAULT_CACHE_CAPACITY = 96;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
+/** 有効カメラ距離の下限値（生の radius に対する比率） */
+const EFFECTIVE_RADIUS_MIN_RATIO = 0.05;
 
 /** 頂点Y座標を標高値で更新 */
 const applyElevation = (
@@ -491,6 +493,29 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
+    /** キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null） */
+    const queryLocalElevation = (wx: number, wz: number): number | null => {
+        if (!currentCenter) return null;
+        for (let z = maxElevationZoom; z >= minElevationZoom; z--) {
+            const ts = tileSizeForZoom(z);
+            const center = convertTileZoom(currentCenter, z);
+            const { fracX, fracY } = computeSubTileOffset(currentCenter, z);
+            const tileXFloat = center.x + fracX + wx / ts;
+            const tileYFloat = center.y + fracY - wz / ts;
+            const tileXInt = Math.floor(tileXFloat);
+            const tileYInt = Math.floor(tileYFloat);
+            const key = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
+            const entry = cache.get(key);
+            if (!entry) continue;
+            const fx = tileXFloat - tileXInt;
+            const fy = tileYFloat - tileYInt;
+            const px = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fx * (TILE_SIZE - 1))));
+            const py = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fy * (TILE_SIZE - 1))));
+            return (entry.elevation[py * TILE_SIZE + px] + currentAltitudeOffset) * heightScale;
+        }
+        return null;
+    };
+
     /** 可視タイルを算出する共通ヘルパー */
     const computeVisible = (
         frustumPlanes: FrustumPlane[],
@@ -498,11 +523,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     ): LodTileEntry[] => {
         if (!currentCenter) return [];
 
-        // カメラ→ターゲット距離（チルトやパンに依存せず安定）
-        const cameraDistance = camera.radius;
+        const rawCameraDistance = camera.radius;
+
+        // ターゲット直下の地形標高を差し引き、有効カメラ距離を算出する。
+        // チルト角に依存しない式を用いることで、チルト操作で baseZoom が変動することを防ぐ。
+        const terrainY = queryLocalElevation(camera.target.x, camera.target.z);
+        const effectiveRadius = terrainY !== null
+            ? Math.max(rawCameraDistance * EFFECTIVE_RADIUS_MIN_RATIO, rawCameraDistance - terrainY)
+            : rawCameraDistance;
 
         const baseZoom = computeBaseZoom(
-            cameraDistance,
+            effectiveRadius,
             tileSizeForZoom,
             zoom,
             minZoom
@@ -512,7 +543,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             baseCenter: currentCenter,
             tileSizeForZoom,
             frustumPlanes,
-            cameraDistance,
+            cameraDistance: effectiveRadius,
             baseZoom,
             minZoom,
             maxTiles,
@@ -657,39 +688,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         },
 
         queryElevationAtWorld(wx: number, wz: number): number | null {
-            if (!currentCenter) return null;
-
-            for (let z = maxElevationZoom; z >= minElevationZoom; z--) {
-                const tileSize = tileSizeForZoom(z);
-                const center = convertTileZoom(currentCenter, z);
-                const { fracX, fracY } = computeSubTileOffset(currentCenter, z);
-
-                const tileXFloat = center.x + fracX + wx / tileSize;
-                const tileYFloat = center.y + fracY - wz / tileSize;
-
-                const tileXInt = Math.floor(tileXFloat);
-                const tileYInt = Math.floor(tileYFloat);
-
-                const key: TileKey = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
-                const entry = cache.get(key);
-                if (!entry) continue;
-
-                const fracTileX = tileXFloat - tileXInt;
-                const fracTileY = tileYFloat - tileYInt;
-                const px = Math.min(
-                    TILE_SIZE - 1,
-                    Math.max(0, Math.round(fracTileX * (TILE_SIZE - 1)))
-                );
-                const py = Math.min(
-                    TILE_SIZE - 1,
-                    Math.max(0, Math.round(fracTileY * (TILE_SIZE - 1)))
-                );
-
-                const rawElev = entry.elevation[py * TILE_SIZE + px];
-                return (rawElev + currentAltitudeOffset) * heightScale;
-            }
-
-            return null;
+            return queryLocalElevation(wx, wz);
         },
 
         set onTerrainUpdated(cb: (() => void) | null) {
