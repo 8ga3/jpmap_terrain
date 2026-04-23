@@ -66,8 +66,8 @@ interface ActiveTile {
 }
 
 const DEFAULT_MAX_CONCURRENT = 4;
-const DEFAULT_MAX_TILES = 60;
-const DEFAULT_CACHE_CAPACITY = 96;
+const DEFAULT_MAX_TILES = 120;
+const DEFAULT_CACHE_CAPACITY = 192;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
