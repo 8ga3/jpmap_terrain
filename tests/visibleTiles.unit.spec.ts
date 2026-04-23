@@ -799,4 +799,38 @@ describe("computeMultiLodTiles", () => {
             expect(z).toBe(14);
         }
     });
+
+    it("zoomReferenceDistance 指定時、距離閾値が基準距離側で算出される", () => {
+        // cameraDistance=25（標高差し引き後の極小値）
+        // zoomReferenceDistance=500（生のカメラ距離）
+        // 基準=25 なら threshold=32.5 で大半のタイルが最低zoomへ落ちる
+        // 基準=500 なら threshold=650 で近傍タイルは baseZoom を維持する
+        const withRef = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 25,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 500,
+            searchRadius: 6,
+            zoomReferenceDistance: 500,
+        });
+        const withoutRef = computeMultiLodTiles({
+            baseCenter,
+            tileSizeForZoom,
+            frustumPlanes: allVisiblePlanes,
+            cameraDistance: 25,
+            baseZoom: 14,
+            minZoom: 12,
+            maxTiles: 500,
+            searchRadius: 6,
+        });
+
+        const baseZoomCount = (entries: typeof withRef) =>
+            entries.filter((e) => e.coord.zoom === 14).length;
+
+        // zoomReferenceDistance 指定時は baseZoom(14) タイルが大幅に増える
+        expect(baseZoomCount(withRef)).toBeGreaterThan(baseZoomCount(withoutRef) * 2);
+    });
 });

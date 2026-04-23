@@ -126,6 +126,13 @@ export interface MultiLodTilesOptions {
      * チルトで見えてくる手前側タイルをカメラ直下と同じ zoom に揃える目的。
      */
     cameraGroundOffset?: { x: number; z: number };
+    /**
+     * zoom 判定（距離閾値・近傍平準化範囲）の基準距離。
+     * 省略時は cameraDistance と同じ。
+     * 標高考慮で cameraDistance を小さく補正した場合でも、
+     * 距離閾値は生のカメラ距離を基準にしたい場合に指定する。
+     */
+    zoomReferenceDistance?: number;
 }
 
 const DEFAULT_SEARCH_RADIUS_LOD = 14;
@@ -171,19 +178,25 @@ export const computeMultiLodTiles = (
         maxElevation = DEFAULT_MAX_ELEVATION,
         searchRadius = DEFAULT_SEARCH_RADIUS_LOD,
         cameraGroundOffset,
+        zoomReferenceDistance,
     } = opts;
 
     if (baseZoom < minZoom) return [];
 
     const cameraDistance = Math.max(1, rawCameraDistance);
+    // 距離閾値判定の基準。未指定時は cameraDistance と同じ（後方互換）。
+    const zoomRefDistance = Math.max(
+        1,
+        zoomReferenceDistance !== undefined ? zoomReferenceDistance : cameraDistance,
+    );
 
     /**
      * ターゲットからの水平距離でzoomレベルを決定。
-     * cameraDistance×1.3以遠で段階的にzoomを下げる。
+     * zoomRefDistance×1.3以遠で段階的にzoomを下げる。
      */
     const zoomForDist = (dist: number): number => {
         let z = baseZoom;
-        let threshold = cameraDistance * 1.3;
+        let threshold = zoomRefDistance * 1.3;
         while (z > minZoom && dist >= threshold) {
             z--;
             threshold *= 2;
@@ -201,7 +214,7 @@ export const computeMultiLodTiles = (
     const offsetReach = cameraGroundOffset
         ? Math.sqrt(cameraGroundOffset.x ** 2 + cameraGroundOffset.z ** 2)
         : 0;
-    const minRadiusForCoverage = Math.ceil((cameraDistance * 1.5 + offsetReach) / gridTileSize);
+    const minRadiusForCoverage = Math.ceil((zoomRefDistance * 1.5 + offsetReach) / gridTileSize);
     const effectiveRadius = Math.max(searchRadius, Math.min(minRadiusForCoverage, 60));
 
     // baseCenter→gridCenter 変換で生じるサブタイルオフセット
@@ -259,9 +272,9 @@ export const computeMultiLodTiles = (
     }
 
     // Step 1.5: 近傍タイルのzoom平準化
-    // 近傍セル（cameraDistance×2.6以内）のzoomを最大値に揃える。
+    // 近傍セル（zoomRefDistance×2.6以内）のzoomを最大値に揃える。
     // 標高差のある地形でLOD段差が目立つのを防止する。
-    const nearbyThreshold = cameraDistance * 2.6;
+    const nearbyThreshold = zoomRefDistance * 2.6;
     let nearbyMaxZoom = minZoom;
     for (const cell of gridCells) {
         if (cell.dist < nearbyThreshold && cell.targetZoom > nearbyMaxZoom) {
