@@ -563,6 +563,16 @@ export class DefaultScene implements CreateSceneClass {
         // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
         const resetCompassView = (): void => {
+            // カメラ光軸と地形メッシュの交点を新しい中心座標にする
+            const cx = canvas.clientWidth / 2;
+            const cy = canvas.clientHeight / 2;
+            const centerHit = pickOrPlane(cx, cy);
+            if (centerHit) {
+                camera.target.x = centerHit.worldX;
+                camera.target.z = centerHit.worldZ;
+                commitPanOffset();
+            }
+
             const targetAlpha = -Math.PI / 2; // 北向き
             const targetBeta = camera.lowerBetaLimit ?? 0.1; // ほぼ真下
             const duration = 400;             // ms
