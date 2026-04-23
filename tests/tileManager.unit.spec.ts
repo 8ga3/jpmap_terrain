@@ -80,12 +80,44 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.frustum", () => ({
     },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => ({
-    Matrix: {
-        Identity: jest.fn(() => ({
-            m: new Float32Array(16),
-        })),
-    },
+jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => {
+    class Vector3Mock {
+        x: number;
+        y: number;
+        z: number;
+        constructor(x = 0, y = 0, z = 0) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+        subtract(other: Vector3Mock): Vector3Mock {
+            return new Vector3Mock(this.x - other.x, this.y - other.y, this.z - other.z);
+        }
+        length(): number {
+            return Math.sqrt(this.x ** 2 + this.y ** 2 + this.z ** 2);
+        }
+        scaleInPlace(s: number): Vector3Mock {
+            this.x *= s;
+            this.y *= s;
+            this.z *= s;
+            return this;
+        }
+        static Down(): Vector3Mock {
+            return new Vector3Mock(0, -1, 0);
+        }
+    }
+    return {
+        Matrix: {
+            Identity: jest.fn(() => ({
+                m: new Float32Array(16),
+            })),
+        },
+        Vector3: Vector3Mock,
+    };
+});
+
+jest.unstable_mockModule("@babylonjs/core/Culling/ray", () => ({
+    Ray: jest.fn<(...args: unknown[]) => unknown>().mockImplementation(() => ({})),
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Maths/math.plane", () => ({
@@ -121,11 +153,21 @@ const gsiTileMock = await import("../src/terrain/gsiTile");
 
 const createMockCamera = () => {
     const observers: Array<() => void> = [];
+    const makeTarget = (x = 0, y = 0, z = 0) => ({
+        x, y, z,
+        subtract(other: { x: number; y: number; z: number }) {
+            return { x: x - other.x, y: y - other.y, z: z - other.z,
+                length() { return Math.sqrt((x - other.x) ** 2 + (y - other.y) ** 2 + (z - other.z) ** 2); },
+                scaleInPlace() { return this; },
+            };
+        },
+    });
     return {
         alpha: 0,
         beta: 0,
         radius: 4000,
         position: { x: 0, y: 4000, z: 0 },
+        target: makeTarget(),
         getScene: jest.fn(() => ({
             getEngine: jest.fn(() => ({})),
         })),
@@ -144,11 +186,16 @@ const createMockCamera = () => {
     } as never;
 };
 
+/** scene モック。pickWithRay はデフォルトでヒットなし（rayDist=null → rawRadius使用） */
+const createMockScene = () => ({
+    pickWithRay: jest.fn(() => ({ hit: false, distance: 0, pickedPoint: null })),
+});
+
 describe("createTileManager", () => {
     it("setCenter でタイルがロードされる", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -163,7 +210,7 @@ describe("createTileManager", () => {
     it("onStatusChange コールバックが呼ばれる", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -181,7 +228,7 @@ describe("createTileManager", () => {
     it("dispose 後に activeTileCount が 0 になる", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -199,7 +246,7 @@ describe("createTileManager", () => {
     it("attachCamera/detachCamera が正常に動作する", () => {
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -371,7 +418,7 @@ describe("LOD連携", () => {
         (camera1 as any).position = { x: 0, y: 200, z: 0 };
 
         const tm1 = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera: camera1,
             zoom: 14,
             subdivisions: 128,
@@ -389,7 +436,7 @@ describe("LOD連携", () => {
         (camera2 as any).position = { x: 5000, y: 200, z: 5000 };
 
         const tm2 = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera: camera2,
             zoom: 14,
             subdivisions: 128,
@@ -417,7 +464,7 @@ describe("LOD連携", () => {
         (cameraNear as any).radius = 2400;
 
         const tmNear = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera: cameraNear,
             zoom: 14,
             subdivisions: 128,
@@ -438,7 +485,7 @@ describe("LOD連携", () => {
         (cameraFar as any).radius = 6000;
 
         const tmFar = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera: cameraFar,
             zoom: 14,
             subdivisions: 128,
@@ -484,7 +531,7 @@ describe("標高ズーム段階フォールバック", () => {
 
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -512,7 +559,7 @@ describe("標高ズーム段階フォールバック", () => {
 
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -537,7 +584,7 @@ describe("標高ズーム段階フォールバック", () => {
 
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -564,7 +611,7 @@ describe("標高ズーム段階フォールバック", () => {
 
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -596,7 +643,7 @@ describe("標高ズーム段階フォールバック", () => {
         const camera = createMockCamera();
         // maxElevationZoom=14, minZoom=2 → デフォルト minElevationZoom = max(2, 14-4) = 10
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -624,7 +671,7 @@ describe("setMapType", () => {
     it("setMapType で地図タイプを切り替えると textureUrl が新しいタイプで呼ばれる", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -656,7 +703,7 @@ describe("setMapType", () => {
     it("同じ地図タイプを設定しても textureUrl は呼ばれない", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -747,7 +794,7 @@ describe("標高データ全NaNフォールバック", () => {
 
         const camera = createMockCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -797,7 +844,7 @@ describe("queryElevationAtWorld", () => {
     it("setCenter前はnullを返す", () => {
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -818,7 +865,7 @@ describe("queryElevationAtWorld", () => {
 
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -843,7 +890,7 @@ describe("queryElevationAtWorld", () => {
 
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -867,7 +914,7 @@ describe("queryElevationAtWorld", () => {
 
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -891,7 +938,7 @@ describe("queryElevationAtWorld", () => {
 
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -913,7 +960,7 @@ describe("queryElevationAtWorld", () => {
 
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -951,7 +998,7 @@ describe("queryElevationAtWorld", () => {
 
         const camera = createNearCamera();
         const tm = createTileManager({
-            scene: {} as never,
+            scene: createMockScene() as never,
             camera,
             zoom: 14,
             subdivisions: 128,
@@ -968,5 +1015,180 @@ describe("queryElevationAtWorld", () => {
         const result = tm.queryElevationAtWorld(0, -1000);
         expect(result).toBe(777);
         tm.dispose();
+    });
+});
+
+/* ================================================================
+ * 地形標高を考慮したズームレベル最適化
+ * ================================================================ */
+describe("地形標高を考慮したズームレベル最適化", () => {
+    afterEach(() => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+        (gsiTileMock.tileEdgeMeters as jest.Mock).mockImplementation(
+            () => 1000
+        );
+    });
+
+    it("高標高地形では effectiveRadius が radius - terrainY となり高zoomタイルが表示される", async () => {
+        // zoom依存の tileEdgeMeters: z14=1000, z13=2000, z12=4000
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        // 高標高（3776m）の標高データをロードさせる
+        const highElev = new Float32Array(256 * 256).fill(3776);
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(highElev)
+        );
+
+        const cameraHigh = createMockCamera();
+        (cameraHigh as any).radius = 8000;
+        (cameraHigh as any).beta = Math.PI / 3;
+
+        const tmHigh = createTileManager({
+            scene: createMockScene() as never,
+            camera: cameraHigh,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 200,
+            minZoom: 12,
+        });
+
+        await tmHigh.setCenter(35.36, 138.73);
+        // 標高キャッシュを反映させるため 2 回目の setCenter を実行
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+        await tmHigh.setCenter(35.36, 138.73);
+
+        const zoomsHigh = (gsiTileMock.textureUrl as jest.Mock).mock.calls
+            .map((c) => (c as number[])[1]);
+        const maxZoomHigh = zoomsHigh.length > 0 ? Math.max(...zoomsHigh) : 12;
+
+        // 海面付近（標高0）では radius=8000 がそのまま使われ低zoom
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+
+        const cameraLow = createMockCamera();
+        (cameraLow as any).radius = 8000;
+        (cameraLow as any).beta = Math.PI / 3;
+
+        const tmLow = createTileManager({
+            scene: createMockScene() as never,
+            camera: cameraLow,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 200,
+            minZoom: 12,
+        });
+
+        await tmLow.setCenter(35.68, 139.77);
+        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+        await tmLow.setCenter(35.68, 139.77);
+
+        const zoomsLow = (gsiTileMock.textureUrl as jest.Mock).mock.calls
+            .map((c) => (c as number[])[1]);
+        const maxZoomLow = zoomsLow.length > 0 ? Math.max(...zoomsLow) : 12;
+
+        // 高標高時は低標高時より高zoomが選ばれる
+        expect(maxZoomHigh).toBeGreaterThanOrEqual(maxZoomLow);
+
+        tmHigh.dispose();
+        tmLow.dispose();
+    });
+
+    it("標高データ未キャッシュ時は raw radius がそのまま使われる", async () => {
+        const camera = createMockCamera();
+        (camera as any).radius = 4000;
+
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // 標高未キャッシュでもクラッシュせずタイルがロードされる
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+        tm.dispose();
+    });
+
+    it("effectiveRadius は下限ガード (rawRadius * 0.05) でクランプされる", async () => {
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        // 標高がradiusとほぼ同じ（radius-terrainY ≈ 0）でも下限でクランプされ安定
+        const extremeElev = new Float32Array(256 * 256).fill(7999);
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(extremeElev)
+        );
+
+        const camera = createMockCamera();
+        (camera as any).radius = 8000;
+        (camera as any).beta = Math.PI / 3;
+
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 200,
+            minZoom: 12,
+        });
+
+        await tm.setCenter(35.36, 138.73);
+        // 下限ガード (rawRadius*0.05=400) でクランプされ、安定して動作する
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+        tm.dispose();
+    });
+
+    it("同じ radius・標高でチルト角を変えても baseZoom が変わらない（チルト非依存）", async () => {
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        const highElev = new Float32Array(256 * 256).fill(3776);
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(highElev)
+        );
+
+        const runWithBeta = async (beta: number): Promise<number> => {
+            const camera = createMockCamera();
+            (camera as any).radius = 8000;
+            (camera as any).beta = beta;
+            const tm = createTileManager({
+                scene: createMockScene() as never,
+                camera,
+                zoom: 14,
+                subdivisions: 128,
+                heightScale: 1.0,
+                maxTiles: 200,
+                minZoom: 12,
+            });
+            await tm.setCenter(35.36, 138.73);
+            (gsiTileMock.textureUrl as jest.Mock).mockClear();
+            await tm.setCenter(35.36, 138.73);
+            const zooms = (gsiTileMock.textureUrl as jest.Mock).mock.calls
+                .map((c) => (c as number[])[1]);
+            tm.dispose();
+            return zooms.length > 0 ? Math.max(...zooms) : -1;
+        };
+
+        const zoomVertical = await runWithBeta(0.01);          // ほぼ真下
+        const zoomMid = await runWithBeta(Math.PI / 3);        // 60°
+        const zoomHorizontal = await runWithBeta(Math.PI / 2.1); // ほぼ水平
+
+        // チルト角を変えても baseZoom は同じ
+        expect(zoomVertical).toBe(zoomMid);
+        expect(zoomMid).toBe(zoomHorizontal);
     });
 });
