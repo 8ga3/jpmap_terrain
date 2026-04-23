@@ -614,4 +614,56 @@ describe("computeMultiLodTiles", () => {
             }
         });
     });
+
+    describe("近傍LOD平準化 (Step 1.5)", () => {
+        it("cameraDistance*2.6 以内の近傍タイル群は同一zoomに平準化される", () => {
+            // cameraDistance=200 → nearbyThreshold=520
+            // searchRadius=6, tileSize(14)=100 → dx=6*100=600, 境界近辺に差が出る構成
+            // Step 1.5により、dist<520 のタイルは最高zoom(14)に揃えられる
+            const result = computeMultiLodTiles({
+                baseCenter,
+                tileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 200,
+                baseZoom: 14,
+                minZoom: 12,
+                maxTiles: 500,
+                searchRadius: 6,
+            });
+
+            const nearbyThreshold = 200 * 2.6;
+            // dist < nearbyThreshold のタイルを抽出し、すべて同一zoomであることを確認
+            const nearbyEntries = result.filter((e) => {
+                const diff = 14 - e.coord.zoom;
+                const baseX = e.coord.x << diff;
+                const baseY = e.coord.y << diff;
+                const dx = (baseX - baseCenter.x) * 100;
+                const dy = (baseY - baseCenter.y) * 100;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                return dist < nearbyThreshold;
+            });
+
+            expect(nearbyEntries.length).toBeGreaterThan(0);
+            const zooms = new Set(nearbyEntries.map((e) => e.coord.zoom));
+            expect(zooms.size).toBe(1);
+        });
+
+        it("遠方タイルは近傍平準化の影響を受けず低zoomのまま", () => {
+            // nearbyThreshold を超える距離のタイルは元の低zoomを保持
+            const result = computeMultiLodTiles({
+                baseCenter,
+                tileSizeForZoom,
+                frustumPlanes: allVisiblePlanes,
+                cameraDistance: 200,
+                baseZoom: 14,
+                minZoom: 12,
+                maxTiles: 500,
+                searchRadius: 8,
+            });
+
+            // zoom14 以外のタイル（平準化対象外）が存在すること
+            const lowZoomTiles = result.filter((e) => e.coord.zoom < 14);
+            expect(lowZoomTiles.length).toBeGreaterThan(0);
+        });
+    });
 });

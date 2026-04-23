@@ -223,6 +223,22 @@ export const computeMultiLodTiles = (
         }
     }
 
+    // Step 1.5: 近傍タイルのzoom平準化
+    // 近傍セル（cameraDistance×2.6以内）のzoomを最大値に揃える。
+    // 標高差のある地形でLOD段差が目立つのを防止する。
+    const nearbyThreshold = cameraDistance * 2.6;
+    let nearbyMaxZoom = minZoom;
+    for (const cell of gridCells) {
+        if (cell.dist < nearbyThreshold && cell.targetZoom > nearbyMaxZoom) {
+            nearbyMaxZoom = cell.targetZoom;
+        }
+    }
+    for (const cell of gridCells) {
+        if (cell.dist < nearbyThreshold) {
+            cell.targetZoom = nearbyMaxZoom;
+        }
+    }
+
     // Step 2: ズーム境界の重なり防止（昇格方式）
     // 親タイル内に高zoomセルが混在する場合、低zoomセルを z+1 に昇格。
     // 全セルが同一低zoomの親タイルはそのまま維持（遠方LODを保持）。
