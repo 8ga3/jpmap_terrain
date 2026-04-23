@@ -557,6 +557,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             maxTiles,
             maxElevation,
             cameraGroundOffset,
+            // zoom 判定の基準は生のカメラ距離。
+            // 高標高地で effectiveRadius が極小化しても、遠方タイルがすぐに低 zoom へ
+            // 落ちないようにする（急斜面での LOD 段差防止）。
+            zoomReferenceDistance: rawCameraDistance,
         });
     };
 
