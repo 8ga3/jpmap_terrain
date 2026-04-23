@@ -1017,6 +1017,189 @@ describe("queryElevationAtWorld", () => {
         expect(result).toBe(777);
         tm.dispose();
     });
+
+    /* ── NaN 挙動テスト（海域タイル等） ── */
+
+    it("NaNピクセルのみのタイル（海域等）でnullを返す", async () => {
+        const nanData = new Float32Array(256 * 256).fill(NaN);
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(nanData)
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        expect(tm.queryElevationAtWorld(0, 0)).toBeNull();
+        tm.dispose();
+    });
+
+    it("NaNピクセル位置で低zoomへフォールバックし有効値を返す", async () => {
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        // zoom14 クエリ対象タイル: 全NaN（海域想定）
+        const nanData14 = new Float32Array(256 * 256).fill(NaN);
+        // zoom13: ピクセル(64,64)に有効値42を設定
+        // wx=0, wz=-1000 → zoom13で fracTile=(0.25,0.25) → px=64, py=64
+        const elevData13 = new Float32Array(256 * 256).fill(NaN);
+        elevData13[64 * 256 + 64] = 42;
+
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom, x, y) => {
+                // クエリ対象の zoom14 タイル (14547,6453) は NaN で成功
+                if (zoom === 14 && x === 14547 && y === 6453) {
+                    return Promise.resolve(nanData14);
+                }
+                // その他の zoom14 タイルは失敗 → zoom13 キャッシュ生成を誘発
+                if (zoom >= 14) {
+                    return Promise.reject(new Error("not available"));
+                }
+                return Promise.resolve(elevData13);
+            }
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 13,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // wx=0, wz=-1000 → zoom14キー"14/14547/6453"はNaN
+        // → zoom13キー"13/7273/3226"にフォールバック → pixel(64,64)=42
+        const result = tm.queryElevationAtWorld(0, -1000);
+        expect(result).toBe(42);
+        tm.dispose();
+    });
+
+    it("全zoomレベルでNaNの場合nullを返す（フォールバック全滅）", async () => {
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        const nanData = new Float32Array(256 * 256).fill(NaN);
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom, x, y) => {
+                // クエリ対象タイル (14547,6453) はNaNで成功
+                if (zoom === 14 && x === 14547 && y === 6453) {
+                    return Promise.resolve(new Float32Array(nanData));
+                }
+                // 他のzoom14は失敗 → zoom13キャッシュ生成を誘発（NaN）
+                if (zoom >= 14) {
+                    return Promise.reject(new Error("not available"));
+                }
+                // zoom13もNaN
+                return Promise.resolve(new Float32Array(nanData));
+            }
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 12,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // zoom14→13→12 全てNaN → null
+        expect(tm.queryElevationAtWorld(0, -1000)).toBeNull();
+        tm.dispose();
+    });
+
+    it("NaNフォールバック結果にheightScaleとaltitudeOffsetが反映される", async () => {
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+
+        // zoom14 クエリ対象: 全NaN
+        const nanData14 = new Float32Array(256 * 256).fill(NaN);
+        // zoom13: ピクセル(64,64)に有効値50
+        const elevData13 = new Float32Array(256 * 256).fill(NaN);
+        elevData13[64 * 256 + 64] = 50;
+
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom, x, y) => {
+                if (zoom === 14 && x === 14547 && y === 6453) {
+                    return Promise.resolve(nanData14);
+                }
+                if (zoom >= 14) {
+                    return Promise.reject(new Error("not available"));
+                }
+                return Promise.resolve(elevData13);
+            }
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 2.0,
+            maxTiles: 5,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 13,
+        });
+
+        await tm.setCenter(35.68, 139.77, 10); // altitudeOffset = 10
+        // wx=0, wz=-1000 → zoom14 NaN → zoom13 フォールバック → 50取得
+        // (50 + 10) * 2.0 = 120
+        const result = tm.queryElevationAtWorld(0, -1000);
+        expect(result).toBe(120);
+        tm.dispose();
+    });
+
+    it("NaN混在タイルで有効ピクセルは正しく返す", async () => {
+        const mixedData = new Float32Array(256 * 256).fill(NaN);
+        mixedData[0] = 88; // ピクセル(0,0)のみ有効
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(mixedData)
+        );
+
+        const camera = createNearCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 14,
+            maxElevationZoom: 14,
+            minElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // ピクセル(0,0)は有効値88 → フォールバック不要でそのまま返す
+        expect(tm.queryElevationAtWorld(0, 0)).toBe(88);
+        tm.dispose();
+    });
 });
 
 /* ================================================================
