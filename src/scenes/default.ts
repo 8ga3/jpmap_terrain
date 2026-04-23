@@ -277,6 +277,30 @@ export class DefaultScene implements CreateSceneClass {
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
         let isOrbiting = false;
+        let orbitDecided = false;
+
+        /** target.y を 0 に戻しつつカメラ位置を保持する補正 */
+        const flattenOrbitTarget = (): void => {
+            const ty = camera.target.y;
+            if (Math.abs(ty) > 1e-6) {
+                const cosB = Math.cos(camera.beta);
+                if (Math.abs(cosB) > 1e-6) {
+                    const tanB = Math.sin(camera.beta) / cosB;
+                    camera.target.x -= ty * tanB * Math.cos(camera.alpha);
+                    camera.target.z -= ty * tanB * Math.sin(camera.alpha);
+                    camera.radius += ty / cosB;
+                }
+                camera.target.y = 0;
+            }
+        };
+
+        /** isOrbiting ガード付きで flattenOrbitTarget → フラグリセット */
+        const endOrbit = (): void => {
+            if (isOrbiting) {
+                flattenOrbitTarget();
+                isOrbiting = false;
+            }
+        };
 
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -296,6 +320,7 @@ export class DefaultScene implements CreateSceneClass {
                 pick?.hit && pick.pickedPoint ? pick.pickedPoint.y : 0;
             dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             isOrbiting = false;
+            orbitDecided = false;
         });
 
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
@@ -303,7 +328,8 @@ export class DefaultScene implements CreateSceneClass {
 
             if (e.ctrlKey || e.metaKey) {
                 // Ctrl/Cmd + ドラッグ: 光軸上メッシュ交差点を中心に回転
-                if (!isOrbiting) {
+                if (!orbitDecided) {
+                    orbitDecided = true;
                     // 初回: 光軸レイキャストで回転中心を決定
                     const { alpha: a, beta: b, radius: r } = camera;
                     const sinB = Math.sin(b);
@@ -367,18 +393,7 @@ export class DefaultScene implements CreateSceneClass {
             } else if (dragAnchor) {
                 // 回転モードから通常パンに切り替わった場合、target を復元
                 if (isOrbiting) {
-                    const ty = camera.target.y;
-                    if (Math.abs(ty) > 1e-6) {
-                        const cosB = Math.cos(camera.beta);
-                        if (Math.abs(cosB) > 1e-6) {
-                            const tanB = Math.sin(camera.beta) / cosB;
-                            camera.target.x -= ty * tanB * Math.cos(camera.alpha);
-                            camera.target.z -= ty * tanB * Math.sin(camera.alpha);
-                            camera.radius += ty / cosB;
-                        }
-                        camera.target.y = 0;
-                    }
-                    isOrbiting = false;
+                    endOrbit();
                     // ジャンプ防止: dragAnchor を現在位置にリセット
                     const rect2 = canvas.getBoundingClientRect();
                     dragAnchor = intersectPlane(
@@ -407,20 +422,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             // 回転モード終了: target.y を 0 に復元しカメラ位置を保持
-            if (isOrbiting) {
-                const ty = camera.target.y;
-                if (Math.abs(ty) > 1e-6) {
-                    const cosB = Math.cos(camera.beta);
-                    if (Math.abs(cosB) > 1e-6) {
-                        const tanB = Math.sin(camera.beta) / cosB;
-                        camera.target.x -= ty * tanB * Math.cos(camera.alpha);
-                        camera.target.z -= ty * tanB * Math.sin(camera.alpha);
-                        camera.radius += ty / cosB;
-                    }
-                    camera.target.y = 0;
-                }
-                isOrbiting = false;
-            }
+            endOrbit();
             commitPanOffset();
         });
 
@@ -428,20 +430,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
-            if (isOrbiting) {
-                const ty = camera.target.y;
-                if (Math.abs(ty) > 1e-6) {
-                    const cosB = Math.cos(camera.beta);
-                    if (Math.abs(cosB) > 1e-6) {
-                        const tanB = Math.sin(camera.beta) / cosB;
-                        camera.target.x -= ty * tanB * Math.cos(camera.alpha);
-                        camera.target.z -= ty * tanB * Math.sin(camera.alpha);
-                        camera.radius += ty / cosB;
-                    }
-                    camera.target.y = 0;
-                }
-                isOrbiting = false;
-            }
+            endOrbit();
             commitPanOffset();
         };
 
