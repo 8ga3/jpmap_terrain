@@ -313,7 +313,7 @@ export class DefaultScene implements CreateSceneClass {
                     camera.upperBetaLimit ?? Math.PI
                 );
                 // チルト変更で地形に衝突するなら自動ズームアウトで回避
-                const prevRadius = camera.radius;
+                const radiusBeforeTilt = camera.radius;
                 const tiltResult = resolveTiltCollision(
                     camera.radius,
                     terrainMinRadius(),
@@ -328,7 +328,7 @@ export class DefaultScene implements CreateSceneClass {
                     // 新位置でまだ衝突するなら beta・radius 両方を復元
                     if (camera.radius < terrainMinRadius()) {
                         camera.beta = prevBeta;
-                        camera.radius = prevRadius;
+                        camera.radius = radiusBeforeTilt;
                     }
                 }
             } else if (dragAnchor) {
