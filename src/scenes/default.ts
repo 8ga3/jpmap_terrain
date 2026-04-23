@@ -356,9 +356,9 @@ export class DefaultScene implements CreateSceneClass {
             const { x: tx, y: ty, z: tz } = camera.target;
             const sinB = Math.sin(beta);
             const cosB = Math.cos(beta);
-            const camX = tx + radius * sinB * Math.sin(alpha);
+            const camX = tx + radius * sinB * Math.cos(alpha);
             const camY = ty + radius * cosB;
-            const camZ = tz + radius * sinB * Math.cos(alpha);
+            const camZ = tz + radius * sinB * Math.sin(alpha);
 
             const origin = new Vector3(camX, camY, camZ);
 
