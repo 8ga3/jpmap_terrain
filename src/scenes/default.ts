@@ -19,7 +19,7 @@ const HEIGHT_SCALE = 1.0;
 const MIN_ZOOM = 2;
 
 /** カメラ最小距離（メートル） */
-const CAMERA_LOWER_RADIUS = 250;
+const CAMERA_LOWER_RADIUS = 50;
 /** カメラ最大距離（メートル） */
 const CAMERA_UPPER_RADIUS = 75000;
 /** 遠クリッピング面（メートル） */
@@ -50,7 +50,7 @@ export class DefaultScene implements CreateSceneClass {
         );
         camera.lowerRadiusLimit = CAMERA_LOWER_RADIUS;
         camera.upperRadiusLimit = CAMERA_UPPER_RADIUS;
-        camera.minZ = 10;
+        camera.minZ = 1;
         camera.maxZ = CAMERA_FAR_CLIP;
 
         // チルト制限（地面から20° = beta上限 7π/18）
