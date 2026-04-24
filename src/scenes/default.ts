@@ -435,8 +435,17 @@ export class DefaultScene implements CreateSceneClass {
                         const metersPerDegreeLon = METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
                         camera.target.x += deltaLon * metersPerDegreeLon;
                         camera.target.z += deltaLat * METERS_PER_DEGREE_LAT;
+                        // 平面交差アンカーも同期（フォールバック切替に備える）
+                        dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                    } else if (dragAnchor) {
+                        // メッシュピック失敗時: 平面交差パンにフォールバック
+                        const current = intersectPlane(sx, sy, dragPlaneY);
+                        if (current) {
+                            camera.target.x += dragAnchor.x - current.x;
+                            camera.target.z += dragAnchor.z - current.z;
+                            dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                        }
                     }
-                    // メッシュピック失敗時はスキップ（前フレームの状態を維持）
                 } else {
                     // フォールバック: 既存の平面交差パン
                     const current = intersectPlane(sx, sy, dragPlaneY);
