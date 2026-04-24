@@ -52,8 +52,8 @@ export class DefaultScene implements CreateSceneClass {
         const camera = new ArcRotateCamera(
             "terrain-camera",
             -Math.PI / 2,
-            Math.PI / 3,
-            4000,
+            Math.PI / 4,
+            2000,
             Vector3.Zero(),
             scene
         );
