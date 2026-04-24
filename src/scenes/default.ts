@@ -289,8 +289,10 @@ export class DefaultScene implements CreateSceneClass {
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
-         * limit 逸脱・特異点時は何もせず既存 target を維持する。
-         * @returns 付け替えに成功したら true
+         * `computePoseForNewTarget` が limit 逸脱や退化ケースなどで `apply` を返せない場合は何もせず、
+         * 既存 target を維持する。なお、sin(beta)≈0 の特異点近傍では alpha を一意に再計算できなくても、
+         * current alpha を保持したまま `apply` される場合がある。
+         * @returns 付け替えを適用したら true
          */
         const retargetPreservingPose = (newTarget: {
             x: number;
