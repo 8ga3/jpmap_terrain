@@ -1,7 +1,8 @@
 /**
  * ArcRotateCamera のターゲット付け替え結果。
  * カメラのワールド位置を不変に保ったまま新ターゲットに対する (alpha, beta, radius)
- * を算出する。limit 逸脱や特異点時は "skip" を返し、呼び出し側で既存値を維持させる。
+ * を算出する。limit 逸脱や退化ケースでは "skip" を返し、真上/真下付近の特異点では
+ * alpha に currentAlpha を採用した "apply" を返す。
  */
 export type RetargetResult =
     | { action: "apply"; alpha: number; beta: number; radius: number }
