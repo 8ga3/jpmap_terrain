@@ -135,7 +135,11 @@ const distanceFootprintToPoint = (
  * - root 集合は `convertTileZoom(baseCenter, minZoom)` を中心に `±rootSearchRadius` 格子。
  * - 各ノードで視錐台カリング → SSE しきい値判定を行い、不要なら採用、必要なら 4 子に分割。
  * - `SSE = tileSize(z) * viewportHeight / (max(1, D) * 2 * tan(verticalFov / 2))`
- *   - `D` は AABB とカメラ位置の最短距離（AABB 内部なら 0 → `max(1, D) = 1`）。
+ *   - `D` はタイルのフットプリント距離 `distanceFootprintToPoint` で算出。
+ *     水平方向は XZ 矩形（AABB のフットプリント）とカメラの最短距離、
+ *     垂直方向はカメラ高度 `|y|` を使い `sqrt(ex² + ey² + ez²)` とする。
+ *     AABB 全体との最短距離ではなく、カメラが高さ方向で AABB 内にいても
+ *     `|y|` が残るため過剰分割を抑制できる（`D = 0` → `max(1, D) = 1`）。
  * - 採用条件: `SSE <= sseThreshold` もしくは `zoom === maxZoom`。
  * - `maxTiles` 超過時はカメラ距離 D の昇順ソート後に先頭 `maxTiles` 件へ打ち切る。
  */
