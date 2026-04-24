@@ -1,31 +1,39 @@
-/** カメラFrustum内の可視タイルを算出する */
+/** カメラFrustum内の可視タイルを Quadtree + SSE で算出する */
 
-import { TileCoord, TileKey, toTileKey, tileOffsetToWorld, convertTileZoom, computeSubTileOffset } from "./tileTypes";
+import { TileCoord, convertTileZoom, computeSubTileOffset } from "./tileTypes";
 
 export interface FrustumPlane {
     normal: { x: number; y: number; z: number };
     d: number;
 }
 
-export interface VisibleTilesOptions {
-    center: TileCoord;
+/** マルチLOD可視タイルの結果 */
+export interface LodTileEntry {
+    coord: TileCoord;
     tileSize: number;
-    frustumPlanes: readonly FrustumPlane[];
-    maxTiles?: number;
-    searchRadius?: number;
-    /** AABB の maxY に使う値。省略時は DEFAULT_MAX_ELEVATION (4000) */
-    maxElevation?: number;
 }
 
-const DEFAULT_MAX_TILES = 120;
-/** coveredBaseZoomCells / findUncoveredChildren で許容するzoom差の上限 */
-const MAX_COVERAGE_DIFF = 7;
-const DEFAULT_SEARCH_RADIUS = 4;
+/** デフォルトの最大タイル数 */
+export const DEFAULT_MAX_TILES = 120;
 /** 日本の標高上限概算（富士山 3776m + マージン） */
-const DEFAULT_MAX_ELEVATION = 4000;
+export const DEFAULT_MAX_ELEVATION = 4000;
+/**
+ * SSE のデフォルトしきい値（ピクセル単位）。
+ *
+ * 採用条件は `SSE ≤ threshold`。タイルが画面縦方向に占める比率 ≒ `SSE / viewportHeight` と
+ * 見なせるため、`threshold ≈ viewportHeight / N` のとき「真上見下ろしでおよそ N タイル（縦）」
+ * が採用される。値を小さくするほど高解像度を維持（レベルダウンが遅い）、大きくするほど早めに
+ * 低解像度へ落ちる（レベルダウンが早い）。既定は 500（1080px で約 2〜3 タイル縦、3×3〜4×4 相当）。
+ */
+const DEFAULT_SSE_THRESHOLD = 2000;
+/** minZoom タイル単位での root 探索半径の既定値（±N 格子）。 */
+const DEFAULT_ROOT_SEARCH_RADIUS = 2;
 
-/** AABB が Frustum の全平面の内側または交差にあるか判定 */
-const isAABBInFrustum = (
+/**
+ * AABB が Frustum の全平面の内側または交差にあるか判定。
+ * P-vertex テストで早期除外し、完全に外側なら false。
+ */
+export const isAABBInFrustum = (
     minX: number,
     minY: number,
     minZ: number,
@@ -36,11 +44,9 @@ const isAABBInFrustum = (
 ): boolean => {
     for (const plane of planes) {
         const { normal, d } = plane;
-        // AABB の「平面に最も近い頂点」（P-vertex）を選択
         const px = normal.x >= 0 ? maxX : minX;
         const py = normal.y >= 0 ? maxY : minY;
         const pz = normal.z >= 0 ? maxZ : minZ;
-        // P-vertex が平面の外側なら完全に外
         if (normal.x * px + normal.y * py + normal.z * pz + d < 0) {
             return false;
         }
@@ -48,493 +54,185 @@ const isAABBInFrustum = (
     return true;
 };
 
-/**
- * カメラ Frustum 内の可視タイル座標を返す。
- * 距離が近い順にソート済み、maxTiles で打ち切り。
- */
-export const computeVisibleTiles = (opts: VisibleTilesOptions): TileCoord[] => {
-    const {
-        center,
-        tileSize,
-        frustumPlanes,
-        maxTiles = DEFAULT_MAX_TILES,
-        searchRadius = DEFAULT_SEARCH_RADIUS,
-        maxElevation = DEFAULT_MAX_ELEVATION,
-    } = opts;
-
-    const half = tileSize / 2;
-    const candidates: { coord: TileCoord; dist: number }[] = [];
-
-    for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-        for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-            const { wx, wz } = tileOffsetToWorld(dx, dy, tileSize);
-            const minX = wx - half;
-            const maxX = wx + half;
-            const minZ = wz - half;
-            const maxZ = wz + half;
-
-            if (
-                isAABBInFrustum(
-                    minX, 0, minZ,
-                    maxX, maxElevation, maxZ,
-                    frustumPlanes
-                )
-            ) {
-                const dist = Math.abs(dx) + Math.abs(dy); // マンハッタン距離
-                candidates.push({
-                    coord: {
-                        zoom: center.zoom,
-                        x: center.x + dx,
-                        y: center.y + dy,
-                    },
-                    dist,
-                });
-            }
-        }
-    }
-
-    candidates.sort((a, b) => a.dist - b.dist);
-    return candidates.slice(0, maxTiles).map((c) => c.coord);
-};
-
-/** マルチLOD可視タイルの結果 */
-export interface LodTileEntry {
-    coord: TileCoord;
-    tileSize: number;
-}
-
-export interface MultiLodTilesOptions {
-    /** 基本zoom（最高解像度）の中心タイル座標 */
+export interface QuadtreeTilesOptions {
+    /** 最高ズームレベル（分割の上限） */
+    maxZoom: number;
+    /** 最低ズームレベル（root の zoom） */
+    minZoom: number;
+    /** 基本zoom（= maxZoom 相当）の中心タイル座標 */
     baseCenter: TileCoord;
     /** 各zoomでのタイル実サイズ（メートル）を返す関数 */
     tileSizeForZoom: (zoom: number) => number;
+    /** カメラ Frustum の6平面 */
     frustumPlanes: readonly FrustumPlane[];
-    /** カメラからターゲットまでの距離（ArcRotateCamera.radius相当） */
-    cameraDistance: number;
-    /** カメラ高度から算出した基本ズームレベル */
-    baseZoom: number;
-    /** 使用する最小ズームレベル */
-    minZoom: number;
-    /** タイル総数の上限 */
-    maxTiles?: number;
+    /** baseCenter 原点ローカル座標系でのカメラ位置 */
+    cameraPosition: { x: number; y: number; z: number };
+    /** 垂直 FOV（rad） */
+    verticalFov: number;
+    /** ビューポート高さ（ピクセル） */
+    viewportHeight: number;
+    /** SSE 採用しきい値（ピクセル）。省略時は DEFAULT_SSE_THRESHOLD。 */
+    sseThreshold?: number;
+    /** AABB の maxY に使う値。省略時 DEFAULT_MAX_ELEVATION */
     maxElevation?: number;
-    /** baseZoom 格子の探索半径（省略時 14）。Far-field sweep 側の半径には影響しない。 */
-    searchRadius?: number;
-    /**
-     * カメラの地上投影点（ターゲット基準のワールド座標）。
-     * 指定時は「線分 [target → cameraGround] への最短距離」で zoom を決定する。
-     * チルトで見えてくる手前側タイルをカメラ直下と同じ zoom に揃える目的。
-     */
-    cameraGroundOffset?: { x: number; z: number };
-    /**
-     * zoom 判定（距離閾値・近傍平準化範囲）の基準距離。
-     * 省略時は cameraDistance と同じ。
-     * 標高考慮で cameraDistance を小さく補正した場合でも、
-     * 距離閾値は生のカメラ距離を基準にしたい場合に指定する。
-     */
-    zoomReferenceDistance?: number;
+    /** 結果タイル数の上限。省略時 DEFAULT_MAX_TILES */
+    maxTiles?: number;
+    /** root タイル（minZoom）の探索半径。省略時 DEFAULT_ROOT_SEARCH_RADIUS */
+    rootSearchRadius?: number;
 }
 
-const DEFAULT_SEARCH_RADIUS_LOD = 14;
-
 /**
- * カメラ距離から基本ズームレベルを算出する。
- * カメラ→ターゲット距離を基準にするため、チルト角に依存せず安定する。
+ * baseCenter 原点ローカル座標系における、zoom 指定タイルの AABB を返す。
+ * 端数補正（computeSubTileOffset）を毎回適用し、累積誤差を避ける。
  */
-export const computeBaseZoom = (
-    cameraDistance: number,
-    tileSizeForZoom: (z: number) => number,
-    maxZoom: number,
-    minZoom: number,
-): number => {
-    // 画面中央にタイル約3枚幅が収まるレベルを選択
-    // 可視幅 ≈ cameraDistance * 1.5（典型的な FOV・アスペクト比）
-    const targetTileSize = cameraDistance * 0.8;
-    for (let z = minZoom; z < maxZoom; z++) {
-        if (tileSizeForZoom(z) <= targetTileSize) {
-            return z;
-        }
-    }
-    return maxZoom;
+const computeTileAABB = (
+    coord: TileCoord,
+    baseCenter: TileCoord,
+    tileSizeForZoom: (zoom: number) => number,
+    maxElevation: number,
+): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } => {
+    const tileSize = tileSizeForZoom(coord.zoom);
+    const center = convertTileZoom(baseCenter, coord.zoom);
+    const { fracX, fracY } = computeSubTileOffset(baseCenter, coord.zoom);
+    const dx = coord.x - center.x;
+    const dy = coord.y - center.y;
+    // Babylon 座標系では Y タイル方向が -Z。tileOffsetToWorld と同じ規約。
+    const offsetX = (dx - fracX) * tileSize;
+    const offsetZ = -(dy - fracY) * tileSize;
+    const half = tileSize / 2;
+    return {
+        minX: offsetX - half,
+        minY: 0,
+        minZ: offsetZ - half,
+        maxX: offsetX + half,
+        maxY: maxElevation,
+        maxZ: offsetZ + half,
+    };
 };
 
 /**
- * カメラ距離ベースのマルチLOD可視タイルを算出する。
- * baseZoom格子を基準に探索し、距離に応じて低zoomの親タイルに集約。
- * LOD境界では昇格方式で重なりを防止：親タイル内に高zoomセルが混在する場合、
- * 低zoomセルを z+1 に昇格して同一親タイルのメッシュ重複を排除する。
+ * タイルフットプリント（平面矩形 y=0 投影）とカメラ位置との 3D 距離。
+ *
+ * SSE 計算ではタイル地表からの実距離を使いたいが、視錐台カリング用 AABB の高さは
+ * `maxElevation` まで広がっており、カメラがその範囲内（例: 高度 4000m 以下のトップダウン視点）
+ * だと AABB そのものとの最短距離は 0 を返してしまい、SSE が爆発して maxZoom まで過剰分割される。
+ * ここでは水平方向は AABB と同じ XZ 矩形、垂直方向はカメラ高度 |y| を使って実効距離とする。
  */
-export const computeMultiLodTiles = (
-    opts: MultiLodTilesOptions
+const distanceFootprintToPoint = (
+    aabb: { minX: number; minZ: number; maxX: number; maxZ: number },
+    p: { x: number; y: number; z: number },
+): number => {
+    const ex = Math.max(0, Math.max(aabb.minX - p.x, p.x - aabb.maxX));
+    const ez = Math.max(0, Math.max(aabb.minZ - p.z, p.z - aabb.maxZ));
+    const ey = Math.abs(p.y);
+    return Math.sqrt(ex * ex + ey * ey + ez * ez);
+};
+
+/**
+ * カメラ Frustum 内の可視タイルを Quadtree + SSE で算出する。
+ *
+ * - root 集合は `convertTileZoom(baseCenter, minZoom)` を中心に `±rootSearchRadius` 格子。
+ * - 各ノードで視錐台カリング → SSE しきい値判定を行い、不要なら採用、必要なら 4 子に分割。
+ * - `SSE = tileSize(z) * viewportHeight / (max(1, D) * 2 * tan(verticalFov / 2))`
+ *   - `D` は AABB とカメラ位置の最短距離（AABB 内部なら 0 → `max(1, D) = 1`）。
+ * - 採用条件: `SSE <= sseThreshold` もしくは `zoom === maxZoom`。
+ * - `maxTiles` 超過時はカメラ距離 D の昇順ソート後に先頭 `maxTiles` 件へ打ち切る。
+ */
+export const computeQuadtreeTiles = (
+    opts: QuadtreeTilesOptions
 ): LodTileEntry[] => {
     const {
+        maxZoom,
+        minZoom,
         baseCenter,
         tileSizeForZoom,
         frustumPlanes,
-        cameraDistance: rawCameraDistance,
-        baseZoom,
-        minZoom,
-        maxTiles = DEFAULT_MAX_TILES,
+        cameraPosition,
+        verticalFov,
+        viewportHeight,
+        sseThreshold = DEFAULT_SSE_THRESHOLD,
         maxElevation = DEFAULT_MAX_ELEVATION,
-        searchRadius = DEFAULT_SEARCH_RADIUS_LOD,
-        cameraGroundOffset,
-        zoomReferenceDistance,
+        maxTiles = DEFAULT_MAX_TILES,
+        rootSearchRadius = DEFAULT_ROOT_SEARCH_RADIUS,
     } = opts;
 
-    if (baseZoom < minZoom) return [];
+    if (maxZoom < minZoom) return [];
 
-    const cameraDistance = Math.max(1, rawCameraDistance);
-    // 距離閾値判定の基準。未指定時は cameraDistance と同じ（後方互換）。
-    const zoomRefDistance = Math.max(
-        1,
-        zoomReferenceDistance !== undefined ? zoomReferenceDistance : cameraDistance,
-    );
+    // SSE 分母の定数部分。fov=0 等の極小値で発散しないよう下限を設定。
+    const tanHalfFov = Math.tan(verticalFov / 2);
+    const sseDenomBase = 2 * Math.max(1e-6, tanHalfFov);
 
-    /**
-     * ターゲットからの水平距離でzoomレベルを決定。
-     * zoomRefDistance×1.3以遠で段階的にzoomを下げる。
-     */
-    const zoomForDist = (dist: number): number => {
-        let z = baseZoom;
-        let threshold = zoomRefDistance * 1.3;
-        while (z > minZoom && dist >= threshold) {
-            z--;
-            threshold *= 2;
-        }
-        return z;
+    // 暴発的な再帰を防ぐ安全弁。通常運用では到達しない。
+    const maxVisited = Math.max(maxTiles, 256) * 32;
+    let visited = 0;
+
+    const shouldAccept = (tileSize: number, distance: number, zoom: number): boolean => {
+        if (zoom >= maxZoom) return true;
+        const d = Math.max(1, distance);
+        const sse = (tileSize * viewportHeight) / (d * sseDenomBase);
+        return sse <= sseThreshold;
     };
 
-    // baseZoom格子で探索（baseZoomのタイルサイズに合わせた座標系）
-    const gridTileSize = tileSizeForZoom(baseZoom);
-    const gridHalf = gridTileSize / 2;
-    const gridCenter = convertTileZoom(baseCenter, baseZoom);
-
-    // 探索半径: 画面をカバーできる最小半径と設定値の大きい方。
-    // cameraGroundOffset 指定時は、ターゲット〜カメラ地上投影点の距離も含めて広げる。
-    const offsetReach = cameraGroundOffset
-        ? Math.sqrt(cameraGroundOffset.x ** 2 + cameraGroundOffset.z ** 2)
-        : 0;
-    const minRadiusForCoverage = Math.ceil((zoomRefDistance * 1.5 + offsetReach) / gridTileSize);
-    const effectiveRadius = Math.max(searchRadius, Math.min(minRadiusForCoverage, 60));
-
-    // baseCenter→gridCenter 変換で生じるサブタイルオフセット
-    const { fracX, fracY } = computeSubTileOffset(baseCenter, baseZoom);
-
-    // Step 1: baseZoom格子で可視セルを列挙、距離からzoomを決定
-    interface GridCell {
-        dx: number;
-        dy: number;
-        targetZoom: number;
-        dist: number;
-    }
-    const gridCells: GridCell[] = [];
-
-    for (let dy = -effectiveRadius; dy <= effectiveRadius; dy++) {
-        for (let dx = -effectiveRadius; dx <= effectiveRadius; dx++) {
-            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, gridTileSize);
-
-            if (
-                !isAABBInFrustum(
-                    wx - gridHalf, 0, wz - gridHalf,
-                    wx + gridHalf, maxElevation, wz + gridHalf,
-                    frustumPlanes
-                )
-            ) continue;
-
-            const distFromTarget = Math.sqrt(wx ** 2 + wz ** 2);
-            let dist = distFromTarget;
-            if (cameraGroundOffset) {
-                // 線分 [target(0,0) → cameraGround] からの距離。
-                // チルト時にカメラとターゲットの間に並ぶ手前側タイル群を
-                // 全て「近い」と判定し、カメラ直下と同じ zoom に揃える。
-                const cx = cameraGroundOffset.x;
-                const cz = cameraGroundOffset.z;
-                const segLenSq = cx * cx + cz * cz;
-                if (segLenSq > 1e-6) {
-                    // t = clamp((P - target) · (cameraGround - target) / |segment|², 0, 1)
-                    const tParam = Math.max(0, Math.min(1, (wx * cx + wz * cz) / segLenSq));
-                    const closestX = tParam * cx;
-                    const closestZ = tParam * cz;
-                    const distFromSegment = Math.sqrt(
-                        (wx - closestX) ** 2 + (wz - closestZ) ** 2,
-                    );
-                    dist = Math.min(dist, distFromSegment);
-                } else {
-                    dist = Math.min(
-                        dist,
-                        Math.sqrt((wx - cx) ** 2 + (wz - cz) ** 2),
-                    );
-                }
-            }
-            const targetZoom = zoomForDist(dist);
-            gridCells.push({ dx, dy, targetZoom, dist });
-        }
-    }
-
-    // Step 1.5: 近傍タイルのzoom平準化
-    // 近傍セル（zoomRefDistance×2.6以内）のzoomを最大値に揃える。
-    // 標高差のある地形でLOD段差が目立つのを防止する。
-    const nearbyThreshold = zoomRefDistance * 2.6;
-    let nearbyMaxZoom = minZoom;
-    for (const cell of gridCells) {
-        if (cell.dist < nearbyThreshold && cell.targetZoom > nearbyMaxZoom) {
-            nearbyMaxZoom = cell.targetZoom;
-        }
-    }
-    for (const cell of gridCells) {
-        if (cell.dist < nearbyThreshold) {
-            cell.targetZoom = nearbyMaxZoom;
-        }
-    }
-
-    // Step 2: ズーム境界の重なり防止（昇格方式）
-    // 親タイル内に高zoomセルが混在する場合、低zoomセルを z+1 に昇格。
-    // 全セルが同一低zoomの親タイルはそのまま維持（遠方LODを保持）。
-    // 降順パスで昇格 → カスケード昇格が発生しうるため収束まで反復。
-    const cellZoomMap = new Map<string, number>();
-    for (const cell of gridCells) {
-        cellZoomMap.set(`${cell.dx},${cell.dy}`, cell.targetZoom);
-    }
-
-    let promotionsOccurred = true;
-    while (promotionsOccurred) {
-        promotionsOccurred = false;
-        for (let z = baseZoom - 1; z >= minZoom; z--) {
-            const diff = baseZoom - z;
-            const parentHasHigher = new Set<string>();
-
-            // 親タイル内に z より高いzoomのセルがあるか確認
-            for (const cell of gridCells) {
-                const cellZoom = cellZoomMap.get(`${cell.dx},${cell.dy}`)!;
-                if (cellZoom > z) {
-                    const gx = gridCenter.x + cell.dx;
-                    const gy = gridCenter.y + cell.dy;
-                    parentHasHigher.add(`${gx >> diff},${gy >> diff}`);
-                }
-            }
-
-        // 高zoomセルと混在する親タイル内の低zoomセルを z+1 に昇格
-        if (parentHasHigher.size > 0) {
-            for (const cell of gridCells) {
-                if (cellZoomMap.get(`${cell.dx},${cell.dy}`) !== z) continue;
-                const gx = gridCenter.x + cell.dx;
-                const gy = gridCenter.y + cell.dy;
-                if (parentHasHigher.has(`${gx >> diff},${gy >> diff}`)) {
-                    cellZoomMap.set(`${cell.dx},${cell.dy}`, z + 1);
-                    promotionsOccurred = true;
-                }
-            }
-        }
-        }
-    }
-
-    // Step 3: セルを対象zoomのタイルに集約
-    const tilesByZoom = new Map<number, Map<TileKey, { coord: TileCoord; dist: number }>>();
-    for (let z = minZoom; z <= baseZoom; z++) {
-        tilesByZoom.set(z, new Map());
-    }
-
-    for (const cell of gridCells) {
-        const assignedZoom = cellZoomMap.get(`${cell.dx},${cell.dy}`)!;
-        const gridTile: TileCoord = {
-            zoom: baseZoom,
-            x: gridCenter.x + cell.dx,
-            y: gridCenter.y + cell.dy,
-        };
-        const parentCoord = convertTileZoom(gridTile, assignedZoom);
-        const key = toTileKey(parentCoord);
-
-        const zoomMap = tilesByZoom.get(assignedZoom)!;
-        const existing = zoomMap.get(key);
-        if (!existing || cell.dist < existing.dist) {
-            zoomMap.set(key, { coord: parentCoord, dist: cell.dist });
-        }
-    }
-
-    // Step 4: 低zoom → 高zoom の順に結果を収集（距離順ソート）
-    const results: LodTileEntry[] = [];
-    for (let z = minZoom; z <= baseZoom; z++) {
-        if (results.length >= maxTiles) break;
-
-        const tileSize = tileSizeForZoom(z);
-        const zoomTiles = [...tilesByZoom.get(z)!.values()];
-        zoomTiles.sort((a, b) => a.dist - b.dist);
-
-        const remaining = maxTiles - results.length;
-        for (const { coord } of zoomTiles.slice(0, remaining)) {
-            results.push({ coord, tileSize });
-        }
-    }
-
-    // Step 5: Far-field sweep — baseZoom格子のカバー範囲外を低zoom格子で補完
-    // 水平に近いチルト時、frustumはbaseZoom格子の探索範囲を大きく超える。
-    // 各低zoom層のタイルサイズで独自に探索し、遠方の欠けを埋める。
-    // 部分カバー時は親タイルではなく未カバーの子セルのみを追加（重なり防止）。
-    const allKeys = new Set(results.map(r => toTileKey(r.coord)));
-
-    // Step 1-4 の全結果タイルが覆う baseZoom セルを記録（重複判定用）
-    const coveredBaseZoomCells = new Set<string>();
-    for (const r of results) {
-        const rDiff = baseZoom - r.coord.zoom;
-        if (rDiff > 0 && rDiff <= MAX_COVERAGE_DIFF) {
-            const rCount = 1 << rDiff;
-            const rBaseX = r.coord.x << rDiff;
-            const rBaseY = r.coord.y << rDiff;
-            for (let ry = 0; ry < rCount; ry++) {
-                for (let rx = 0; rx < rCount; rx++) {
-                    coveredBaseZoomCells.add(`${rBaseX + rx},${rBaseY + ry}`);
-                }
-            }
-        } else {
-            coveredBaseZoomCells.add(`${r.coord.x},${r.coord.y}`);
-        }
-    }
+    const accepted: { entry: LodTileEntry; distance: number }[] = [];
 
     /**
-     * 低zoomタイルのうち、baseZoom格子で未カバーの子セルを
-     * 再帰的に zoom+1 へ分割し、重なりのないタイル群を返す。
-     * 完全カバー → 空配列、カバーなし → null（親タイルをそのまま使う）
+     * Quadtree 再帰探索。
+     * 視錐台外なら即 return。採用条件を満たせば accepted に追加、
+     * そうでなければ 4 子ノードへ分岐。
      */
-    const findUncoveredChildren = (
-        parentCoord: TileCoord,
-        parentDist: number,
-    ): { coord: TileCoord; dist: number; tileSize: number }[] | null => {
-        const diff = baseZoom - parentCoord.zoom;
-        if (diff <= 0) return null;
-        // diff が大きすぎて部分カバー判定を諦める場合は、
-        // 親タイルを追加すると高zoom側と重なり得るため、このzoomの親タイル追加をスキップする
-        if (diff > MAX_COVERAGE_DIFF) return [];
+    const traverse = (coord: TileCoord): void => {
+        if (visited >= maxVisited) return;
+        visited++;
 
-        const childCount = 1 << diff;
-        const childBaseX = parentCoord.x << diff;
-        const childBaseY = parentCoord.y << diff;
+        // タイル座標範囲外（地球の外）を除外。
+        // 低 zoom の root 格子が地球範囲を越えて無効タイル 404 を量産するのを防ぐ。
+        const limit = 1 << coord.zoom;
+        if (coord.x < 0 || coord.x >= limit || coord.y < 0 || coord.y >= limit) return;
 
-        let coveredCount = 0;
-        for (let cy = 0; cy < childCount; cy++) {
-            for (let cx = 0; cx < childCount; cx++) {
-                if (coveredBaseZoomCells.has(`${childBaseX + cx},${childBaseY + cy}`)) {
-                    coveredCount++;
-                }
-            }
+        const aabb = computeTileAABB(coord, baseCenter, tileSizeForZoom, maxElevation);
+        if (!isAABBInFrustum(
+            aabb.minX, aabb.minY, aabb.minZ,
+            aabb.maxX, aabb.maxY, aabb.maxZ,
+            frustumPlanes,
+        )) return;
+
+        // SSE 計算はフットプリント距離（カメラ高度＋水平距離）を使う。
+        // AABB 全体との最短距離だとカメラがその高さ内に入っているとき 0 になり、過剰分割になる。
+        const distance = distanceFootprintToPoint(aabb, cameraPosition);
+        const tileSize = tileSizeForZoom(coord.zoom);
+
+        if (shouldAccept(tileSize, distance, coord.zoom)) {
+            accepted.push({
+                entry: { coord, tileSize },
+                distance,
+            });
+            return;
         }
 
-        // カバーなし → 親タイルをそのまま追加
-        if (coveredCount === 0) return null;
-        // 完全カバー → スキップ
-        if (coveredCount === childCount * childCount) return [];
-
-        // 部分カバー → zoom+1 の子タイルに分割し再帰判定
-        const nextZoom = parentCoord.zoom + 1;
-        const nextTileSize = tileSizeForZoom(nextZoom);
-        const uncovered: { coord: TileCoord; dist: number; tileSize: number }[] = [];
-
+        const nextZoom = coord.zoom + 1;
         for (let sy = 0; sy < 2; sy++) {
             for (let sx = 0; sx < 2; sx++) {
-                const childCoord: TileCoord = {
+                traverse({
                     zoom: nextZoom,
-                    x: parentCoord.x * 2 + sx,
-                    y: parentCoord.y * 2 + sy,
-                };
-                const childKey = toTileKey(childCoord);
-                if (allKeys.has(childKey)) continue;
-
-                // 再帰: この子タイルも部分カバーなら更に分割
-                const childResult = findUncoveredChildren(childCoord, parentDist);
-                if (childResult === null) {
-                    // カバーなし → この子タイルをそのまま追加
-                    uncovered.push({ coord: childCoord, dist: parentDist, tileSize: nextTileSize });
-                } else {
-                    // 部分/完全カバー → 再帰結果をそのまま追加
-                    uncovered.push(...childResult);
-                }
+                    x: coord.x * 2 + sx,
+                    y: coord.y * 2 + sy,
+                });
             }
         }
-        return uncovered;
     };
 
-    for (let z = baseZoom - 1; z >= minZoom && results.length < maxTiles; z--) {
-        const farTileSize = tileSizeForZoom(z);
-        const farHalf = farTileSize / 2;
-        const farCenter = convertTileZoom(baseCenter, z);
-        const { fracX: farFracX, fracY: farFracY } = computeSubTileOffset(baseCenter, z);
-
-        // zoom z の距離上限: zoomRefDistance × 1.3 × 2^(baseZoom − z)
-        const zoomSteps = baseZoom - z;
-        const maxDistForZoom = zoomRefDistance * 1.3 * Math.pow(2, zoomSteps);
-        const farSearchRadius = Math.min(
-            Math.ceil(maxDistForZoom / farTileSize) + 1,
-            30
-        );
-
-        const candidates: { coord: TileCoord; dist: number; tileSize: number }[] = [];
-
-        for (let dy = -farSearchRadius; dy <= farSearchRadius; dy++) {
-            for (let dx = -farSearchRadius; dx <= farSearchRadius; dx++) {
-                const { wx, wz } = tileOffsetToWorld(
-                    dx - farFracX, dy - farFracY, farTileSize
-                );
-                const dist = Math.sqrt(wx ** 2 + wz ** 2);
-
-                // このzoom以下の距離帯のセルを追加（境界ギャップ防止）
-                if (zoomForDist(dist) > z) continue;
-
-                if (
-                    !isAABBInFrustum(
-                        wx - farHalf, 0, wz - farHalf,
-                        wx + farHalf, maxElevation, wz + farHalf,
-                        frustumPlanes
-                    )
-                ) continue;
-
-                const coord: TileCoord = {
-                    zoom: z,
-                    x: farCenter.x + dx,
-                    y: farCenter.y + dy,
-                };
-                const key = toTileKey(coord);
-                if (allKeys.has(key)) continue;
-
-                // 部分カバー判定
-                const uncovered = findUncoveredChildren(coord, dist);
-                if (uncovered === null) {
-                    // カバーなし → 親タイルをそのまま候補に追加
-                    candidates.push({ coord, dist, tileSize: farTileSize });
-                } else if (uncovered.length > 0) {
-                    // 部分カバー → 未カバーの子タイルのみ追加
-                    for (const child of uncovered) {
-                        if (!allKeys.has(toTileKey(child.coord))) {
-                            candidates.push(child);
-                        }
-                    }
-                }
-                // uncovered.length === 0 → 完全カバー → スキップ
-            }
-        }
-
-        candidates.sort((a, b) => a.dist - b.dist);
-        for (const entry of candidates) {
-            if (results.length >= maxTiles) break;
-            const key = toTileKey(entry.coord);
-            if (allKeys.has(key)) continue;
-            results.push({ coord: entry.coord, tileSize: entry.tileSize });
-            allKeys.add(key);
-
-            // coveredBaseZoomCells を更新（後続zoom反復での重複防止）
-            const addedDiff = baseZoom - entry.coord.zoom;
-            if (addedDiff > 0 && addedDiff <= MAX_COVERAGE_DIFF) {
-                const addedCount = 1 << addedDiff;
-                const addedBaseX = entry.coord.x << addedDiff;
-                const addedBaseY = entry.coord.y << addedDiff;
-                for (let ay = 0; ay < addedCount; ay++) {
-                    for (let ax = 0; ax < addedCount; ax++) {
-                        coveredBaseZoomCells.add(`${addedBaseX + ax},${addedBaseY + ay}`);
-                    }
-                }
-            } else if (addedDiff === 0) {
-                coveredBaseZoomCells.add(`${entry.coord.x},${entry.coord.y}`);
-            }
+    // root 集合: minZoom 中心からの ±rootSearchRadius 格子。
+    const rootCenter = convertTileZoom(baseCenter, minZoom);
+    for (let dy = -rootSearchRadius; dy <= rootSearchRadius; dy++) {
+        for (let dx = -rootSearchRadius; dx <= rootSearchRadius; dx++) {
+            traverse({
+                zoom: minZoom,
+                x: rootCenter.x + dx,
+                y: rootCenter.y + dy,
+            });
         }
     }
 
-    return results;
+    accepted.sort((a, b) => a.distance - b.distance);
+    return accepted.slice(0, maxTiles).map((a) => a.entry);
 };

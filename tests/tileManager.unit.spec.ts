@@ -133,7 +133,10 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
         Math.min(Math.max(v, min), max)
     ),
     toTileXY: jest.fn(() => ({ x: 14547, y: 6452 })),
-    tileEdgeMeters: jest.fn(() => 1000),
+    // zoom 非依存だと Quadtree が無限再帰しうるため、zoom 依存にする。
+    tileEdgeMeters: jest.fn<(lat: number, zoom: number) => number>(
+        (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+    ),
     loadElevationTile: jest.fn(
         () => Promise.resolve(new Float32Array(256 * 256))
     ),
@@ -166,6 +169,7 @@ const createMockCamera = () => {
     return {
         alpha: 0,
         beta: 0,
+        fov: Math.PI / 3,
         radius: 4000,
         position: { x: 0, y: 4000, z: 0 },
         target: makeTarget(),
@@ -187,8 +191,11 @@ const createMockCamera = () => {
     } as never;
 };
 
-/** scene モック。pickWithRay はデフォルトでヒットなし（rayDist=null → rawRadius使用） */
+/** scene モック。getEngine は getRenderHeight を返す。 */
 const createMockScene = () => ({
+    getEngine: jest.fn(() => ({
+        getRenderHeight: jest.fn(() => 1080),
+    })),
     pickWithRay: jest.fn(() => ({ hit: false, distance: 0, pickedPoint: null })),
 });
 
@@ -395,7 +402,7 @@ describe("extractSubTileElevation", () => {
 });
 
 /* ================================================================
- * LOD連携テスト（computeBaseZoom / computeMultiLodTiles 経由）
+ * LOD連携テスト（computeQuadtreeTiles 経由）
  * ================================================================ */
 describe("LOD連携", () => {
     beforeEach(() => {
@@ -404,65 +411,18 @@ describe("LOD連携", () => {
     });
 
     afterEach(() => {
-        // モック実装を元に戻す
-        (gsiTileMock.tileEdgeMeters as jest.Mock).mockImplementation(
-            () => 1000
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(new Float32Array(256 * 256))
         );
     });
 
-    it("camera.radiusが同じならtargetオフセットしてもLODは変化しない", async () => {
-        const camera1 = createMockCamera();
-        (camera1 as any).radius = 200;
-        (camera1 as any).position = { x: 0, y: 200, z: 0 };
-
-        const tm1 = createTileManager({
-            scene: createMockScene() as never,
-            camera: camera1,
-            zoom: 14,
-            subdivisions: 128,
-            heightScale: 1.0,
-            maxTiles: 60,
-            minZoom: 12,
-        });
-        await tm1.setCenter(35.68, 139.77);
-        const count1 = tm1.activeTileCount;
-        tm1.dispose();
-
-        // 同じ radius で異なるカメラ位置
-        const camera2 = createMockCamera();
-        (camera2 as any).radius = 200;
-        (camera2 as any).position = { x: 5000, y: 200, z: 5000 };
-
-        const tm2 = createTileManager({
-            scene: createMockScene() as never,
-            camera: camera2,
-            zoom: 14,
-            subdivisions: 128,
-            heightScale: 1.0,
-            maxTiles: 60,
-            minZoom: 12,
-        });
-        await tm2.setCenter(35.68, 139.77);
-        const count2 = tm2.activeTileCount;
-        tm2.dispose();
-
-        // camera.radius が同じなら position に依存せず同じタイル数
-        expect(count1).toBe(count2);
-    });
-
-    it("camera.radiusが変わるとロードされるタイルのzoomレベルが変化する", async () => {
-        // zoom依存の tileEdgeMeters: z14=1000, z13=2000, z12=4000
-        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
-
-        // 近距離: radius=2400 → baseZoom=14, 中心付近にzoom14タイルが残る
-        // (threshold=3120で近傍セルが zoom14 に収まり、zoom12親との共有が起きない)
+    it("カメラ位置が近いと高 zoom タイルがロードされる", async () => {
+        // カメラ近距離: position (0,500,0) vs target (0,0,0) → D ≈ 500
         const cameraNear = createMockCamera();
-        (cameraNear as any).radius = 2400;
+        (cameraNear as any).position = { x: 0, y: 500, z: 0 };
 
         const tmNear = createTileManager({
             scene: createMockScene() as never,
@@ -479,11 +439,16 @@ describe("LOD連携", () => {
             .map((c) => (c as number[])[1]);
         tmNear.dispose();
 
-        (gsiTileMock.textureUrl as jest.Mock).mockClear();
+        // 近景なので zoom14 タイルが少なくとも 1 枚はロードされる
+        expect(zoomsNear).toContain(14);
+    });
 
-        // 遠距離: radius=6000 → baseZoom=12, 全タイルzoom12
+    it("カメラ位置が遠いと低 zoom タイルのみロードされる", async () => {
+        // カメラ遠距離: y を十分大きく取り、zoom12 root で SSE が既定しきい値を下回るようにする。
+        // zoom12 tileSize ≈ 10000m (Tokyo 緯度補正後)、viewportH 1080、FOV π/3 の場合
+        // D ≈ 2_000_000 なら SSE ≈ 5（<<400）で root 採用となる。
         const cameraFar = createMockCamera();
-        (cameraFar as any).radius = 6000;
+        (cameraFar as any).position = { x: 0, y: 2_000_000, z: 0 };
 
         const tmFar = createTileManager({
             scene: createMockScene() as never,
@@ -500,9 +465,8 @@ describe("LOD連携", () => {
             .map((c) => (c as number[])[1]);
         tmFar.dispose();
 
-        // 近距離ではzoom14が含まれる
-        expect(zoomsNear).toContain(14);
-        // 遠距離ではzoom12のみ
+        expect(zoomsFar.length).toBeGreaterThan(0);
+        // 全タイルは minZoom (=12) で採用されているはず
         expect(zoomsFar.every((z: number) => z <= 12)).toBe(true);
     });
 });
@@ -515,8 +479,8 @@ describe("標高ズーム段階フォールバック", () => {
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(new Float32Array(256 * 256))
         );
-        (gsiTileMock.tileEdgeMeters as jest.Mock).mockImplementation(
-            () => 1000
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
     });
 
@@ -831,7 +795,7 @@ describe("queryElevationAtWorld", () => {
     });
 
     /**
-     * camera.radius が小さいとき computeBaseZoom が maxZoom(=14) を返し、
+     * カメラが近距離のとき SSE が大きくなり四分木再帰が maxZoom(=14) まで進み、
      * タイルが zoom 14 でロードされる。
      * minZoom=14 にすることで LOD による低zoom混在を防止。
      */
@@ -1203,9 +1167,9 @@ describe("queryElevationAtWorld", () => {
 });
 
 /* ================================================================
- * 地形標高を考慮したズームレベル最適化
+ * Quadtree + SSE によるタイル選定
  * ================================================================ */
-describe("地形標高を考慮したズームレベル最適化", () => {
+describe("Quadtree + SSE によるタイル選定", () => {
     afterEach(() => {
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(new Float32Array(256 * 256))
@@ -1215,7 +1179,7 @@ describe("地形標高を考慮したズームレベル最適化", () => {
         );
     });
 
-    it("高標高地形では effectiveRadius が radius - terrainY となり高zoomタイルが表示される", async () => {
+    it("高標高地形ではカメラとの距離が縮まり SSE が増えて高zoomタイルが表示される", async () => {
         // zoom依存の tileEdgeMeters: z14=1000, z13=2000, z12=4000
         (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
             (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
@@ -1284,7 +1248,7 @@ describe("地形標高を考慮したズームレベル最適化", () => {
         tmLow.dispose();
     });
 
-    it("標高データ未キャッシュ時は raw radius がそのまま使われる", async () => {
+    it("標高データ未キャッシュでもタイルがロードされる", async () => {
         const camera = createMockCamera();
         (camera as any).radius = 4000;
 
@@ -1304,7 +1268,7 @@ describe("地形標高を考慮したズームレベル最適化", () => {
         tm.dispose();
     });
 
-    it("effectiveRadius は下限ガード (rawRadius * 0.05) でクランプされる", async () => {
+    it("AABB にカメラが埋没しても SSE の距離クランプで安定動作する", async () => {
         (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
             (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
@@ -1330,12 +1294,13 @@ describe("地形標高を考慮したズームレベル最適化", () => {
         });
 
         await tm.setCenter(35.36, 138.73);
-        // 下限ガード (rawRadius*0.05=400) でクランプされ、安定して動作する
+        // SSE は距離 D を max(1, D) でクランプしているため、
+        // カメラが地形に埋没しても安定してタイルが出る
         expect(tm.activeTileCount).toBeGreaterThan(0);
         tm.dispose();
     });
 
-    it("同じ radius・標高でチルト角を変えても baseZoom が変わらない（チルト非依存）", async () => {
+    it("同じ radius・標高でチルト角を変えても SSE による採用 zoom が安定する", async () => {
         (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
             (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
@@ -1371,7 +1336,7 @@ describe("地形標高を考慮したズームレベル最適化", () => {
         const zoomMid = await runWithBeta(Math.PI / 3);        // 60°
         const zoomHorizontal = await runWithBeta(Math.PI / 2.1); // ほぼ水平
 
-        // チルト角を変えても baseZoom は同じ
+        // チルト角を変えても採用 zoom は同じ
         expect(zoomVertical).toBe(zoomMid);
         expect(zoomMid).toBe(zoomHorizontal);
     });

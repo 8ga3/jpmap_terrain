@@ -1,12 +1,13 @@
-import { computeVisibleTiles, computeMultiLodTiles, computeBaseZoom } from "../src/terrain/visibleTiles";
-import type { FrustumPlane } from "../src/terrain/visibleTiles";
-import type { TileCoord } from "../src/terrain/tileTypes";
-import { toTileKey } from "../src/terrain/tileTypes";
-
 /**
- * 全てを包含する Frustum planes（全候補が可視）。
- * 6平面すべてが十分に遠い位置に設定。
+ * computeQuadtreeTiles のユニットテスト。
+ * Quadtree 探索 + SSE による LOD 判定と視錐台カリングの挙動を検証する。
  */
+
+import { computeQuadtreeTiles, isAABBInFrustum } from "../src/terrain/visibleTiles";
+import type { FrustumPlane, QuadtreeTilesOptions } from "../src/terrain/visibleTiles";
+import type { TileCoord } from "../src/terrain/tileTypes";
+
+/** 全候補を内包する Frustum（6平面とも遠方）。 */
 const allVisiblePlanes: FrustumPlane[] = [
     { normal: { x: 1, y: 0, z: 0 }, d: 1e9 },
     { normal: { x: -1, y: 0, z: 0 }, d: 1e9 },
@@ -16,10 +17,7 @@ const allVisiblePlanes: FrustumPlane[] = [
     { normal: { x: 0, y: 0, z: -1 }, d: 1e9 },
 ];
 
-/**
- * 全てを除外する Frustum planes（全候補が不可視）。
- * 互いに矛盾する平面で、どの点も内側にならない。
- */
+/** 全候補を除外する Frustum（互いに矛盾する平面）。 */
 const noneVisiblePlanes: FrustumPlane[] = [
     { normal: { x: 1, y: 0, z: 0 }, d: -1e9 },
     { normal: { x: -1, y: 0, z: 0 }, d: -1e9 },
@@ -29,808 +27,240 @@ const noneVisiblePlanes: FrustumPlane[] = [
     { normal: { x: 0, y: 0, z: -1 }, d: -1e9 },
 ];
 
-const center: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+/** x >= 0 のみ許容する（片側のみ可視）。 */
+const halfVisiblePlanes: FrustumPlane[] = [
+    { normal: { x: 1, y: 0, z: 0 }, d: 0 },        // x >= 0
+    { normal: { x: -1, y: 0, z: 0 }, d: 1e9 },
+    { normal: { x: 0, y: 1, z: 0 }, d: 1e9 },
+    { normal: { x: 0, y: -1, z: 0 }, d: 1e9 },
+    { normal: { x: 0, y: 0, z: 1 }, d: 1e9 },
+    { normal: { x: 0, y: 0, z: -1 }, d: 1e9 },
+];
 
-describe("computeVisibleTiles", () => {
-    it("全可視の場合、中心タイルを含む結果を返す", () => {
-        const result = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: allVisiblePlanes,
-            maxTiles: 25,
-        });
+/** baseCenter は maxZoom 側の中心タイル。 */
+const baseCenter: TileCoord = { zoom: 14, x: 14547, y: 6452 };
+/** zoom z でのタイルサイズ: 256 / 2^z （テスト用の単純関数） */
+const tileSizeForZoom = (z: number): number => 256 / (1 << z);
 
-        expect(result.length).toBeGreaterThan(0);
-        expect(result).toContainEqual(center);
+/** 既定パラメータ。各テストで差分のみ上書きして使う。 */
+const baseOpts: QuadtreeTilesOptions = {
+    maxZoom: 14,
+    minZoom: 10,
+    baseCenter,
+    tileSizeForZoom,
+    frustumPlanes: allVisiblePlanes,
+    cameraPosition: { x: 0, y: 0.1, z: 0 },
+    verticalFov: Math.PI / 3,
+    viewportHeight: 1080,
+};
+
+describe("isAABBInFrustum", () => {
+    it("全可視 Frustum では AABB が可視と判定される", () => {
+        expect(
+            isAABBInFrustum(-1, -1, -1, 1, 1, 1, allVisiblePlanes)
+        ).toBe(true);
     });
 
-    it("全不可視の場合、空配列を返す", () => {
-        const result = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: noneVisiblePlanes,
-            maxTiles: 25,
-        });
+    it("全不可視 Frustum では可視判定されない", () => {
+        expect(
+            isAABBInFrustum(-1, -1, -1, 1, 1, 1, noneVisiblePlanes)
+        ).toBe(false);
+    });
+});
 
+describe("computeQuadtreeTiles", () => {
+    it("視錐台で全方向を外すと空配列を返す", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            frustumPlanes: noneVisiblePlanes,
+        });
         expect(result).toHaveLength(0);
     });
 
-    it("maxTiles で結果を制限する", () => {
-        const result = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: allVisiblePlanes,
+    it("片側を外す視錐台では x>=0 側の root のみ残る", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            frustumPlanes: halfVisiblePlanes,
+            // 高 sseThreshold で分割を抑止 → root がそのまま採用される
+            sseThreshold: 1e9,
+            rootSearchRadius: 2,
+        });
+
+        const allVisibleCount = computeQuadtreeTiles({
+            ...baseOpts,
+            sseThreshold: 1e9,
+            rootSearchRadius: 2,
+        }).length;
+
+        // 全 root は minZoom のまま採用され、半面のみ残るので全件より少ない
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.length).toBeLessThan(allVisibleCount);
+        expect(result.every((e) => e.coord.zoom === baseOpts.minZoom)).toBe(true);
+    });
+
+    it("sseThreshold が極小なら全タイルが maxZoom になる", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            sseThreshold: 0.001,
+            rootSearchRadius: 0,
+        });
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
+    });
+
+    it("sseThreshold が極大なら全タイルが minZoom になる", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            sseThreshold: 1e9,
+            rootSearchRadius: 1,
+        });
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every((e) => e.coord.zoom === baseOpts.minZoom)).toBe(true);
+    });
+
+    it("maxTiles で結果が制限され、先頭はカメラ最接近タイルが来る", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            sseThreshold: 0.001,     // 細かく分割して候補を多くする
+            rootSearchRadius: 1,
             maxTiles: 5,
         });
-
         expect(result.length).toBeLessThanOrEqual(5);
+        expect(result.length).toBeGreaterThan(0);
+        // 最接近側（カメラの真下）は maxZoom まで分割されている
+        expect(result[0].coord.zoom).toBe(baseOpts.maxZoom);
     });
 
-    it("結果はマンハッタン距離の昇順でソートされる", () => {
-        const result = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: allVisiblePlanes,
-            maxTiles: 50,
-            searchRadius: 3,
+    it("結果集合に親子関係のペアが存在しない", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            sseThreshold: 2.0,
+            rootSearchRadius: 1,
         });
-
-        // 中心（距離0）が先頭付近にあること
-        const centerIdx = result.findIndex(
-            (c) => c.x === center.x && c.y === center.y
-        );
-        expect(centerIdx).toBe(0);
-
-        // 距離が単調非減少であること
-        for (let i = 1; i < result.length; i++) {
-            const distPrev =
-                Math.abs(result[i - 1].x - center.x) +
-                Math.abs(result[i - 1].y - center.y);
-            const distCurr =
-                Math.abs(result[i].x - center.x) +
-                Math.abs(result[i].y - center.y);
-            expect(distCurr).toBeGreaterThanOrEqual(distPrev);
+        for (let i = 0; i < result.length; i++) {
+            for (let j = 0; j < result.length; j++) {
+                if (i === j) continue;
+                const a = result[i].coord;
+                const b = result[j].coord;
+                if (a.zoom >= b.zoom) continue;
+                // a は b の親候補（a.zoom < b.zoom）
+                const diff = b.zoom - a.zoom;
+                const parentX = b.x >> diff;
+                const parentY = b.y >> diff;
+                if (parentX === a.x && parentY === a.y) {
+                    throw new Error(
+                        `親子関係検出: parent ${a.zoom}/${a.x}/${a.y}, child ${b.zoom}/${b.x}/${b.y}`
+                    );
+                }
+            }
         }
     });
 
-    it("searchRadius=0 のとき中心タイルのみ返す", () => {
-        const result = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: allVisiblePlanes,
-            maxTiles: 25,
-            searchRadius: 0,
-        });
-
-        expect(result).toHaveLength(1);
-        expect(result[0]).toEqual(center);
-    });
-
-    it("maxElevation を指定すると AABB の maxY に反映される", () => {
-        // y >= 500 のみ許容する Frustum で maxElevation の差を検証する
-        const highFloorPlanes: FrustumPlane[] = [
-            { normal: { x: 1, y: 0, z: 0 }, d: 1e9 },
-            { normal: { x: -1, y: 0, z: 0 }, d: 1e9 },
-            { normal: { x: 0, y: 1, z: 0 }, d: -500 },    // y >= 500
-            { normal: { x: 0, y: -1, z: 0 }, d: 1e9 },
-            { normal: { x: 0, y: 0, z: 1 }, d: 1e9 },
-            { normal: { x: 0, y: 0, z: -1 }, d: 1e9 },
-        ];
-
-        // maxElevation=100 → AABB maxY=100, P-vertex y=100, 100-500 = -400 < 0 → 不可視
-        const resultLow = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: highFloorPlanes,
-            maxElevation: 100,
-        });
-        expect(resultLow).toHaveLength(0);
-
-        // maxElevation=1000 → AABB maxY=1000, P-vertex y=1000, 1000-500 = 500 >= 0 → 可視
-        const resultHigh = computeVisibleTiles({
-            center,
-            tileSize: 100,
-            frustumPlanes: highFloorPlanes,
-            maxElevation: 1000,
-        });
-        expect(resultHigh.length).toBeGreaterThan(0);
-    });
-});
-
-describe("computeBaseZoom", () => {
-    // zoom14=100, zoom13=200, zoom12=400
-    const tileSizeForZoom = (z: number): number => 100 * Math.pow(2, 14 - z);
-
-    it("近距離では最高zoomを返す", () => {
-        // distance=100, targetTileSize=80 → 全zoom > 80 → return maxZoom=14
-        expect(computeBaseZoom(100, tileSizeForZoom, 14, 12)).toBe(14);
-    });
-
-    it("中距離では中間zoomを返す", () => {
-        // distance=300, targetTileSize=240 → zoom13(200) <= 240 → return 13
-        expect(computeBaseZoom(300, tileSizeForZoom, 14, 12)).toBe(13);
-    });
-
-    it("遠距離では最低zoomを返す", () => {
-        // distance=600, targetTileSize=480 → zoom12(400) <= 480 → return 12
-        expect(computeBaseZoom(600, tileSizeForZoom, 14, 12)).toBe(12);
-    });
-});
-
-describe("computeMultiLodTiles", () => {
-    const baseCenter: TileCoord = { zoom: 14, x: 14547, y: 6452 };
-
-    // zoom14=100, zoom13=200, zoom12=400
-    const tileSizeForZoom = (z: number): number => 100 * Math.pow(2, 14 - z);
-
-    it("baseZoom < minZoom で空配列を返す", () => {
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 400,
-            baseZoom: 12,
-            minZoom: 14,
-            maxTiles: 100,
-        });
-        expect(result).toHaveLength(0);
-    });
-
-    it("十分な距離では全タイルが同一zoomになる", () => {
-        // cameraDistance=4000, threshold=5200
-        // searchRadius=3, tileSize=100 → 最遠タイルdist=sqrt(300²+300²)≈424 < 5200
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 4000,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 200,
-            searchRadius: 3,
+    it("近景は高 zoom、視錐台遠端は低 zoom が採用され、zoom 分布が混在する", () => {
+        // 近景: カメラ直下の root は D=0 → 1 にクランプされ分割進行。
+        // 遠景: root から離れるほど D が大きくなり早期採用される。
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            tileSizeForZoom: (z) => 10 * Math.pow(2, 10 - z),
+            viewportHeight: 1,
+            cameraPosition: { x: 0, y: 1, z: 0 },
+            sseThreshold: 2.0,
+            rootSearchRadius: 5,
         });
 
         expect(result.length).toBeGreaterThan(0);
-        expect(result.every((e) => e.coord.zoom === 14)).toBe(true);
+        const zooms = result.map((e) => e.coord.zoom);
+        const zmax = Math.max(...zooms);
+        const zmin = Math.min(...zooms);
+        expect(zmax).toBeGreaterThan(zmin);
+        expect(zmin).toBeGreaterThanOrEqual(baseOpts.minZoom);
+        expect(zmax).toBeLessThanOrEqual(baseOpts.maxZoom);
     });
 
-    it("近距離では複数zoomのタイルが含まれる", () => {
-        // cameraDistance=200, threshold=260
-        // 近いタイル: dist < 260 → zoom14
-        // 遠いタイル: dist >= 260 → zoom13 or zoom12
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
+    it("minZoom === maxZoom の場合、全タイルが同一 zoom で返る", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
             minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 6,
+            maxZoom: 12,
+            rootSearchRadius: 1,
         });
-
-        const zooms = new Set(result.map((e) => e.coord.zoom));
-        expect(zooms.size).toBeGreaterThanOrEqual(2);
-        expect(zooms.has(14)).toBe(true);
-    });
-
-    it("maxTilesで結果を制限する", () => {
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 400,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 10,
-            searchRadius: 4,
-        });
-
-        expect(result.length).toBeLessThanOrEqual(10);
-    });
-
-    it("タイルサイズがzoomレベルに応じて異なる", () => {
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 6,
-        });
-
-        const z14Entry = result.find((e) => e.coord.zoom === 14);
-        const z13Entry = result.find((e) => e.coord.zoom === 13);
-
-        expect(z14Entry?.tileSize).toBe(100);
-        if (z13Entry) {
-            expect(z13Entry.tileSize).toBe(200);
-        }
-    });
-
-    it("全不可視の場合、空配列を返す", () => {
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: noneVisiblePlanes,
-            cameraDistance: 400,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 60,
-            searchRadius: 4,
-        });
-
-        expect(result).toHaveLength(0);
-    });
-
-    it("TileKeyの重複がない", () => {
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 6,
-        });
-
-        const keys = result.map((e) => toTileKey(e.coord));
-        expect(keys.length).toBe(new Set(keys).size);
-    });
-
-    it("ターゲットから遠いタイルほど低zoomが割り当てられる", () => {
-        // cameraDistance=200 → threshold=260
-        // 中心付近のタイルはzoom14、外周はzoom13/12
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 8,
-        });
-
-        // ターゲット（原点）から遠いタイルは低zoom
-        const z14Tiles = result.filter((e) => e.coord.zoom === 14);
-        const z13Tiles = result.filter((e) => e.coord.zoom === 13);
-
-        if (z14Tiles.length > 0 && z13Tiles.length > 0) {
-            // zoom14タイルの平均距離 < zoom13タイルの平均距離
-            const avgDist = (tiles: typeof z14Tiles) =>
-                tiles.reduce((sum, t) => {
-                    const dx = t.coord.x - baseCenter.x;
-                    const dy = t.coord.y - baseCenter.y;
-                    return sum + Math.abs(dx) + Math.abs(dy);
-                }, 0) / tiles.length;
-
-            expect(avgDist(z14Tiles)).toBeLessThan(avgDist(z13Tiles));
-        }
-    });
-
-    it("grid center 奇数座標でも中心付近のタイルzoomがbaseZoomを維持する", () => {
-        // baseCenter.x が奇数のケース
-        const oddCenter: TileCoord = { zoom: 14, x: 14547, y: 6453 };
-        const result = computeMultiLodTiles({
-            baseCenter: oddCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 6,
-        });
-
-        // 中心タイル自体が baseZoom で含まれること
-        const centerTile = result.find(
-            (e) => e.coord.zoom === 14 && e.coord.x === oddCenter.x && e.coord.y === oddCenter.y
-        );
-        expect(centerTile).toBeDefined();
-        expect(centerTile!.coord.zoom).toBe(14);
-    });
-
-    it("カメラ距離を段階的に変化させても中心付近のzoomがbaseZoomを下回らない", () => {
-        const distances = [500, 1000, 1500, 2000];
-        for (const dist of distances) {
-            const result = computeMultiLodTiles({
-                baseCenter,
-                tileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: dist,
-                baseZoom: 14,
-                minZoom: 12,
-                maxTiles: 500,
-                searchRadius: 6,
-            });
-
-            // 中心タイル (dx=0, dy=0 相当) が baseZoom であること
-            const centerTile = result.find(
-                (e) => e.coord.zoom === 14 && e.coord.x === baseCenter.x && e.coord.y === baseCenter.y
-            );
-            expect(centerTile).toBeDefined();
-            expect(centerTile!.coord.zoom).toBe(14);
-        }
-    });
-
-    it("昇格後にタイル領域の重なりがない", () => {
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 8,
-        });
-
-        // 主格子の内側セルのみで重なりを検証。
-        // Far-field sweep が境界で部分的に重なるのは既存動作のため、
-        // 内側（searchRadius - 2^(baseZoom-minZoom) = 4）に限定する。
-        const innerRadius = 4;
-        const coveredCells = new Set<string>();
-        let hasOverlap = false;
-
-        for (const entry of result) {
-            const { coord } = entry;
-            const diff = 14 - coord.zoom;
-            const cellCount = 1 << diff;
-            const baseX = coord.x << diff;
-            const baseY = coord.y << diff;
-
-            for (let cy = 0; cy < cellCount; cy++) {
-                for (let cx = 0; cx < cellCount; cx++) {
-                    const dx = (baseX + cx) - baseCenter.x;
-                    const dy = (baseY + cy) - baseCenter.y;
-                    if (Math.abs(dx) > innerRadius || Math.abs(dy) > innerRadius) continue;
-
-                    const cellKey = `${baseX + cx},${baseY + cy}`;
-                    if (coveredCells.has(cellKey)) {
-                        hasOverlap = true;
-                    }
-                    coveredCells.add(cellKey);
-                }
-            }
-        }
-
-        expect(hasOverlap).toBe(false);
-    });
-
-    it("Far-field sweepで部分カバーの親タイルが高zoomタイルと重ならない", () => {
-        // 狭いsearchRadiusで内側は高zoom、外側はFar-field sweepが補完
-        // 部分カバー境界でのメッシュ重なりがないことを確認
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 4,
-        });
-
-        // baseZoom（zoom14）セルに展開して重なりチェック（全域）
-        const coveredCells = new Set<string>();
-        let hasOverlap = false;
-
-        for (const entry of result) {
-            const { coord } = entry;
-            const diff = 14 - coord.zoom;
-            const cellCount = 1 << diff;
-            const baseX = coord.x << diff;
-            const baseY = coord.y << diff;
-
-            for (let cy = 0; cy < cellCount; cy++) {
-                for (let cx = 0; cx < cellCount; cx++) {
-                    const cellKey = `${baseX + cx},${baseY + cy}`;
-                    if (coveredCells.has(cellKey)) {
-                        hasOverlap = true;
-                    }
-                    coveredCells.add(cellKey);
-                }
-            }
-        }
-
-        expect(hasOverlap).toBe(false);
-    });
-
-    it("Far-field sweepで部分カバー時に穴が開かない", () => {
-        // 狭い searchRadius で Far-field sweep が動作する構成
-        const result = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 200,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 4,
-        });
-
-        // 結果が空でないこと
         expect(result.length).toBeGreaterThan(0);
-
-        // Far-field sweep 由来の低zoomタイルが含まれること
-        const lowZoomTiles = result.filter((e) => e.coord.zoom < 14);
-        expect(lowZoomTiles.length).toBeGreaterThan(0);
-
-        // 重複キーがないこと
-        const keys = result.map((e) => toTileKey(e.coord));
-        expect(keys.length).toBe(new Set(keys).size);
+        expect(result.every((e) => e.coord.zoom === 12)).toBe(true);
     });
 
-    describe("超遠方タイル（低zoom）", () => {
-        // zoom18基準: zoom18=64m, zoom9≈32km, zoom2≈4160km
-        const farCenter: TileCoord = { zoom: 18, x: 232757, y: 103240 };
-        const farTileSizeForZoom = (z: number): number => 64 * Math.pow(2, 18 - z);
-
-        it("minZoom=2 で zoom 7 以下のタイルが結果に含まれる", () => {
-            const result = computeMultiLodTiles({
-                baseCenter: farCenter,
-                tileSizeForZoom: farTileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 40000,
-                baseZoom: 9,
-                minZoom: 2,
-                maxTiles: 160,
-                searchRadius: 14,
-            });
-
-            expect(result.length).toBeGreaterThan(0);
-            const lowZoomTiles = result.filter((e) => e.coord.zoom <= 7);
-            expect(lowZoomTiles.length).toBeGreaterThan(0);
-        });
-
-        it("低zoom タイルでも TileKey の重複がない", () => {
-            const result = computeMultiLodTiles({
-                baseCenter: farCenter,
-                tileSizeForZoom: farTileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 40000,
-                baseZoom: 9,
-                minZoom: 2,
-                maxTiles: 160,
-                searchRadius: 14,
-            });
-
-            const keys = result.map((e) => toTileKey(e.coord));
-            expect(keys.length).toBe(new Set(keys).size);
-        });
-
-        it("低zoom タイル追加後も maxTiles を超えない", () => {
-            const result = computeMultiLodTiles({
-                baseCenter: farCenter,
-                tileSizeForZoom: farTileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 40000,
-                baseZoom: 9,
-                minZoom: 2,
-                maxTiles: 160,
-                searchRadius: 14,
-            });
-
-            expect(result.length).toBeLessThanOrEqual(160);
-        });
-
-        it("近景タイル（baseZoom付近）が低zoom導入後も存在する", () => {
-            const result = computeMultiLodTiles({
-                baseCenter: farCenter,
-                tileSizeForZoom: farTileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 40000,
-                baseZoom: 9,
-                minZoom: 2,
-                maxTiles: 160,
-                searchRadius: 14,
-            });
-
-            const highZoomTiles = result.filter((e) => e.coord.zoom >= 8);
-            expect(highZoomTiles.length).toBeGreaterThan(0);
-        });
-
-        it("超遠方条件でもbaseZoomセル展開でタイル領域の重なりがない（Z-fighting防止）", () => {
-            const result = computeMultiLodTiles({
-                baseCenter: farCenter,
-                tileSizeForZoom: farTileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 40000,
-                baseZoom: 9,
-                minZoom: 2,
-                maxTiles: 160,
-                searchRadius: 14,
-            });
-
-            expect(result.length).toBeGreaterThan(0);
-
-            // baseZoom（zoom9）セルに展開して重なりチェック（全域）
-            const coveredCells = new Set<string>();
-            let hasOverlap = false;
-
-            for (const entry of result) {
-                const { coord } = entry;
-                const diff = 9 - coord.zoom;
-                if (diff < 0) continue;
-                const cellCount = 1 << diff;
-                const baseX = coord.x << diff;
-                const baseY = coord.y << diff;
-
-                for (let cy = 0; cy < cellCount; cy++) {
-                    for (let cx = 0; cx < cellCount; cx++) {
-                        const cellKey = `${baseX + cx},${baseY + cy}`;
-                        if (coveredCells.has(cellKey)) {
-                            hasOverlap = true;
-                        }
-                        coveredCells.add(cellKey);
-                    }
-                }
-            }
-
-            expect(hasOverlap).toBe(false);
-        });
-
-        it("カメラ距離を変えてもタイル領域の重なりがない", () => {
-            const distances = [20000, 40000, 80000];
-            for (const dist of distances) {
-                const result = computeMultiLodTiles({
-                    baseCenter: farCenter,
-                    tileSizeForZoom: farTileSizeForZoom,
-                    frustumPlanes: allVisiblePlanes,
-                    cameraDistance: dist,
-                    baseZoom: 9,
-                    minZoom: 2,
-                    maxTiles: 160,
-                    searchRadius: 14,
-                });
-
-                const coveredCells = new Set<string>();
-                let hasOverlap = false;
-
-                for (const entry of result) {
-                    const { coord } = entry;
-                    const diff = 9 - coord.zoom;
-                    if (diff < 0) continue;
-                    const cellCount = 1 << diff;
-                    const baseX = coord.x << diff;
-                    const baseY = coord.y << diff;
-
-                    for (let cy = 0; cy < cellCount; cy++) {
-                        for (let cx = 0; cx < cellCount; cx++) {
-                            const cellKey = `${baseX + cx},${baseY + cy}`;
-                            if (coveredCells.has(cellKey)) {
-                                hasOverlap = true;
-                            }
-                            coveredCells.add(cellKey);
-                        }
-                    }
-                }
-
-                expect(hasOverlap).toBe(false);
-            }
-        });
-    });
-
-    describe("近傍LOD平準化 (Step 1.5)", () => {
-        it("cameraDistance*2.6 以内の近傍タイル群は同一zoomに平準化される", () => {
-            // cameraDistance=200 → nearbyThreshold=520
-            // searchRadius=6, tileSize(14)=100 → dx=6*100=600, 境界近辺に差が出る構成
-            // Step 1.5により、dist<520 のタイルは最高zoom(14)に揃えられる
-            const result = computeMultiLodTiles({
-                baseCenter,
-                tileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 200,
-                baseZoom: 14,
-                minZoom: 12,
-                maxTiles: 500,
-                searchRadius: 6,
-            });
-
-            const nearbyThreshold = 200 * 2.6;
-            // dist < nearbyThreshold のタイルを抽出し、すべて同一zoomであることを確認
-            const nearbyEntries = result.filter((e) => {
-                const diff = 14 - e.coord.zoom;
-                const baseX = e.coord.x << diff;
-                const baseY = e.coord.y << diff;
-                const dx = (baseX - baseCenter.x) * 100;
-                const dy = (baseY - baseCenter.y) * 100;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                return dist < nearbyThreshold;
-            });
-
-            expect(nearbyEntries.length).toBeGreaterThan(0);
-            const zooms = new Set(nearbyEntries.map((e) => e.coord.zoom));
-            expect(zooms.size).toBe(1);
-        });
-
-        it("遠方タイルは近傍平準化の影響を受けず低zoomのまま", () => {
-            // nearbyThreshold を超える距離のタイルは元の低zoomを保持
-            const result = computeMultiLodTiles({
-                baseCenter,
-                tileSizeForZoom,
-                frustumPlanes: allVisiblePlanes,
-                cameraDistance: 200,
-                baseZoom: 14,
-                minZoom: 12,
-                maxTiles: 500,
-                searchRadius: 8,
-            });
-
-            // zoom14 以外のタイル（平準化対象外）が存在すること
-            const lowZoomTiles = result.filter((e) => e.coord.zoom < 14);
-            expect(lowZoomTiles.length).toBeGreaterThan(0);
-        });
-    });
-
-    it("cameraGroundOffset 指定時、カメラ地上投影点付近の手前側タイルは高zoomになる", () => {
-        // チルトでカメラが X=-600 地点の上空にある状況を想定。
-        // ターゲット(0,0)からは 600 離れているが、カメラ地上投影点の近くになる。
-        const withOffset = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 100,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 1000,
-            searchRadius: 10,
-            cameraGroundOffset: { x: -600, z: 0 },
-        });
-
-        const withoutOffset = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 100,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 1000,
-            searchRadius: 10,
-        });
-
-        const covers = (entries: typeof withOffset, dx: number, dy: number): number | null => {
-            const targetX = baseCenter.x + dx;
-            const targetY = baseCenter.y + dy;
-            for (const e of entries) {
-                const diff = 14 - e.coord.zoom;
-                const minX = e.coord.x << diff;
-                const minY = e.coord.y << diff;
-                const maxX = minX + (1 << diff);
-                const maxY = minY + (1 << diff);
-                if (targetX >= minX && targetX < maxX && targetY >= minY && targetY < maxY) {
-                    return e.coord.zoom;
-                }
-            }
-            return null;
+    it("カメラを遠ざけると採用 zoom が全体的に下がる", () => {
+        const scaled: Partial<QuadtreeTilesOptions> = {
+            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            rootSearchRadius: 0,
+            // 既定しきい値は大きめに振れるため、感度検証はしきい値を明示固定する
+            sseThreshold: 2.0,
         };
-
-        const zoomWith = covers(withOffset, -6, 0);
-        const zoomWithout = covers(withoutOffset, -6, 0);
-
-        expect(zoomWith).toBe(14);
-        expect(zoomWithout).not.toBeNull();
-        expect(zoomWith!).toBeGreaterThan(zoomWithout!);
+        const near = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            cameraPosition: { x: 0, y: 1000, z: 0 },
+        });
+        const far = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            cameraPosition: { x: 0, y: 1e7, z: 0 },
+        });
+        const avg = (entries: typeof near): number =>
+            entries.reduce((s, e) => s + e.coord.zoom, 0) / Math.max(1, entries.length);
+        expect(avg(far)).toBeLessThan(avg(near));
     });
 
-    it("cameraGroundOffset: 近傍平準化範囲外の手前側タイルも高zoomになる", () => {
-        const withOffset = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 1000,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 2000,
-            searchRadius: 40,
-            cameraGroundOffset: { x: -3500, z: 0 },
-        });
-
-        const withoutOffset = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 1000,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 2000,
-            searchRadius: 40,
-        });
-
-        const covers = (entries: typeof withOffset, dx: number, dy: number): number | null => {
-            const targetX = baseCenter.x + dx;
-            const targetY = baseCenter.y + dy;
-            for (const e of entries) {
-                const diff = 14 - e.coord.zoom;
-                const minX = e.coord.x << diff;
-                const minY = e.coord.y << diff;
-                const maxX = minX + (1 << diff);
-                const maxY = minY + (1 << diff);
-                if (targetX >= minX && targetX < maxX && targetY >= minY && targetY < maxY) {
-                    return e.coord.zoom;
-                }
-            }
-            return null;
+    it("viewportHeight を大きくすると同じタイルが 1 段深く分割される", () => {
+        const scaled: Partial<QuadtreeTilesOptions> = {
+            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            cameraPosition: { x: 0, y: 1e5, z: 0 },
+            rootSearchRadius: 0,
+            // 既定しきい値は 3x3 想定で大きいので、感度検証はしきい値を小さく固定する
+            sseThreshold: 2.0,
         };
-
-        const zoomWith = covers(withOffset, -35, 0);
-        const zoomWithout = covers(withoutOffset, -35, 0);
-
-        expect(zoomWith).not.toBeNull();
-        expect(zoomWithout).not.toBeNull();
-        expect(zoomWith!).toBeGreaterThan(zoomWithout!);
+        const low = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            viewportHeight: 500,
+        });
+        const high = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            viewportHeight: 1000,
+        });
+        const maxZoomLow = Math.max(...low.map((e) => e.coord.zoom));
+        const maxZoomHigh = Math.max(...high.map((e) => e.coord.zoom));
+        // ビューポートが高いほど SSE が大きくなり、より深く分割される
+        expect(maxZoomHigh).toBeGreaterThan(maxZoomLow);
     });
 
-    it("cameraGroundOffset: ターゲットとカメラ地上投影点の中間タイルも高zoomになる", () => {
-        const withOffset = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 500,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 2000,
-            searchRadius: 50,
-            cameraGroundOffset: { x: -4000, z: 0 },
+    it("rootSearchRadius=0 では単一 root から派生する子孫のみ返す", () => {
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            rootSearchRadius: 0,
+            sseThreshold: 0.001, // 最深まで分割
         });
+        expect(result.length).toBeGreaterThan(0);
+        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
 
-        const covers = (entries: typeof withOffset, dx: number, dy: number): number | null => {
-            const targetX = baseCenter.x + dx;
-            const targetY = baseCenter.y + dy;
-            for (const e of entries) {
-                const diff = 14 - e.coord.zoom;
-                const minX = e.coord.x << diff;
-                const minY = e.coord.y << diff;
-                const maxX = minX + (1 << diff);
-                const maxY = minY + (1 << diff);
-                if (targetX >= minX && targetX < maxX && targetY >= minY && targetY < maxY) {
-                    return e.coord.zoom;
-                }
-            }
-            return null;
-        };
-
-        for (const dx of [-10, -20, -30, -40]) {
-            const z = covers(withOffset, dx, 0);
-            expect(z).toBe(14);
-        }
+        // 全タイルが単一 root の子孫（minZoom へ落としたときの親 x/y が一致）
+        const diff = baseOpts.maxZoom - baseOpts.minZoom;
+        const parentXs = new Set(result.map((e) => e.coord.x >> diff));
+        const parentYs = new Set(result.map((e) => e.coord.y >> diff));
+        expect(parentXs.size).toBe(1);
+        expect(parentYs.size).toBe(1);
     });
 
-    it("zoomReferenceDistance 指定時、距離閾値が基準距離側で算出される", () => {
-        // cameraDistance=25（標高差し引き後の極小値）
-        // zoomReferenceDistance=500（生のカメラ距離）
-        // 基準=25 なら threshold=32.5 で大半のタイルが最低zoomへ落ちる
-        // 基準=500 なら threshold=650 で近傍タイルは baseZoom を維持する
-        const withRef = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 25,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 6,
-            zoomReferenceDistance: 500,
+    it("カメラが AABB 内部にある root では D が 1 にクランプされ maxZoom まで分割される", () => {
+        // カメラ位置を baseCenter ローカル原点に置く → AABB 内部で距離 0。
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            cameraPosition: { x: 0, y: 0, z: 0 },
+            rootSearchRadius: 0,
+            sseThreshold: 2.0,
         });
-        const withoutRef = computeMultiLodTiles({
-            baseCenter,
-            tileSizeForZoom,
-            frustumPlanes: allVisiblePlanes,
-            cameraDistance: 25,
-            baseZoom: 14,
-            minZoom: 12,
-            maxTiles: 500,
-            searchRadius: 6,
-        });
-
-        const baseZoomCount = (entries: typeof withRef) =>
-            entries.filter((e) => e.coord.zoom === 14).length;
-
-        // zoomReferenceDistance 指定時は baseZoom(14) タイルが大幅に増える
-        expect(baseZoomCount(withRef)).toBeGreaterThan(baseZoomCount(withoutRef) * 2);
+        expect(result.length).toBeGreaterThan(0);
+        // D が 1 にクランプされると SSE が大きく、maxZoom まで分割される。
+        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
     });
 });

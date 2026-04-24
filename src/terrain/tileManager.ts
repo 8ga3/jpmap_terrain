@@ -12,7 +12,7 @@ import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
 
 import { TileCoord, TileKey, toTileKey, tileOffsetToWorld, convertTileZoom, computeSubTileOffset } from "./tileTypes";
-import { computeMultiLodTiles, computeBaseZoom, FrustumPlane, LodTileEntry } from "./visibleTiles";
+import { computeQuadtreeTiles, FrustumPlane, LodTileEntry } from "./visibleTiles";
 import { createTileCache, TileCache } from "./tileCache";
 import { createMeshPool, MeshPool } from "./meshPool";
 import {
@@ -42,6 +42,8 @@ export interface TileManagerOptions {
     maxElevationZoom?: number;
     /** 標高フォールバックの最小ズームレベル（省略時は max(minZoom, maxElevationZoom - 4)） */
     minElevationZoom?: number;
+    /** Quadtree root 探索半径（minZoom タイル単位、±N 格子）。省略時は visibleTiles の既定値 */
+    rootSearchRadius?: number;
 }
 
 export interface TileManager {
@@ -73,8 +75,6 @@ const DEFAULT_CACHE_CAPACITY = 192;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
-/** 有効カメラ距離の下限値（生の radius に対する比率） */
-const EFFECTIVE_RADIUS_MIN_RATIO = 0.05;
 
 /** 頂点Y座標を標高値で更新 */
 const applyElevation = (
@@ -199,6 +199,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         minZoom: minZoomOpt,
         maxElevationZoom: maxElevationZoomOpt,
         minElevationZoom: minElevationZoomOpt,
+        rootSearchRadius,
     } = opts;
 
     const minZoom = minZoomOpt ?? Math.max(0, zoom - 2);
@@ -606,45 +607,23 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         maxElevation: number
     ): LodTileEntry[] => {
         if (!currentCenter) return [];
-
-        const rawCameraDistance = camera.radius;
-
-        // ターゲット直下の地形標高を差し引き、有効カメラ距離を算出する。
-        // チルト角に依存しない式を用いることで、チルト操作で baseZoom が変動することを防ぐ。
-        const terrainY = queryLocalElevation(camera.target.x, camera.target.z);
-        const effectiveRadius = terrainY !== null
-            ? Math.max(rawCameraDistance * EFFECTIVE_RADIUS_MIN_RATIO, rawCameraDistance - terrainY)
-            : rawCameraDistance;
-
-        const baseZoom = computeBaseZoom(
-            effectiveRadius,
-            tileSizeForZoom,
-            zoom,
-            minZoom
-        );
-
-        // カメラ地上投影点（ターゲット基準のワールド座標）。
-        // チルトで見える手前側タイルをカメラ直下タイルと同じ zoom に揃えるために使用。
-        const sinB = Math.sin(camera.beta);
-        const cameraGroundOffset = {
-            x: rawCameraDistance * sinB * Math.cos(camera.alpha),
-            z: rawCameraDistance * sinB * Math.sin(camera.alpha),
-        };
-
-        return computeMultiLodTiles({
+        const engine = scene.getEngine();
+        return computeQuadtreeTiles({
+            maxZoom: zoom,
+            minZoom,
             baseCenter: currentCenter,
             tileSizeForZoom,
             frustumPlanes,
-            cameraDistance: effectiveRadius,
-            baseZoom,
-            minZoom,
-            maxTiles,
+            cameraPosition: {
+                x: camera.position.x - camera.target.x,
+                y: camera.position.y - camera.target.y,
+                z: camera.position.z - camera.target.z,
+            },
+            verticalFov: camera.fov,
+            viewportHeight: engine.getRenderHeight(),
             maxElevation,
-            cameraGroundOffset,
-            // zoom 判定の基準は生のカメラ距離。
-            // 高標高地で effectiveRadius が極小化しても、遠方タイルがすぐに低 zoom へ
-            // 落ちないようにする（急斜面での LOD 段差防止）。
-            zoomReferenceDistance: rawCameraDistance,
+            maxTiles,
+            rootSearchRadius,
         });
     };
 
