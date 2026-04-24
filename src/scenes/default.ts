@@ -11,6 +11,7 @@ import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
 import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
+import { computePoseForNewTarget } from "../terrain/cameraRetarget";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -170,8 +171,9 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualX = gridResidualX + newOffsetX - gridShiftX;
             gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
 
+            // target.y は retarget で地形高さに設定されている場合があるため保持する
+            // （0 代入するとリリース時に上下ジャンプが発生する）
             camera.target.x = gridResidualX;
-            camera.target.y = 0;
             camera.target.z = gridResidualZ;
 
             currentLat = newLat;
@@ -285,6 +287,38 @@ export class DefaultScene implements CreateSceneClass {
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
 
+        /**
+         * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
+         * limit 逸脱・特異点時は何もせず既存 target を維持する。
+         * @returns 付け替えに成功したら true
+         */
+        const retargetPreservingPose = (newTarget: {
+            x: number;
+            y: number;
+            z: number;
+        }): boolean => {
+            const { alpha, beta, radius } = camera;
+            const sinB = Math.sin(beta);
+            const cosB = Math.cos(beta);
+            const camPos = {
+                x: camera.target.x + radius * sinB * Math.cos(alpha),
+                y: camera.target.y + radius * cosB,
+                z: camera.target.z + radius * sinB * Math.sin(alpha),
+            };
+            const result = computePoseForNewTarget(camPos, newTarget, alpha, {
+                lowerBeta: camera.lowerBetaLimit ?? 0,
+                upperBeta: camera.upperBetaLimit ?? Math.PI,
+                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
+                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
+            });
+            if (result.action !== "apply") return false;
+            camera.target.copyFromFloats(newTarget.x, newTarget.y, newTarget.z);
+            camera.alpha = result.alpha;
+            camera.beta = result.beta;
+            camera.radius = result.radius;
+            return true;
+        };
+
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -298,6 +332,27 @@ export class DefaultScene implements CreateSceneClass {
             const rect = canvas.getBoundingClientRect();
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
+
+            // Ctrl/Cmd 押下開始時: 画面中央の地形メッシュ交点を回転中心にする
+            // （カメラのワールド位置は保持されるためジャンプは発生しない）
+            if (e.ctrlKey || e.metaKey) {
+                // 直前までの pan オフセットを lat/lon に反映してから target を差し替える
+                commitPanOffset();
+                const cx = canvas.clientWidth / 2;
+                const cy = canvas.clientHeight / 2;
+                const centerPick = scene.pick(cx, cy, (m) =>
+                    m.name.startsWith("tile-ground-")
+                );
+                if (centerPick?.hit && centerPick.pickedPoint) {
+                    const p = centerPick.pickedPoint;
+                    if (retargetPreservingPose({ x: p.x, y: p.y, z: p.z })) {
+                        // 新 target の xz を新たなグリッド残差基準として同期
+                        gridResidualX = camera.target.x;
+                        gridResidualZ = camera.target.z;
+                    }
+                }
+            }
+
             const pick = scene.pick(sx, sy);
             dragPlaneY =
                 pick?.hit && pick.pickedPoint ? pick.pickedPoint.y : 0;
