@@ -80,6 +80,8 @@ export interface QuadtreeTilesOptions {
     maxTiles?: number;
     /** root タイル（minZoom）の探索半径。省略時 DEFAULT_ROOT_SEARCH_RADIUS */
     rootSearchRadius?: number;
+    /** @internal テスト用。再帰安全弁の訪問上限を直接指定する。 */
+    _maxVisited?: number;
 }
 
 /**
@@ -159,6 +161,7 @@ export const computeQuadtreeTiles = (
         maxElevation = DEFAULT_MAX_ELEVATION,
         maxTiles = DEFAULT_MAX_TILES,
         rootSearchRadius = DEFAULT_ROOT_SEARCH_RADIUS,
+        _maxVisited,
     } = opts;
 
     if (maxZoom < minZoom) return [];
@@ -168,8 +171,9 @@ export const computeQuadtreeTiles = (
     const sseDenomBase = 2 * Math.max(1e-6, tanHalfFov);
 
     // 暴発的な再帰を防ぐ安全弁。通常運用では到達しない。
-    const maxVisited = Math.max(maxTiles, 256) * 32;
+    const maxVisited = _maxVisited ?? Math.max(maxTiles, 256) * 32;
     let visited = 0;
+    let maxVisitedReached = false;
 
     const shouldAccept = (tileSize: number, distance: number, zoom: number): boolean => {
         if (zoom >= maxZoom) return true;
@@ -184,10 +188,11 @@ export const computeQuadtreeTiles = (
      * Quadtree 再帰探索。
      * 視錐台外なら即 return。採用条件を満たせば accepted に追加、
      * そうでなければ 4 子ノードへ分岐。
+     * 訪問上限（maxVisited）超過時は視錐台内なら強制採用（粗い LOD フォールバック）。
      */
     const traverse = (coord: TileCoord): void => {
-        if (visited >= maxVisited) return;
-        visited++;
+        const overBudget = visited >= maxVisited;
+        if (!overBudget) visited++;
 
         // タイル座標範囲外（地球の外）を除外。
         // 低 zoom の root 格子が地球範囲を越えて無効タイル 404 を量産するのを防ぐ。
@@ -205,6 +210,17 @@ export const computeQuadtreeTiles = (
         // AABB 全体との最短距離だとカメラがその高さ内に入っているとき 0 になり、過剰分割になる。
         const distance = distanceFootprintToPoint(aabb, cameraPosition);
         const tileSize = tileSizeForZoom(coord.zoom);
+
+        // 訪問上限超過: これ以上分割せず、視錐台内なら現在の zoom で強制採用する。
+        // 黙って破棄するとタイル欠け（穴）が発生するため、粗い LOD へフォールバックする。
+        if (overBudget) {
+            maxVisitedReached = true;
+            accepted.push({
+                entry: { coord, tileSize },
+                distance,
+            });
+            return;
+        }
 
         if (shouldAccept(tileSize, distance, coord.zoom)) {
             accepted.push({
@@ -236,6 +252,13 @@ export const computeQuadtreeTiles = (
                 y: rootCenter.y + dy,
             });
         }
+    }
+
+    if (maxVisitedReached) {
+        console.warn(
+            `[visibleTiles] maxVisited limit (${maxVisited}) reached; ` +
+            `${accepted.length} tiles force-accepted at coarser LOD to prevent gaps.`,
+        );
     }
 
     accepted.sort((a, b) => a.distance - b.distance);

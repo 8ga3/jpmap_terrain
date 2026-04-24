@@ -3,6 +3,7 @@
  * Quadtree 探索 + SSE による LOD 判定と視錐台カリングの挙動を検証する。
  */
 
+import { jest, describe, it, expect } from "@jest/globals";
 import { computeQuadtreeTiles, isAABBInFrustum } from "../src/terrain/visibleTiles";
 import type { FrustumPlane, QuadtreeTilesOptions } from "../src/terrain/visibleTiles";
 import type { TileCoord } from "../src/terrain/tileTypes";
@@ -262,5 +263,54 @@ describe("computeQuadtreeTiles", () => {
         expect(result.length).toBeGreaterThan(0);
         // D が 1 にクランプされると SSE が大きく、maxZoom まで分割される。
         expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
+    });
+
+    it("maxVisited 超過時にタイルが黙って破棄されず粗い LOD で強制採用される", () => {
+        // _maxVisited を極端に小さく設定して上限を意図的に踏ませる。
+        // sseThreshold を極小にし全ノードが maxZoom まで分割されようとする設定。
+        const lowBudget = 5;
+        const result = computeQuadtreeTiles({
+            ...baseOpts,
+            sseThreshold: 0.001,
+            rootSearchRadius: 0,
+            _maxVisited: lowBudget,
+        });
+        // 上限がなければすべて maxZoom になるが、上限到達後は途中の zoom で強制採用される。
+        expect(result.length).toBeGreaterThan(0);
+        // maxZoom より粗い zoom（強制採用ノード）が含まれていること。
+        const hasCoarser = result.some((e) => e.coord.zoom < baseOpts.maxZoom);
+        expect(hasCoarser).toBe(true);
+    });
+
+    it("maxVisited 超過時に console.warn が出力される", () => {
+        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            computeQuadtreeTiles({
+                ...baseOpts,
+                sseThreshold: 0.001,
+                rootSearchRadius: 0,
+                _maxVisited: 3,
+            });
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining("maxVisited limit"),
+            );
+        } finally {
+            warnSpy.mockRestore();
+        }
+    });
+
+    it("maxVisited に達しない通常ケースでは console.warn が出ない", () => {
+        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            computeQuadtreeTiles({
+                ...baseOpts,
+                sseThreshold: 1e9, // 全ノード即座に採用 → 分割なし
+                rootSearchRadius: 0,
+            });
+            expect(warnSpy).not.toHaveBeenCalled();
+        } finally {
+            warnSpy.mockRestore();
+        }
     });
 });
