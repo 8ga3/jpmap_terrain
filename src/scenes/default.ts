@@ -17,7 +17,14 @@ const MAX_ZOOM = 18;
 const MAX_ELEVATION_ZOOM = 17;
 const MIN_ELEVATION_ZOOM = 10;
 const HEIGHT_SCALE = 1.0;
-const MIN_ZOOM = 2;
+// Quadtree 探索の最低ズーム。低すぎると傾斜視点時に地平線方向で極端な低解像度タイルが
+// 採用され「多数 × 低解像度」状態になる一方、高すぎると最大チルト時に遠景タイルが root 候補
+// から外れて表示されない。zoom 8（タイル辺 ≒ 128km）が遠方の山まで表示できる下限。
+const MIN_ZOOM = 8;
+// Quadtree root 探索範囲（minZoom タイル単位の ±N 格子）。
+// 最大 tilt（beta ≈ 75°）の水平視野は遠クリッピング（400km）近くまで達するため、zoom8 で ±4
+// （9×9、概ね ±512km カバー）を既定とする。視錐台外の root は AABB カリングで即除外される。
+const ROOT_SEARCH_RADIUS = 4;
 
 /** カメラ最小距離（メートル） */
 const CAMERA_LOWER_RADIUS = 50;
@@ -102,6 +109,7 @@ export class DefaultScene implements CreateSceneClass {
             minElevationZoom: MIN_ELEVATION_ZOOM,
             maxTiles: 160,
             cacheCapacity: 256,
+            rootSearchRadius: ROOT_SEARCH_RADIUS,
         });
 
         let gridResidualX = 0;

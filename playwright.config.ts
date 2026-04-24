@@ -21,8 +21,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /*
+   * Quadtree + SSE ベースのタイル取得は 1 シーンで大量の HTTP リクエストを dev-server に
+   * 送るため、ローカルでも並列実行するとワーカー間で Chromium の screencast が落ちる事象が
+   * 発生する。安定性を優先し、CI/ローカルともに単一ワーカーで実行する（Issue #109）。
+   */
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
