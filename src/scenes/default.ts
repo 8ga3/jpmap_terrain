@@ -419,7 +419,7 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = radiusBeforeTilt;
                     }
                 }
-            } else if (dragAnchor) {
+            } else if (dragAnchor || dragMeshMode) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
@@ -446,7 +446,7 @@ export class DefaultScene implements CreateSceneClass {
                             dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                         }
                     }
-                } else {
+                } else if (dragAnchor) {
                     // フォールバック: 既存の平面交差パン
                     const current = intersectPlane(sx, sy, dragPlaneY);
                     if (current) {
