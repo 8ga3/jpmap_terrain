@@ -20,12 +20,13 @@ export const DEFAULT_MAX_ELEVATION = 4000;
 /**
  * SSE のデフォルトしきい値（ピクセル単位）。
  *
- * 採用条件は `SSE ≤ threshold`。タイルが画面縦方向に占める比率 ≒ `SSE / viewportHeight` と
- * 見なせるため、`threshold ≈ viewportHeight / N` のとき「真上見下ろしでおよそ N タイル（縦）」
- * が採用される。値を小さくするほど高解像度を維持（レベルダウンが遅い）、大きくするほど早めに
- * 低解像度へ落ちる（レベルダウンが早い）。既定は 500（1080px で約 2〜3 タイル縦、3×3〜4×4 相当）。
+ * 採用条件は `SSE ≤ threshold`。`SSE` はタイルが画面上で占めるピクセル高さの概算なので、
+ * `threshold` が大きいほど粗いタイルを早期受容（= ズームアップしても高 zoom に上がりにくい）、
+ * 小さいほど最深まで分割（= 高解像度を維持する）。
+ * 既定 256 は「タイル 1 枚あたり画面 256 ピクセル」≒ 実テクスチャ解像度とほぼ 1:1 の対応。
+ * 256だと負荷が高い
  */
-const DEFAULT_SSE_THRESHOLD = 2000;
+const DEFAULT_SSE_THRESHOLD = 600;
 /** minZoom タイル単位での root 探索半径の既定値（±N 格子）。 */
 const DEFAULT_ROOT_SEARCH_RADIUS = 2;
 
