@@ -286,6 +286,17 @@ export class DefaultScene implements CreateSceneClass {
         let activePointerId = -1;
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
+        let dragMeshMode = false;
+        let dragAnchorLat = 0;
+        let dragAnchorLon = 0;
+
+        /** ワールド座標(wx, wz)を現在のgrid基準で緯度経度に変換 */
+        const worldToLatLon = (wx: number, wz: number): { lat: number; lon: number } => {
+            const metersPerDegreeLon = METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
+            const lat = currentLat + (wz - gridResidualZ) / METERS_PER_DEGREE_LAT;
+            const lon = currentLon + (wx - gridResidualX) / metersPerDegreeLon;
+            return { lat, lon };
+        };
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
@@ -355,10 +366,21 @@ export class DefaultScene implements CreateSceneClass {
                 }
             }
 
-            const pick = scene.pick(sx, sy);
-            dragPlaneY =
-                pick?.hit && pick.pickedPoint ? pick.pickedPoint.y : 0;
-            dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+            const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
+            if (pick?.hit && pick.pickedPoint) {
+                // メッシュピックモード: 緯度経度アンカーを保存
+                dragMeshMode = true;
+                const latLon = worldToLatLon(pick.pickedPoint.x, pick.pickedPoint.z);
+                dragAnchorLat = latLon.lat;
+                dragAnchorLon = latLon.lon;
+                dragPlaneY = pick.pickedPoint.y;
+                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+            } else {
+                // フォールバック: 既存の平面交差モード
+                dragMeshMode = false;
+                dragPlaneY = 0;
+                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+            }
         });
 
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
@@ -398,15 +420,31 @@ export class DefaultScene implements CreateSceneClass {
                     }
                 }
             } else if (dragAnchor) {
-                // 通常ドラッグ: 逐次差分でパン（毎フレームanchor更新）
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
-                const current = intersectPlane(sx, sy, dragPlaneY);
-                if (current) {
-                    camera.target.x += dragAnchor.x - current.x;
-                    camera.target.z += dragAnchor.z - current.z;
-                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+
+                if (dragMeshMode) {
+                    // メッシュピックモード: 現在のカーソル位置でメッシュをピック
+                    const movePick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
+                    if (movePick?.hit && movePick.pickedPoint) {
+                        const currentLatLon = worldToLatLon(movePick.pickedPoint.x, movePick.pickedPoint.z);
+                        const deltaLat = dragAnchorLat - currentLatLon.lat;
+                        const deltaLon = dragAnchorLon - currentLatLon.lon;
+                        // 緯度経度差分をワールド座標のオフセットに変換
+                        const metersPerDegreeLon = METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
+                        camera.target.x += deltaLon * metersPerDegreeLon;
+                        camera.target.z += deltaLat * METERS_PER_DEGREE_LAT;
+                    }
+                    // メッシュピック失敗時はスキップ（前フレームの状態を維持）
+                } else {
+                    // フォールバック: 既存の平面交差パン
+                    const current = intersectPlane(sx, sy, dragPlaneY);
+                    if (current) {
+                        camera.target.x += dragAnchor.x - current.x;
+                        camera.target.z += dragAnchor.z - current.z;
+                        dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                    }
                 }
             }
             lastPointerX = e.clientX;
@@ -424,6 +462,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
+            dragMeshMode = false;
             commitPanOffset();
         };
 
