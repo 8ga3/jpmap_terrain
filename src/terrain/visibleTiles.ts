@@ -23,10 +23,10 @@ export const DEFAULT_MAX_ELEVATION = 4000;
  * 採用条件は `SSE ≤ threshold`。`SSE` はタイルが画面上で占めるピクセル高さの概算なので、
  * `threshold` が大きいほど粗いタイルを早期受容（= ズームアップしても高 zoom に上がりにくい）、
  * 小さいほど最深まで分割（= 高解像度を維持する）。
- * 既定 600 は「タイル 1 枚あたり画面 600 ピクセル」相当を許容する設定で、
+ * 既定 800 は「タイル 1 枚あたり画面 800 ピクセル」相当を許容する設定で、
  * 256 のようなより厳しいしきい値より分割負荷を抑えることを優先している。
  */
-const DEFAULT_SSE_THRESHOLD = 600;
+const DEFAULT_SSE_THRESHOLD = 800;
 /** minZoom タイル単位での root 探索半径の既定値（±N 格子）。 */
 const DEFAULT_ROOT_SEARCH_RADIUS = 2;
 
