@@ -12,6 +12,7 @@ import { createSkybox } from "../terrain/skybox";
 import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
 import { computePoseForNewTarget } from "../terrain/cameraRetarget";
+import { createUiVisibilityController } from "../terrain/uiVisibility";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -988,29 +989,16 @@ export class DefaultScene implements CreateSceneClass {
                 tileManager.setMapType(internal);
                 updateMapToggleLabel(internal);
             },
-            setUiVisibility: (target, visible) => {
-                const display = visible ? "" : "none";
-                switch (target) {
-                    case "compass":
-                        ui.compass.style.display = display;
-                        break;
-                    case "zoomButtons":
-                        ui.locateMe.style.display = display;
-                        ui.zoomIn.style.display = display;
-                        ui.zoomOut.style.display = display;
-                        break;
-                    case "scaleBar":
-                        ui.scaleBar.bar.style.display = display;
-                        ui.scaleBar.label.style.display = display;
-                        break;
-                    case "mapToggle":
-                        ui.mapToggle.style.display = display;
-                        break;
-                    case "attribution":
-                        ui.scaleBar.attribution.style.display = display;
-                        break;
-                }
-            },
+            setUiVisibility: createUiVisibilityController({
+                compass: ui.compass,
+                locateMe: ui.locateMe,
+                zoomIn: ui.zoomIn,
+                zoomOut: ui.zoomOut,
+                scaleBarBar: ui.scaleBar.bar,
+                scaleBarLabel: ui.scaleBar.label,
+                mapToggle: ui.mapToggle,
+                attribution: ui.scaleBar.attribution,
+            }),
         };
         options?.onReady?.(controller);
 
