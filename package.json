@@ -58,7 +58,7 @@
     "start:test": "npx webpack serve --config webpack.tests.js",
     "build:dev": "npm run typecheck && npx webpack --config webpack.dev.js",
     "build:lib": "tsup",
-    "clean:lib": "rm -rf dist",
+    "clean:lib": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run typecheck && npx webpack --config webpack.prod.js",
     "lint": "npx eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
