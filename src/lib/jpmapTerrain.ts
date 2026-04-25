@@ -110,11 +110,12 @@ export class JpmapTerrain {
      * 実体は T5 (#119) で実装する。
      */
     public async flyTo(options: FlyToOptions): Promise<void> {
-        this._lat = options.lat;
-        this._lon = options.lon;
-        if (options.altitude !== undefined) this._altitude = options.altitude;
-        if (options.azimuth !== undefined) this._azimuth = options.azimuth;
-        if (options.tilt !== undefined) this._tilt = options.tilt;
+        // setter 経由で更新し、将来 setter に追加される副作用（T5: カメラ反映等）を共有する。
+        this.lat = options.lat;
+        this.lon = options.lon;
+        if (options.altitude !== undefined) this.altitude = options.altitude;
+        if (options.azimuth !== undefined) this.azimuth = options.azimuth;
+        if (options.tilt !== undefined) this.tilt = options.tilt;
         // T5 (#119) でアニメーション遷移を実装する。
     }
 

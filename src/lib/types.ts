@@ -50,7 +50,10 @@ export interface FlyToOptions {
     duration?: number;
 }
 
-/** spec/package.md §3.2 で定義されるデフォルト初期値 */
+/**
+ * spec/package.md §3.2 で定義されるデフォルト初期値（パッケージ内部用）。
+ * 公開 API には含めず、`JpmapTerrain` 内部からのみ参照する。
+ */
 export const JPMAP_TERRAIN_DEFAULTS = {
     engine: "webgpu" as EngineType,
     lat: 35.681236,
