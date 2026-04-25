@@ -1,15 +1,20 @@
 /**
- * `JpmapTerrain` クラス骨格（T3 / Issue #117）
+ * `JpmapTerrain` クラス本体
  *
- * spec/package.md §3 (Initial Implementation) の API シグネチャを定義する。
- * Babylon.js Scene / Engine への接続および UI 配線は後続 Issue で実装する。
+ * spec/package.md §3 (Initial Implementation) の API を提供する。
  *
- * - T4 (#118): mountElement へのキャンバス・UI 配置と Scene 初期化
+ * - T3 (#117): クラス骨格 / 公開型
+ * - T4 (#118): mountElement への canvas 配置と Scene 初期化
  * - T5 (#119): カメラ get/set / flyTo の実体
  * - T6 (#120): UI 表示 get/set / mapType 切替
  * - T7 (#121): dispose / resize の実体
  */
 
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import type { Scene } from "@babylonjs/core/scene";
+
+import { DefaultScene } from "../scenes/default";
+import { createBabylonEngine } from "./internal/engineFactory";
 import {
     FlyToOptions,
     JPMAP_TERRAIN_DEFAULTS,
@@ -38,6 +43,11 @@ export class JpmapTerrain {
     private _showMapToggle = true;
     private _showAttribution = true;
 
+    private _canvas: HTMLCanvasElement | null = null;
+    private _engine: AbstractEngine | null = null;
+    private _scene: Scene | null = null;
+    private _onWindowResize: (() => void) | null = null;
+
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
         this._lat = options.lat ?? JPMAP_TERRAIN_DEFAULTS.lat;
@@ -63,8 +73,48 @@ export class JpmapTerrain {
             throw new TypeError("JpmapTerrain.create: mountElement is required");
         }
         const instance = new JpmapTerrain(mountElement, options);
-        // T4 (#118) で Scene / Engine 初期化処理を実装する。
+        await instance.initAsync(options);
         return instance;
+    }
+
+    /**
+     * mountElement に canvas を配置し Babylon.js Engine / Scene を初期化する (T4)。
+     * UI を mountElement 配下に完全に閉じ込める作業は T6 (#120) で行う。
+     */
+    private async initAsync(options: JpmapTerrainOptions): Promise<void> {
+        const canvas = document.createElement("canvas");
+        canvas.id = "jpmap-terrain-canvas";
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.display = "block";
+        canvas.style.outline = "none";
+        canvas.style.touchAction = "none";
+        this.mountElement.appendChild(canvas);
+        this._canvas = canvas;
+
+        const engine = await createBabylonEngine(
+            canvas,
+            options.engine ?? JPMAP_TERRAIN_DEFAULTS.engine,
+        );
+        this._engine = engine;
+
+        const sceneFactory = new DefaultScene();
+        const scene = await sceneFactory.createScene(engine, canvas, {
+            lat: this._lat,
+            lon: this._lon,
+            altitude: this._altitude,
+            azimuth: this._azimuth,
+            tilt: this._tilt,
+            mapType: this._mapType,
+            urlSync: false,
+        });
+        this._scene = scene;
+
+        engine.runRenderLoop(() => scene.render());
+
+        const onResize = (): void => engine.resize();
+        window.addEventListener("resize", onResize);
+        this._onWindowResize = onResize;
     }
 
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
@@ -168,17 +218,34 @@ export class JpmapTerrain {
 
     /**
      * ビューアを破棄し、マウント要素から関連 DOM を除去する。
-     * 実体は T7 (#121) で実装する。
+     * 完全なクリーンアップは T7 (#121) で拡充する。
      */
     public dispose(): void {
-        // T7 (#121) で Engine / Scene / DOM を解放する。
+        if (this._onWindowResize) {
+            window.removeEventListener("resize", this._onWindowResize);
+            this._onWindowResize = null;
+        }
+        if (this._scene) {
+            this._scene.dispose();
+            this._scene = null;
+        }
+        if (this._engine) {
+            this._engine.dispose();
+            this._engine = null;
+        }
+        if (this._canvas && this._canvas.parentElement === this.mountElement) {
+            this.mountElement.removeChild(this._canvas);
+        }
+        this._canvas = null;
     }
 
     /**
-     * リサイズを通知する。
-     * 実体は T7 (#121) で実装する。
+     * リサイズを通知し Engine を再計測する。
+     * `ResizeObserver` 連携は T7 (#121) で拡充する。
      */
     public resize(): void {
-        // T7 (#121) で Engine.resize() を呼び出す。
+        if (this._engine) {
+            this._engine.resize();
+        }
     }
 }
