@@ -32,6 +32,16 @@ jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
 }));
 
 jest.unstable_mockModule("../src/scenes/default", () => {
+    // モック内で refreshTerrain 相当の呼び出し回数を記録し、
+    // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
+    let refreshCallCount = 0;
+    type ViewValues = {
+        lat?: number;
+        lon?: number;
+        altitude?: number;
+        azimuth?: number;
+        tilt?: number;
+    };
     class DefaultScene {
         createScene = jest.fn(
             async (
@@ -52,27 +62,42 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                 let altitude = opts?.altitude ?? 0;
                 let azimuth = opts?.azimuth ?? 0;
                 let tilt = opts?.tilt ?? 0;
+                const refresh = (): void => {
+                    refreshCallCount++;
+                };
+                const applyView = (
+                    values: ViewValues,
+                    shouldRefresh: boolean,
+                ): void => {
+                    let centerChanged = false;
+                    if (values.lat !== undefined) {
+                        lat = values.lat;
+                        centerChanged = true;
+                    }
+                    if (values.lon !== undefined) {
+                        lon = values.lon;
+                        centerChanged = true;
+                    }
+                    if (values.altitude !== undefined) altitude = values.altitude;
+                    if (values.azimuth !== undefined) azimuth = values.azimuth;
+                    if (values.tilt !== undefined) tilt = values.tilt;
+                    if (shouldRefresh && centerChanged) refresh();
+                };
                 opts?.onReady?.({
                     getLat: () => lat,
                     getLon: () => lon,
                     getAltitude: () => altitude,
                     getAzimuth: () => azimuth,
                     getTilt: () => tilt,
-                    setLat: (v: number) => {
-                        lat = v;
-                    },
-                    setLon: (v: number) => {
-                        lon = v;
-                    },
-                    setAltitude: (v: number) => {
-                        altitude = v;
-                    },
-                    setAzimuth: (v: number) => {
-                        azimuth = v;
-                    },
-                    setTilt: (v: number) => {
-                        tilt = v;
-                    },
+                    setLat: (v: number) => applyView({ lat: v }, true),
+                    setLon: (v: number) => applyView({ lon: v }, true),
+                    setAltitude: (v: number) => applyView({ altitude: v }, true),
+                    setAzimuth: (v: number) => applyView({ azimuth: v }, true),
+                    setTilt: (v: number) => applyView({ tilt: v }, true),
+                    setView: (
+                        values: ViewValues,
+                        options?: { refreshTerrain?: boolean },
+                    ) => applyView(values, options?.refreshTerrain ?? true),
                 });
                 return {
                     render: jest.fn(),
@@ -81,11 +106,21 @@ jest.unstable_mockModule("../src/scenes/default", () => {
             },
         );
     }
-    return { DefaultScene };
+    return {
+        DefaultScene,
+        __getRefreshCount: (): number => refreshCallCount,
+        __resetRefreshCount: (): void => {
+            refreshCallCount = 0;
+        },
+    };
 });
 
 // jest.unstable_mockModule は hoist されないため、モック登録後に動的 import する。
 const { JpmapTerrain } = await import("../src/lib/jpmapTerrain");
+const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
+    __getRefreshCount: () => number;
+    __resetRefreshCount: () => void;
+};
 
 describe("JpmapTerrain (skeleton)", () => {
     const createMountElement = (): HTMLElement => document.createElement("div");
@@ -386,6 +421,52 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(viewer.lat).toBeCloseTo(1);
             expect(viewer.lon).toBeCloseTo(2);
             expect(viewer.altitude).toBeCloseTo(1234);
+        });
+
+        it("flyTo 中の中間フレームではタイル refresh を発火させず、最終フレームでまとめて refresh する", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 0,
+                lon: 0,
+                altitude: 1000,
+            });
+            // 初期化中の refresh は対象外。flyTo 開始時点でリセット。
+            sceneMockModule.__resetRefreshCount();
+
+            await viewer.flyTo({
+                lat: 35,
+                lon: 139,
+                altitude: 2000,
+                duration: 50,
+            });
+
+            // バッチ refresh 設計により、中間フレームでは refresh されず、
+            // 最終フレーム（または完了相当）で 1 回のみ呼ばれる想定。
+            // jsdom 上の RAF タイミングに揺れがあっても 2 回以下に収まることを保証する。
+            const count = sceneMockModule.__getRefreshCount();
+            expect(count).toBeGreaterThanOrEqual(1);
+            expect(count).toBeLessThanOrEqual(2);
+        });
+
+        it("単体 setter（lat/lon）はその都度 refresh を発火する", async () => {
+            const viewer = await create(createMountElement());
+            sceneMockModule.__resetRefreshCount();
+
+            viewer.lat = 35;
+            viewer.lon = 139;
+
+            // lat/lon それぞれで 1 回ずつ。
+            expect(sceneMockModule.__getRefreshCount()).toBe(2);
+        });
+
+        it("altitude/azimuth/tilt の単体 setter は refresh を発火しない", async () => {
+            const viewer = await create(createMountElement());
+            sceneMockModule.__resetRefreshCount();
+
+            viewer.altitude = 5000;
+            viewer.azimuth = 90;
+            viewer.tilt = 45;
+
+            expect(sceneMockModule.__getRefreshCount()).toBe(0);
         });
     });
 });

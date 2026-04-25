@@ -187,8 +187,11 @@ export class JpmapTerrain {
     /**
      * 指定座標へカメラをアニメーション付きで移動する (T5)。
      *
-     * 指定された長さ（`duration`, デフォルト 800ms）の間、`requestAnimationFrame` で状態を連続補間し setter を逕次呼ぶ。
-     * 連続で `flyTo` が呼ばれた場合は后勝ちとし、前の遷移は途中で中断し Promise を resolve する。
+     * 指定された長さ（`duration`, デフォルト 800ms）の間、`requestAnimationFrame` で状態を連続補間しコントローラへ順次反映する。
+     * 連続で `flyTo` が呼ばれた場合は後勝ちとし、前の遷移は途中で中断し Promise を resolve する。
+     *
+     * タイル fetch 負荷を抑えるため、中間フレームでは `setView({ refreshTerrain: false })` とし、
+     * 最終フレーム（もしくは 中断・即時適用パス）でのみ `refreshTerrain: true` でタイル中心を更新する。
      */
     public async flyTo(options: FlyToOptions): Promise<void> {
         const duration = Math.max(0, options.duration ?? 800);
@@ -203,17 +206,45 @@ export class JpmapTerrain {
         const targetAz = options.azimuth ?? startAz;
         const targetTilt = options.tilt ?? startTilt;
 
+        // この flyTo 中に適用したフレーム値をキャッシュし、
+        // 中断時に「その位置で 1 回だけ refresh を行う」ために保持する。
+        const lastApplied = {
+            lat: startLat,
+            lon: startLon,
+            altitude: startAlt,
+            azimuth: startAz,
+            tilt: startTilt,
+        };
+
+        const applyAndCacheLocal = (values: typeof lastApplied): void => {
+            // controller 不在時のフォールバック用にローカル状態も同期する。
+            this._lat = values.lat;
+            this._lon = values.lon;
+            this._altitude = values.altitude;
+            this._azimuth = values.azimuth;
+            this._tilt = values.tilt;
+            lastApplied.lat = values.lat;
+            lastApplied.lon = values.lon;
+            lastApplied.altitude = values.altitude;
+            lastApplied.azimuth = values.azimuth;
+            lastApplied.tilt = values.tilt;
+        };
+
         // 長さ 0 または animation frame を提供しない環境（テスト等）は即時適用
         const raf =
             typeof requestAnimationFrame === "function"
                 ? requestAnimationFrame
                 : null;
         if (duration === 0 || raf === null) {
-            this.lat = targetLat;
-            this.lon = targetLon;
-            this.altitude = targetAlt;
-            this.azimuth = targetAz;
-            this.tilt = targetTilt;
+            const finalValues = {
+                lat: targetLat,
+                lon: targetLon,
+                altitude: targetAlt,
+                azimuth: targetAz,
+                tilt: targetTilt,
+            };
+            applyAndCacheLocal(finalValues);
+            this._controller?.setView(finalValues, { refreshTerrain: true });
             return;
         }
 
@@ -228,18 +259,30 @@ export class JpmapTerrain {
             const step = (now: number): void => {
                 // 後勝ちの flyTo が起動されたら中断
                 if (token !== this._flyToToken) {
+                    // 最後に適用した位置で 1 回 refresh してタイルを追いつかせる。
+                    // 後勝ちの flyTo がさらに上書きするため、余分な fetch にはならない。
+                    this._controller?.setView(
+                        { lat: lastApplied.lat, lon: lastApplied.lon },
+                        { refreshTerrain: true },
+                    );
                     resolve();
                     return;
                 }
                 const elapsed = now - startTime;
                 const t = Math.min(1, elapsed / duration);
                 const k = easeOutCubic(t);
-                this.lat = startLat + (targetLat - startLat) * k;
-                this.lon = startLon + (targetLon - startLon) * k;
-                this.altitude = startAlt + (targetAlt - startAlt) * k;
-                this.azimuth = startAz + (targetAz - startAz) * k;
-                this.tilt = startTilt + (targetTilt - startTilt) * k;
-                if (t < 1) {
+                const values = {
+                    lat: startLat + (targetLat - startLat) * k,
+                    lon: startLon + (targetLon - startLon) * k,
+                    altitude: startAlt + (targetAlt - startAlt) * k,
+                    azimuth: startAz + (targetAz - startAz) * k,
+                    tilt: startTilt + (targetTilt - startTilt) * k,
+                };
+                applyAndCacheLocal(values);
+                // 中間フレームでは refresh しない。最終フレームだけ refresh。
+                const isLast = t >= 1;
+                this._controller?.setView(values, { refreshTerrain: isLast });
+                if (!isLast) {
                     raf(step);
                 } else {
                     resolve();
