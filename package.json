@@ -1,8 +1,20 @@
 {
-  "name": "jpmap_terrain",
+  "name": "jpmap-terrain",
   "version": "0.0.1",
   "description": "Terrain creation from elevation tiles of the Geospatial Information Authority of Japan.",
-  "main": "index.ts",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
   "dependencies": {
     "@babylonjs/assets": "^5.20.0",
     "@babylonjs/core": "^9.3.4",
@@ -33,6 +45,7 @@
     "ts-jest": "^29.4.9",
     "ts-loader": "^9.5.7",
     "ts-shader-loader": "^2.1.0",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "url-loader": "^4.1.1",
     "webpack": "^5.106.2",
@@ -44,6 +57,8 @@
     "start": "npx webpack serve --config webpack.dev.js",
     "start:test": "npx webpack serve --config webpack.tests.js",
     "build:dev": "npm run typecheck && npx webpack --config webpack.dev.js",
+    "build:lib": "tsup",
+    "clean:lib": "rm -rf dist",
     "build": "npm run typecheck && npx webpack --config webpack.prod.js",
     "lint": "npx eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
