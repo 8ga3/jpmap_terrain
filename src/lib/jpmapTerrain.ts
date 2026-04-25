@@ -80,10 +80,12 @@ export class JpmapTerrain {
     /**
      * mountElement に canvas を配置し Babylon.js Engine / Scene を初期化する (T4)。
      * UI を mountElement 配下に完全に閉じ込める作業は T6 (#120) で行う。
+     *
+     * 初期化途中で例外が発生した場合は append した canvas / 確保済み Engine をクリーンアップして再 throw する。
      */
     private async initAsync(options: JpmapTerrainOptions): Promise<void> {
         const canvas = document.createElement("canvas");
-        canvas.id = "jpmap-terrain-canvas";
+        // 同一ページで複数インスタンスを生成した場合に id が衝突しないよう、固定 id は付与しない。
         canvas.style.width = "100%";
         canvas.style.height = "100%";
         canvas.style.display = "block";
@@ -92,29 +94,46 @@ export class JpmapTerrain {
         this.mountElement.appendChild(canvas);
         this._canvas = canvas;
 
-        const engine = await createBabylonEngine(
-            canvas,
-            options.engine ?? JPMAP_TERRAIN_DEFAULTS.engine,
-        );
-        this._engine = engine;
+        try {
+            const engine = await createBabylonEngine(
+                canvas,
+                options.engine ?? JPMAP_TERRAIN_DEFAULTS.engine,
+            );
+            this._engine = engine;
 
-        const sceneFactory = new DefaultScene();
-        const scene = await sceneFactory.createScene(engine, canvas, {
-            lat: this._lat,
-            lon: this._lon,
-            altitude: this._altitude,
-            azimuth: this._azimuth,
-            tilt: this._tilt,
-            mapType: this._mapType,
-            urlSync: false,
-        });
-        this._scene = scene;
+            const sceneFactory = new DefaultScene();
+            const scene = await sceneFactory.createScene(engine, canvas, {
+                lat: this._lat,
+                lon: this._lon,
+                altitude: this._altitude,
+                azimuth: this._azimuth,
+                tilt: this._tilt,
+                mapType: this._mapType,
+                urlSync: false,
+            });
+            this._scene = scene;
 
-        engine.runRenderLoop(() => scene.render());
+            engine.runRenderLoop(() => scene.render());
 
-        const onResize = (): void => engine.resize();
-        window.addEventListener("resize", onResize);
-        this._onWindowResize = onResize;
+            const onResize = (): void => engine.resize();
+            window.addEventListener("resize", onResize);
+            this._onWindowResize = onResize;
+        } catch (error) {
+            // 部分的に確保済みのリソースを解放してから再 throw
+            if (this._scene) {
+                this._scene.dispose();
+                this._scene = null;
+            }
+            if (this._engine) {
+                this._engine.dispose();
+                this._engine = null;
+            }
+            if (canvas.parentElement === this.mountElement) {
+                this.mountElement.removeChild(canvas);
+            }
+            this._canvas = null;
+            throw error;
+        }
     }
 
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
