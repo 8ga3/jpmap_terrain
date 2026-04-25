@@ -115,6 +115,27 @@ export class JpmapTerrain {
                 urlSync: false,
                 onReady: (controller) => {
                     this._controller = controller;
+                    // T6: 初期表示状態を controller に反映する
+                    controller.setUiVisibility(
+                        "compass",
+                        this._showCompass,
+                    );
+                    controller.setUiVisibility(
+                        "zoomButtons",
+                        this._showZoomButtons,
+                    );
+                    controller.setUiVisibility(
+                        "scaleBar",
+                        this._showScaleBar,
+                    );
+                    controller.setUiVisibility(
+                        "mapToggle",
+                        this._showMapToggle,
+                    );
+                    controller.setUiVisibility(
+                        "attribution",
+                        this._showAttribution,
+                    );
                 },
             });
             this._scene = scene;
@@ -299,6 +320,7 @@ export class JpmapTerrain {
     }
     public set showCompass(value: boolean) {
         this._showCompass = value;
+        this._controller?.setUiVisibility("compass", value);
     }
 
     public get showZoomButtons(): boolean {
@@ -306,6 +328,7 @@ export class JpmapTerrain {
     }
     public set showZoomButtons(value: boolean) {
         this._showZoomButtons = value;
+        this._controller?.setUiVisibility("zoomButtons", value);
     }
 
     public get showScaleBar(): boolean {
@@ -313,6 +336,7 @@ export class JpmapTerrain {
     }
     public set showScaleBar(value: boolean) {
         this._showScaleBar = value;
+        this._controller?.setUiVisibility("scaleBar", value);
     }
 
     public get showMapToggle(): boolean {
@@ -320,6 +344,7 @@ export class JpmapTerrain {
     }
     public set showMapToggle(value: boolean) {
         this._showMapToggle = value;
+        this._controller?.setUiVisibility("mapToggle", value);
     }
 
     public get showAttribution(): boolean {
@@ -327,14 +352,15 @@ export class JpmapTerrain {
     }
     public set showAttribution(value: boolean) {
         this._showAttribution = value;
+        this._controller?.setUiVisibility("attribution", value);
     }
 
     public get mapType(): MapType {
-        return this._mapType;
+        return this._controller?.getMapType() ?? this._mapType;
     }
     public set mapType(value: MapType) {
         this._mapType = value;
-        // T6 (#120) で地図種類切替を実装する。
+        this._controller?.setMapType(value);
     }
 
     // ---- ライフサイクル (spec §3.3.3) ----
