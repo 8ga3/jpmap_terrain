@@ -47,6 +47,8 @@ export class JpmapTerrain {
     private _engine: AbstractEngine | null = null;
     private _scene: Scene | null = null;
     private _onWindowResize: (() => void) | null = null;
+    private _resizeObserver: ResizeObserver | null = null;
+    private _disposed = false;
     private _controller: DefaultSceneController | null = null;
     /** 進行中の flyTo をキャンセルするためのトークン */
     private _flyToToken = 0;
@@ -145,8 +147,27 @@ export class JpmapTerrain {
             const onResize = (): void => engine.resize();
             window.addEventListener("resize", onResize);
             this._onWindowResize = onResize;
+
+            // mountElement のサイズ変化にも追従させる (T7 / #121)。
+            // サポートしない環境 (古いブラウザや jsdom) ではスキップし、`window.resize` にフォールバックする。
+            if (typeof ResizeObserver !== "undefined") {
+                const ro = new ResizeObserver(() => {
+                    // engine.resize は canvas サイズを再計測しレンダリングターゲットを追従させる。
+                    engine.resize();
+                });
+                ro.observe(this.mountElement);
+                this._resizeObserver = ro;
+            }
         } catch (error) {
             // 部分的に確保済みのリソースを解放してから再 throw
+            if (this._resizeObserver) {
+                this._resizeObserver.disconnect();
+                this._resizeObserver = null;
+            }
+            if (this._onWindowResize) {
+                window.removeEventListener("resize", this._onWindowResize);
+                this._onWindowResize = null;
+            }
             if (this._scene) {
                 this._scene.dispose();
                 this._scene = null;
@@ -366,12 +387,25 @@ export class JpmapTerrain {
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
-     * ビューアを破棄し、マウント要素から関連 DOM を除去する。
-     * 完全なクリーンアップは T7 (#121) で拡充する。
+     * ビューアを破棄し、`mountElement` から canvas / UI を除去する (T7 / Issue #121)。
+     *
+     * - 進行中の `flyTo` を中断
+     * - `ResizeObserver` / `window.resize` リスナを解除
+     * - Babylon.js Scene / Engine を dispose
+     * - controlPanel が `document.body` に追加した UI 要素は Scene dispose 後にも残るため、
+     *   `mountElement` 配下の canvas 除去に加えて onReady で取得した UI 要素もここで除去する設計は T9 で controlPanel 側に設ける。
+     *
+     * 冪等性: 2 回以上呼んでも例外にならず、何もしない。
      */
     public dispose(): void {
+        if (this._disposed) return;
+        this._disposed = true;
         // 進行中の flyTo を中断
         this._flyToToken++;
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
         if (this._onWindowResize) {
             window.removeEventListener("resize", this._onWindowResize);
             this._onWindowResize = null;
@@ -392,8 +426,10 @@ export class JpmapTerrain {
     }
 
     /**
-     * リサイズを通知し Engine を再計測する。
-     * `ResizeObserver` 連携は T7 (#121) で拡充する。
+     * リサイズを通知し Engine を再計測する (T7 / Issue #121)。
+     *
+     * 内部は `ResizeObserver` で自動追従しているため、通常は手動呼び出し不要。
+     * レイアウトをスクリプトから一気に変更した場合などに明示的に呼ぶ。
      */
     public resize(): void {
         if (this._engine) {
