@@ -1,11 +1,15 @@
 import type { Scene } from "@babylonjs/core/scene";
 
 // Change this import to check other scenes
-import { DefaultScene } from "./scenes/default";
+import { DefaultScene, type DefaultSceneInitOptions } from "./scenes/default";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 
 export interface CreateSceneClass {
-    createScene: (engine: AbstractEngine, canvas: HTMLCanvasElement) => Promise<Scene>;
+    createScene: (
+        engine: AbstractEngine,
+        canvas: HTMLCanvasElement,
+        options?: DefaultSceneInitOptions,
+    ) => Promise<Scene>;
     preTasks?: Promise<unknown>[];
 }
 

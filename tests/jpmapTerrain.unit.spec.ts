@@ -2,18 +2,44 @@
  * @jest-environment jsdom
  */
 /**
- * `JpmapTerrain` クラス骨格のユニットテスト (T3 / Issue #117)
+ * `JpmapTerrain` クラス公開 API のユニットテスト (T3-T4 / Issues #117, #118)
  *
  * - デフォルト値の適用
  * - get/set による状態保持
  * - flyTo による状態更新
  * - mountElement 必須チェック
+ * - mountElement 配下に canvas が追加されること (T4)
+ * - dispose で canvas が除去されること (T4)
  *
- * Scene / Engine / DOM 連動は後続 Issue (T4 以降) で実装するため、
- * ここでは公開 API の状態管理のみを担保する。
+ * Babylon.js Engine / Scene は jsdom で動かないためモックする。
+ * Jest は ESM/VM Modules モードで起動しているため
+ * `jest.unstable_mockModule` + 動的 import でモックを適用する。
  */
 
-import { JpmapTerrain } from "../src/lib/jpmapTerrain";
+import { jest } from "@jest/globals";
+
+// Engine / Scene 生成はテスト対象外（Babylon.js に委譲）。
+// jsdom では WebGPU/WebGL2 を提供できないため、最低限のスタブで差し替える。
+jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
+    createBabylonEngine: jest.fn(async () => ({
+        runRenderLoop: jest.fn(),
+        resize: jest.fn(),
+        dispose: jest.fn(),
+    })),
+}));
+
+jest.unstable_mockModule("../src/scenes/default", () => {
+    class DefaultScene {
+        createScene = jest.fn(async () => ({
+            render: jest.fn(),
+            dispose: jest.fn(),
+        }));
+    }
+    return { DefaultScene };
+});
+
+// jest.unstable_mockModule は hoist されないため、モック登録後に動的 import する。
+const { JpmapTerrain } = await import("../src/lib/jpmapTerrain");
 
 describe("JpmapTerrain (skeleton)", () => {
     const createMountElement = (): HTMLElement => document.createElement("div");
@@ -154,6 +180,26 @@ describe("JpmapTerrain (skeleton)", () => {
 
             expect(() => viewer.resize()).not.toThrow();
             expect(() => viewer.dispose()).not.toThrow();
+        });
+    });
+
+    describe("mount canvas (T4)", () => {
+        it("create 時に mountElement 配下へ canvas が追加される", async () => {
+            const mount = createMountElement();
+            await JpmapTerrain.create(mount);
+
+            const canvases = mount.querySelectorAll("canvas");
+            expect(canvases.length).toBe(1);
+        });
+
+        it("dispose 時に canvas が mountElement から取り除かれる", async () => {
+            const mount = createMountElement();
+            const viewer = await JpmapTerrain.create(mount);
+            expect(mount.querySelectorAll("canvas").length).toBe(1);
+
+            viewer.dispose();
+
+            expect(mount.querySelectorAll("canvas").length).toBe(0);
         });
     });
 });

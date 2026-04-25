@@ -40,22 +40,54 @@ const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
 /** 1度の緯度あたりのメートル数（概算） */
 const METERS_PER_DEGREE_LAT = 111320;
 
+/**
+ * `DefaultScene.createScene` の初期化オプション (T4 / Issue #118)。
+ *
+ * パッケージ利用 (`JpmapTerrain.create`) で初期パラメータを指定するために導入。
+ * 既存デモ (`src/index.ts`) からは未指定で呼び出され、従来通り URL → デフォルト値の順で解決する。
+ */
+export interface DefaultSceneInitOptions {
+    /** 初期緯度（度）。指定時は URL/デフォルトより優先 */
+    lat?: number;
+    /** 初期経度（度）。指定時は URL/デフォルトより優先 */
+    lon?: number;
+    /** カメラ高度＝ArcRotateCamera radius（メートル） */
+    altitude?: number;
+    /** カメラ方位角（度）。0 で北向き */
+    azimuth?: number;
+    /** カメラチルト角（度）。0 で真下、90 で水平 */
+    tilt?: number;
+    /** 地図種類（T6 で配線） */
+    mapType?: "standard" | "photo";
+    /**
+     * `?lat=&lon=` を URL クエリへ反映するか。
+     * デモ (default: true) では従来通り更新するが、パッケージ利用時は false にして利用側 URL を汚染しない。
+     */
+    urlSync?: boolean;
+}
+
 export class DefaultScene implements CreateSceneClass {
     createScene = async (
         engine: AbstractEngine,
-        canvas: HTMLCanvasElement
+        canvas: HTMLCanvasElement,
+        options?: DefaultSceneInitOptions,
     ): Promise<Scene> => {
+        const azimuthDeg = options?.azimuth ?? 0;
+        const tiltDeg = options?.tilt ?? 45;
+        const altitude = options?.altitude ?? 2000;
+        const urlSync = options?.urlSync ?? true;
+
         const scene = new Scene(engine);
         scene.clearColor.set(0.75, 0.86, 0.95, 1);
 
         // カメラ
         const camera = new ArcRotateCamera(
             "terrain-camera",
-            -Math.PI / 2,
-            Math.PI / 4,
-            2000,
+            -Math.PI / 2 + (azimuthDeg * Math.PI) / 180,
+            (tiltDeg * Math.PI) / 180,
+            altitude,
             Vector3.Zero(),
-            scene
+            scene,
         );
         camera.lowerRadiusLimit = CAMERA_LOWER_RADIUS;
         camera.upperRadiusLimit = CAMERA_UPPER_RADIUS;
@@ -84,13 +116,19 @@ export class DefaultScene implements CreateSceneClass {
         // スカイボックス
         createSkybox(scene);
 
-        // 初期位置（URLパラメータ優先、なければ東京駅付近）
+        // 初期位置（options > URLパラメータ > デフォルト 東京駅付近）
         const urlLatLon = parseLatLonFromUrl(window.location.href);
-        const initialLat = urlLatLon?.lat ?? 35.681236;
-        const initialLon = urlLatLon?.lon ?? 139.767125;
+        const initialLat = options?.lat ?? urlLatLon?.lat ?? 35.681236;
+        const initialLon = options?.lon ?? urlLatLon?.lon ?? 139.767125;
 
-        // URL 自動更新
-        const updateUrl = createUrlUpdater(200);
+        // URL 自動更新（パッケージ利用時は無効化）
+        const urlUpdater = createUrlUpdater(200);
+        const noopUrlUpdater = (): void => {
+            /* urlSync=false: パッケージ利用時は URL を変更しない */
+        };
+        const updateUrl: (lat: number, lon: number) => void = urlSync
+            ? urlUpdater
+            : noopUrlUpdater;
 
         // UIパネル
         const ui = createControlPanel();
