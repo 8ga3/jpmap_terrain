@@ -41,6 +41,32 @@ const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
 const METERS_PER_DEGREE_LAT = 111320;
 
 /**
+ * `DefaultScene` 経由で外部からカメラ・位置を操作するためのコントローラ (T5 / Issue #119)。
+ *
+ * `JpmapTerrain` (パッケージ層) から get/set/flyTo を呼び出す際の境界となる。
+ * シーン内部のクロージャ (`currentLat` / `camera` / `refreshTerrain`) を直接公開せず、
+ * 必要な操作のみ関数として提供する。
+ */
+export interface DefaultSceneController {
+    getLat(): number;
+    getLon(): number;
+    /** 高度（メートル）= ArcRotateCamera.radius */
+    getAltitude(): number;
+    /** 方位角（度）= camera.alpha を北基準・度に変換した値 */
+    getAzimuth(): number;
+    /** チルト角（度）= camera.beta を度に変換した値 */
+    getTilt(): number;
+
+    /** 緯度を即時反映する。Japan bounds でクランプされる */
+    setLat(value: number): void;
+    /** 経度を即時反映する。Japan bounds でクランプされる */
+    setLon(value: number): void;
+    setAltitude(value: number): void;
+    setAzimuth(value: number): void;
+    setTilt(value: number): void;
+}
+
+/**
  * `DefaultScene.createScene` の初期化オプション (T4 / Issue #118)。
  *
  * パッケージ利用 (`JpmapTerrain.create`) で初期パラメータを指定するために導入。
@@ -64,6 +90,11 @@ export interface DefaultSceneInitOptions {
      * デモ (default: true) では従来通り更新するが、パッケージ利用時は false にして利用側 URL を汚染しない。
      */
     urlSync?: boolean;
+    /**
+     * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
+     * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
+     */
+    onReady?: (controller: DefaultSceneController) => void;
 }
 
 export class DefaultScene implements CreateSceneClass {
@@ -826,6 +857,44 @@ export class DefaultScene implements CreateSceneClass {
 
         // カメラ移動時の自動タイル更新
         tileManager.attachCamera();
+
+        // ---- T5: 外部操作用コントローラ ----
+        // JpmapTerrain から get/set/flyTo で呼び出される。
+        // 度数法 ⇄ ラジアン変換、alpha の北基準オフセット (-π/2) を吸収する。
+        const azimuthDegFromAlpha = (alpha: number): number =>
+            ((alpha + Math.PI / 2) * 180) / Math.PI;
+        const alphaFromAzimuthDeg = (deg: number): number =>
+            -Math.PI / 2 + (deg * Math.PI) / 180;
+
+        const controller: DefaultSceneController = {
+            getLat: () => currentLat,
+            getLon: () => currentLon,
+            getAltitude: () => camera.radius,
+            getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
+            getTilt: () => (camera.beta * 180) / Math.PI,
+            setLat: (value: number) => {
+                currentLat = clamp(value, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat);
+                void refreshTerrain();
+            },
+            setLon: (value: number) => {
+                currentLon = clamp(value, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon);
+                void refreshTerrain();
+            },
+            setAltitude: (value: number) => {
+                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                camera.radius = clamp(value, lower, upper);
+            },
+            setAzimuth: (deg: number) => {
+                camera.alpha = alphaFromAzimuthDeg(deg);
+            },
+            setTilt: (deg: number) => {
+                const lower = camera.lowerBetaLimit ?? 0;
+                const upper = camera.upperBetaLimit ?? Math.PI;
+                camera.beta = clamp((deg * Math.PI) / 180, lower, upper);
+            },
+        };
+        options?.onReady?.(controller);
 
         // 初回ロード
         await refreshTerrain();

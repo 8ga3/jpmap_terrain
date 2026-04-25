@@ -13,7 +13,7 @@
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import type { Scene } from "@babylonjs/core/scene";
 
-import { DefaultScene } from "../scenes/default";
+import { DefaultScene, type DefaultSceneController } from "../scenes/default";
 import { createBabylonEngine } from "./internal/engineFactory";
 import {
     FlyToOptions,
@@ -47,6 +47,9 @@ export class JpmapTerrain {
     private _engine: AbstractEngine | null = null;
     private _scene: Scene | null = null;
     private _onWindowResize: (() => void) | null = null;
+    private _controller: DefaultSceneController | null = null;
+    /** 進行中の flyTo をキャンセルするためのトークン */
+    private _flyToToken = 0;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -110,6 +113,9 @@ export class JpmapTerrain {
                 tilt: this._tilt,
                 mapType: this._mapType,
                 urlSync: false,
+                onReady: (controller) => {
+                    this._controller = controller;
+                },
             });
             this._scene = scene;
 
@@ -139,53 +145,108 @@ export class JpmapTerrain {
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
 
     public get lat(): number {
-        return this._lat;
+        return this._controller?.getLat() ?? this._lat;
     }
     public set lat(value: number) {
         this._lat = value;
-        // T5 (#119) で camera target に反映する。
+        this._controller?.setLat(value);
     }
 
     public get lon(): number {
-        return this._lon;
+        return this._controller?.getLon() ?? this._lon;
     }
     public set lon(value: number) {
         this._lon = value;
+        this._controller?.setLon(value);
     }
 
     public get altitude(): number {
-        return this._altitude;
+        return this._controller?.getAltitude() ?? this._altitude;
     }
     public set altitude(value: number) {
         this._altitude = value;
+        this._controller?.setAltitude(value);
     }
 
     public get azimuth(): number {
-        return this._azimuth;
+        return this._controller?.getAzimuth() ?? this._azimuth;
     }
     public set azimuth(value: number) {
         this._azimuth = value;
+        this._controller?.setAzimuth(value);
     }
 
     public get tilt(): number {
-        return this._tilt;
+        return this._controller?.getTilt() ?? this._tilt;
     }
     public set tilt(value: number) {
         this._tilt = value;
+        this._controller?.setTilt(value);
     }
 
     /**
-     * 指定座標へカメラをアニメーション付きで移動する。
-     * 実体は T5 (#119) で実装する。
+     * 指定座標へカメラをアニメーション付きで移動する (T5)。
+     *
+     * 指定された長さ（`duration`, デフォルト 800ms）の間、`requestAnimationFrame` で状態を連続補間し setter を逕次呼ぶ。
+     * 連続で `flyTo` が呼ばれた場合は后勝ちとし、前の遷移は途中で中断し Promise を resolve する。
      */
     public async flyTo(options: FlyToOptions): Promise<void> {
-        // setter 経由で更新し、将来 setter に追加される副作用（T5: カメラ反映等）を共有する。
-        this.lat = options.lat;
-        this.lon = options.lon;
-        if (options.altitude !== undefined) this.altitude = options.altitude;
-        if (options.azimuth !== undefined) this.azimuth = options.azimuth;
-        if (options.tilt !== undefined) this.tilt = options.tilt;
-        // T5 (#119) でアニメーション遷移を実装する。
+        const duration = Math.max(0, options.duration ?? 800);
+        const startLat = this.lat;
+        const startLon = this.lon;
+        const startAlt = this.altitude;
+        const startAz = this.azimuth;
+        const startTilt = this.tilt;
+        const targetLat = options.lat;
+        const targetLon = options.lon;
+        const targetAlt = options.altitude ?? startAlt;
+        const targetAz = options.azimuth ?? startAz;
+        const targetTilt = options.tilt ?? startTilt;
+
+        // 長さ 0 または animation frame を提供しない環境（テスト等）は即時適用
+        const raf =
+            typeof requestAnimationFrame === "function"
+                ? requestAnimationFrame
+                : null;
+        if (duration === 0 || raf === null) {
+            this.lat = targetLat;
+            this.lon = targetLon;
+            this.altitude = targetAlt;
+            this.azimuth = targetAz;
+            this.tilt = targetTilt;
+            return;
+        }
+
+        const token = ++this._flyToToken;
+        const startTime =
+            typeof performance !== "undefined" && performance.now
+                ? performance.now()
+                : Date.now();
+        const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+
+        return new Promise<void>((resolve) => {
+            const step = (now: number): void => {
+                // 後勝ちの flyTo が起動されたら中断
+                if (token !== this._flyToToken) {
+                    resolve();
+                    return;
+                }
+                const elapsed = now - startTime;
+                const t = Math.min(1, elapsed / duration);
+                const k = easeOutCubic(t);
+                this.lat = startLat + (targetLat - startLat) * k;
+                this.lon = startLon + (targetLon - startLon) * k;
+                this.altitude = startAlt + (targetAlt - startAlt) * k;
+                this.azimuth = startAz + (targetAz - startAz) * k;
+                this.tilt = startTilt + (targetTilt - startTilt) * k;
+                if (t < 1) {
+                    raf(step);
+                } else {
+                    resolve();
+                }
+            };
+            raf(step);
+        });
     }
 
     // ---- UI 表示制御 (spec §3.3.2) ----
@@ -240,10 +301,13 @@ export class JpmapTerrain {
      * 完全なクリーンアップは T7 (#121) で拡充する。
      */
     public dispose(): void {
+        // 進行中の flyTo を中断
+        this._flyToToken++;
         if (this._onWindowResize) {
             window.removeEventListener("resize", this._onWindowResize);
             this._onWindowResize = null;
         }
+        this._controller = null;
         if (this._scene) {
             this._scene.dispose();
             this._scene = null;

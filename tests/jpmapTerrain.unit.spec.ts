@@ -33,10 +33,53 @@ jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
 
 jest.unstable_mockModule("../src/scenes/default", () => {
     class DefaultScene {
-        createScene = jest.fn(async () => ({
-            render: jest.fn(),
-            dispose: jest.fn(),
-        }));
+        createScene = jest.fn(
+            async (
+                _engine: unknown,
+                _canvas: unknown,
+                opts?: {
+                    lat?: number;
+                    lon?: number;
+                    altitude?: number;
+                    azimuth?: number;
+                    tilt?: number;
+                    onReady?: (controller: unknown) => void;
+                },
+            ) => {
+                // T5: コントローラのインメモリ実装をテスト用に提供する。
+                let lat = opts?.lat ?? 0;
+                let lon = opts?.lon ?? 0;
+                let altitude = opts?.altitude ?? 0;
+                let azimuth = opts?.azimuth ?? 0;
+                let tilt = opts?.tilt ?? 0;
+                opts?.onReady?.({
+                    getLat: () => lat,
+                    getLon: () => lon,
+                    getAltitude: () => altitude,
+                    getAzimuth: () => azimuth,
+                    getTilt: () => tilt,
+                    setLat: (v: number) => {
+                        lat = v;
+                    },
+                    setLon: (v: number) => {
+                        lon = v;
+                    },
+                    setAltitude: (v: number) => {
+                        altitude = v;
+                    },
+                    setAzimuth: (v: number) => {
+                        azimuth = v;
+                    },
+                    setTilt: (v: number) => {
+                        tilt = v;
+                    },
+                });
+                return {
+                    render: jest.fn(),
+                    dispose: jest.fn(),
+                };
+            },
+        );
     }
     return { DefaultScene };
 });
@@ -249,6 +292,100 @@ describe("JpmapTerrain (skeleton)", () => {
             await expect(JpmapTerrain.create(mount)).rejects.toThrow("engine init failed");
 
             expect(mount.querySelectorAll("canvas").length).toBe(0);
+        });
+    });
+
+    describe("camera controller wiring (T5)", () => {
+        it("set した位置・カメラ系プロパティはコントローラ経由で取得しても同じ値になる", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 1,
+                lon: 2,
+                altitude: 100,
+                azimuth: 10,
+                tilt: 20,
+            });
+
+            viewer.lat = 35.0;
+            viewer.lon = 140.0;
+            viewer.altitude = 1500;
+            viewer.azimuth = 90;
+            viewer.tilt = 60;
+
+            // get はコントローラから取得される
+            expect(viewer.lat).toBe(35.0);
+            expect(viewer.lon).toBe(140.0);
+            expect(viewer.altitude).toBe(1500);
+            expect(viewer.azimuth).toBe(90);
+            expect(viewer.tilt).toBe(60);
+        });
+
+        it("flyTo は Promise を返し、完了時に最終値へ到達する", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 0,
+                lon: 0,
+                altitude: 1000,
+                azimuth: 0,
+                tilt: 30,
+            });
+
+            await viewer.flyTo({
+                lat: 35.3606,
+                lon: 138.7274,
+                altitude: 8000,
+                azimuth: 45,
+                tilt: 60,
+                duration: 50,
+            });
+
+            expect(viewer.lat).toBeCloseTo(35.3606);
+            expect(viewer.lon).toBeCloseTo(138.7274);
+            expect(viewer.altitude).toBeCloseTo(8000);
+            expect(viewer.azimuth).toBeCloseTo(45);
+            expect(viewer.tilt).toBeCloseTo(60);
+        });
+
+        it("duration=0 では即時に最終値が反映される", async () => {
+            const viewer = await create(createMountElement());
+
+            await viewer.flyTo({
+                lat: 10,
+                lon: 20,
+                altitude: 3000,
+                duration: 0,
+            });
+
+            expect(viewer.lat).toBe(10);
+            expect(viewer.lon).toBe(20);
+            expect(viewer.altitude).toBe(3000);
+        });
+
+        it("連続 flyTo では後勝ちになり、双方の Promise が解決される", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 0,
+                lon: 0,
+                altitude: 1000,
+            });
+
+            const first = viewer.flyTo({
+                lat: 50,
+                lon: 50,
+                altitude: 5000,
+                duration: 200,
+            });
+            // 即座に上書き
+            const second = viewer.flyTo({
+                lat: 1,
+                lon: 2,
+                altitude: 1234,
+                duration: 30,
+            });
+
+            await Promise.all([first, second]);
+
+            // 後勝ちの second が最終値
+            expect(viewer.lat).toBeCloseTo(1);
+            expect(viewer.lon).toBeCloseTo(2);
+            expect(viewer.altitude).toBeCloseTo(1234);
         });
     });
 });
