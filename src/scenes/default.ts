@@ -64,6 +64,25 @@ export interface DefaultSceneController {
     setAltitude(value: number): void;
     setAzimuth(value: number): void;
     setTilt(value: number): void;
+
+    /**
+     * 複数のカメラ/位置パラメータをまとめて適用する (T5)。
+     *
+     * `flyTo` のような高頻度更新では `options.refreshTerrain` を `false` にして
+     * タイル中心更新（`tileManager.setCenter` 経由の fetch）を抑制し、
+     * 遷移完了時など必要なタイミングで `true` を渡してまとめて反映する。
+     * 既定値は `true`（単体 setter と同じ挙動）。
+     */
+    setView(
+        values: {
+            lat?: number;
+            lon?: number;
+            altitude?: number;
+            azimuth?: number;
+            tilt?: number;
+        },
+        options?: { refreshTerrain?: boolean },
+    ): void;
 }
 
 /**
@@ -866,33 +885,71 @@ export class DefaultScene implements CreateSceneClass {
         const alphaFromAzimuthDeg = (deg: number): number =>
             -Math.PI / 2 + (deg * Math.PI) / 180;
 
+        // 中心座標の適用と、（必要なら）タイル refresh をまとめて行う共通実装。
+        const applyView = (
+            values: {
+                lat?: number;
+                lon?: number;
+                altitude?: number;
+                azimuth?: number;
+                tilt?: number;
+            },
+            shouldRefresh: boolean,
+        ): void => {
+            let centerChanged = false;
+            if (values.lat !== undefined) {
+                currentLat = clamp(
+                    values.lat,
+                    JAPAN_BOUNDS.minLat,
+                    JAPAN_BOUNDS.maxLat,
+                );
+                centerChanged = true;
+            }
+            if (values.lon !== undefined) {
+                currentLon = clamp(
+                    values.lon,
+                    JAPAN_BOUNDS.minLon,
+                    JAPAN_BOUNDS.maxLon,
+                );
+                centerChanged = true;
+            }
+            if (values.altitude !== undefined) {
+                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                camera.radius = clamp(values.altitude, lower, upper);
+            }
+            if (values.azimuth !== undefined) {
+                camera.alpha = alphaFromAzimuthDeg(values.azimuth);
+            }
+            if (values.tilt !== undefined) {
+                const lower = camera.lowerBetaLimit ?? 0;
+                const upper = camera.upperBetaLimit ?? Math.PI;
+                camera.beta = clamp(
+                    (values.tilt * Math.PI) / 180,
+                    lower,
+                    upper,
+                );
+            }
+            // 中心座標が変わったときのみ refresh する。
+            // altitude/azimuth/tilt はタイル中心に影響しないため refresh 不要。
+            if (shouldRefresh && centerChanged) {
+                void refreshTerrain();
+            }
+        };
+
         const controller: DefaultSceneController = {
             getLat: () => currentLat,
             getLon: () => currentLon,
             getAltitude: () => camera.radius,
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
             getTilt: () => (camera.beta * 180) / Math.PI,
-            setLat: (value: number) => {
-                currentLat = clamp(value, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat);
-                void refreshTerrain();
-            },
-            setLon: (value: number) => {
-                currentLon = clamp(value, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon);
-                void refreshTerrain();
-            },
-            setAltitude: (value: number) => {
-                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-                camera.radius = clamp(value, lower, upper);
-            },
-            setAzimuth: (deg: number) => {
-                camera.alpha = alphaFromAzimuthDeg(deg);
-            },
-            setTilt: (deg: number) => {
-                const lower = camera.lowerBetaLimit ?? 0;
-                const upper = camera.upperBetaLimit ?? Math.PI;
-                camera.beta = clamp((deg * Math.PI) / 180, lower, upper);
-            },
+            setLat: (value) => applyView({ lat: value }, true),
+            setLon: (value) => applyView({ lon: value }, true),
+            setAltitude: (value) => applyView({ altitude: value }, true),
+            setAzimuth: (value) => applyView({ azimuth: value }, true),
+            setTilt: (value) => applyView({ tilt: value }, true),
+            setView: (values, opts) =>
+                applyView(values, opts?.refreshTerrain ?? true),
         };
         options?.onReady?.(controller);
 
