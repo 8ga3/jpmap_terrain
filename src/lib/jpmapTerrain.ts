@@ -387,13 +387,13 @@ export class JpmapTerrain {
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
-     * ビューアを破棄し、`mountElement` から canvas / UI を除去する (T7 / Issue #121)。
+     * ビューアを破棄し、`mountElement` 配下の canvas と controlPanel が生成した UI 要素を除去する (T7 / Issue #121)。
      *
      * - 進行中の `flyTo` を中断
      * - `ResizeObserver` / `window.resize` リスナを解除
+     * - controlPanel の UI 要素を `document.body` から除去（DefaultSceneController.dispose 経由）
      * - Babylon.js Scene / Engine を dispose
-     * - controlPanel が `document.body` に追加した UI 要素は Scene dispose 後にも残るため、
-     *   `mountElement` 配下の canvas 除去に加えて onReady で取得した UI 要素もここで除去する設計は T9 で controlPanel 側に設ける。
+     * - `mountElement` 配下に配置した canvas を除去
      *
      * 冪等性: 2 回以上呼んでも例外にならず、何もしない。
      */
@@ -409,6 +409,14 @@ export class JpmapTerrain {
         if (this._onWindowResize) {
             window.removeEventListener("resize", this._onWindowResize);
             this._onWindowResize = null;
+        }
+        // controlPanel が body に追加した UI 要素を Scene dispose 前に除去する。
+        if (this._controller) {
+            try {
+                this._controller.dispose();
+            } catch {
+                // UI 除去の失敗は致命的ではないため握りつぶす
+            }
         }
         this._controller = null;
         if (this._scene) {

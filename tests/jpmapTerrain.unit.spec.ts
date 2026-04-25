@@ -46,11 +46,9 @@ const resizeObservers: Array<{
     disconnect: jest.Mock;
 }> = [];
 class TestResizeObserver {
-    private callback: RoCallback;
-    private targets: Set<Element> = new Set();
     public disconnect: jest.Mock;
+    private targets: Set<Element> = new Set();
     constructor(callback: RoCallback) {
-        this.callback = callback;
         this.disconnect = jest.fn(() => {
             this.targets.clear();
         });
@@ -83,6 +81,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     // T6: setMapType / setUiVisibility の記録もテストから検証できるよう保持する。
     let lastMapType: "standard" | "photo" = "standard";
     const setMapTypeCalls: Array<"standard" | "photo"> = [];
+    // T7: controller.dispose の呼び出し回数も検証する。
+    let controllerDisposeCount = 0;
     type UiTarget =
         | "compass"
         | "zoomButtons"
@@ -169,6 +169,9 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     setUiVisibility: (target: UiTarget, visible: boolean) => {
                         uiVisibility[target] = visible;
                     },
+                    dispose: () => {
+                        controllerDisposeCount++;
+                    },
                 });
                 return {
                     render: jest.fn(),
@@ -203,6 +206,10 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __setLastMapType: (v: "standard" | "photo"): void => {
             lastMapType = v;
         },
+        __getControllerDisposeCount: (): number => controllerDisposeCount,
+        __resetControllerDisposeCount: (): void => {
+            controllerDisposeCount = 0;
+        },
     };
 });
 
@@ -223,6 +230,8 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __resetSetMapTypeCalls: () => void;
     __getLastMapType: () => "standard" | "photo";
     __setLastMapType: (v: "standard" | "photo") => void;
+    __getControllerDisposeCount: () => number;
+    __resetControllerDisposeCount: () => void;
 };
 
 describe("JpmapTerrain (skeleton)", () => {
@@ -703,6 +712,17 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.resize();
 
             expect(resize).toHaveBeenCalledTimes(1);
+        });
+
+        it("dispose で controller.dispose が 1 回呼ばれる（UI 残留対策）", async () => {
+            sceneMockModule.__resetControllerDisposeCount();
+            const viewer = await create(createMountElement());
+
+            viewer.dispose();
+            // 冪等呼び出しでは増えない
+            viewer.dispose();
+
+            expect(sceneMockModule.__getControllerDisposeCount()).toBe(1);
         });
     });
 });

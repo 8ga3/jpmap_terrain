@@ -103,6 +103,15 @@ export interface DefaultSceneController {
             | "attribution",
         visible: boolean,
     ): void;
+
+    /**
+     * `JpmapTerrain.dispose()` から呼ばれる UI クリーンアップ (T7 / Issue #121)。
+     *
+     * `controlPanel` が `document.body` に追加した UI 要素 (コンパス / ズームボタンコンテナ / 地図切替) を
+     * 親要素から除去する。複数インスタンス共存および再マウント時に UI が残留するのを防ぐ。
+     * Scene/Engine の dispose は `JpmapTerrain` 側で行う（このメソッドはあくまで UI 限定）。
+     */
+    dispose(): void;
 }
 
 /**
@@ -999,6 +1008,32 @@ export class DefaultScene implements CreateSceneClass {
                 mapToggle: ui.mapToggle,
                 attribution: ui.scaleBar.attribution,
             }),
+            dispose: () => {
+                // controlPanel は document.body に各 UI を直接 append しているため、
+                // ここで親要素から取り除く (T7 / Issue #121)。
+                // - compass / mapToggle は単独要素
+                // - locateMe / zoomIn / zoomOut / scaleBar.* は共通の親 container 配下
+                const removeFromParent = (el: HTMLElement | null): void => {
+                    if (el && el.parentElement) {
+                        el.parentElement.removeChild(el);
+                    }
+                };
+                removeFromParent(ui.compass);
+                removeFromParent(ui.mapToggle);
+                // ズームボタン等は同一の親 container にまとまっているため、
+                // 親をまとめて remove することで全要素を除去する。
+                const zoomContainer = ui.zoomIn.parentElement;
+                if (zoomContainer) {
+                    removeFromParent(zoomContainer);
+                } else {
+                    removeFromParent(ui.locateMe);
+                    removeFromParent(ui.zoomIn);
+                    removeFromParent(ui.zoomOut);
+                    removeFromParent(ui.scaleBar.bar);
+                    removeFromParent(ui.scaleBar.label);
+                    removeFromParent(ui.scaleBar.attribution);
+                }
+            },
         };
         options?.onReady?.(controller);
 
