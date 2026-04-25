@@ -2,7 +2,7 @@
  * 開発用デモエントリ (T9 / Issue #123)
  *
  * パッケージ公開 API である `JpmapTerrain` を直接利用してデモを起動する。
- * - `?engine=webgpu|webgl` クエリで描画エンジンを切替（既定: 自動）
+ * - `?engine=webgpu|webgl|webgl2` クエリで描画エンジンを切替（`webgl`/`webgl2` は `webgl2` に正規化。既定: 自動）
  * - `#root` 要素にビューアをマウントする
  *
  * Playwright (tests/validation.spec.ts) と既存の手動デバッグ手段を保つため、
@@ -33,10 +33,10 @@ const start = async (): Promise<void> => {
 
     // 開発/テストビルドでのみデバッグ用に内部状態を露出する。
     // （Playwright の `window.scene.isReady()` 等が依存しているため）
+    // `__debugScene` は @internal 扱いの公式デバッグアクセサ（spec/package.md には未記載）。
     if (process.env.NODE_ENV !== "production") {
-        const debugRefs = viewer as unknown as { _scene?: unknown };
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
-        (window as unknown as { scene: unknown }).scene = debugRefs._scene;
+        (window as unknown as { scene: unknown }).scene = viewer.__debugScene;
         (window as unknown as { showToast: typeof showToast }).showToast = showToast;
     }
 };

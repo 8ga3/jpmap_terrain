@@ -28,18 +28,20 @@ npm install @babylonjs/loaders @babylonjs/materials
 <script type="module">
   import { JpmapTerrain } from "jpmap-terrain";
 
-  const viewer = await JpmapTerrain.create(
-    document.getElementById("terrain-viewer"),
-    {
-      engine: "webgpu",      // "webgpu" | "webgl2"
-      lat: 35.681236,
-      lon: 139.767125,
-      altitude: 2000,
-      azimuth: 0,
-      tilt: 45,
-      mapType: "standard",   // "standard" | "photo"
-    }
-  );
+  const container = document.getElementById("terrain-viewer");
+  if (!container) {
+    throw new Error('Element with id "terrain-viewer" was not found.');
+  }
+
+  const viewer = await JpmapTerrain.create(container, {
+    engine: "webgpu",      // "webgpu" | "webgl2"
+    lat: 35.681236,
+    lon: 139.767125,
+    altitude: 2000,
+    azimuth: 0,
+    tilt: 45,
+    mapType: "standard",   // "standard" | "photo"
+  });
 
   // プログラムで富士山に移動
   await viewer.flyTo({

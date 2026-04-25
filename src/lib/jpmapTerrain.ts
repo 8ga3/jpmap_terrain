@@ -184,6 +184,20 @@ export class JpmapTerrain {
         }
     }
 
+    // ---- 内部デバッグ用アクセサ ----
+
+    /**
+     * 内部 Babylon.js Scene への参照を返す（デバッグ・テスト用途）。
+     *
+     * @internal このプロパティは公開 API ではない。
+     * 開発デモ (`src/index.ts`) と Playwright (`tests/validation.spec.ts`) のみが
+     * `window.scene` 経由で `Scene.isReady()` 等を参照するために使用する。
+     * 利用側コードからは参照しないこと。
+     */
+    public get __debugScene(): Scene | null {
+        return this._scene;
+    }
+
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
 
     public get lat(): number {
