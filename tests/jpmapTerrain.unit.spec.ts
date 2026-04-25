@@ -35,6 +35,22 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
     // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
     let refreshCallCount = 0;
+    // T6: setMapType / setUiVisibility の記録もテストから検証できるよう保持する。
+    let lastMapType: "standard" | "photo" = "standard";
+    const setMapTypeCalls: Array<"standard" | "photo"> = [];
+    type UiTarget =
+        | "compass"
+        | "zoomButtons"
+        | "scaleBar"
+        | "mapToggle"
+        | "attribution";
+    const uiVisibility: Record<UiTarget, boolean> = {
+        compass: true,
+        zoomButtons: true,
+        scaleBar: true,
+        mapToggle: true,
+        attribution: true,
+    };
     type ViewValues = {
         lat?: number;
         lon?: number;
@@ -53,6 +69,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     altitude?: number;
                     azimuth?: number;
                     tilt?: number;
+                    mapType?: "standard" | "photo";
                     onReady?: (controller: unknown) => void;
                 },
             ) => {
@@ -62,6 +79,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                 let altitude = opts?.altitude ?? 0;
                 let azimuth = opts?.azimuth ?? 0;
                 let tilt = opts?.tilt ?? 0;
+                if (opts?.mapType) lastMapType = opts.mapType;
                 const refresh = (): void => {
                     refreshCallCount++;
                 };
@@ -98,6 +116,14 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                         values: ViewValues,
                         options?: { refreshTerrain?: boolean },
                     ) => applyView(values, options?.refreshTerrain ?? true),
+                    getMapType: () => lastMapType,
+                    setMapType: (value: "standard" | "photo") => {
+                        lastMapType = value;
+                        setMapTypeCalls.push(value);
+                    },
+                    setUiVisibility: (target: UiTarget, visible: boolean) => {
+                        uiVisibility[target] = visible;
+                    },
                 });
                 return {
                     render: jest.fn(),
@@ -112,14 +138,46 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __resetRefreshCount: (): void => {
             refreshCallCount = 0;
         },
+        __getUiVisibility: (): Record<UiTarget, boolean> => ({
+            ...uiVisibility,
+        }),
+        __resetUiVisibility: (): void => {
+            uiVisibility.compass = true;
+            uiVisibility.zoomButtons = true;
+            uiVisibility.scaleBar = true;
+            uiVisibility.mapToggle = true;
+            uiVisibility.attribution = true;
+        },
+        __getSetMapTypeCalls: (): Array<"standard" | "photo"> => [
+            ...setMapTypeCalls,
+        ],
+        __resetSetMapTypeCalls: (): void => {
+            setMapTypeCalls.length = 0;
+        },
+        __getLastMapType: (): "standard" | "photo" => lastMapType,
+        __setLastMapType: (v: "standard" | "photo"): void => {
+            lastMapType = v;
+        },
     };
 });
 
 // jest.unstable_mockModule は hoist されないため、モック登録後に動的 import する。
 const { JpmapTerrain } = await import("../src/lib/jpmapTerrain");
+type UiTarget =
+    | "compass"
+    | "zoomButtons"
+    | "scaleBar"
+    | "mapToggle"
+    | "attribution";
 const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __getRefreshCount: () => number;
     __resetRefreshCount: () => void;
+    __getUiVisibility: () => Record<UiTarget, boolean>;
+    __resetUiVisibility: () => void;
+    __getSetMapTypeCalls: () => Array<"standard" | "photo">;
+    __resetSetMapTypeCalls: () => void;
+    __getLastMapType: () => "standard" | "photo";
+    __setLastMapType: (v: "standard" | "photo") => void;
 };
 
 describe("JpmapTerrain (skeleton)", () => {
@@ -467,6 +525,79 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.tilt = 45;
 
             expect(sceneMockModule.__getRefreshCount()).toBe(0);
+        });
+    });
+
+    describe("UI visibility / mapType (T6)", () => {
+        beforeEach(() => {
+            sceneMockModule.__resetUiVisibility();
+            sceneMockModule.__resetSetMapTypeCalls();
+            sceneMockModule.__setLastMapType("standard");
+        });
+
+        it("create 直後は controller に各 UI の初期表示状態（既定すべて true）が反映される", async () => {
+            await create(createMountElement());
+            expect(sceneMockModule.__getUiVisibility()).toEqual({
+                compass: true,
+                zoomButtons: true,
+                scaleBar: true,
+                mapToggle: true,
+                attribution: true,
+            });
+        });
+
+        it("showXxx setter は対応する UI の表示状態を controller に反映する", async () => {
+            const viewer = await create(createMountElement());
+
+            viewer.showCompass = false;
+            viewer.showZoomButtons = false;
+            viewer.showScaleBar = false;
+            viewer.showMapToggle = false;
+            viewer.showAttribution = false;
+
+            expect(sceneMockModule.__getUiVisibility()).toEqual({
+                compass: false,
+                zoomButtons: false,
+                scaleBar: false,
+                mapToggle: false,
+                attribution: false,
+            });
+
+            // get は内部状態を返す
+            expect(viewer.showCompass).toBe(false);
+            expect(viewer.showZoomButtons).toBe(false);
+            expect(viewer.showScaleBar).toBe(false);
+            expect(viewer.showMapToggle).toBe(false);
+            expect(viewer.showAttribution).toBe(false);
+
+            viewer.showCompass = true;
+            expect(sceneMockModule.__getUiVisibility().compass).toBe(true);
+            expect(viewer.showCompass).toBe(true);
+        });
+
+        it("create に mapType を渡すと controller 経由で getter が返す値も反映される", async () => {
+            // モック内 lastMapType は createScene の opts.mapType で初期化される。
+            const viewer = await create(createMountElement(), {
+                mapType: "photo",
+            });
+            expect(viewer.mapType).toBe("photo");
+        });
+
+        it("mapType setter は controller.setMapType を呼び、getter にも反映される", async () => {
+            const viewer = await create(createMountElement());
+            expect(viewer.mapType).toBe("standard");
+
+            viewer.mapType = "photo";
+
+            expect(sceneMockModule.__getSetMapTypeCalls()).toEqual(["photo"]);
+            expect(viewer.mapType).toBe("photo");
+
+            viewer.mapType = "standard";
+            expect(sceneMockModule.__getSetMapTypeCalls()).toEqual([
+                "photo",
+                "standard",
+            ]);
+            expect(viewer.mapType).toBe("standard");
         });
     });
 });

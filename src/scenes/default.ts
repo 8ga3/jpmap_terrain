@@ -83,6 +83,25 @@ export interface DefaultSceneController {
         },
         options?: { refreshTerrain?: boolean },
     ): void;
+
+    // ---- UI / mapType (T6 / Issue #120) ----
+
+    /** 現在の地図種類を spec 表記 (`standard` / `photo`) で返す */
+    getMapType(): "standard" | "photo";
+    /** 地図種類を切り替える。ボタン表示も一緒に追従させる */
+    setMapType(value: "standard" | "photo"): void;
+    /**
+     * コントロールパネル要素の表示・非表示を切り替える (spec §3.3.2)。
+     */
+    setUiVisibility(
+        target:
+            | "compass"
+            | "zoomButtons"
+            | "scaleBar"
+            | "mapToggle"
+            | "attribution",
+        visible: boolean,
+    ): void;
 }
 
 /**
@@ -849,16 +868,27 @@ export class DefaultScene implements CreateSceneClass {
         });
 
         // 地図切替ボタン
+        // クリック時 / controller.setMapType の双方からラベル更新を共通化する (T6)。
+        const updateMapToggleLabel = (current: "std" | "photo"): void => {
+            ui.mapToggle.textContent = current === "std" ? "写真" : "標準";
+            ui.mapToggle.setAttribute(
+                "aria-label",
+                current === "std"
+                    ? "地図切替: 写真地図に変更"
+                    : "地図切替: 標準地図に変更",
+            );
+        };
+        // 初期 mapType がオプション指定されていれば反映する (T6)。
+        if (options?.mapType) {
+            const initialInternal =
+                options.mapType === "standard" ? "std" : "photo";
+            tileManager.setMapType(initialInternal);
+            updateMapToggleLabel(initialInternal);
+        }
         ui.mapToggle.addEventListener("click", () => {
             const next = tileManager.mapType === "std" ? "photo" : "std";
             tileManager.setMapType(next);
-            ui.mapToggle.textContent = next === "std" ? "写真" : "標準";
-            ui.mapToggle.setAttribute(
-                "aria-label",
-                next === "std"
-                    ? "地図切替: 写真地図に変更"
-                    : "地図切替: 標準地図に変更"
-            );
+            updateMapToggleLabel(next);
         });
 
         // カメラ-地形衝突回避: 地面にめり込まないよう radius を補正してストップ
@@ -950,6 +980,37 @@ export class DefaultScene implements CreateSceneClass {
             setTilt: (value) => applyView({ tilt: value }, true),
             setView: (values, opts) =>
                 applyView(values, opts?.refreshTerrain ?? true),
+            // ---- T6 (Issue #120) ----
+            getMapType: () =>
+                tileManager.mapType === "std" ? "standard" : "photo",
+            setMapType: (value) => {
+                const internal = value === "standard" ? "std" : "photo";
+                tileManager.setMapType(internal);
+                updateMapToggleLabel(internal);
+            },
+            setUiVisibility: (target, visible) => {
+                const display = visible ? "" : "none";
+                switch (target) {
+                    case "compass":
+                        ui.compass.style.display = display;
+                        break;
+                    case "zoomButtons":
+                        ui.locateMe.style.display = display;
+                        ui.zoomIn.style.display = display;
+                        ui.zoomOut.style.display = display;
+                        break;
+                    case "scaleBar":
+                        ui.scaleBar.bar.style.display = display;
+                        ui.scaleBar.label.style.display = display;
+                        break;
+                    case "mapToggle":
+                        ui.mapToggle.style.display = display;
+                        break;
+                    case "attribution":
+                        ui.scaleBar.attribution.style.display = display;
+                        break;
+                }
+            },
         };
         options?.onReady?.(controller);
 
