@@ -21,15 +21,60 @@ import { jest } from "@jest/globals";
 // Engine / Scene 生成はテスト対象外（Babylon.js に委譲）。
 // jsdom では WebGPU/WebGL2 を提供できないため、最低限のスタブで差し替える。
 const engineDispose = jest.fn();
-const createEngineMock = jest.fn(async () => ({
-    runRenderLoop: jest.fn(),
-    resize: jest.fn(),
-    dispose: engineDispose,
-}));
+// engine.resize 呼び出し回数を T7 テストで検証できるよう、最後に作った engine の resize を保持する。
+let lastEngineResize: jest.Mock = jest.fn();
+const createEngineMock = jest.fn(async () => {
+    const resize = jest.fn();
+    lastEngineResize = resize;
+    return {
+        runRenderLoop: jest.fn(),
+        resize,
+        dispose: engineDispose,
+    };
+});
 
 jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
 }));
+
+// jsdom には ResizeObserver が無いため、テスト用に簡易実装を注入する (T7 / #121)。
+// 観測対象 → 観測コールバックを覚えておき、テストから手動で trigger できる。
+type RoCallback = (entries: unknown[], observer: unknown) => void;
+const resizeObservers: Array<{
+    callback: RoCallback;
+    targets: Set<Element>;
+    disconnect: jest.Mock;
+}> = [];
+class TestResizeObserver {
+    private callback: RoCallback;
+    private targets: Set<Element> = new Set();
+    public disconnect: jest.Mock;
+    constructor(callback: RoCallback) {
+        this.callback = callback;
+        this.disconnect = jest.fn(() => {
+            this.targets.clear();
+        });
+        resizeObservers.push({
+            callback,
+            targets: this.targets,
+            disconnect: this.disconnect,
+        });
+    }
+    observe(target: Element): void {
+        this.targets.add(target);
+    }
+    unobserve(target: Element): void {
+        this.targets.delete(target);
+    }
+}
+(globalThis as unknown as { ResizeObserver: typeof TestResizeObserver }).ResizeObserver = TestResizeObserver;
+const triggerResizeObservers = (): void => {
+    for (const ro of resizeObservers) {
+        if (ro.targets.size === 0) continue;
+        const entries = Array.from(ro.targets).map((t) => ({ target: t }));
+        ro.callback(entries, ro);
+    }
+};
 
 jest.unstable_mockModule("../src/scenes/default", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
@@ -598,6 +643,66 @@ describe("JpmapTerrain (skeleton)", () => {
                 "standard",
             ]);
             expect(viewer.mapType).toBe("standard");
+        });
+    });
+
+    describe("dispose / resize (T7)", () => {
+        it("ResizeObserver の通知で engine.resize が呼ばれる", async () => {
+            await create(createMountElement());
+            const resize = lastEngineResize;
+            // 初期化時の resize 呼び出しはまだ無い（runRenderLoop と resize 紐付けは window.resize と RO トリガ経由）。
+            expect(resize).toHaveBeenCalledTimes(0);
+
+            triggerResizeObservers();
+
+            expect(resize).toHaveBeenCalledTimes(1);
+        });
+
+        it("dispose 後は ResizeObserver / window.resize の通知でも engine.resize が呼ばれない", async () => {
+            const viewer = await create(createMountElement());
+            const resize = lastEngineResize;
+            viewer.dispose();
+
+            triggerResizeObservers();
+            window.dispatchEvent(new Event("resize"));
+
+            expect(resize).toHaveBeenCalledTimes(0);
+        });
+
+        it("dispose は冪等で、複数回呼んでも例外にならず engine.dispose は 1 回だけ呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            engineDispose.mockClear();
+
+            viewer.dispose();
+            viewer.dispose();
+            viewer.dispose();
+
+            expect(engineDispose).toHaveBeenCalledTimes(1);
+        });
+
+        it("dispose 後に同一 mountElement で再 create しても例外にならず canvas が再配置される", async () => {
+            const mount = createMountElement();
+            const first = await create(mount);
+            first.dispose();
+
+            // dispose 後は canvas が外れている
+            expect(mount.querySelectorAll("canvas").length).toBe(0);
+
+            const second = await create(mount);
+
+            expect(mount.querySelectorAll("canvas").length).toBe(1);
+            // 再度 dispose しても問題ない
+            expect(() => second.dispose()).not.toThrow();
+            expect(mount.querySelectorAll("canvas").length).toBe(0);
+        });
+
+        it("resize() を明示的に呼ぶと engine.resize が呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            const resize = lastEngineResize;
+
+            viewer.resize();
+
+            expect(resize).toHaveBeenCalledTimes(1);
         });
     });
 });
