@@ -109,7 +109,6 @@ console.log(`現在地: ${currentLat}, ${currentLon} 高度: ${currentAlt}m`);
 const heading = viewer.azimuth;
 const pitch = viewer.tilt;
 ```
-```
 
 #### 3.3.2 UI コントロールの表示・非表示
 
