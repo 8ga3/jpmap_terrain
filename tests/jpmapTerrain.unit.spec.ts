@@ -23,15 +23,18 @@ import { jest } from "@jest/globals";
 const engineDispose = jest.fn();
 // engine.resize 呼び出し回数を T7 テストで検証できるよう、最後に作った engine の resize を保持する。
 let lastEngineResize: jest.Mock = jest.fn();
-const createEngineMock = jest.fn(async () => {
-    const resize = jest.fn();
-    lastEngineResize = resize;
-    return {
-        runRenderLoop: jest.fn(),
-        resize,
-        dispose: engineDispose,
-    };
-});
+const createEngineMock = jest.fn(
+    async (...args: unknown[]) => {
+        void args;
+        const resize = jest.fn();
+        lastEngineResize = resize;
+        return {
+            runRenderLoop: jest.fn(),
+            resize,
+            dispose: engineDispose,
+        };
+    },
+);
 
 jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
@@ -723,6 +726,105 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.dispose();
 
             expect(sceneMockModule.__getControllerDisposeCount()).toBe(1);
+        });
+    });
+
+    describe("public API surface (T8)", () => {
+        it("JpmapTerrain.create は JpmapTerrain インスタンスを返す", async () => {
+            const viewer = await create(createMountElement());
+            expect(viewer).toBeInstanceOf(JpmapTerrain);
+        });
+
+        it("create に engine オプションを渡すと engineFactory に伝播する", async () => {
+            createEngineMock.mockClear();
+            await create(createMountElement(), { engine: "webgl2" });
+            expect(createEngineMock).toHaveBeenCalledTimes(1);
+            // createBabylonEngine(canvas, preferredEngine) のシグネチャ
+            const callArgs = createEngineMock.mock.calls[0];
+            expect(callArgs[1]).toBe("webgl2");
+        });
+
+        it("engine 未指定時はデフォルト (webgpu) で engineFactory を呼ぶ", async () => {
+            createEngineMock.mockClear();
+            await create(createMountElement());
+            expect(createEngineMock.mock.calls[0][1]).toBe("webgpu");
+        });
+
+        it("dispose 後の getter は最後に保持していた値を返す（コントローラ非経由）", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 35,
+                lon: 139,
+                altitude: 1500,
+                azimuth: 30,
+                tilt: 60,
+                mapType: "photo",
+            });
+            viewer.dispose();
+
+            // controller が解放された後はキャッシュ値を返す
+            expect(viewer.lat).toBe(35);
+            expect(viewer.lon).toBe(139);
+            expect(viewer.altitude).toBe(1500);
+            expect(viewer.azimuth).toBe(30);
+            expect(viewer.tilt).toBe(60);
+            // mapType の getter は controller 不在で内部値を返す
+            expect(viewer.mapType).toBe("photo");
+        });
+
+        it("dispose 後の setter は内部値だけ更新し例外にならない", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+
+            expect(() => {
+                viewer.lat = 10;
+                viewer.lon = 20;
+                viewer.altitude = 3000;
+                viewer.azimuth = 90;
+                viewer.tilt = 45;
+                viewer.showCompass = false;
+                viewer.mapType = "photo";
+            }).not.toThrow();
+
+            expect(viewer.lat).toBe(10);
+            expect(viewer.lon).toBe(20);
+            expect(viewer.altitude).toBe(3000);
+            expect(viewer.mapType).toBe("photo");
+            expect(viewer.showCompass).toBe(false);
+        });
+
+        it("dispose 中に進行中の flyTo はキャンセルされ Promise が resolve する", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 0,
+                lon: 0,
+                altitude: 1000,
+            });
+
+            const flying = viewer.flyTo({
+                lat: 35,
+                lon: 139,
+                altitude: 5000,
+                duration: 200,
+            });
+            // 即座に dispose してキャンセル
+            viewer.dispose();
+
+            await expect(flying).resolves.toBeUndefined();
+        });
+
+        it("flyTo で altitude / azimuth / tilt を省略した場合は現在値を維持する（実反映）", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 0,
+                lon: 0,
+                altitude: 2500,
+                azimuth: 45,
+                tilt: 60,
+            });
+
+            await viewer.flyTo({ lat: 1, lon: 2, duration: 0 });
+
+            expect(viewer.altitude).toBe(2500);
+            expect(viewer.azimuth).toBe(45);
+            expect(viewer.tilt).toBe(60);
         });
     });
 });
