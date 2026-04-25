@@ -8,7 +8,58 @@
 - 技術スタック: TypeScript / Babylon.js / Webpack / Playwright / Jest
 - バージョン: 0.0.1（開発初期）
 
-## クイックスタート
+## npm パッケージとしての利用
+
+`jpmap-terrain` は ESM / `.d.ts` 同梱の npm パッケージとして配布されます（`@babylonjs/core` は `peerDependency`）。
+任意の DOM 要素にマウントするだけで 3D 地形ビューアを埋め込めます。
+
+### インストール
+
+```shell
+npm install jpmap-terrain @babylonjs/core
+# 必要に応じて
+npm install @babylonjs/loaders @babylonjs/materials
+```
+
+### 利用例
+
+```html
+<div id="terrain-viewer" style="width: 800px; height: 600px;"></div>
+<script type="module">
+  import { JpmapTerrain } from "jpmap-terrain";
+
+  const viewer = await JpmapTerrain.create(
+    document.getElementById("terrain-viewer"),
+    {
+      engine: "webgpu",      // "webgpu" | "webgl2"
+      lat: 35.681236,
+      lon: 139.767125,
+      altitude: 2000,
+      azimuth: 0,
+      tilt: 45,
+      mapType: "standard",   // "standard" | "photo"
+    }
+  );
+
+  // プログラムで富士山に移動
+  await viewer.flyTo({
+    lat: 35.3606,
+    lon: 138.7274,
+    altitude: 8000,
+    duration: 2000,
+  });
+
+  // UI 制御
+  viewer.showCompass = false;
+
+  // 破棄
+  viewer.dispose();
+</script>
+```
+
+公開 API の詳細は [`spec/package.md`](spec/package.md) を参照してください。
+
+## クイックスタート（デモ開発）
 
 ```shell
 npm install
@@ -54,6 +105,7 @@ npm start
 | `npm start` | 開発サーバー起動（ホットリロード） |
 | `npm run build:dev` | 開発ビルド（typecheck 実行後に bundle） |
 | `npm run build` | 本番ビルド（typecheck 実行後に最適化 build） |
+| `npm run build:lib` | ライブラリビルド（`dist/` に ESM + `.d.ts` 出力） |
 | `npm run lint` | ESLint 実行 |
 | `npm run typecheck` | TypeScript 型チェック |
 | `npm run test:visuals` | Visual Regression Test 実行 |
