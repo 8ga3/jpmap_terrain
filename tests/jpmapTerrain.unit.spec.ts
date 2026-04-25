@@ -23,18 +23,19 @@ import { jest } from "@jest/globals";
 const engineDispose = jest.fn();
 // engine.resize 呼び出し回数を T7 テストで検証できるよう、最後に作った engine の resize を保持する。
 let lastEngineResize: jest.Mock = jest.fn();
-const createEngineMock = jest.fn(
-    async (...args: unknown[]) => {
-        void args;
-        const resize = jest.fn();
-        lastEngineResize = resize;
-        return {
-            runRenderLoop: jest.fn(),
-            resize,
-            dispose: engineDispose,
-        };
-    },
-);
+// 実際の `createBabylonEngine(canvas, preferred)` のシグネチャに合わせる。
+// 関数本体では未使用だが、`createEngineMock.mock.calls[i][1]` で第 2 引数（engine 種別）を
+// 検証する用途があるため、可変引数ではなく明示的なパラメータとして宣言する。
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const createEngineMock = jest.fn(async (_canvas: unknown, _preferred?: "webgpu" | "webgl2") => {
+    const resize = jest.fn();
+    lastEngineResize = resize;
+    return {
+        runRenderLoop: jest.fn(),
+        resize,
+        dispose: engineDispose,
+    };
+});
 
 jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
