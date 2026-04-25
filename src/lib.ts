@@ -1,8 +1,15 @@
 /**
  * jpmap-terrain パッケージエントリ
  *
- * T1 (#115) ではビルド基盤の動作確認のための空エントリのみを提供する。
- * `JpmapTerrain` クラス本体および公開型は後続 Issue (#117 以降) で追加する。
+ * 公開 API は spec/package.md §3 に従う。
+ * - クラス本体: `./lib/jpmapTerrain`
+ * - 公開型: `./lib/types`
  */
 
-export {};
+export { JpmapTerrain } from "./lib/jpmapTerrain";
+export type {
+    EngineType,
+    FlyToOptions,
+    JpmapTerrainOptions,
+    MapType,
+} from "./lib/types";
