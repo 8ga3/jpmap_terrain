@@ -46,16 +46,28 @@ export const resolveLatLon = (
     parseLatLonFromUrl(url) ?? undefined;
 
 /**
- * `?dateTime=` クエリ文字列から太陽位置計算用の日時を解決する (Issue #35)。
- * - ISO 8601（`Z` 等のタイムゾーン指定を含む形式を推奨）を受け付ける。
+ * `?dateTime=` クエリ文字列から太陽位置計算用の日時を解決する (Issue #35, #143)。
+ * - ISO 8601 を受け付ける。`Z` に加えてローカルタイムオフセット (`+09:00`, `-05:00` 等) も
+ *   `Z` と等価に解釈する。
  * - 未指定 / パース失敗時は `undefined` を返し、デモ起動時の `opts` には含めない（既存挙動維持）。
  * - パース失敗は `console.warn` のみ。例外は投げない（silent ignore ポリシー）。
+ *
+ * 実装メモ: `URLSearchParams` は仕様により `+` を空白にデコードするため、
+ * `+09:00` 等のオフセット表記が壊れる。これを避けるため正規表現で raw 値を抽出し、
+ * `decodeURIComponent` で復元する (Issue #143)。
  *
  * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
  */
 export const resolveDateTime = (search: string): Date | undefined => {
-    const raw = new URLSearchParams(search).get("dateTime");
-    if (raw === null) return undefined;
+    const match = /[?&]dateTime=([^&#]*)/.exec(search);
+    if (!match) return undefined;
+    let raw: string;
+    try {
+        // `decodeURIComponent` は `+` をリテラルのまま残すため、`%2B09:00` 形式とも等価になる。
+        raw = decodeURIComponent(match[1]);
+    } catch {
+        return undefined;
+    }
     const d = new Date(raw);
     if (Number.isNaN(d.getTime())) {
         // ログ汚染対策: 制御文字 (CR/LF/ESC 等) を `?` に置換し、長さも 64 文字に制限する。
@@ -81,6 +93,19 @@ export const resolveAutoSunPosition = (
     return undefined;
 };
 
+/**
+ * `?showSunShadows=` クエリ文字列から太陽影描画フラグを解決する (Issue #39)。
+ * - `"true"` / `"false"` のみを許容し、それ以外は `undefined`（既定 OFF を維持）。
+ */
+export const resolveShowSunShadows = (
+    search: string,
+): boolean | undefined => {
+    const raw = new URLSearchParams(search).get("showSunShadows");
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return undefined;
+};
+
 const start = async (): Promise<void> => {
     const mount = document.getElementById(DEMO_MOUNT_ID);
     if (!mount) {
@@ -90,11 +115,13 @@ const start = async (): Promise<void> => {
     const latLon = resolveLatLon(location.href);
     const dateTime = resolveDateTime(location.search);
     const autoSunPosition = resolveAutoSunPosition(location.search);
+    const showSunShadows = resolveShowSunShadows(location.search);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
         ...(latLon ?? {}),
         ...(dateTime !== undefined ? { dateTime } : {}),
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
+        ...(showSunShadows !== undefined ? { showSunShadows } : {}),
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 
