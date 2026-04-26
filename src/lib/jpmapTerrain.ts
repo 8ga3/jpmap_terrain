@@ -23,6 +23,7 @@ import {
     JPMAP_TERRAIN_DEFAULTS,
     JpmapTerrainOptions,
     MapType,
+    SUN_AUTO_UPDATE_INTERVAL_MS,
 } from "./types";
 
 /**
@@ -45,6 +46,15 @@ export class JpmapTerrain {
     private _showScaleBar = true;
     private _showMapToggle = true;
     private _showAttribution = true;
+
+    /** 太陽位置計算用の保持日時。`null` の場合は内部フォールバックを使用する */
+    private _dateTime: Date | null;
+    /** `true`: 60s 周期で実時刻に追従。`false`: `_dateTime` を固定値として使用 */
+    private _autoSunPosition: boolean;
+    /** auto モード時の `setInterval` ハンドル */
+    private _sunTimer: ReturnType<typeof setInterval> | null = null;
+    /** auto モード中、最後に内部反映した実時刻。`dateTime` getter が返す値 */
+    private _autoLastAppliedDate: Date | null = null;
 
     private _canvas: HTMLCanvasElement | null = null;
     private _engine: AbstractEngine | null = null;
@@ -70,6 +80,29 @@ export class JpmapTerrain {
         this._azimuth = options.azimuth ?? JPMAP_TERRAIN_DEFAULTS.azimuth;
         this._tilt = options.tilt ?? JPMAP_TERRAIN_DEFAULTS.tilt;
         this._mapType = options.mapType ?? JPMAP_TERRAIN_DEFAULTS.mapType;
+        // 太陽位置 (Issue #35)。`Invalid Date` は `console.warn` のうえ null に倒す。
+        this._dateTime = JpmapTerrain._sanitizeDateTimeOption(options.dateTime);
+        this._autoSunPosition =
+            options.autoSunPosition ?? JPMAP_TERRAIN_DEFAULTS.autoSunPosition;
+    }
+
+    /**
+     * options / setter から渡された `dateTime` を検証し、`Invalid Date` の場合は
+     * `console.warn` を出して `null` に倒す。
+     */
+    private static _sanitizeDateTimeOption(
+        value: Date | null | undefined,
+    ): Date | null {
+        if (value === undefined || value === null) {
+            return JPMAP_TERRAIN_DEFAULTS.dateTime;
+        }
+        if (Number.isNaN(value.getTime())) {
+            console.warn(
+                "[JpmapTerrain] dateTime setter received Invalid Date; falling back to null",
+            );
+            return null;
+        }
+        return value;
     }
 
     /**
@@ -146,6 +179,14 @@ export class JpmapTerrain {
                         "attribution",
                         this._showAttribution,
                     );
+                    // 太陽位置（Issue #35）。auto モードならタイマー始動 + 即時 1 回反映、
+                    // 固定モードなら `_dateTime`（or null）で初期反映する。
+                    if (this._autoSunPosition) {
+                        this._startSunTimer();
+                        this._tickSunTimer();
+                    } else {
+                        controller.setSunState(this._dateTime);
+                    }
                 },
             });
             this._scene = scene;
@@ -411,6 +452,73 @@ export class JpmapTerrain {
         this._controller?.setMapType(value);
     }
 
+    // ---- 太陽位置 (spec §3.3.5 / Issue #35) ----
+
+    /**
+     * 太陽位置計算に使う日時を取得する。
+     *
+     * - `autoSunPosition === false`: 最後に set した値（または options 値、`null`）を返す。
+     * - `autoSunPosition === true`: 最後にタイマーで内部反映した実時刻を返す（一度も
+     *   反映していない場合は `null`）。
+     */
+    public get dateTime(): Date | null {
+        if (this._autoSunPosition) {
+            return this._autoLastAppliedDate;
+        }
+        return this._dateTime;
+    }
+    public set dateTime(value: Date | null) {
+        if (this._disposed) return;
+        this._dateTime = JpmapTerrain._sanitizeDateTimeOption(value);
+        // auto モード中は太陽計算で使わない（auto 優先）が、値だけ保持する。
+        if (!this._autoSunPosition) {
+            this._controller?.setSunState(this._dateTime);
+        }
+    }
+
+    public get autoSunPosition(): boolean {
+        return this._autoSunPosition;
+    }
+    public set autoSunPosition(value: boolean) {
+        if (this._disposed) return;
+        if (this._autoSunPosition === value) return;
+        this._autoSunPosition = value;
+        if (value) {
+            this._startSunTimer();
+            // 即時 1 回反映
+            this._tickSunTimer();
+        } else {
+            this._stopSunTimer();
+            this._autoLastAppliedDate = null;
+            // 保持されていた `_dateTime`（または null）で再計算
+            this._controller?.setSunState(this._dateTime);
+        }
+    }
+
+    /** 60 秒周期で `new Date()` を太陽計算に流し込むタイマーを開始する */
+    private _startSunTimer(): void {
+        if (this._disposed) return;
+        if (this._sunTimer !== null) return;
+        this._sunTimer = setInterval(
+            () => this._tickSunTimer(),
+            SUN_AUTO_UPDATE_INTERVAL_MS,
+        );
+    }
+
+    private _stopSunTimer(): void {
+        if (this._sunTimer === null) return;
+        clearInterval(this._sunTimer);
+        this._sunTimer = null;
+    }
+
+    /** auto モードの 1 回分の反映。実行毎に「最後に反映した実時刻」を記録する */
+    private _tickSunTimer(): void {
+        if (this._disposed) return;
+        const now = new Date();
+        this._autoLastAppliedDate = now;
+        this._controller?.setSunState(now);
+    }
+
     // ---- カメラ変化通知 (Issue #136) ----
 
     /**
@@ -506,6 +614,9 @@ export class JpmapTerrain {
         this._disposed = true;
         // 進行中の flyTo を中断
         this._flyToToken++;
+        // 太陽位置タイマー (Issue #35) を停止
+        this._stopSunTimer();
+        this._autoLastAppliedDate = null;
         // カメラ変化通知を解除し、リスナー一覧もクリアする
         if (this._cameraObserver && this._scene) {
             this._scene.onBeforeRenderObservable.remove(this._cameraObserver);

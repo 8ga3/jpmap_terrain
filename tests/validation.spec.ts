@@ -1,5 +1,18 @@
 import { test, expect } from "@playwright/test";
 
+/**
+ * VR テストを時刻依存から切り離すための固定クエリ (Issue #35)。
+ * - `dateTime`: 夏至日本時間正午 (UTC 表記) — 太陽高度が高く陰影変動が最小。
+ * - `autoSunPosition=false`: 自動更新タイマーを起動させずスナップショットを完全決定的にする。
+ */
+const FIXED_DATETIME = "2025-06-21T03:00:00Z";
+const FIXED_AUTO_SUN_POSITION = "false";
+
+const applyDeterministicSunQuery = (url: URL): void => {
+    url.searchParams.set("dateTime", FIXED_DATETIME);
+    url.searchParams.set("autoSunPosition", FIXED_AUTO_SUN_POSITION);
+};
+
 const scenes: {
     name: string;
     url: string;
@@ -25,6 +38,7 @@ for (const scene of scenes) {
         }, testInfo) => {
             const sceneUrl = new URL(scene.url, "http://localhost");
             sceneUrl.searchParams.set("engine", engine.param);
+            applyDeterministicSunQuery(sceneUrl);
             await page.goto(
                 `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`
             );
@@ -88,6 +102,7 @@ async function waitForScene(
 ) {
     const sceneUrl = new URL("/?scene=default", "http://localhost");
     sceneUrl.searchParams.set("engine", engine);
+    applyDeterministicSunQuery(sceneUrl);
     await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
         timeout: 120000,
     });
@@ -173,6 +188,142 @@ for (const engine of engines) {
                 );
             },
             { timeout: 5000 }
+        );
+
+        await expect(page).toHaveScreenshot({
+            timeout: 30000,
+            maxDiffPixelRatio: 0.02,
+        });
+        expect(testInfo.errors).toHaveLength(0);
+    });
+}
+
+// ---------- Skybox 昼夜比較テスト (Issue #35) ----------
+//
+// チルト角を最大近くまで倒して画面上部に Skybox が映り込むようにし、
+// `dateTime` を「昼」「夜」で固定した 2 ケースのスクリーンショットを撮る。
+// 両者の差異により Skybox が時刻に追従して変化していることを保証する。
+//
+// 注意: 本テストは「昼/夜のスナップショットそのもの」を VR ベースラインとして固定する。
+// 別ケース同士の自動比較は行わず、開発者が両 PNG を目視で比較して差異を確認する運用とする。
+
+const SKYBOX_TILT_DEG = 75;
+const DAY_DATETIME = "2025-06-21T03:00:00Z"; // JST 12:00（東京で太陽高度 ~75°）
+const NIGHT_DATETIME = "2025-06-21T13:00:00Z"; // JST 22:00（東京で太陽高度 ~ -25°）
+const SUNRISE_DATETIME = "2025-06-21T19:45:00Z"; // JST 04:45（東京で東の空に日の出）
+/** 夜明け視点：東を向き地平線付近にカメラを向けて太陽メッシュを画面内に映す */
+const SUNRISE_AZIMUTH_DEG = 90; // 東向き
+const SUNRISE_LAT = 35.690206;
+const SUNRISE_LON = 139.766166;
+
+/**
+ * Skybox 比較用シーン準備：固定 dateTime でロード後、`viewer.tilt` を最大まで倒す。
+ */
+async function waitForSceneWithSkybox(
+    page: import("@playwright/test").Page,
+    engine: string,
+    dateTime: string,
+) {
+    const sceneUrl = new URL("/?scene=default", "http://localhost");
+    sceneUrl.searchParams.set("engine", engine);
+    sceneUrl.searchParams.set("dateTime", dateTime);
+    sceneUrl.searchParams.set("autoSunPosition", FIXED_AUTO_SUN_POSITION);
+    await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
+        timeout: 120000,
+    });
+    await page.waitForFunction(
+        () => (window as any).scene && (window as any).scene.isReady(),
+        { timeout: 10000 }
+    );
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
+
+    // チルト最大に倒して画面上部に空を映す。
+    // `viewer.tilt` setter は内部で beta クランプ済み（upperBetaLimit ≈ 75°）。
+    await page.evaluate((tiltValue) => {
+        (window as any).viewer.tilt = tiltValue;
+    }, SKYBOX_TILT_DEG);
+
+    // タイル再評価 + 描画安定待ち
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
+    await page.waitForFunction(
+        () =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = () => {
+                    if (++count >= 15) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        { timeout: 10000 }
+    );
+}
+
+for (const engine of engines) {
+    test(`Skybox at noon (day) with ${engine.name}`, async ({
+        page,
+    }, testInfo) => {
+        await waitForSceneWithSkybox(page, engine.param, DAY_DATETIME);
+        await expect(page).toHaveScreenshot({
+            timeout: 30000,
+            maxDiffPixelRatio: 0.02,
+        });
+        expect(testInfo.errors).toHaveLength(0);
+    });
+
+    test(`Skybox at night with ${engine.name}`, async ({
+        page,
+    }, testInfo) => {
+        await waitForSceneWithSkybox(page, engine.param, NIGHT_DATETIME);
+        await expect(page).toHaveScreenshot({
+            timeout: 30000,
+            maxDiffPixelRatio: 0.02,
+        });
+        expect(testInfo.errors).toHaveLength(0);
+    });
+
+    test(`Sunrise sun mesh visible with ${engine.name}`, async ({
+        page,
+    }, testInfo) => {
+        // 東京の夜明け（JST 04:45）に東向きでカメラを構え、太陽メッシュが画面内に映ることを検証する。
+        // パス `/@lat,lon` ではなく `?lat=&lon=` クエリ形式を採用（dev-server の historyApiFallback 互換）。
+        const sceneUrl = new URL("/?scene=default", "http://localhost");
+        sceneUrl.searchParams.set("engine", engine.param);
+        sceneUrl.searchParams.set("lat", String(SUNRISE_LAT));
+        sceneUrl.searchParams.set("lon", String(SUNRISE_LON));
+        sceneUrl.searchParams.set("dateTime", SUNRISE_DATETIME);
+        sceneUrl.searchParams.set("autoSunPosition", FIXED_AUTO_SUN_POSITION);
+        await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
+            timeout: 120000,
+        });
+        await page.waitForFunction(
+            () => (window as any).scene && (window as any).scene.isReady(),
+            { timeout: 10000 },
+        );
+        await page.waitForLoadState("networkidle", { timeout: 30000 });
+
+        // 東向き + チルト最大で地平線+空を画面内に収める
+        await page.evaluate(
+            ({ tilt, azimuth }) => {
+                const viewer = (window as any).viewer;
+                viewer.azimuth = azimuth;
+                viewer.tilt = tilt;
+            },
+            { tilt: SKYBOX_TILT_DEG, azimuth: SUNRISE_AZIMUTH_DEG },
+        );
+
+        await page.waitForLoadState("networkidle", { timeout: 30000 });
+        await page.waitForFunction(
+            () =>
+                new Promise((resolve) => {
+                    let count = 0;
+                    const tick = () => {
+                        if (++count >= 15) return resolve(true);
+                        requestAnimationFrame(tick);
+                    };
+                    requestAnimationFrame(tick);
+                }),
+            { timeout: 10000 },
         );
 
         await expect(page).toHaveScreenshot({

@@ -1,7 +1,11 @@
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
@@ -9,9 +13,12 @@ import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTil
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
+import { computeSunPosition } from "../terrain/sunPosition";
+import { deriveSunState } from "../terrain/sunState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
 import { computePoseForNewTarget } from "../terrain/cameraRetarget";
 import { createUiVisibilityController } from "../terrain/uiVisibility";
+import { SUN_FALLBACK_DATETIME_ISO } from "../lib/types";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -104,6 +111,21 @@ export interface DefaultSceneController {
     ): void;
 
     /**
+     * 太陽位置（時間による明るさ・方向）の状態を反映する (Issue #35)。
+     *
+     * `dateTime` が `null` の場合は内部の決定的フォールバック時刻
+     * （{@link SUN_FALLBACK_DATETIME_ISO}）を使用する。
+     * `autoSunPosition` は本シーン側では参照しない（タイマーは `JpmapTerrain` 側で管理）。
+     * 両モードで共通の入力を取り、`computeSunPosition` →
+     * `deriveSunState` → 各 Babylon 要素への適用までを 1 回で完了する。
+     */
+    /**
+     * 太陽位置計算に使う日時を設定し、即時 1 回反映する。
+     * 自動更新タイマーは `JpmapTerrain` 側で管理されるため、本メソッドは時刻保存と反映のみを行う。
+     */
+    setSunState(dateTime: Date | null): void;
+
+    /**
      * `JpmapTerrain.dispose()` から呼ばれる UI クリーンアップ (T7 / Issue #121)。
      *
      * `controlPanel` が `document.body` に追加した UI 要素 (コンパス / ズームボタンコンテナ / 地図切替) を
@@ -178,16 +200,38 @@ export class DefaultScene implements CreateSceneClass {
         camera.inputs.removeByType("ArcRotateCameraMouseWheelInput");
         camera.attachControl(canvas, true);
 
-        // ライト
-        const light = new HemisphericLight(
+        // ライト: 環境光（ベース）+ 太陽方向の指向性ライト（時間連動）
+        const hemiLight = new HemisphericLight(
             "sky-light",
             new Vector3(0, 1, 0),
             scene
         );
-        light.intensity = 1.0;
+        hemiLight.intensity = 1.0;
+
+        const sunLight = new DirectionalLight(
+            "sun-light",
+            new Vector3(0, -1, 0),
+            scene
+        );
+        sunLight.intensity = 0;
 
         // スカイボックス
-        createSkybox(scene);
+        const skyboxHandle = createSkybox(scene);
+
+        // 太陽メッシュ（地平線下では非表示）。
+        // サイズはカメラ最大遠と独立に小さく作り、`infiniteDistance` で常に同距離感に見せる。
+        const sunMesh = CreateSphere(
+            "sun-mesh",
+            { diameter: 1, segments: 12 },
+            scene
+        );
+        const sunMaterial = new StandardMaterial("sun-mesh-mat", scene);
+        sunMaterial.emissiveColor = new Color3(1, 0.95, 0.8);
+        sunMaterial.disableLighting = true;
+        sunMesh.material = sunMaterial;
+        sunMesh.isPickable = false;
+        sunMesh.infiniteDistance = true;
+        sunMesh.setEnabled(false);
 
         // 初期位置（options > デフォルト 東京駅付近）
         const initialLat = options?.lat ?? 35.681236;
@@ -957,7 +1001,76 @@ export class DefaultScene implements CreateSceneClass {
             if (shouldRefresh && centerChanged) {
                 void refreshTerrain();
             }
+            // 緯度・経度が変わったら太陽位置を再計算（Issue #35）。
+            // ただし `flyTo` の中間フレーム（`shouldRefresh=false`）では skip し、
+            // 最終フレームで一度だけ反映する（毎フレーム Color3.Lerp / 行列計算を避ける）。
+            // altitude/azimuth/tilt は太陽位置に影響しないので再計算不要。
+            if (shouldRefresh && centerChanged) {
+                applySunStateForCurrent();
+            }
         };
+
+        // ---- 太陽位置適用 (Issue #35) ----
+        // タイマー（auto モード）は JpmapTerrain 側で管理し、本シーンは「現時点で
+        // 適用すべき日時」を都度受け取って描画反映する役割に閉じる。
+        let currentSunDateTime: Date | null = null;
+        const fallbackSunDate = new Date(SUN_FALLBACK_DATETIME_ISO);
+        const applySunStateForCurrent = (): void => {
+            const dateForCalc = currentSunDateTime ?? fallbackSunDate;
+            // 念のため Invalid Date のセーフガード（呼び出し側で `null` 同等に倒す）
+            if (Number.isNaN(dateForCalc.getTime())) {
+                console.warn(
+                    "[JpmapTerrain] sun position computation skipped (invalid dateTime)",
+                );
+                return;
+            }
+            const { altitudeDeg, azimuthDeg } = computeSunPosition(
+                currentLat,
+                currentLon,
+                dateForCalc,
+            );
+            if (
+                !Number.isFinite(altitudeDeg) ||
+                !Number.isFinite(azimuthDeg)
+            ) {
+                console.warn(
+                    `[JpmapTerrain] sun position computation failed (lat=${currentLat}, lon=${currentLon}, date=${dateForCalc.toISOString()}); skipping update`,
+                );
+                return;
+            }
+            const state = deriveSunState(altitudeDeg, azimuthDeg);
+            // SkyMaterial 更新
+            skyboxHandle.applySunToSky(state);
+            // 夜は SkyMaterial の物理モデルが破綻するため Skybox を消し、`clearColor`（夜色）を背景に出す。
+            skyboxHandle.mesh.setEnabled(state.skyVisible);
+            scene.clearColor.set(
+                state.clearColor.r,
+                state.clearColor.g,
+                state.clearColor.b,
+                1,
+            );
+            // 指向性ライト方向 = 太陽から地表向き = -sunDir
+            sunLight.direction = state.sunDir.scale(-1);
+            sunLight.intensity = state.dayFactor;
+            // 環境光は夜でも完全な暗黒にならないようベース値 + 昼比例
+            hemiLight.intensity = 0.2 + 0.8 * state.dayFactor;
+            // 太陽メッシュ位置: カメラターゲット + sunDir * (camera.maxZ * 0.5)
+            sunMesh.setEnabled(state.visibleAboveHorizon);
+            if (state.visibleAboveHorizon) {
+                const dist = (camera.maxZ ?? 100000) * 0.5;
+                sunMesh.position.set(
+                    camera.target.x + state.sunDir.x * dist,
+                    camera.target.y + state.sunDir.y * dist,
+                    camera.target.z + state.sunDir.z * dist,
+                );
+                // 距離に比例してメッシュサイズも拡大（一定の見かけ大きさを保つ）
+                const scale = dist * 0.04;
+                sunMesh.scaling.set(scale, scale, scale);
+            }
+        };
+
+        // 初期化時に基準時刻で 1 回呼ぶ（auto/false 共通の初期反映）。
+        applySunStateForCurrent();
 
         const controller: DefaultSceneController = {
             getLat: () => currentLat,
@@ -990,6 +1103,12 @@ export class DefaultScene implements CreateSceneClass {
                 mapToggle: ui.mapToggle,
                 attribution: ui.scaleBar.attribution,
             }),
+            setSunState: (dateTime) => {
+                // タイマーは JpmapTerrain 側に閉じるため、本メソッドは
+                // 「現在使うべき日時」を保存して即時 1 回適用するだけで完結する。
+                currentSunDateTime = dateTime;
+                applySunStateForCurrent();
+            },
             dispose: () => {
                 // controlPanel は document.body に各 UI を直接 append しているため、
                 // ここで親要素から取り除く (T7 / Issue #121)。

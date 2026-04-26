@@ -51,6 +51,8 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | `azimuth` | `number` | `0` | 方位角（度、Babylon.js camera alpha に対応） |
 | `tilt` | `number` | `45` | チルト角（度、Babylon.js camera beta に対応） |
 | `mapType` | `"standard" \| "photo"` | `"standard"` | 地図種類（標準地図 / 航空写真） |
+| `dateTime` | `Date \| null` | `null` | 太陽位置計算に使う日時。`null` の場合は内部の決定的なフォールバック時刻（夏至日本時間正午）を使用 |
+| `autoSunPosition` | `boolean` | `false` | `true` で実時刻に追従して内部更新（60 秒周期）、`false` で `dateTime` を固定値として使用 |
 
 ### 3.3 API & プロパティ
 
@@ -195,6 +197,36 @@ const unsubscribe = viewer.onCameraChange((e) => {
 unsubscribe();
 ```
 
+#### 3.3.5 太陽位置（時間による明るさ変化）
+
+`dateTime` / `autoSunPosition` は **get / set 両対応**。set すると即座にライト・Skybox・太陽メッシュへ反映される。
+
+```typescript
+interface JpmapTerrain {
+  /**
+   * 太陽位置計算に使う日時。`null` の場合は内部の決定的なフォールバック時刻
+   * （夏至日本時間正午）を使用する。
+   * `autoSunPosition=true` の間、getter は「最後に内部反映した実時刻」を返す。
+   */
+  get dateTime(): Date | null;
+  set dateTime(value: Date | null);
+
+  /**
+   * `true`: 60 秒周期で実時刻に追従して内部更新する。
+   * `false`（既定）: `dateTime` を固定値として使用する。
+   */
+  get autoSunPosition(): boolean;
+  set autoSunPosition(value: boolean);
+}
+```
+
+**仕様:**
+
+- `Invalid Date` を setter / options に渡した場合は `console.warn` のうえ `null` 同等に倒す（例外は投げない）。
+- `autoSunPosition` を `true` から `false` に切り替えた瞬間、保持していた `dateTime` 値（または `null`）で再計算する。
+- `dispose()` 時に内部タイマーは確実に解放される。
+- ビジュアルテストの決定性が必要な場面（Playwright 等）では、URL クエリ `?dateTime=<ISO8601 with Z>&autoSunPosition=false` を付与し、太陽位置を完全に固定すること。
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
@@ -255,8 +287,6 @@ import type { CameraChangeEvent, CameraChangeListener } from "jpmap-terrain";
 |---|---|---|
 | `projection` | `"perspective" \| "orthographic"` | 射影投影 / 平行投影の切り替え |
 | `fov` | `number` | 視野角（度） |
-| `dateTime` | `Date \| null` | 日時指定（太陽位置シミュレーション） |
-| `autoSunPosition` | `boolean` | 時刻による太陽位置の自動計算 |
 
 ### 4.2 追加 API
 
@@ -303,14 +333,10 @@ interface JpmapTerrain {
   setModelVisible(id: string, visible: boolean): void;
   /** モデルを削除する */
   removeModel(id: string): void;
-
-  // --- 日時 ---
-  /** 日時を取得・設定する */
-  dateTime: Date | null;
-  /** 太陽位置の自動計算を取得・設定する */
-  autoSunPosition: boolean;
 }
 ```
+
+> 日時 (`dateTime` / `autoSunPosition`) は §3.3.5 で正式仕様化済み。
 
 ## 5. パッケージ構成
 

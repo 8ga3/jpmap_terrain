@@ -45,6 +45,42 @@ export const resolveLatLon = (
 ): { lat: number; lon: number } | undefined =>
     parseLatLonFromUrl(url) ?? undefined;
 
+/**
+ * `?dateTime=` クエリ文字列から太陽位置計算用の日時を解決する (Issue #35)。
+ * - ISO 8601（`Z` 等のタイムゾーン指定を含む形式を推奨）を受け付ける。
+ * - 未指定 / パース失敗時は `undefined` を返し、デモ起動時の `opts` には含めない（既存挙動維持）。
+ * - パース失敗は `console.warn` のみ。例外は投げない（silent ignore ポリシー）。
+ *
+ * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
+ */
+export const resolveDateTime = (search: string): Date | undefined => {
+    const raw = new URLSearchParams(search).get("dateTime");
+    if (raw === null) return undefined;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) {
+        // ログ汚染対策: 制御文字 (CR/LF/ESC 等) を `?` に置換し、長さも 64 文字に制限する。
+        const safe = raw
+            .replace(/[\r\n\x1B\x00-\x1F\x7F]/g, "?")
+            .slice(0, 64);
+        console.warn(`[jpmap-terrain demo] invalid dateTime param: ${safe}`);
+        return undefined;
+    }
+    return d;
+};
+
+/**
+ * `?autoSunPosition=` クエリ文字列から太陽位置自動更新フラグを解決する (Issue #35)。
+ * - `"true"` / `"false"` のみを許容し、それ以外は `undefined`（既定挙動を維持）。
+ */
+export const resolveAutoSunPosition = (
+    search: string,
+): boolean | undefined => {
+    const raw = new URLSearchParams(search).get("autoSunPosition");
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return undefined;
+};
+
 const start = async (): Promise<void> => {
     const mount = document.getElementById(DEMO_MOUNT_ID);
     if (!mount) {
@@ -52,9 +88,13 @@ const start = async (): Promise<void> => {
     }
     const engine = resolveEngine(location.search);
     const latLon = resolveLatLon(location.href);
+    const dateTime = resolveDateTime(location.search);
+    const autoSunPosition = resolveAutoSunPosition(location.search);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
         ...(latLon ?? {}),
+        ...(dateTime !== undefined ? { dateTime } : {}),
+        ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 

@@ -29,6 +29,17 @@ export interface JpmapTerrainOptions {
     tilt?: number;
     /** 地図種類 */
     mapType?: MapType;
+    /**
+     * 太陽位置計算に使う日時（UTC として扱う）。
+     * 未指定 / `null` の場合は内部の決定的フォールバック（{@link SUN_FALLBACK_DATETIME_ISO}）を使用する。
+     * `Invalid Date` が渡された場合は `console.warn` のうえ `null` 同等に倒す（例外は投げない）。
+     */
+    dateTime?: Date | null;
+    /**
+     * `true`: 60 秒周期で実時刻に追従して内部更新する。
+     * `false`（既定）: `dateTime` を固定値として使用する。
+     */
+    autoSunPosition?: boolean;
 }
 
 /**
@@ -62,7 +73,23 @@ export const JPMAP_TERRAIN_DEFAULTS = {
     azimuth: 0,
     tilt: 45,
     mapType: "standard" as MapType,
+    dateTime: null as Date | null,
+    autoSunPosition: false as boolean,
 } as const;
+
+/**
+ * `dateTime` 未指定 / `null` 時に使用する決定的フォールバック時刻（ISO 8601 + Z）。
+ *
+ * 夏至日本時間正午（UTC 03:00）。Skybox / ライト / 太陽メッシュが落ち着いた絵を作るため、
+ * Visual Regression テストでも同じ値をクエリで明示し、機械実行時刻に依存しない描画を保証する。
+ */
+export const SUN_FALLBACK_DATETIME_ISO = "2025-06-21T03:00:00Z";
+
+/**
+ * `autoSunPosition === true` のとき、`new Date()` を取り直して太陽位置を再反映する周期 (ms)。
+ * spec/package.md §3.3.5 に基づく 60 秒固定。テスト用に export している。
+ */
+export const SUN_AUTO_UPDATE_INTERVAL_MS = 60_000;
 
 /**
  * カメラ変化通知ペイロード（spec/package.md 追記は別 Issue）。

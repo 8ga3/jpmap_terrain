@@ -63,14 +63,35 @@ describe("createSkybox", () => {
         jest.clearAllMocks();
     });
 
-    it("CreateBox を呼び出して skybox メッシュを返す", () => {
+    it("CreateBox を呼び出して skybox ハンドルを返す", () => {
         const result = createSkybox(mockScene);
         expect(CreateBox).toHaveBeenCalledWith(
             "skybox",
             expect.objectContaining({ size: expect.any(Number) }),
             mockScene
         );
-        expect(result).toBe(mockMesh);
+        // ハンドル経由で mesh / material / applySunToSky を露出する。
+        expect(result.mesh).toBe(mockMesh);
+        expect(result.material).toBe(mockSkyMaterialInstance);
+        expect(typeof result.applySunToSky).toBe("function");
+    });
+
+    it("applySunToSky は SunState を SkyMaterial へ反映する", () => {
+        const handle = createSkybox(mockScene);
+        handle.applySunToSky({
+            // sunDir はここでは検証しない（Skybox 側では不要）。
+            sunDir: { x: 0, y: 1, z: 0 } as unknown as never,
+            dayFactor: 1,
+            skyInclination: 0.1,
+            skyAzimuth: 0.7,
+            skyLuminance: 0.42,
+            skyVisible: true,
+            clearColor: { r: 0.75, g: 0.86, b: 0.95 } as unknown as never,
+            visibleAboveHorizon: true,
+        });
+        expect(mockSkyMaterialInstance.inclination).toBeCloseTo(0.1, 5);
+        expect(mockSkyMaterialInstance.azimuth).toBeCloseTo(0.7, 5);
+        expect(mockSkyMaterialInstance.luminance).toBeCloseTo(0.42, 5);
     });
 
     it("skybox は isPickable = false に設定される", () => {
