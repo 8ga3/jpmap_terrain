@@ -15,6 +15,11 @@ module.exports = merge(common, {
         hot: true,
         historyApiFallback: {
             disableDotRule: true,
+            // デモ識別子付きパス（/viewer@..., /timelapse@...）を該当HTMLにrewrite (Issue #155)
+            rewrites: [
+                { from: /^\/viewer(?:@.*)?$/, to: '/viewer.html' },
+                { from: /^\/timelapse(?:@.*)?$/, to: '/timelapse.html' },
+            ],
         },
         // publicPath: '/',
         open: false,

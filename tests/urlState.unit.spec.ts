@@ -7,6 +7,7 @@ import {
     clampAltitude,
     clampTilt,
     normalizeAzimuth,
+    extractDemoPathPrefix,
     CAMERA_URL_DEFAULTS,
     CAMERA_URL_LIMITS,
     MAP_TYPE_QUERY_KEY,
@@ -121,7 +122,7 @@ describe("urlState", () => {
         beforeEach(() => {
             jest.useFakeTimers();
             globalThis.history = { replaceState: jest.fn() } as unknown as History;
-            globalThis.location = { search: "" } as unknown as Location;
+            globalThis.location = { pathname: "/", search: "" } as unknown as Location;
         });
 
         afterEach(() => {
@@ -153,7 +154,7 @@ describe("urlState", () => {
         });
 
         it("既存のクエリパラメータが保持される", () => {
-            globalThis.location = { search: "?engine=webgl" } as unknown as Location;
+            globalThis.location = { pathname: "/", search: "?engine=webgl" } as unknown as Location;
             const updater = createUrlUpdater(200);
             updater({
                 lat: 35.681236,
@@ -210,6 +211,85 @@ describe("urlState", () => {
                 "",
                 "/@35.681236,139.767125,1500,90.00,60.00"
             );
+        });
+
+        it("pathname にデモ識別子（/viewer）が含まれる場合は保持される (Issue #155)", () => {
+            globalThis.location = { pathname: "/viewer", search: "" } as unknown as Location;
+            const updater = createUrlUpdater(200);
+            updater({
+                lat: 35.681236,
+                lon: 139.767125,
+                altitude: CAMERA_URL_DEFAULTS.altitude,
+                azimuth: CAMERA_URL_DEFAULTS.azimuth,
+                tilt: CAMERA_URL_DEFAULTS.tilt,
+            });
+            jest.advanceTimersByTime(200);
+            expect(history.replaceState).toHaveBeenCalledWith(
+                null,
+                "",
+                "/viewer@35.681236,139.767125,2000,0.00,45.00"
+            );
+        });
+
+        it("pathname に `.html` 付きデモ識別子がある場合は剥がして書き戻す (Issue #155)", () => {
+            globalThis.location = { pathname: "/viewer.html", search: "" } as unknown as Location;
+            const updater = createUrlUpdater(200);
+            updater({
+                lat: 35.0,
+                lon: 139.0,
+                altitude: CAMERA_URL_DEFAULTS.altitude,
+                azimuth: CAMERA_URL_DEFAULTS.azimuth,
+                tilt: CAMERA_URL_DEFAULTS.tilt,
+            });
+            jest.advanceTimersByTime(200);
+            expect(history.replaceState).toHaveBeenCalledWith(
+                null,
+                "",
+                "/viewer@35.000000,139.000000,2000,0.00,45.00"
+            );
+        });
+
+        it("pathname に既に `@lat,lon` が含まれる場合は新しい値で置き換える (Issue #155)", () => {
+            globalThis.location = {
+                pathname: "/timelapse@10.0,20.0,1000,0,30",
+                search: "?speed=60",
+            } as unknown as Location;
+            const updater = createUrlUpdater(200);
+            updater({
+                lat: 35.0,
+                lon: 139.0,
+                altitude: 1500,
+                azimuth: 90,
+                tilt: 60,
+            });
+            jest.advanceTimersByTime(200);
+            expect(history.replaceState).toHaveBeenCalledWith(
+                null,
+                "",
+                "/timelapse@35.000000,139.000000,1500,90.00,60.00?speed=60"
+            );
+        });
+    });
+
+    describe("extractDemoPathPrefix (Issue #155)", () => {
+        it("ルート pathname は空文字を返す", () => {
+            expect(extractDemoPathPrefix("/")).toBe("");
+        });
+
+        it("`/viewer` はそのまま返す", () => {
+            expect(extractDemoPathPrefix("/viewer")).toBe("/viewer");
+        });
+
+        it("`/viewer.html` は `.html` を剥がす", () => {
+            expect(extractDemoPathPrefix("/viewer.html")).toBe("/viewer");
+        });
+
+        it("`/timelapse@lat,lon,...` は `/timelapse` を返す", () => {
+            expect(extractDemoPathPrefix("/timelapse@35.0,139.0,1500,0,45")).toBe("/timelapse");
+        });
+
+        it("`/viewer.html@lat,lon` も `.html` を剥がして `/viewer` を返す", () => {
+            expect(extractDemoPathPrefix("/viewer.html@35.0,139.0")).toBe("/viewer");
         });
     });
 
