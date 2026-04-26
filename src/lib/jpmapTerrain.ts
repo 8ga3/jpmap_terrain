@@ -447,9 +447,15 @@ export class JpmapTerrain {
     /**
      * 現在のカメラ状態を取得し、前回スナップショットから変化があれば登録リスナーへ通知する。
      * 初回（`_lastCameraSnapshot === null`）はスナップショットだけ更新し発火しない。
+     *
+     * リスナー未登録時はスナップショット生成も比較も行わずに即 return することで、
+     * `onCameraChange` を使わない利用形態のフレーム毎オーバーヘッドを避ける。
+     * （次回登録時には `_lastCameraSnapshot === null` から再開するため、
+     * 「登録直後に発火しない」仕様を引き続き満たす。）
      */
     private _notifyIfChanged(): void {
         if (this._disposed) return;
+        if (this._cameraListeners.length === 0) return;
         const snapshot: CameraChangeEvent = {
             lat: this.lat,
             lon: this.lon,
