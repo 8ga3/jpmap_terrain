@@ -573,9 +573,13 @@ export class DefaultScene implements CreateSceneClass {
                 dragPlaneY = pick.pickedPoint.y;
                 dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             } else {
-                // フォールバック: 既存の平面交差モード
+                // フォールバック: 既存の平面交差モード。
+                // dragPlaneY を camera.target.y に揃えることで、Ctrl+drag retarget 後など
+                // target.y が非ゼロな状態でもドラッグスケールが現在の target 高度と
+                // 整合する (Issue #151)。Y=0 固定だと target.y > 0 のとき空ピック時の
+                // ドラッグ移動量が地形面と乖離し、操作感が破綻する。
                 dragMeshMode = false;
-                dragPlaneY = 0;
+                dragPlaneY = camera.target.y;
                 dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             }
         });
