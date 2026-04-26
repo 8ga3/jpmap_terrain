@@ -180,7 +180,7 @@ interface JpmapTerrain {
 - **発火条件**: 値が変化したフレームのみ通知する（`epsilon = 1e-9` での比較）。
 - **初回登録時は即時発火しない**（変化があった次回以降のみ）。
 - 同一リスナーを複数回登録した場合は登録回数だけ呼ばれる。
-- リスナーが throw しても他リスナーへ伝播しない（内部で `console.error` により握りつぶす）。
+- リスナーが throw した場合でも、内部で例外を捕捉して `console.error` でログ出力し、他リスナーの処理は継続する。
 - `dispose()` 後に `onCameraChange` を呼び出した場合は登録されず、no-op の unsubscribe 関数を返す。
 
 **利用例:**
@@ -197,7 +197,7 @@ unsubscribe();
 
 ### 3.4 型定義
 
-`CameraChangeEvent` および `CameraChangeListener` は、パッケージエントリ `src/lib.ts` から re-export 済みである。
+`CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
 
 ```typescript
 /** `JpmapTerrain.onCameraChange` のリスナー引数 */
