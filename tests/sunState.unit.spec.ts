@@ -47,8 +47,10 @@ describe("deriveSunState", () => {
         expect(b).toBeLessThan(c);
     });
 
-    it("地平線境界: altitude=-1 でも可視、-1.001 で非表示", () => {
+    it("地平線境界: altitude=-1 と -1.001 で非表示、-0.5 で可視", () => {
+        // 実装は `altitudeDeg > -1` のため、-1 ちょうどは表示しない（境界含まず）。
         expect(deriveSunState(-1, 180).visibleAboveHorizon).toBe(false);
+        expect(deriveSunState(-1.001, 180).visibleAboveHorizon).toBe(false);
         expect(deriveSunState(-0.5, 180).visibleAboveHorizon).toBe(true);
     });
 

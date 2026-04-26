@@ -83,8 +83,14 @@ export function computeSunPosition(
     const timeOffsetMin = eqTimeMin + 4 * lon;
     const trueSolarTimeMin = utcHour * 60 + timeOffsetMin;
 
-    // 時角（ラジアン）。太陽が子午線上で 0、午後で正、午前で負。
-    const hourAngleRad = ((trueSolarTimeMin / 4 - 180) * Math.PI) / 180;
+    // 時角（度）。太陽が子午線上で 0、午後で正、午前で負。
+    // `trueSolarTimeMin` は経度・UTC 時刻の組み合わせで [-720, 2160] 分程度の範囲を取り得る
+    // ため、`hourAngle = trueSolarTimeMin/4 - 180` は ±180° を超えることがある。
+    // `Math.cos` は周期的なので天頂計算には影響しないが、午前/午後の判定（azimuth 分岐）が
+    // 逆転するため、ここで [-180, 180) に折り返す。
+    const hourAngleDegRaw = trueSolarTimeMin / 4 - 180;
+    const hourAngleDeg = ((hourAngleDegRaw % 360) + 540) % 360 - 180;
+    const hourAngleRad = (hourAngleDeg * Math.PI) / 180;
 
     const latRad = lat * DEG2RAD;
     const sinLat = Math.sin(latRad);

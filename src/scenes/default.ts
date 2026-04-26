@@ -111,17 +111,12 @@ export interface DefaultSceneController {
     ): void;
 
     /**
-     * 太陽位置（時間による明るさ・方向）の状態を反映する (Issue #35)。
+     * 太陽位置計算に使う日時を設定し、太陽位置（時間による明るさ・方向）の状態を即時 1 回反映する (Issue #35)。
      *
      * `dateTime` が `null` の場合は内部の決定的フォールバック時刻
      * （{@link SUN_FALLBACK_DATETIME_ISO}）を使用する。
-     * `autoSunPosition` は本シーン側では参照しない（タイマーは `JpmapTerrain` 側で管理）。
-     * 両モードで共通の入力を取り、`computeSunPosition` →
-     * `deriveSunState` → 各 Babylon 要素への適用までを 1 回で完了する。
-     */
-    /**
-     * 太陽位置計算に使う日時を設定し、即時 1 回反映する。
-     * 自動更新タイマーは `JpmapTerrain` 側で管理されるため、本メソッドは時刻保存と反映のみを行う。
+     * 自動更新タイマーは `JpmapTerrain` 側で管理されるため、本メソッドは時刻保存と反映のみを行い、
+     * `computeSunPosition` → `deriveSunState` → 各 Babylon 要素への適用までを 1 回で完了する。
      */
     setSunState(dateTime: Date | null): void;
 
