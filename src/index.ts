@@ -59,22 +59,26 @@ export const resolveLatLon = (
  * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
  */
 export const resolveDateTime = (search: string): Date | undefined => {
-    const match = /[?&]dateTime=([^&#]*)/.exec(search);
+    // 先頭 `?` 任意の仕様に合わせ、`(?:^|[?&])` で文字列先頭での `dateTime=` も許容する。
+    const match = /(?:^|[?&])dateTime=([^&#]*)/.exec(search);
     if (!match) return undefined;
+    // ログ汚染対策: 制御文字 (CR/LF/ESC 等) を `?` に置換し、長さも 64 文字に制限する。
+    const sanitize = (value: string): string =>
+        value.replace(/[\r\n\x1B\x00-\x1F\x7F]/g, "?").slice(0, 64);
     let raw: string;
     try {
         // `decodeURIComponent` は `+` をリテラルのまま残すため、`%2B09:00` 形式とも等価になる。
         raw = decodeURIComponent(match[1]);
     } catch {
+        // 不正な `%` シーケンス等のデコード失敗もパース失敗として扱い、警告を出す。
+        console.warn(
+            `[jpmap-terrain demo] invalid dateTime param: ${sanitize(match[1])}`,
+        );
         return undefined;
     }
     const d = new Date(raw);
     if (Number.isNaN(d.getTime())) {
-        // ログ汚染対策: 制御文字 (CR/LF/ESC 等) を `?` に置換し、長さも 64 文字に制限する。
-        const safe = raw
-            .replace(/[\r\n\x1B\x00-\x1F\x7F]/g, "?")
-            .slice(0, 64);
-        console.warn(`[jpmap-terrain demo] invalid dateTime param: ${safe}`);
+        console.warn(`[jpmap-terrain demo] invalid dateTime param: ${sanitize(raw)}`);
         return undefined;
     }
     return d;

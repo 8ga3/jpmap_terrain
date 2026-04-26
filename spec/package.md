@@ -239,7 +239,7 @@ interface JpmapTerrain {
 **`showSunShadows` 仕様 (Issue #39):**
 
 - 既定 `false`（OFF）。OFF 時は `ShadowGenerator` を生成せず、GPU 負荷を発生させない。
-- `true` を set すると `ShadowGenerator`（解像度 1024 / `useBlurExponentialShadowMap` / `darkness=0.4`）を生成し、現時点でアクティブな地形タイルおよび以後追加されるタイルメッシュを caster / receiver として登録する。
+- `true` を set すると `ShadowGenerator`（解像度 1024 / `usePercentageCloserFiltering=true` / `darkness=0.4`）を生成し、現時点でアクティブな地形タイルおよび以後追加されるタイルメッシュを caster / receiver として登録する。
 - `false` に戻すと caster/receiver 設定を解除し `ShadowGenerator` を dispose する。
 - 同値の再 set は no-op。`dispose()` 後の set も no-op。
 - `dispose()` 時に `ShadowGenerator` は確実に解放される。
