@@ -18,6 +18,7 @@ import {
     resolveLatLon,
     resolveDateTime,
     resolveAutoSunPosition,
+    resolveShowSunShadows,
 } from "../src/index";
 
 describe("resolveEngine", () => {
@@ -109,6 +110,38 @@ describe("resolveDateTime (Issue #35)", () => {
             warn.mockRestore();
         }
     });
+
+    it("?dateTime=<ISO with +09:00 offset> → UTC 等価値の Date を返す (Issue #143)", () => {
+        const result = resolveDateTime(
+            "?dateTime=2025-04-25T05:13:00+09:00",
+        );
+        expect(result).toBeInstanceOf(Date);
+        expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
+    });
+
+    it("?dateTime=<ISO with -05:00 offset> → 負オフセットも正しく解釈する (Issue #143)", () => {
+        const result = resolveDateTime(
+            "?dateTime=2025-04-25T05:13:00-05:00",
+        );
+        expect(result).toBeInstanceOf(Date);
+        expect(result?.toISOString()).toBe("2025-04-25T10:13:00.000Z");
+    });
+
+    it("?dateTime=<percent-encoded +09:00> も同値で解釈する (Issue #143)", () => {
+        const result = resolveDateTime(
+            "?dateTime=2025-04-25T05:13:00%2B09:00",
+        );
+        expect(result).toBeInstanceOf(Date);
+        expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
+    });
+
+    it("複数パラメータ混在時も dateTime のみ正しく抽出する (Issue #143)", () => {
+        const result = resolveDateTime(
+            "?engine=webgpu&dateTime=2025-04-25T05:13:00+09:00&autoSunPosition=false",
+        );
+        expect(result).toBeInstanceOf(Date);
+        expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
+    });
 });
 
 describe("resolveAutoSunPosition (Issue #35)", () => {
@@ -125,5 +158,22 @@ describe("resolveAutoSunPosition (Issue #35)", () => {
         expect(resolveAutoSunPosition("?autoSunPosition=")).toBeUndefined();
         expect(resolveAutoSunPosition("?autoSunPosition=1")).toBeUndefined();
         expect(resolveAutoSunPosition("?autoSunPosition=TRUE")).toBeUndefined();
+    });
+});
+
+describe("resolveShowSunShadows (Issue #39)", () => {
+    it("?showSunShadows=true → true", () => {
+        expect(resolveShowSunShadows("?showSunShadows=true")).toBe(true);
+    });
+
+    it("?showSunShadows=false → false", () => {
+        expect(resolveShowSunShadows("?showSunShadows=false")).toBe(false);
+    });
+
+    it("未指定 / 不正値 → undefined", () => {
+        expect(resolveShowSunShadows("")).toBeUndefined();
+        expect(resolveShowSunShadows("?showSunShadows=")).toBeUndefined();
+        expect(resolveShowSunShadows("?showSunShadows=1")).toBeUndefined();
+        expect(resolveShowSunShadows("?showSunShadows=TRUE")).toBeUndefined();
     });
 });
