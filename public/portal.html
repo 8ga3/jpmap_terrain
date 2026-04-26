@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – デモポータル</title>
+  <meta name="description" content="jpmap_terrain のデモ一覧ポータル">
+  <meta name="author" content="8ga3">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+        "Noto Sans JP", Meiryo, sans-serif;
+      background: linear-gradient(180deg, #0d1b2a 0%, #1b263b 100%);
+      color: #e8ecf3;
+    }
+
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+
+    h1 {
+      font-size: 28px;
+      letter-spacing: 0.02em;
+      margin: 0 0 8px;
+    }
+
+    p.lead {
+      margin: 0 0 32px;
+      color: #b8c2d6;
+      line-height: 1.6;
+    }
+
+    ul.demos {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    li.demo-card a {
+      display: block;
+      padding: 20px 20px 22px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      color: inherit;
+      text-decoration: none;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    li.demo-card a:hover,
+    li.demo-card a:focus-visible {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.24);
+      transform: translateY(-2px);
+      outline: none;
+    }
+
+    li.demo-card h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    li.demo-card p {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: #c8d2e6;
+    }
+
+    footer {
+      margin-top: 48px;
+      font-size: 12px;
+      color: #8a93a6;
+    }
+
+    footer a {
+      color: #8ab4ff;
+    }
+  </style>
+</head>
+<body>
+  <main id="root"></main>
+</body>
+</html>

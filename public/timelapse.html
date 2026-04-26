@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – タイムラプスデモ</title>
+  <meta name="description" content="24時間を1分にタイムラプスして太陽の動きと陰影をアニメーション表示する jpmap_terrain デモ">
+  <meta name="author" content="8ga3">
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* タイムラプス UI ルート。ポインターイベントは透過。 */
+    #timelapse-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* 戻るリンク */
+    #timelapse-overlay .back-link {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      pointer-events: auto;
+      padding: 6px 12px;
+      font: 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    #timelapse-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    /* アナログ時計＋ラベルを画面下部中央へ縦積みで配置するコンテナ。 */
+    #timelapse-clock-area {
+      position: absolute;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    /* アナログ時計のホスト要素（中身は SVG）。 */
+    #timelapse-clock {
+      width: 140px;
+      height: 140px;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+    }
+
+    /* 同時に表示するシミュレーション時刻ラベル。 */
+    #timelapse-clock-label {
+      padding: 4px 8px;
+      font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 4px;
+      letter-spacing: 0.02em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="timelapse-overlay">
+      <a class="back-link" href="./">← デモ一覧へ</a>
+      <div id="timelapse-clock-area">
+        <svg
+          id="timelapse-clock"
+          viewBox="0 0 100 100"
+          role="img"
+          aria-label="シミュレーション時刻を示すアナログ時計"
+        ></svg>
+        <div id="timelapse-clock-label" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

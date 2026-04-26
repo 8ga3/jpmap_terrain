@@ -7,8 +7,42 @@ const { CleanWebpackPlugin } = require("clean-webpack-plugin");
 // App directory
 const appDirectory = fs.realpathSync(process.cwd());
 
+/**
+ * 多エントリ構成 (Issue #147)
+ * - portal: `/` (デモ一覧ポータル)
+ * - viewer: `/viewer.html` (既存 3D ビューアデモ)
+ * - timelapse: `/timelapse.html` (24h/60s タイムラプス + アナログ時計オーバーレイ)
+ */
+const ENTRY_DEFINITIONS = [
+    {
+        name: "portal",
+        entry: "src/demos/portal/index.ts",
+        template: "public/portal.html",
+        filename: "index.html",
+        title: "jpmap_terrain – デモポータル",
+    },
+    {
+        name: "viewer",
+        entry: "src/demos/viewer/index.ts",
+        template: "public/viewer.html",
+        filename: "viewer.html",
+        title: "jpmap_terrain – 3D地形ビューア",
+    },
+    {
+        name: "timelapse",
+        entry: "src/demos/timelapse/index.ts",
+        template: "public/timelapse.html",
+        filename: "timelapse.html",
+        title: "jpmap_terrain – タイムラプスデモ",
+    },
+];
+
+const entry = Object.fromEntries(
+    ENTRY_DEFINITIONS.map((d) => [d.name, path.resolve(appDirectory, d.entry)]),
+);
+
 module.exports = {
-    entry: path.resolve(appDirectory, "src/index.ts"),
+    entry,
     output: {
         filename: "js/[name].js",
         path: path.resolve("./dist/"),
@@ -57,10 +91,18 @@ module.exports = {
     plugins: [
         // new BundleAnalyzerPlugin(),
         new CleanWebpackPlugin(),
-        new HtmlWebpackPlugin({
-            inject: true,
-            template: path.resolve(appDirectory, "public/index.html"),
-        }),
+        // 各エントリ用に HTML を生成。`chunks` で対象エントリだけを inject し、
+        // `splitChunks` 由来の共通チャンクは HtmlWebpackPlugin が依存解決時に自動で含める。
+        ...ENTRY_DEFINITIONS.map(
+            (d) =>
+                new HtmlWebpackPlugin({
+                    inject: true,
+                    template: path.resolve(appDirectory, d.template),
+                    filename: d.filename,
+                    chunks: [d.name],
+                    title: d.title,
+                }),
+        ),
     ],
     optimization: {
         splitChunks: {

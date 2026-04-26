@@ -21,7 +21,7 @@ const scenes: {
 }[] = [
     {
         name: "Default",
-        url: "/?scene=default",
+        url: "/viewer.html?scene=default",
         waitForNetworkIdle: true,
     },
 ];
@@ -100,7 +100,7 @@ async function waitForScene(
     page: import("@playwright/test").Page,
     engine: string
 ) {
-    const sceneUrl = new URL("/?scene=default", "http://localhost");
+    const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
     sceneUrl.searchParams.set("engine", engine);
     applyDeterministicSunQuery(sceneUrl);
     await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
@@ -224,7 +224,7 @@ async function waitForSceneWithSkybox(
     engine: string,
     dateTime: string,
 ) {
-    const sceneUrl = new URL("/?scene=default", "http://localhost");
+    const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
     sceneUrl.searchParams.set("engine", engine);
     sceneUrl.searchParams.set("dateTime", dateTime);
     sceneUrl.searchParams.set("autoSunPosition", FIXED_AUTO_SUN_POSITION);
@@ -287,7 +287,7 @@ for (const engine of engines) {
     }, testInfo) => {
         // 東京の夜明け（JST 04:45）に東向きでカメラを構え、太陽メッシュが画面内に映ることを検証する。
         // パス `/@lat,lon` ではなく `?lat=&lon=` クエリ形式を採用（dev-server の historyApiFallback 互換）。
-        const sceneUrl = new URL("/?scene=default", "http://localhost");
+        const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
         sceneUrl.searchParams.set("engine", engine.param);
         sceneUrl.searchParams.set("lat", String(SUNRISE_LAT));
         sceneUrl.searchParams.set("lon", String(SUNRISE_LON));

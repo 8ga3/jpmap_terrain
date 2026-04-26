@@ -1,0 +1,181 @@
+/**
+ * アナログ時計オーバーレイ（Issue #147）
+ *
+ * SVG ベースの軽量アナログ時計。`renderClockSvg` は時計盤と針を含む SVG マークアップ文字列を返す純粋関数。
+ * `mountClock` は既存の `<svg>` 要素に対して針要素を初期化／更新する DOM 操作を担う。
+ *
+ * 設計方針:
+ * - 時計盤（目盛り・中心円）は初回マウント時に 1 度だけ描画する。
+ * - 針角度の更新は SVG 要素の `transform` 属性のみを書き換える（`innerHTML` 再生成しない）。
+ * - 純粋関数（角度計算）と DOM 副作用を分離して unit test しやすくする。
+ */
+
+/** 時針・分針・秒針の回転角度（度、12 時を 0° として時計回り正） */
+export interface ClockAngles {
+    hourDeg: number;
+    minuteDeg: number;
+    secondDeg: number;
+}
+
+/** JST (UTC+9) のオフセット (ms) */
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * `Date` から各針の角度を算出する純粋関数。
+ *
+ * - 時針は分・秒に応じて連続的に回転する（12 時間で 360°）。
+ * - 分針は秒に応じて連続的に回転する（60 分で 360°）。
+ * - 秒針はミリ秒に応じて連続的に回転する（60 秒で 360°）。
+ *
+ * 表示は日本標準時 (JST = UTC+9) 基準。シミュレーション時刻は UTC で保持されるため、
+ * ここで +9h オフセットを加えてから UTC ゲッタで分解する。
+ *
+ * `Invalid Date` が渡された場合は 0° を返す（呼び出し側でフォールバック値を期待しないよう注意）。
+ */
+export const computeClockAngles = (date: Date): ClockAngles => {
+    if (Number.isNaN(date.getTime())) {
+        return { hourDeg: 0, minuteDeg: 0, secondDeg: 0 };
+    }
+    const jst = new Date(date.getTime() + JST_OFFSET_MS);
+    const ms = jst.getUTCMilliseconds();
+    const s = jst.getUTCSeconds() + ms / 1000;
+    const m = jst.getUTCMinutes() + s / 60;
+    const h = (jst.getUTCHours() % 12) + m / 60;
+    return {
+        hourDeg: h * 30, // 360 / 12
+        minuteDeg: m * 6, // 360 / 60
+        secondDeg: s * 6, // 360 / 60
+    };
+};
+
+/**
+ * シミュレーション時刻の表示用ラベル（HH:MM JST）を整形する。
+ */
+export const formatClockLabel = (date: Date): string => {
+    if (Number.isNaN(date.getTime())) return "--:-- JST";
+    const jst = new Date(date.getTime() + JST_OFFSET_MS);
+    const hh = String(jst.getUTCHours()).padStart(2, "0");
+    const mm = String(jst.getUTCMinutes()).padStart(2, "0");
+    return `${hh}:${mm} JST`;
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const HAND_HOUR_ID = "tl-clock-hand-hour";
+const HAND_MINUTE_ID = "tl-clock-hand-minute";
+const HAND_SECOND_ID = "tl-clock-hand-second";
+
+/**
+ * 時計盤のテンプレート（目盛り・中心円・固定文字）。
+ * 100x100 ビューポート前提で 12 個の目盛りを生成する。
+ */
+const buildDialMarkup = (): string => {
+    const ticks: string[] = [];
+    for (let i = 0; i < 12; i++) {
+        const isHour = i % 3 === 0;
+        const len = isHour ? 8 : 5;
+        const x1 = 50;
+        const y1 = 50 - 44;
+        const x2 = 50;
+        const y2 = 50 - 44 + len;
+        const stroke = isHour ? "#ffffff" : "#cdd6e4";
+        const w = isHour ? 1.6 : 0.8;
+        ticks.push(
+            `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${w}" stroke-linecap="round" transform="rotate(${i * 30} 50 50)" />`,
+        );
+    }
+    return [
+        '<circle cx="50" cy="50" r="48" fill="rgba(20, 28, 44, 0.78)" stroke="rgba(255,255,255,0.35)" stroke-width="1" />',
+        ...ticks,
+    ].join("");
+};
+
+/**
+ * SVG 文字列としての完全な時計マークアップ（テスト用）。
+ * 角度は与えられた `ClockAngles` を使用。
+ */
+export const renderClockSvg = (angles: ClockAngles): string =>
+    [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">',
+        buildDialMarkup(),
+        `<line id="${HAND_HOUR_ID}" x1="50" y1="50" x2="50" y2="22" stroke="#ffffff" stroke-width="3" stroke-linecap="round" transform="rotate(${angles.hourDeg} 50 50)" />`,
+        `<line id="${HAND_MINUTE_ID}" x1="50" y1="50" x2="50" y2="14" stroke="#ffffff" stroke-width="2" stroke-linecap="round" transform="rotate(${angles.minuteDeg} 50 50)" />`,
+        `<line id="${HAND_SECOND_ID}" x1="50" y1="50" x2="50" y2="10" stroke="#ff6464" stroke-width="1" stroke-linecap="round" transform="rotate(${angles.secondDeg} 50 50)" />`,
+        '<circle cx="50" cy="50" r="2.4" fill="#ffffff" />',
+        "</svg>",
+    ].join("");
+
+/** マウント済みクロックを更新するためのハンドル。 */
+export interface ClockHandle {
+    /** シミュレーション時刻に基づき針位置を更新する */
+    update(date: Date): void;
+}
+
+/**
+ * 既存の `<svg>` 要素に時計盤と針を構築し、更新ハンドルを返す。
+ * - 同じ要素に対して再マウントしないこと（再マウント時は `update` を使う）。
+ * - DOM が無い環境（jest jsdom 以外）では呼び出さない。
+ */
+export const mountClock = (
+    svg: SVGSVGElement,
+    labelEl: HTMLElement | null,
+): ClockHandle => {
+    // 子要素をいったんクリアし、目盛り＋針を構築する。
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    // viewBox はテンプレ側で設定済みだが、念のため上書き。
+    if (!svg.getAttribute("viewBox")) {
+        svg.setAttribute("viewBox", "0 0 100 100");
+    }
+    // 目盛り（HTMLパーサに任せず DOM API で組むのが安全だが、
+    // ここでは静的な内容なので `innerHTML` でまとめて挿入する）。
+    svg.insertAdjacentHTML("afterbegin", buildDialMarkup());
+
+    const createHand = (
+        id: string,
+        y2: number,
+        stroke: string,
+        width: number,
+    ): SVGLineElement => {
+        const line = document.createElementNS(SVG_NS, "line");
+        line.setAttribute("id", id);
+        line.setAttribute("x1", "50");
+        line.setAttribute("y1", "50");
+        line.setAttribute("x2", "50");
+        line.setAttribute("y2", String(y2));
+        line.setAttribute("stroke", stroke);
+        line.setAttribute("stroke-width", String(width));
+        line.setAttribute("stroke-linecap", "round");
+        line.setAttribute("transform", "rotate(0 50 50)");
+        svg.appendChild(line);
+        return line;
+    };
+
+    const hourHand = createHand(HAND_HOUR_ID, 22, "#ffffff", 3);
+    const minuteHand = createHand(HAND_MINUTE_ID, 14, "#ffffff", 2);
+    const secondHand = createHand(HAND_SECOND_ID, 10, "#ff6464", 1);
+
+    const center = document.createElementNS(SVG_NS, "circle");
+    center.setAttribute("cx", "50");
+    center.setAttribute("cy", "50");
+    center.setAttribute("r", "2.4");
+    center.setAttribute("fill", "#ffffff");
+    svg.appendChild(center);
+
+    return {
+        update(date: Date): void {
+            const angles = computeClockAngles(date);
+            hourHand.setAttribute(
+                "transform",
+                `rotate(${angles.hourDeg} 50 50)`,
+            );
+            minuteHand.setAttribute(
+                "transform",
+                `rotate(${angles.minuteDeg} 50 50)`,
+            );
+            secondHand.setAttribute(
+                "transform",
+                `rotate(${angles.secondDeg} 50 50)`,
+            );
+            if (labelEl) labelEl.textContent = formatClockLabel(date);
+        },
+    };
+};
