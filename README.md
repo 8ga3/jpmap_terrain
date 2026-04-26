@@ -77,22 +77,25 @@ npm start
 - WebGPU: `http://localhost:8080/?scene=default&engine=webgpu`
 - WebGL2: `http://localhost:8080/?scene=default&engine=webgl2`
 
-`webgpu` 指定時に未対応ブラウザの場合は WebGL にフォールバックします。
+`webgpu` 指定時に未対応ブラウザの場合は WebGL2 にフォールバックします。
 
 ## URL フォーマット（緯度経度・エンジン指定）
 
-開発デモエントリ（`src/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` クエリパラメータをサポートします。
+開発デモエントリ（`src/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`）とは別です。
 
-- 形式: `http://localhost:8080/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>`
+- 形式: `http://localhost:8080/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>`（`webgl` は URL クエリでのみ後方互換として受け付け、内部的に `webgl2` に正規化）
 - 例:
   - `http://localhost:8080/@35.681236,139.767125?engine=webgpu`（東京駅・WebGPU）
   - `http://localhost:8080/@35.3606,138.7274?engine=webgl2`（富士山・WebGL2）
 
 ### `engine` パラメータ
 
-- 取りうる値: `webgpu` / `webgl` / `webgl2`
-- `webgl` は内部的に `webgl2` に正規化されます
+以下は開発デモ URL の `engine` クエリパラメータに対する仕様です。
+
+- `webgpu` / `webgl2` を指定できます
+- `webgl` は URL クエリでのみ後方互換として受け付けられる別名で、内部的に `webgl2` に正規化されます
 - 省略時は自動選択（WebGPU 利用可能なら WebGPU、未対応なら WebGL2 にフォールバック）
+- npm パッケージの公開 API で指定できる `engine` は `"webgpu" | "webgl2"` です
 
 ### 緯度経度の扱い
 
