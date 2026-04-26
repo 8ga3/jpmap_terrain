@@ -117,12 +117,13 @@ export interface DefaultSceneController {
  * `DefaultScene.createScene` の初期化オプション (T4 / Issue #118)。
  *
  * パッケージ利用 (`JpmapTerrain.create`) で初期パラメータを指定するために導入。
- * 既存デモ (`src/index.ts`) からは未指定で呼び出され、従来通り URL → デフォルト値の順で解決する。
+ * URL からの初期位置解決はデモ層 (`src/index.ts`) に移管されており (Issue #136)、
+ * このシーン側では「options で指定された値 > デフォルト値」の順で解決する。
  */
 export interface DefaultSceneInitOptions {
-    /** 初期緯度（度）。指定時は URL/デフォルトより優先 */
+    /** 初期緯度（度）。未指定時はデフォルト値（東京駅付近）を用いる */
     lat?: number;
-    /** 初期経度（度）。指定時は URL/デフォルトより優先 */
+    /** 初期経度（度）。未指定時はデフォルト値（東京駅付近）を用いる */
     lon?: number;
     /** カメラ高度＝ArcRotateCamera radius（メートル） */
     altitude?: number;
