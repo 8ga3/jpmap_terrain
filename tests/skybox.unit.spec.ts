@@ -4,6 +4,8 @@
  */
 
 import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 let mockMesh: {
     material: unknown;
@@ -79,14 +81,15 @@ describe("createSkybox", () => {
     it("applySunToSky は SunState を SkyMaterial へ反映する", () => {
         const handle = createSkybox(mockScene);
         handle.applySunToSky({
-            // sunDir はここでは検証しない（Skybox 側では不要）。
-            sunDir: { x: 0, y: 1, z: 0 } as unknown as never,
+            // sunDir はここでは検証しない（Skybox 側では不要）が、`SunState` 型の意図を保つため
+            // 実際の `Vector3` / `Color3` を渡す（型キャストでチェックを無効化しない）。
+            sunDir: new Vector3(0, 1, 0),
             dayFactor: 1,
             skyInclination: 0.1,
             skyAzimuth: 0.7,
             skyLuminance: 0.42,
             skyVisible: true,
-            clearColor: { r: 0.75, g: 0.86, b: 0.95 } as unknown as never,
+            clearColor: new Color3(0.75, 0.86, 0.95),
             visibleAboveHorizon: true,
         });
         expect(mockSkyMaterialInstance.inclination).toBeCloseTo(0.1, 5);

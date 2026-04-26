@@ -12,8 +12,8 @@ import { computeSunPosition } from "../src/terrain/sunPosition";
 const TOLERANCE_DEG = 2;
 
 const expectClose = (actual: number, expected: number, label: string): void => {
-    expect(Math.abs(actual - expected)).toBeLessThanOrEqual(TOLERANCE_DEG);
-    // 失敗時に diff が分かるようカスタムメッセージ用の追加期待。
+    // ラベル付きの分かりやすいエラーメッセージを優先したいので
+    // `expect(...).toBeLessThanOrEqual(...)` ではなく明示的に判定して throw する。
     if (Math.abs(actual - expected) > TOLERANCE_DEG) {
         throw new Error(
             `${label}: expected ${expected} (±${TOLERANCE_DEG}), got ${actual}`,
@@ -101,5 +101,28 @@ describe("computeSunPosition", () => {
         );
         expect(result.azimuthDeg).toBeGreaterThanOrEqual(0);
         expect(result.azimuthDeg).toBeLessThan(360);
+    });
+
+    it("経度大 + UTC 後半でも azimuth が連続的に変化する（hourAngle 折り返しの回帰検証）", () => {
+        // `trueSolarTimeMin/4 - 180` が 180° を超えるケースで、
+        // 折り返し処理が無いと午前/午後判定が逆転して azimuth が南北で大ジャンプしていた。
+        // ここでは UTC で 5 分刻みに動かして連続性（差分が常識的範囲）を確認する。
+        const lat = 35.681;
+        const lon = 140;
+        const base = Date.UTC(2025, 5, 21, 22, 0, 0); // 2025-06-21T22:00Z（日本時間 07:00）
+        let prev: number | null = null;
+        for (let i = 0; i <= 24; i++) {
+            const date = new Date(base + i * 5 * 60 * 1000);
+            const { azimuthDeg } = computeSunPosition(lat, lon, date);
+            expect(azimuthDeg).toBeGreaterThanOrEqual(0);
+            expect(azimuthDeg).toBeLessThan(360);
+            if (prev !== null) {
+                // 5 分間の azimuth 変化は最大でも数°。逆転バグでは ~180° ジャンプしていた。
+                const diff = Math.abs(azimuthDeg - prev);
+                const wrapped = Math.min(diff, 360 - diff);
+                expect(wrapped).toBeLessThan(10);
+            }
+            prev = azimuthDeg;
+        }
     });
 });
