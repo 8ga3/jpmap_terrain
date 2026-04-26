@@ -11,8 +11,8 @@ import { buildPortalHtml } from "../src/demos/portal/index";
 describe("buildPortalHtml", () => {
     it("デフォルトで viewer/timelapse へのリンクを含む", () => {
         const html = buildPortalHtml();
-        expect(html).toContain('href="viewer.html"');
-        expect(html).toContain('href="timelapse.html"');
+        expect(html).toContain('href="viewer"');
+        expect(html).toContain('href="timelapse"');
         expect(html).toContain("<h1>");
     });
 

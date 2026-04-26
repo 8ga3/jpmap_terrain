@@ -23,6 +23,7 @@ import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
+    createUrlUpdater,
 } from "../../terrain/urlState";
 import { mountClock } from "./clockOverlay";
 import {
@@ -73,6 +74,19 @@ const start = async (): Promise<void> => {
     };
 
     const viewer = await JpmapTerrain.create(mount, opts);
+
+    // URL 同期: カメラ変化のたびに `/<demo>@lat,lon,altitude,azimuth,tilt` 形式へ反映する (Issue #155)。
+    // 既存クエリ（?engine=, ?start=, ?speed= など）は `createUrlUpdater` 内で保持される。
+    const urlUpdater = createUrlUpdater(200);
+    viewer.onCameraChange((event) =>
+        urlUpdater({
+            lat: event.lat,
+            lon: event.lon,
+            altitude: event.altitude,
+            azimuth: event.azimuth,
+            tilt: event.tilt,
+        }),
+    );
 
     // 時計オーバーレイをマウント。
     const clockSvg = document.getElementById(CLOCK_ELEMENT_ID);

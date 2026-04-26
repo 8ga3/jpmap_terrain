@@ -22,13 +22,13 @@ const DEMO_LIST: readonly DemoEntry[] = [
         title: "3D 地形ビューア",
         description:
             "地理院タイルの標高データから 3D 地形を表示する基本デモ。緯度経度・カメラ向き・地図種別を URL で指定できます。",
-        href: "viewer.html",
+        href: "viewer",
     },
     {
         title: "タイムラプス（太陽の動きと陰影）",
         description:
             "24 時間を 1 分に圧縮して太陽位置・陰影をアニメーションし、アナログ時計で同期表示するショーケース。",
-        href: "timelapse.html",
+        href: "timelapse",
     },
 ];
 

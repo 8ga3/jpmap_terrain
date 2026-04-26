@@ -139,21 +139,56 @@ export const parseLatLonFromUrl = (url: string): LatLon | null => {
 };
 
 /**
+ * 現在の pathname から `@lat,lon,...` セグメント以降を取り除き、
+ * デモを識別するプレフィクス（例: `''`, `/viewer`, `/timelapse`）を返す (Issue #155)。
+ *
+ * - 末尾の `.html` は剥がして拡張子なしに正規化する。
+ * - 末尾スラッシュは取り除く（`/` は `''` を返す）。
+ * - 想定外の深いパス（`/foo/bar`）はそのまま返し、呼び出し元で `${prefix}@...` を構築する。
+ */
+export const extractDemoPathPrefix = (pathname: string): string => {
+    const atIndex = pathname.indexOf("@");
+    let base = atIndex >= 0 ? pathname.slice(0, atIndex) : pathname;
+    // 末尾スラッシュを除去（`/` は空文字に倒す）
+    if (base.endsWith("/")) {
+        base = base.slice(0, -1);
+    }
+    // 末尾 `.html` を剥がす
+    if (base.endsWith(".html")) {
+        base = base.slice(0, -".html".length);
+    }
+    return base;
+};
+
+/**
  * パスセグメント文字列を生成する。
  * - 数値2引数: `/@lat,lon`（2要素）
  * - 状態オブジェクト: altitude/azimuth/tilt のいずれかが定義されていれば 5要素、
  *   全て未定義なら 2要素を返す。
+ *
+ * `prefix` を渡すと `${prefix}@lat,lon,...` 形式になる (Issue #155)。
+ * 例: `prefix="/viewer"` → `/viewer@lat,lon,...`
+ * `prefix=""` のときのみ先頭にスラッシュを付与し `/@lat,lon,...` とする。
  */
-export function toAtPath(lat: number, lon: number): string;
-export function toAtPath(state: Partial<CameraUrlState> & LatLon): string;
+export function toAtPath(lat: number, lon: number, prefix?: string): string;
+export function toAtPath(
+    state: Partial<CameraUrlState> & LatLon,
+    prefix?: string,
+): string;
 export function toAtPath(
     a: number | (Partial<CameraUrlState> & LatLon),
-    b?: number,
+    b?: number | string,
+    c?: string,
 ): string {
+    const buildHead = (prefix: string): string =>
+        prefix === "" ? "/@" : `${prefix}@`;
     if (typeof a === "number" && typeof b === "number") {
-        return `/@${a.toFixed(PRECISION)},${b.toFixed(PRECISION)}`;
+        const prefix = c ?? "";
+        return `${buildHead(prefix)}${a.toFixed(PRECISION)},${b.toFixed(PRECISION)}`;
     }
     const state = a as Partial<CameraUrlState> & LatLon;
+    const prefix = (typeof b === "string" ? b : undefined) ?? "";
+    const head = buildHead(prefix);
     const hasExtra =
         state.altitude !== undefined ||
         state.azimuth !== undefined ||
@@ -161,17 +196,19 @@ export function toAtPath(
     const latStr = state.lat.toFixed(PRECISION);
     const lonStr = state.lon.toFixed(PRECISION);
     if (!hasExtra) {
-        return `/@${latStr},${lonStr}`;
+        return `${head}${latStr},${lonStr}`;
     }
     const altitude = clampAltitude(state.altitude ?? CAMERA_URL_DEFAULTS.altitude);
     const azimuth = normalizeAzimuth(state.azimuth ?? CAMERA_URL_DEFAULTS.azimuth);
     const tilt = clampTilt(state.tilt ?? CAMERA_URL_DEFAULTS.tilt);
-    return `/@${latStr},${lonStr},${altitude},${azimuth.toFixed(AZIMUTH_TILT_PRECISION)},${tilt.toFixed(AZIMUTH_TILT_PRECISION)}`;
+    return `${head}${latStr},${lonStr},${altitude},${azimuth.toFixed(AZIMUTH_TILT_PRECISION)},${tilt.toFixed(AZIMUTH_TILT_PRECISION)}`;
 }
 
 /**
- * history.replaceState で URL のパスを `/@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
- * 既存のクエリパラメータは保持する。デバウンス付きファクトリを返す。
+ * history.replaceState で URL のパスを `${prefix}/@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
+ * 現在の pathname からデモ識別子（例: `/viewer`, `/timelapse`）を抽出して保持し、
+ * `.html` 拡張子は剥がして正規化する (Issue #155)。既存のクエリパラメータは保持する。
+ * デバウンス付きファクトリを返す。
  */
 export const createUrlUpdater = (
     debounceMs: number = 200,
@@ -184,7 +221,8 @@ export const createUrlUpdater = (
         }
         timerId = setTimeout(() => {
             timerId = null;
-            const path = toAtPath(state);
+            const prefix = extractDemoPathPrefix(location.pathname);
+            const path = toAtPath(state, prefix);
             const search = location.search;
             history.replaceState(null, "", path + search);
         }, debounceMs);
