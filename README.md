@@ -70,24 +70,35 @@ npm start
 
 `http://localhost:8080` が自動的に開き、開発サーバーがホットリロード付きで起動します。
 
+## デモポータル
+
+`http://localhost:8080/`（`/index.html`）はデモ一覧ポータルになっています。各デモへは以下から個別にもアクセスできます。
+
+| デモ | URL | 説明 |
+|---|---|---|
+| 3D 地形ビューア | `/viewer.html` | 既存の地理院タイル 3D ビューア。緯度経度・カメラ向き・地図種別を URL で指定可能。 |
+| タイムラプス | `/timelapse.html` | 24 時間を 1 分に圧縮し、太陽位置・陰影をアニメーション表示（アナログ時計オーバーレイ付き）。 |
+
+デモ追加方針は [spec/demos.md](spec/demos.md) を参照してください。
+
 ## 実行モード（WebGPU / WebGL2）
 
 `engine` クエリパラメータでエンジンを切り替えられます。
 
-- WebGPU: `http://localhost:8080/?scene=default&engine=webgpu`
-- WebGL2: `http://localhost:8080/?scene=default&engine=webgl2`
+- WebGPU: `http://localhost:8080/viewer.html?scene=default&engine=webgpu`
+- WebGL2: `http://localhost:8080/viewer.html?scene=default&engine=webgl2`
 
 `webgpu` 指定時に未対応ブラウザの場合は WebGL2 にフォールバックします。
 
 ## URL フォーマット（緯度経度・エンジン・地図種類指定）
 
-開発デモエントリ（`src/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` / `mapType` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`、`MapType` は `"standard" | "photo"`）とは別です。
+3D ビューアデモ（`src/demos/viewer/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` / `mapType` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`、`MapType` は `"standard" | "photo"`）とは別です。
 
-- 形式: `http://localhost:8080/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>&mapType=<standard|photo>`（`webgl` は URL クエリでのみ後方互換として受け付け、内部的に `webgl2` に正規化）
+- 形式: `http://localhost:8080/viewer.html/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>&mapType=<standard|photo>`（`webgl` は URL クエリでのみ後方互換として受け付け、内部的に `webgl2` に正規化）
 - 例:
-  - `http://localhost:8080/@35.681236,139.767125?engine=webgpu`（東京駅・WebGPU）
-  - `http://localhost:8080/@35.3606,138.7274?engine=webgl2`（富士山・WebGL2）
-  - `http://localhost:8080/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・航空写真）
+  - `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu`（東京駅・WebGPU）
+  - `http://localhost:8080/viewer.html/@35.3606,138.7274?engine=webgl2`（富士山・WebGL2）
+  - `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・航空写真）
 
 ### `engine` パラメータ
 
@@ -109,13 +120,15 @@ npm start
 - 緯度経度は `JAPAN_BOUNDS`（緯度 20〜46、経度 122〜154）でクランプされます
 - カメラ移動に追従して、URL のパスは `/@lat,lon` 形式に書き戻されます（既存のクエリパラメータは保持）
 
-実装の詳細は `src/index.ts` および `src/terrain/urlState.ts` を参照してください。
+実装の詳細は `src/demos/viewer/index.ts` および `src/terrain/urlState.ts` を参照してください。
 
 ## 開発ガイド
 
 ### エントリポイント
 
-- アプリ開始点: `src/index.ts`
+- デモポータル: `src/demos/portal/index.ts`
+- 3D 地形ビューアデモ: `src/demos/viewer/index.ts`
+- タイムラプスデモ: `src/demos/timelapse/index.ts`
 - シーン生成インターフェース: `src/createScene.ts`
 - 既定シーン実装: `src/scenes/default.ts`
 
@@ -124,11 +137,14 @@ npm start
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ index.ts           # 起動処理とエンジン選択
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse）
+│  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
+│  ├─ terrain/           # 地形・UI 実装
 │  ├─ createScene.ts     # シーン生成インターフェース
 │  └─ scenes/default.ts  # デフォルトシーン
-├─ tests/                # Playwright の Visual Regression Test
-├─ spec/                 # 仕様・開発フロー文書
+├─ public/               # HtmlWebpackPlugin 用テンプレート（portal/viewer/timelapse）
+├─ tests/                # Playwright の Visual Regression Test と Unit テスト
+├─ spec/                 # 仕様・開発フロー文書（demos.md を含む）
 └─ webpack*.js           # ビルド設定
 ```
 

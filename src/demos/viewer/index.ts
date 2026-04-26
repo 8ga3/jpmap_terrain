@@ -12,16 +12,16 @@
  * NODE_ENV !== "production" のときだけ `window.scene` / `window.viewer` /
  * `window.showToast` を露出する。これらは公開 API ではない。
  */
-import { JpmapTerrain } from "./lib/jpmapTerrain";
-import type { EngineType, JpmapTerrainOptions } from "./lib/types";
-import { showToast } from "./terrain/controlPanel";
+import { JpmapTerrain } from "../../lib/jpmapTerrain";
+import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
+import { showToast } from "../../terrain/controlPanel";
 import {
     parseCameraStateFromUrl,
     createUrlUpdater,
     parseMapTypeFromUrl,
     updateMapTypeInUrl,
     type CameraUrlState,
-} from "./terrain/urlState";
+} from "../../terrain/urlState";
 
 const DEMO_MOUNT_ID = "root";
 

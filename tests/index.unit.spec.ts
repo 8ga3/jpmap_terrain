@@ -19,7 +19,7 @@ import {
     resolveDateTime,
     resolveAutoSunPosition,
     resolveShowSunShadows,
-} from "../src/index";
+} from "../src/demos/viewer/index";
 
 describe("resolveEngine", () => {
     it("?engine=webgpu → 'webgpu'", () => {
