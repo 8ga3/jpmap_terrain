@@ -166,9 +166,9 @@ export const extractDemoPathPrefix = (pathname: string): string => {
  * - 状態オブジェクト: altitude/azimuth/tilt のいずれかが定義されていれば 5要素、
  *   全て未定義なら 2要素を返す。
  *
- * `prefix` を渡すと `${prefix}@lat,lon,...` 形式になる (Issue #155)。
- * 例: `prefix="/viewer"` → `/viewer@lat,lon,...`
- * `prefix=""` のときのみ先頭にスラッシュを付与し `/@lat,lon,...` とする。
+ * `prefix` を渡すと `${prefix}/@lat,lon,...` 形式になる (Issue #155)。
+ * 例: `prefix="/viewer"` → `/viewer/@lat,lon,...`（Google Maps 互換のフォーマット）
+ * `prefix=""` のときは `/@lat,lon,...`。
  */
 export function toAtPath(lat: number, lon: number, prefix?: string): string;
 export function toAtPath(
@@ -180,8 +180,7 @@ export function toAtPath(
     b?: number | string,
     c?: string,
 ): string {
-    const buildHead = (prefix: string): string =>
-        prefix === "" ? "/@" : `${prefix}@`;
+    const buildHead = (prefix: string): string => `${prefix}/@`;
     if (typeof a === "number" && typeof b === "number") {
         const prefix = c ?? "";
         return `${buildHead(prefix)}${a.toFixed(PRECISION)},${b.toFixed(PRECISION)}`;
@@ -205,8 +204,8 @@ export function toAtPath(
 }
 
 /**
- * history.replaceState で URL のパスを `${prefix}@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
- * `prefix` が空のときは `/@lat,lon,...`、`/viewer` 等のときは `/viewer@lat,lon,...` を出力する。
+ * history.replaceState で URL のパスを `${prefix}/@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
+ * `prefix` が空のときは `/@lat,lon,...`、`/viewer` 等のときは `/viewer/@lat,lon,...`（Google Maps 互換）を出力する。
  * 現在の pathname からデモ識別子（例: `/viewer`, `/timelapse`）を抽出して保持し、
  * `.html` 拡張子は剥がして正規化する (Issue #155)。既存のクエリパラメータは保持する。
  * デバウンス付きファクトリを返す。
