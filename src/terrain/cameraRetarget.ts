@@ -48,6 +48,19 @@ export function computePoseForNewTarget(
     currentAlpha: number,
     limits: RetargetLimits,
 ): RetargetResult {
+    // 入力に NaN/Infinity が紛れ込むと acos/atan2 が破綻し、以降のカメラ状態が
+    // 全て不正値で汚染される（Issue #151）。早期に skip して直前状態を維持する。
+    if (
+        !Number.isFinite(camPos.x) ||
+        !Number.isFinite(camPos.y) ||
+        !Number.isFinite(camPos.z) ||
+        !Number.isFinite(newTarget.x) ||
+        !Number.isFinite(newTarget.y) ||
+        !Number.isFinite(newTarget.z)
+    ) {
+        return { action: "skip", reason: "degenerate" };
+    }
+
     const vx = camPos.x - newTarget.x;
     const vy = camPos.y - newTarget.y;
     const vz = camPos.z - newTarget.z;

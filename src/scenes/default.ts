@@ -338,10 +338,38 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualX = gridResidualX + newOffsetX - gridShiftX;
             gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
 
-            // target.y は retarget で地形高さに設定されている場合があるため保持する
-            // （0 代入するとリリース時に上下ジャンプが発生する）
-            camera.target.x = gridResidualX;
-            camera.target.z = gridResidualZ;
+            // target.y を地形参照面 (=0) に正規化する (Issue #151)。
+            // 富士山頂で Ctrl+ドラッグ retarget により target.y が 3776m 等になった
+            // まま平地に移動すると、camera.position.y = target.y + radius*cos(beta)
+            // が地表から大きく乖離し、computeQuadtreeTiles の SSE 距離計算が破綻して
+            // 採用 zoom が狂う。computePoseForNewTarget でカメラのワールド位置を保つ
+            // 再射影を試行し、視覚ジャンプを抑止する。limit 逸脱や特異点で skip された
+            // 場合のみ従来挙動 (x/z のみ更新、target.y 保持) にフォールバックする。
+            const { alpha, beta, radius } = camera;
+            const sinB = Math.sin(beta);
+            const cosB = Math.cos(beta);
+            const camPos = {
+                x: camera.target.x + radius * sinB * Math.cos(alpha),
+                y: camera.target.y + radius * cosB,
+                z: camera.target.z + radius * sinB * Math.sin(alpha),
+            };
+            const newTarget = { x: gridResidualX, y: 0, z: gridResidualZ };
+            const pose = computePoseForNewTarget(camPos, newTarget, alpha, {
+                lowerBeta: camera.lowerBetaLimit ?? 0,
+                upperBeta: camera.upperBetaLimit ?? Math.PI,
+                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
+                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
+            });
+            if (pose.action === "apply") {
+                camera.target.copyFromFloats(newTarget.x, newTarget.y, newTarget.z);
+                camera.alpha = pose.alpha;
+                camera.beta = pose.beta;
+                camera.radius = pose.radius;
+            } else {
+                // フォールバック: 従来挙動。target.y は retarget で設定された値を保持。
+                camera.target.x = gridResidualX;
+                camera.target.z = gridResidualZ;
+            }
 
             currentLat = newLat;
             currentLon = newLon;
@@ -391,6 +419,19 @@ export class DefaultScene implements CreateSceneClass {
         const terrainMinRadius = (): number => {
             const { alpha, beta, radius } = camera;
             const { x: tx, y: ty, z: tz } = camera.target;
+            // 入力 (alpha/beta/radius/target) に NaN/Infinity が混入している場合は
+            // 算出が破綻するため、早期に lowerRadiusLimit を返す (Issue #151)。
+            if (
+                !Number.isFinite(alpha) ||
+                !Number.isFinite(beta) ||
+                !Number.isFinite(radius) ||
+                !Number.isFinite(tx) ||
+                !Number.isFinite(ty) ||
+                !Number.isFinite(tz)
+            ) {
+                cachedMinRadius = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                return cachedMinRadius;
+            }
             if (
                 alpha === prevAlpha &&
                 beta === prevBeta &&
@@ -431,7 +472,7 @@ export class DefaultScene implements CreateSceneClass {
 
             // キャッシュ済み標高データから高精度な値を補完
             const cacheElev = tileManager.queryElevationAtWorld(camX, camZ);
-            if (cacheElev !== null) {
+            if (cacheElev !== null && Number.isFinite(cacheElev)) {
                 terrainY = terrainY !== null ? Math.max(terrainY, cacheElev) : cacheElev;
             }
 
@@ -441,7 +482,14 @@ export class DefaultScene implements CreateSceneClass {
             }
 
             const minCamY = terrainY + CAMERA_LOWER_RADIUS;
-            cachedMinRadius = (minCamY - ty) / cosB;
+            const computed = (minCamY - ty) / cosB;
+            // 非有限値・下限未満は lowerRadiusLimit にクランプ (Issue #151)
+            const lowerLimit = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            if (!Number.isFinite(computed) || computed < lowerLimit) {
+                cachedMinRadius = lowerLimit;
+                return cachedMinRadius;
+            }
+            cachedMinRadius = computed;
             return cachedMinRadius;
         };
 
@@ -700,6 +748,8 @@ export class DefaultScene implements CreateSceneClass {
             // 衝突制限を考慮した実効 lower を算出
             const effectiveLower = Math.max(lower, terrainMinRadius());
             const newRadius = clamp(camera.radius * factor, effectiveLower, upper);
+            // 非有限値ガード (Issue #151): factor/radius が NaN/Infinity だった場合は何もしない
+            if (!Number.isFinite(newRadius)) return;
             if (Math.abs(newRadius - camera.radius) < 0.01) return;
 
             // ズームイン操作なのに半径が増える場合はターゲット移動せず半径だけ補正
@@ -774,6 +824,7 @@ export class DefaultScene implements CreateSceneClass {
                         const camX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
                         const camZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
                         const newRadius = clamp(camera.radius * factor, effectiveLower2, upper);
+                        if (!Number.isFinite(newRadius)) return;
                         camera.target.x = camX - newRadius * sinB * Math.cos(camera.alpha);
                         camera.target.z = camZ - newRadius * sinB * Math.sin(camera.alpha);
                         camera.radius = newRadius;
@@ -783,7 +834,9 @@ export class DefaultScene implements CreateSceneClass {
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
                         if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
-                        camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
+                        const next = clamp(camera.radius * factor, effectiveLower1, upper);
+                        if (!Number.isFinite(next)) return;
+                        camera.radius = next;
                     }
                 }
             },

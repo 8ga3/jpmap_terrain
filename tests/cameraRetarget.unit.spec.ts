@@ -117,4 +117,49 @@ describe("computePoseForNewTarget", () => {
             expect(result.alpha).toBe(currentAlpha);
         });
     });
+
+    describe("非有限値ガード (Issue #151)", () => {
+        const baseTarget = { x: 0, y: 0, z: 0 };
+        const baseCamPos = { x: 1000, y: 1000, z: 1000 };
+
+        it("camPos.x が NaN なら degenerate skip", () => {
+            const result = computePoseForNewTarget(
+                { ...baseCamPos, x: NaN },
+                baseTarget,
+                0,
+                LIMITS,
+            );
+            expect(result).toEqual({ action: "skip", reason: "degenerate" });
+        });
+
+        it("camPos.y が Infinity なら degenerate skip", () => {
+            const result = computePoseForNewTarget(
+                { ...baseCamPos, y: Infinity },
+                baseTarget,
+                0,
+                LIMITS,
+            );
+            expect(result).toEqual({ action: "skip", reason: "degenerate" });
+        });
+
+        it("newTarget.z が -Infinity なら degenerate skip", () => {
+            const result = computePoseForNewTarget(
+                baseCamPos,
+                { ...baseTarget, z: -Infinity },
+                0,
+                LIMITS,
+            );
+            expect(result).toEqual({ action: "skip", reason: "degenerate" });
+        });
+
+        it("newTarget.y が NaN なら degenerate skip（富士山 retarget 後の汚染想定）", () => {
+            const result = computePoseForNewTarget(
+                baseCamPos,
+                { ...baseTarget, y: NaN },
+                0,
+                LIMITS,
+            );
+            expect(result).toEqual({ action: "skip", reason: "degenerate" });
+        });
+    });
 });

@@ -612,6 +612,19 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     ): LodTileEntry[] => {
         if (!currentCenter) return [];
         const engine = scene.getEngine();
+        const camRelX = camera.position.x - camera.target.x;
+        const camRelY = camera.position.y - camera.target.y;
+        const camRelZ = camera.position.z - camera.target.z;
+        // 非有限値が混入すると SSE 距離が NaN になり Quadtree 採用が破綻するため
+        // 早期に空配列を返して直前の可視集合を維持させる (Issue #151)
+        if (
+            !Number.isFinite(camRelX) ||
+            !Number.isFinite(camRelY) ||
+            !Number.isFinite(camRelZ) ||
+            !Number.isFinite(camera.fov)
+        ) {
+            return [];
+        }
         return computeQuadtreeTiles({
             maxZoom: zoom,
             minZoom,
@@ -619,9 +632,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             tileSizeForZoom,
             frustumPlanes,
             cameraPosition: {
-                x: camera.position.x - camera.target.x,
-                y: camera.position.y - camera.target.y,
-                z: camera.position.z - camera.target.z,
+                x: camRelX,
+                y: camRelY,
+                z: camRelZ,
             },
             verticalFov: camera.fov,
             viewportHeight: engine.getRenderHeight(),
