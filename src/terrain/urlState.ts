@@ -205,7 +205,8 @@ export function toAtPath(
 }
 
 /**
- * history.replaceState で URL のパスを `${prefix}/@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
+ * history.replaceState で URL のパスを `${prefix}@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
+ * `prefix` が空のときは `/@lat,lon,...`、`/viewer` 等のときは `/viewer@lat,lon,...` を出力する。
  * 現在の pathname からデモ識別子（例: `/viewer`, `/timelapse`）を抽出して保持し、
  * `.html` 拡張子は剥がして正規化する (Issue #155)。既存のクエリパラメータは保持する。
  * デバウンス付きファクトリを返す。
