@@ -14,6 +14,7 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
+import { attachResizeRefresh } from "../terrain/resizeRefresh";
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
 import { computeSunPosition } from "../terrain/sunPosition";
@@ -845,24 +846,9 @@ export class DefaultScene implements CreateSceneClass {
         // タイルが取得・描画されない。`tileManager.applyVisibleTiles` は不要解放と
         // 新規ロードの差分処理のみ行うため、ここから refreshTerrain を呼んでも
         // 既存タイルは保持され、ちらつきは発生しない。
-        // 連続リサイズで何度も refresh が走らないよう短い debounce を挟む。
-        const RESIZE_REFRESH_DEBOUNCE_MS = 100;
-        let resizeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-        engine.onResizeObservable.add(() => {
-            if (resizeRefreshTimer !== null) {
-                clearTimeout(resizeRefreshTimer);
-            }
-            resizeRefreshTimer = setTimeout(() => {
-                resizeRefreshTimer = null;
-                void refreshTerrain();
-            }, RESIZE_REFRESH_DEBOUNCE_MS);
-        });
-        scene.onDisposeObservable.add(() => {
-            if (resizeRefreshTimer !== null) {
-                clearTimeout(resizeRefreshTimer);
-                resizeRefreshTimer = null;
-            }
-        });
+        // 購読解除・保留中タイマーのクリアは attachResizeRefresh が
+        // scene.onDisposeObservable 経由で自動的に行う (PR #153 レビュー指摘対応)。
+        attachResizeRefresh(engine, scene, () => refreshTerrain());
 
         // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
