@@ -9,7 +9,6 @@ import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTil
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { createTileManager } from "../terrain/tileManager";
 import { createSkybox } from "../terrain/skybox";
-import { parseLatLonFromUrl, createUrlUpdater } from "../terrain/urlState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
 import { computePoseForNewTarget } from "../terrain/cameraRetarget";
 import { createUiVisibilityController } from "../terrain/uiVisibility";
@@ -134,11 +133,6 @@ export interface DefaultSceneInitOptions {
     /** 地図種類（T6 で配線） */
     mapType?: "standard" | "photo";
     /**
-     * `?lat=&lon=` を URL クエリへ反映するか。
-     * デモ (default: true) では従来通り更新するが、パッケージ利用時は false にして利用側 URL を汚染しない。
-     */
-    urlSync?: boolean;
-    /**
      * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
      */
@@ -154,7 +148,6 @@ export class DefaultScene implements CreateSceneClass {
         const azimuthDeg = options?.azimuth ?? 0;
         const tiltDeg = options?.tilt ?? 45;
         const altitude = options?.altitude ?? 2000;
-        const urlSync = options?.urlSync ?? true;
 
         const scene = new Scene(engine);
         scene.clearColor.set(0.75, 0.86, 0.95, 1);
@@ -195,19 +188,9 @@ export class DefaultScene implements CreateSceneClass {
         // スカイボックス
         createSkybox(scene);
 
-        // 初期位置（options > URLパラメータ > デフォルト 東京駅付近）
-        const urlLatLon = parseLatLonFromUrl(window.location.href);
-        const initialLat = options?.lat ?? urlLatLon?.lat ?? 35.681236;
-        const initialLon = options?.lon ?? urlLatLon?.lon ?? 139.767125;
-
-        // URL 自動更新（パッケージ利用時は無効化）
-        const urlUpdater = createUrlUpdater(200);
-        const noopUrlUpdater = (): void => {
-            /* urlSync=false: パッケージ利用時は URL を変更しない */
-        };
-        const updateUrl: (lat: number, lon: number) => void = urlSync
-            ? urlUpdater
-            : noopUrlUpdater;
+        // 初期位置（options > デフォルト 東京駅付近）
+        const initialLat = options?.lat ?? 35.681236;
+        const initialLon = options?.lon ?? 139.767125;
 
         // UIパネル
         const ui = createControlPanel();
@@ -244,7 +227,6 @@ export class DefaultScene implements CreateSceneClass {
                 JAPAN_BOUNDS.minLon,
                 JAPAN_BOUNDS.maxLon
             );
-            updateUrl(currentLat, currentLon);
             await tileManager.setCenter(currentLat, currentLon, 0);
         };
 
@@ -295,7 +277,6 @@ export class DefaultScene implements CreateSceneClass {
 
             currentLat = newLat;
             currentLon = newLon;
-            updateUrl(newLat, newLon);
             void refreshTerrain();
         };
 

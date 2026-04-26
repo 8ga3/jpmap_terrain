@@ -11,11 +11,14 @@
  */
 
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { Scene } from "@babylonjs/core/scene";
 
 import { DefaultScene, type DefaultSceneController } from "../scenes/default";
 import { createBabylonEngine } from "./internal/engineFactory";
 import {
+    CameraChangeEvent,
+    CameraChangeListener,
     FlyToOptions,
     JPMAP_TERRAIN_DEFAULTS,
     JpmapTerrainOptions,
@@ -52,6 +55,12 @@ export class JpmapTerrain {
     private _controller: DefaultSceneController | null = null;
     /** 進行中の flyTo をキャンセルするためのトークン */
     private _flyToToken = 0;
+    /** `onCameraChange` で登録されたリスナー一覧 */
+    private _cameraListeners: CameraChangeListener[] = [];
+    /** `scene.onBeforeRenderObservable` への登録ハンドル */
+    private _cameraObserver: Observer<Scene> | null = null;
+    /** 直近にリスナー通知した値のスナップショット（初回は null） */
+    private _lastCameraSnapshot: CameraChangeEvent | null = null;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -114,7 +123,6 @@ export class JpmapTerrain {
                 azimuth: this._azimuth,
                 tilt: this._tilt,
                 mapType: this._mapType,
-                urlSync: false,
                 onReady: (controller) => {
                     this._controller = controller;
                     // T6: 初期表示状態を controller に反映する
@@ -143,6 +151,11 @@ export class JpmapTerrain {
             this._scene = scene;
 
             engine.runRenderLoop(() => scene.render());
+
+            // カメラ変化監視: 毎フレーム前に現在値スナップショットを取り、差分があればリスナー通知。
+            this._cameraObserver = scene.onBeforeRenderObservable.add(() =>
+                this._notifyIfChanged(),
+            );
 
             const onResize = (): void => engine.resize();
             window.addEventListener("resize", onResize);
@@ -398,6 +411,77 @@ export class JpmapTerrain {
         this._controller?.setMapType(value);
     }
 
+    // ---- カメラ変化通知 (Issue #136) ----
+
+    /**
+     * カメラ位置・姿勢のいずれかが変化したタイミングで呼ばれるリスナーを登録する。
+     *
+     * - 戻り値の関数で登録解除（複数回呼んでも安全）。
+     * - 初回登録時の即時発火は行わない。
+     * - 比較精度: epsilon = 1e-9。
+     * - 同一リスナーを複数回登録した場合は登録回数だけ呼ばれる単純動作。
+     * - リスナーが throw しても他リスナーへ伝播し、`console.error` で握りつぶす。
+     * - `dispose()` 後の呼び出しは何もせず、no-op の unsubscribe を返す。
+     *
+     * @param listener カメラ変化を受け取るリスナー
+     * @returns 登録解除関数
+     */
+    public onCameraChange(listener: CameraChangeListener): () => void {
+        if (this._disposed) {
+            return () => {
+                /* no-op: viewer is already disposed */
+            };
+        }
+        this._cameraListeners.push(listener);
+        let removed = false;
+        return (): void => {
+            if (removed) return;
+            removed = true;
+            const idx = this._cameraListeners.indexOf(listener);
+            if (idx !== -1) {
+                this._cameraListeners.splice(idx, 1);
+            }
+        };
+    }
+
+    /**
+     * 現在のカメラ状態を取得し、前回スナップショットから変化があれば登録リスナーへ通知する。
+     * 初回（`_lastCameraSnapshot === null`）はスナップショットだけ更新し発火しない。
+     */
+    private _notifyIfChanged(): void {
+        if (this._disposed) return;
+        const snapshot: CameraChangeEvent = {
+            lat: this.lat,
+            lon: this.lon,
+            altitude: this.altitude,
+            azimuth: this.azimuth,
+            tilt: this.tilt,
+        };
+        const prev = this._lastCameraSnapshot;
+        if (prev === null) {
+            this._lastCameraSnapshot = snapshot;
+            return;
+        }
+        const eps = 1e-9;
+        const changed =
+            Math.abs(snapshot.lat - prev.lat) > eps ||
+            Math.abs(snapshot.lon - prev.lon) > eps ||
+            Math.abs(snapshot.altitude - prev.altitude) > eps ||
+            Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
+            Math.abs(snapshot.tilt - prev.tilt) > eps;
+        if (!changed) return;
+        this._lastCameraSnapshot = snapshot;
+        // iterate 中の add/remove 安全のためスナップショットを取って iterate
+        const listeners = this._cameraListeners.slice();
+        for (const listener of listeners) {
+            try {
+                listener(snapshot);
+            } catch (err) {
+                console.error("[JpmapTerrain] onCameraChange listener threw:", err);
+            }
+        }
+    }
+
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
@@ -416,6 +500,13 @@ export class JpmapTerrain {
         this._disposed = true;
         // 進行中の flyTo を中断
         this._flyToToken++;
+        // カメラ変化通知を解除し、リスナー一覧もクリアする
+        if (this._cameraObserver && this._scene) {
+            this._scene.onBeforeRenderObservable.remove(this._cameraObserver);
+        }
+        this._cameraObserver = null;
+        this._cameraListeners = [];
+        this._lastCameraSnapshot = null;
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;

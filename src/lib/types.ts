@@ -63,3 +63,18 @@ export const JPMAP_TERRAIN_DEFAULTS = {
     tilt: 45,
     mapType: "standard" as MapType,
 } as const;
+
+/**
+ * カメラ変化通知ペイロード（spec/package.md 追記は別 Issue）。
+ * `JpmapTerrain.onCameraChange` のリスナー引数。
+ */
+export interface CameraChangeEvent {
+    readonly lat: number;
+    readonly lon: number;
+    readonly altitude: number;
+    readonly azimuth: number;
+    readonly tilt: number;
+}
+
+/** `JpmapTerrain.onCameraChange` リスナー */
+export type CameraChangeListener = (event: CameraChangeEvent) => void;

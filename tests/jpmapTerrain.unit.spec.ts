@@ -87,6 +87,46 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     const setMapTypeCalls: Array<"standard" | "photo"> = [];
     // T7: controller.dispose の呼び出し回数も検証する。
     let controllerDisposeCount = 0;
+    // #136: scene.onBeforeRenderObservable のテスト用簡易実装。
+    // jpmapTerrain.ts は `add(callback)` の戻り値を `Observer` として保持し、
+    // dispose 時に `remove(observer)` する。テストからは `__triggerSceneRender` で
+    // 全 observer を疑似発火させる。
+    type SceneObserver = { callback: () => void };
+    const sceneObservables: Array<{
+        observers: SceneObserver[];
+        add: (cb: () => void) => SceneObserver;
+        remove: (obs: SceneObserver) => boolean;
+    }> = [];
+    const createSceneObservable = (): {
+        add: (cb: () => void) => SceneObserver;
+        remove: (obs: SceneObserver) => boolean;
+    } => {
+        const observers: SceneObserver[] = [];
+        const obs = {
+            observers,
+            add: (cb: () => void): SceneObserver => {
+                const o: SceneObserver = { callback: cb };
+                observers.push(o);
+                return o;
+            },
+            remove: (target: SceneObserver): boolean => {
+                const idx = observers.indexOf(target);
+                if (idx === -1) return false;
+                observers.splice(idx, 1);
+                return true;
+            },
+        };
+        sceneObservables.push(obs);
+        return obs;
+    };
+    const triggerSceneRender = (): void => {
+        for (const obs of sceneObservables) {
+            // iterate 中の add/remove 安全のため slice
+            for (const o of obs.observers.slice()) {
+                o.callback();
+            }
+        }
+    };
     type UiTarget =
         | "compass"
         | "zoomButtons"
@@ -180,6 +220,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                 return {
                     render: jest.fn(),
                     dispose: jest.fn(),
+                    onBeforeRenderObservable: createSceneObservable(),
                 };
             },
         );
@@ -214,6 +255,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __resetControllerDisposeCount: (): void => {
             controllerDisposeCount = 0;
         },
+        __triggerSceneRender: (): void => triggerSceneRender(),
     };
 });
 
@@ -236,6 +278,7 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __setLastMapType: (v: "standard" | "photo") => void;
     __getControllerDisposeCount: () => number;
     __resetControllerDisposeCount: () => void;
+    __triggerSceneRender: () => void;
 };
 
 describe("JpmapTerrain (skeleton)", () => {
@@ -826,6 +869,142 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(viewer.altitude).toBe(2500);
             expect(viewer.azimuth).toBe(45);
             expect(viewer.tilt).toBe(60);
+        });
+    });
+
+    describe("onCameraChange (Issue #136)", () => {
+        it("初回登録時には即時発火しない", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+
+            viewer.onCameraChange(listener);
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it("カメラ値変更後の onBeforeRender でリスナーが呼ばれる", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 0,
+                lon: 0,
+                altitude: 1000,
+                azimuth: 0,
+                tilt: 30,
+            });
+            const listener = jest.fn();
+            viewer.onCameraChange(listener);
+
+            // 1 度目の発火: 値未変更だが初回スナップショット作成のみ。
+            sceneMockModule.__triggerSceneRender();
+            expect(listener).not.toHaveBeenCalled();
+
+            viewer.lat = 35;
+            sceneMockModule.__triggerSceneRender();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            const event = listener.mock.calls[0][0] as {
+                lat: number;
+                lon: number;
+                altitude: number;
+                azimuth: number;
+                tilt: number;
+            };
+            expect(event.lat).toBe(35);
+            expect(event.lon).toBe(0);
+            expect(event.altitude).toBe(1000);
+        });
+
+        it("値が変化しなければ発火しない（連続 render でも 1 回のみ）", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onCameraChange(listener);
+            sceneMockModule.__triggerSceneRender(); // snapshot 初期化
+
+            viewer.lon = 140;
+            sceneMockModule.__triggerSceneRender();
+            sceneMockModule.__triggerSceneRender();
+            sceneMockModule.__triggerSceneRender();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it("unsubscribe 後は呼ばれず、複数回呼んでも安全", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            const unsubscribe = viewer.onCameraChange(listener);
+            sceneMockModule.__triggerSceneRender(); // snapshot 初期化
+
+            viewer.lat = 35;
+            sceneMockModule.__triggerSceneRender();
+            expect(listener).toHaveBeenCalledTimes(1);
+
+            unsubscribe();
+            unsubscribe(); // 多重呼び出しでも例外にならない
+            viewer.lat = 36;
+            sceneMockModule.__triggerSceneRender();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it("同一リスナーを複数回登録した場合は登録回数だけ呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onCameraChange(listener);
+            viewer.onCameraChange(listener);
+            sceneMockModule.__triggerSceneRender();
+
+            viewer.lat = 35;
+            sceneMockModule.__triggerSceneRender();
+
+            expect(listener).toHaveBeenCalledTimes(2);
+        });
+
+        it("リスナーが throw しても他リスナーへの伝播が継続する", async () => {
+            const viewer = await create(createMountElement());
+            const errorSpy = jest
+                .spyOn(console, "error")
+                .mockImplementation(() => {});
+            const failing = jest.fn(() => {
+                throw new Error("listener failure");
+            });
+            const ok = jest.fn();
+            viewer.onCameraChange(failing);
+            viewer.onCameraChange(ok);
+            sceneMockModule.__triggerSceneRender();
+
+            viewer.lat = 35;
+            sceneMockModule.__triggerSceneRender();
+
+            expect(failing).toHaveBeenCalledTimes(1);
+            expect(ok).toHaveBeenCalledTimes(1);
+            expect(errorSpy).toHaveBeenCalled();
+
+            errorSpy.mockRestore();
+        });
+
+        it("dispose 後の onCameraChange は no-op の unsubscribe を返す", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+
+            const listener = jest.fn();
+            const unsubscribe = viewer.onCameraChange(listener);
+
+            expect(typeof unsubscribe).toBe("function");
+            expect(() => unsubscribe()).not.toThrow();
+            // dispose 後は scene observer が外れているのでそもそも発火しない
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it("dispose 後はリスナーも発火しない（既登録ぶん）", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onCameraChange(listener);
+            sceneMockModule.__triggerSceneRender();
+            viewer.dispose();
+
+            // dispose 済みの scene observer は除去されているため発火しない
+            sceneMockModule.__triggerSceneRender();
+
+            expect(listener).not.toHaveBeenCalled();
         });
     });
 });
