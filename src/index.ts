@@ -2,10 +2,11 @@
  * 開発用デモエントリ (T9 / Issue #123, #136)
  *
  * パッケージ公開 API である `JpmapTerrain` を直接利用してデモを起動する。
- * - URL 形式: `/@lat,lon?engine=webgpu|webgl|webgl2`（`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動）
+ * - URL 形式: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
+ *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可、Issue #64）
  * - `#root` 要素にビューアをマウントする。
  * - URL ↔ カメラ同期はパッケージ層から切り離し、デモ層 (本ファイル) で
- *   `parseLatLonFromUrl` で初期値を解決し、`onCameraChange` で URL を更新する。
+ *   `parseCameraStateFromUrl` で初期値を解決し、`onCameraChange` で URL を更新する。
  *
  * Playwright (tests/validation.spec.ts) と既存の手動デバッグ手段を保つため、
  * NODE_ENV !== "production" のときだけ `window.scene` / `window.viewer` /
@@ -14,7 +15,11 @@
 import { JpmapTerrain } from "./lib/jpmapTerrain";
 import type { EngineType, JpmapTerrainOptions } from "./lib/types";
 import { showToast } from "./terrain/controlPanel";
-import { parseLatLonFromUrl, createUrlUpdater } from "./terrain/urlState";
+import {
+    parseCameraStateFromUrl,
+    createUrlUpdater,
+    type CameraUrlState,
+} from "./terrain/urlState";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -34,16 +39,26 @@ export const resolveEngine = (search: string): EngineType | undefined => {
 };
 
 /**
- * URL から初期表示の緯度経度を解決する。
- * 内部的に {@link parseLatLonFromUrl} を再利用する薄いラッパー。
+ * URL からカメラ状態（緯度経度＋altitude/azimuth/tilt）を解決する (Issue #64)。
+ * 内部的に {@link parseCameraStateFromUrl} を再利用する薄いラッパー。
  *
  * @param url 解析対象 URL（`location.href` 等）
- * @returns 取得できた場合は `{ lat, lon }`、取得できない場合は `undefined`
+ * @returns 取得できた場合は `CameraUrlState`、取得できない場合は `undefined`
+ */
+export const resolveCameraState = (
+    url: string,
+): CameraUrlState | undefined => parseCameraStateFromUrl(url) ?? undefined;
+
+/**
+ * URL から初期表示の緯度経度を解決する。
+ * @deprecated Issue #64 以降は {@link resolveCameraState} を利用すること。
  */
 export const resolveLatLon = (
     url: string,
-): { lat: number; lon: number } | undefined =>
-    parseLatLonFromUrl(url) ?? undefined;
+): { lat: number; lon: number } | undefined => {
+    const state = resolveCameraState(url);
+    return state ? { lat: state.lat, lon: state.lon } : undefined;
+};
 
 /**
  * `?dateTime=` クエリ文字列から太陽位置計算用の日時を解決する (Issue #35, #143)。
@@ -116,22 +131,30 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const engine = resolveEngine(location.search);
-    const latLon = resolveLatLon(location.href);
+    const cameraState = resolveCameraState(location.href);
     const dateTime = resolveDateTime(location.search);
     const autoSunPosition = resolveAutoSunPosition(location.search);
     const showSunShadows = resolveShowSunShadows(location.search);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
-        ...(latLon ?? {}),
+        ...(cameraState ?? {}),
         ...(dateTime !== undefined ? { dateTime } : {}),
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
         ...(showSunShadows !== undefined ? { showSunShadows } : {}),
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 
-    // URL 同期: カメラ変化のたびに `/@lat,lon` 形式へ反映する（既存クエリは保持）。
+    // URL 同期: カメラ変化のたびに `/@lat,lon,altitude,azimuth,tilt` 形式へ反映する（既存クエリは保持）。
     const urlUpdater = createUrlUpdater(200);
-    viewer.onCameraChange((event) => urlUpdater(event.lat, event.lon));
+    viewer.onCameraChange((event) =>
+        urlUpdater({
+            lat: event.lat,
+            lon: event.lon,
+            altitude: event.altitude,
+            azimuth: event.azimuth,
+            tilt: event.tilt,
+        }),
+    );
 
     // 開発/テストビルドでのみデバッグ用に内部状態を露出する。
     // （Playwright の `window.scene.isReady()` 等が依存しているため）
