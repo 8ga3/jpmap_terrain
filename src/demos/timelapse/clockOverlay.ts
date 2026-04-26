@@ -121,7 +121,7 @@ export const mountClock = (
 ): ClockHandle => {
     // 子要素をいったんクリアし、目盛り＋針を構築する。
     while (svg.firstChild) svg.removeChild(svg.firstChild);
-    // viewBox はテンプレ側で設定済みだが、念のため上書き。
+    // viewBox はテンプレ側で設定済みだが、未設定ならデフォルト値を設定する。
     if (!svg.getAttribute("viewBox")) {
         svg.setAttribute("viewBox", "0 0 100 100");
     }

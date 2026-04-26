@@ -2,12 +2,12 @@
  * @jest-environment jsdom
  */
 /**
- * デモエントリ (`src/index.ts`) の純粋関数 export ユニットテスト (Issue #136)。
+ * 3D ビューアデモエントリ (`src/demos/viewer/index.ts`) の純粋関数 export ユニットテスト (Issue #136 / Issue #147)。
  *
  * - `resolveEngine`: クエリ文字列からエンジン種別を解決する。
  * - `resolveLatLon`: URL から初期表示の緯度経度を解決する（`parseLatLonFromUrl` の薄いラッパー）。
  *
- * `src/index.ts` 内の `start()` は `#root` 要素の存在で発火を抑制しているため、
+ * `src/demos/viewer/index.ts` 内の `start()` は `#root` 要素の存在で発火を抑制しているため、
  * jsdom 環境でも副作用なく `resolveEngine` / `resolveLatLon` だけを検証できる。
  */
 
