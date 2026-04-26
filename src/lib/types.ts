@@ -40,6 +40,13 @@ export interface JpmapTerrainOptions {
      * `false`（既定）: `dateTime` を固定値として使用する。
      */
     autoSunPosition?: boolean;
+    /**
+     * 太陽 DirectionalLight による地形への影描画を有効にする (Issue #39)。
+     * 既定は `false`（OFF）。`true` のとき `ShadowGenerator` を生成し、
+     * 既存タイルおよび以後追加されるタイルメッシュを caster / receiver として登録する。
+     * GPU 負荷が大きいため、必要時のみ有効化することを推奨する。
+     */
+    showSunShadows?: boolean;
 }
 
 /**
@@ -75,6 +82,7 @@ export const JPMAP_TERRAIN_DEFAULTS = {
     mapType: "standard" as MapType,
     dateTime: null as Date | null,
     autoSunPosition: false as boolean,
+    showSunShadows: false as boolean,
 } as const;
 
 /**
