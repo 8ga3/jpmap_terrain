@@ -142,6 +142,23 @@ describe("resolveDateTime (Issue #35)", () => {
         expect(result).toBeInstanceOf(Date);
         expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
     });
+
+    it("先頭 `?` を省略しても dateTime を解釈する (PR #144 review)", () => {
+        const result = resolveDateTime("dateTime=2025-06-21T03:00:00Z");
+        expect(result).toBeInstanceOf(Date);
+        expect(result?.toISOString()).toBe("2025-06-21T03:00:00.000Z");
+    });
+
+    it("不正な `%` エンコードは undefined を返し、警告を出す (PR #144 review)", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            // `%ZZ` は decodeURIComponent で URIError を投げる不正シーケンス
+            expect(resolveDateTime("?dateTime=%ZZ")).toBeUndefined();
+            expect(warn).toHaveBeenCalledTimes(1);
+        } finally {
+            warn.mockRestore();
+        }
+    });
 });
 
 describe("resolveAutoSunPosition (Issue #35)", () => {

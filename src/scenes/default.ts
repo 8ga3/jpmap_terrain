@@ -1068,8 +1068,11 @@ export class DefaultScene implements CreateSceneClass {
         };
         const enableSunShadows = (): void => {
             if (shadowGenerator) return;
+            // 構築後の設定で例外が発生しても catch で確実に dispose できるよう、
+            // ローカル変数 `sg` を生成直後に `shadowGenerator` へ代入する。
+            const sg = new ShadowGenerator(1024, sunLight);
+            shadowGenerator = sg;
             try {
-                const sg = new ShadowGenerator(1024, sunLight);
                 // フィルタ選定: `useBlurExponentialShadowMap` は内部で BlurPostProcess を
                 // 利用するが、WebGPU 経路で `infiniteDistance` のメッシュ（太陽メッシュ等）
                 // と相互作用して表示が破綻するケースが確認されたため、PostProcess を伴わない
@@ -1077,7 +1080,6 @@ export class DefaultScene implements CreateSceneClass {
                 sg.usePercentageCloserFiltering = true;
                 sg.bias = 0.0001;
                 sg.setDarkness(0.4);
-                shadowGenerator = sg;
                 tileManager.setShadowHooks(shadowHooks);
                 tileManager.forEachActiveMesh((mesh) => {
                     sg.addShadowCaster(mesh);
@@ -1088,10 +1090,8 @@ export class DefaultScene implements CreateSceneClass {
                     "[JpmapTerrain] failed to enable sun shadows:",
                     err,
                 );
-                if (shadowGenerator) {
-                    shadowGenerator.dispose();
-                    shadowGenerator = null;
-                }
+                shadowGenerator = null;
+                sg.dispose();
                 tileManager.setShadowHooks(null);
             }
         };
