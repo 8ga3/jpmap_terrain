@@ -87,6 +87,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     const setMapTypeCalls: Array<"standard" | "photo"> = [];
     // T7: controller.dispose の呼び出し回数も検証する。
     let controllerDisposeCount = 0;
+    // Issue #35: setSunState 呼び出し履歴を保持する。
+    const sunStateCalls: Array<{ dateTime: Date | null }> = [];
     // #136: scene.onBeforeRenderObservable のテスト用簡易実装。
     // jpmapTerrain.ts は `add(callback)` の戻り値を `Observer` として保持し、
     // dispose 時に `remove(observer)` する。テストからは `__triggerSceneRender` で
@@ -213,6 +215,10 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     setUiVisibility: (target: UiTarget, visible: boolean) => {
                         uiVisibility[target] = visible;
                     },
+                    setSunState: (_dateTime: Date | null) => {
+                        // テスト用: 受信を記録するだけで Babylon 描画は伴わない
+                        sunStateCalls.push({ dateTime: _dateTime });
+                    },
                     dispose: () => {
                         controllerDisposeCount++;
                     },
@@ -255,6 +261,12 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __resetControllerDisposeCount: (): void => {
             controllerDisposeCount = 0;
         },
+        __getSunStateCalls: (): Array<{ dateTime: Date | null }> => [
+            ...sunStateCalls,
+        ],
+        __resetSunStateCalls: (): void => {
+            sunStateCalls.length = 0;
+        },
         __triggerSceneRender: (): void => triggerSceneRender(),
     };
 });
@@ -278,6 +290,8 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __setLastMapType: (v: "standard" | "photo") => void;
     __getControllerDisposeCount: () => number;
     __resetControllerDisposeCount: () => void;
+    __getSunStateCalls: () => Array<{ dateTime: Date | null }>;
+    __resetSunStateCalls: () => void;
     __triggerSceneRender: () => void;
 };
 
@@ -1005,6 +1019,179 @@ describe("JpmapTerrain (skeleton)", () => {
             sceneMockModule.__triggerSceneRender();
 
             expect(listener).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("sun position (Issue #35)", () => {
+        beforeEach(() => {
+            sceneMockModule.__resetSunStateCalls();
+        });
+
+        it("固定モード（autoSunPosition=false）の初期化で options.dateTime が controller.setSunState に渡る", async () => {
+            const dt = new Date("2025-06-21T03:00:00Z");
+            await create(createMountElement(), {
+                dateTime: dt,
+                autoSunPosition: false,
+            });
+            const calls = sceneMockModule.__getSunStateCalls();
+            expect(calls.length).toBeGreaterThanOrEqual(1);
+            expect(calls[0].dateTime?.getTime()).toBe(dt.getTime());
+        });
+
+        it("autoSunPosition=true で起動した場合、初期化で setSunState が現在時刻で 1 回呼ばれる", async () => {
+            const before = Date.now();
+            await create(createMountElement(), { autoSunPosition: true });
+            const after = Date.now();
+            const calls = sceneMockModule.__getSunStateCalls();
+            expect(calls.length).toBeGreaterThanOrEqual(1);
+            const t = calls[0].dateTime?.getTime() ?? 0;
+            expect(t).toBeGreaterThanOrEqual(before);
+            expect(t).toBeLessThanOrEqual(after);
+        });
+
+        it("autoSunPosition=true 中は 60 秒経過ごとに setSunState が呼ばれる", async () => {
+            jest.useFakeTimers();
+            try {
+                const viewer = await create(createMountElement(), {
+                    autoSunPosition: true,
+                });
+                sceneMockModule.__resetSunStateCalls();
+                jest.advanceTimersByTime(60_000);
+                expect(sceneMockModule.__getSunStateCalls().length).toBe(1);
+                jest.advanceTimersByTime(60_000);
+                expect(sceneMockModule.__getSunStateCalls().length).toBe(2);
+                viewer.dispose();
+                // dispose 後はタイマーが解放され、それ以上呼ばれない
+                jest.advanceTimersByTime(60_000 * 5);
+                expect(sceneMockModule.__getSunStateCalls().length).toBe(2);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it("dateTime setter は固定モード中に setSunState を再呼出する", async () => {
+            const viewer = await create(createMountElement(), {
+                autoSunPosition: false,
+            });
+            sceneMockModule.__resetSunStateCalls();
+            const dt = new Date("2025-12-21T03:00:00Z");
+            viewer.dateTime = dt;
+            const calls = sceneMockModule.__getSunStateCalls();
+            expect(calls.length).toBe(1);
+            expect(calls[0].dateTime?.getTime()).toBe(dt.getTime());
+        });
+
+        it("autoSunPosition=true 中の dateTime setter は setSunState を呼ばない（auto 優先）", async () => {
+            const viewer = await create(createMountElement(), {
+                autoSunPosition: true,
+            });
+            sceneMockModule.__resetSunStateCalls();
+            viewer.dateTime = new Date("2025-12-21T03:00:00Z");
+            expect(sceneMockModule.__getSunStateCalls().length).toBe(0);
+        });
+
+        it("autoSunPosition=false→true 切替で 1 回反映され、true→false 切替で保持値が再反映される", async () => {
+            const fixed = new Date("2025-06-21T03:00:00Z");
+            const viewer = await create(createMountElement(), {
+                dateTime: fixed,
+                autoSunPosition: false,
+            });
+            sceneMockModule.__resetSunStateCalls();
+
+            viewer.autoSunPosition = true;
+            // auto 切替直後の即時反映 1 回
+            expect(sceneMockModule.__getSunStateCalls().length).toBe(1);
+
+            sceneMockModule.__resetSunStateCalls();
+            viewer.autoSunPosition = false;
+            // false 復帰時に保持していた dateTime で再反映
+            const calls = sceneMockModule.__getSunStateCalls();
+            expect(calls.length).toBe(1);
+            expect(calls[0].dateTime?.getTime()).toBe(fixed.getTime());
+        });
+
+        it("dateTime getter は auto モード中に最後に内部反映した実時刻を返す", async () => {
+            jest.useFakeTimers();
+            try {
+                const viewer = await create(createMountElement(), {
+                    autoSunPosition: true,
+                });
+                const first = viewer.dateTime;
+                expect(first).toBeInstanceOf(Date);
+                jest.advanceTimersByTime(60_000);
+                const second = viewer.dateTime;
+                expect(second).toBeInstanceOf(Date);
+                expect(second!.getTime()).toBeGreaterThanOrEqual(first!.getTime());
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it("Invalid Date を options.dateTime に渡すと console.warn のうえ null フォールバック", async () => {
+            const warnSpy = jest
+                .spyOn(console, "warn")
+                .mockImplementation(() => undefined);
+            try {
+                const viewer = await create(createMountElement(), {
+                    dateTime: new Date("not-a-date"),
+                    autoSunPosition: false,
+                });
+                expect(warnSpy).toHaveBeenCalled();
+                expect(viewer.dateTime).toBeNull();
+                const calls = sceneMockModule.__getSunStateCalls();
+                expect(calls[0].dateTime).toBeNull();
+            } finally {
+                warnSpy.mockRestore();
+            }
+        });
+
+        it("Invalid Date を dateTime setter に渡しても例外を投げず null フォールバック", async () => {
+            const viewer = await create(createMountElement(), {
+                autoSunPosition: false,
+            });
+            const warnSpy = jest
+                .spyOn(console, "warn")
+                .mockImplementation(() => undefined);
+            try {
+                viewer.dateTime = new Date("nope");
+                expect(warnSpy).toHaveBeenCalled();
+                expect(viewer.dateTime).toBeNull();
+            } finally {
+                warnSpy.mockRestore();
+            }
+        });
+
+        it("dispose 後の自動更新タイマーは停止しており setSunState は呼ばれない", async () => {
+            jest.useFakeTimers();
+            try {
+                const viewer = await create(createMountElement(), {
+                    autoSunPosition: true,
+                });
+                viewer.dispose();
+                sceneMockModule.__resetSunStateCalls();
+                jest.advanceTimersByTime(60_000 * 10);
+                expect(sceneMockModule.__getSunStateCalls().length).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it("dispose 後の autoSunPosition setter / dateTime setter はタイマーを再起動しない（リーク防止）", async () => {
+            jest.useFakeTimers();
+            try {
+                const viewer = await create(createMountElement(), {
+                    autoSunPosition: false,
+                });
+                viewer.dispose();
+                sceneMockModule.__resetSunStateCalls();
+                // dispose 後に setter を呼んでも setInterval は新規起動されない
+                viewer.autoSunPosition = true;
+                viewer.dateTime = new Date("2025-06-21T03:00:00Z");
+                jest.advanceTimersByTime(60_000 * 10);
+                expect(sceneMockModule.__getSunStateCalls().length).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
         });
     });
 });
