@@ -79,6 +79,28 @@ npm start
 
 `webgpu` 指定時に未対応ブラウザの場合は WebGL にフォールバックします。
 
+## URL フォーマット（緯度経度・エンジン指定）
+
+開発デモエントリ（`src/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` クエリパラメータをサポートします。
+
+- 形式: `http://localhost:8080/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>`
+- 例:
+  - `http://localhost:8080/@35.681236,139.767125?engine=webgpu`（東京駅・WebGPU）
+  - `http://localhost:8080/@35.3606,138.7274?engine=webgl2`（富士山・WebGL2）
+
+### `engine` パラメータ
+
+- 取りうる値: `webgpu` / `webgl` / `webgl2`
+- `webgl` は内部的に `webgl2` に正規化されます
+- 省略時は自動選択（WebGPU 利用可能なら WebGPU、未対応なら WebGL2 にフォールバック）
+
+### 緯度経度の扱い
+
+- 緯度経度は `JAPAN_BOUNDS`（緯度 20〜46、経度 122〜154）でクランプされます
+- カメラ移動に追従して、URL のパスは `/@lat,lon` 形式に書き戻されます（既存のクエリパラメータは保持）
+
+実装の詳細は `src/index.ts` および `src/terrain/urlState.ts` を参照してください。
+
 ## 開発ガイド
 
 ### エントリポイント
