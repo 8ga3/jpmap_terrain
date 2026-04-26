@@ -25,7 +25,6 @@ module.exports = merge(common, {
                 { from: /^\/timelapse\.html(?:\/?@.*)?\/?$/, to: '/timelapse.html' },
             ],
         },
-        // publicPath: '/',
         open: false,
         // host: '0.0.0.0', // enable to access from other devices on the network
         // https: true // enable when HTTPS is needed (like in WebXR)

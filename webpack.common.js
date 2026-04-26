@@ -47,6 +47,9 @@ module.exports = {
         filename: "js/[name].js",
         path: path.resolve("./dist/"),
         chunkFilename: "js/[name].[contenthash].js",
+        // `/viewer/@...` などのデモ識別子付きパスでリロードされた場合でも、
+        // HtmlWebpackPlugin が inject する script 等を絶対パス基準で解決させる (Issue #157)。
+        publicPath: "/",
     },
     resolve: {
         extensions: [".ts", ".js"],
