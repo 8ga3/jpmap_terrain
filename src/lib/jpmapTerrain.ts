@@ -514,7 +514,7 @@ export class JpmapTerrain {
         }
     }
 
-    // ---- 太陽位置 (spec §3.3.5 / Issue #35) ----
+    // ---- 太陽位置 (spec §3.3.6 / Issue #35) ----
 
     /**
      * 太陽位置計算に使う日時を取得する。

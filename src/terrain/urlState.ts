@@ -234,7 +234,8 @@ export const withMapTypeInUrl = (url: string, mapType: MapType): string => {
 
 /**
  * `history.replaceState` で現在の URL に `?mapType=<value>` を反映する (Issue #149)。
- * パス・他クエリ・ハッシュは保持する。`window` / `history` が未定義な環境（jsdom 等）では何もしない。
+ * パス・他クエリ・ハッシュは保持する。`window` / `history` が未定義な環境
+ *（Node.js / SSR など、ブラウザグローバルが存在しない実行環境）では何もしない。
  */
 export const updateMapTypeInUrl = (mapType: MapType): void => {
     if (typeof window === "undefined" || typeof window.history === "undefined") {
