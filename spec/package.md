@@ -158,7 +158,66 @@ interface JpmapTerrain {
 }
 ```
 
-### 3.4 利用例
+#### 3.3.4 カメラ変化イベント
+
+カメラ位置・姿勢（`lat` / `lon` / `altitude` / `azimuth` / `tilt`）の変化を購読する。
+
+```typescript
+interface JpmapTerrain {
+  /**
+   * カメラ変化リスナーを登録する。
+   *
+   * @param listener カメラ変化を受け取るリスナー
+   * @returns 登録解除関数（unsubscribe）
+   */
+  onCameraChange(listener: CameraChangeListener): () => void;
+}
+```
+
+**仕様:**
+
+- 戻り値は登録解除関数。呼び出すと当該リスナーのみが解除される。
+- **発火条件**: 値が変化したフレームのみ通知する（`epsilon = 1e-9` での比較）。
+- **初回登録時は即時発火しない**（変化があった次回以降のみ）。
+- 同一リスナーを複数回登録した場合は登録回数だけ呼ばれる。
+- リスナーが throw しても他リスナーへ伝播しない（内部で `console.error` により握りつぶす）。
+- `dispose()` 後に `onCameraChange` を呼び出した場合は登録されず、no-op の unsubscribe 関数を返す。
+
+**利用例:**
+
+```typescript
+const unsubscribe = viewer.onCameraChange((e) => {
+  console.log(`lat=${e.lat}, lon=${e.lon}, alt=${e.altitude}`);
+  console.log(`azimuth=${e.azimuth}, tilt=${e.tilt}`);
+});
+
+// 解除
+unsubscribe();
+```
+
+### 3.4 型定義
+
+`CameraChangeEvent` および `CameraChangeListener` は、パッケージエントリ `src/lib.ts` から re-export 済みである。
+
+```typescript
+/** `JpmapTerrain.onCameraChange` のリスナー引数 */
+interface CameraChangeEvent {
+  readonly lat: number;
+  readonly lon: number;
+  readonly altitude: number;
+  readonly azimuth: number;
+  readonly tilt: number;
+}
+
+/** `JpmapTerrain.onCameraChange` リスナー */
+type CameraChangeListener = (event: CameraChangeEvent) => void;
+```
+
+```typescript
+import type { CameraChangeEvent, CameraChangeListener } from "jpmap-terrain";
+```
+
+### 3.5 利用例
 
 ```html
 <div id="terrain-viewer" style="width: 800px; height: 600px;"></div>
