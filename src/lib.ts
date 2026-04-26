@@ -8,6 +8,8 @@
 
 export { JpmapTerrain } from "./lib/jpmapTerrain";
 export type {
+    CameraChangeEvent,
+    CameraChangeListener,
     EngineType,
     FlyToOptions,
     JpmapTerrainOptions,
