@@ -4,6 +4,9 @@ import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
+import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
@@ -121,6 +124,18 @@ export interface DefaultSceneController {
     setSunState(dateTime: Date | null): void;
 
     /**
+     * 太陽 DirectionalLight による地形への影描画を有効/無効化する (Issue #39)。
+     *
+     * - `true`: `ShadowGenerator` を生成し、`tileManager` 経由でアクティブな全タイルおよび
+     *   以後 `meshPool.acquire` されるメッシュを caster / receiver として登録する。
+     *   既定 OFF のため、有効化はこのメソッド経由でのみ行う。
+     * - `false`: 登録済みフックを解除し、現在アクティブなメッシュから caster/receiver 設定を
+     *   外したうえで `ShadowGenerator` を `dispose` する（GPU リソースを保持し続けない）。
+     * - 同値再呼び出しは no-op（idempotent）。
+     */
+    setSunShadows(enabled: boolean): void;
+
+    /**
      * `JpmapTerrain.dispose()` から呼ばれる UI クリーンアップ (T7 / Issue #121)。
      *
      * `controlPanel` が `document.body` に追加した UI 要素 (コンパス / ズームボタンコンテナ / 地図切替) を
@@ -226,6 +241,10 @@ export class DefaultScene implements CreateSceneClass {
         sunMesh.material = sunMaterial;
         sunMesh.isPickable = false;
         sunMesh.infiniteDistance = true;
+        // `infiniteDistance` はビュー変換のみカメラ追従させるため、
+        // フラスタムカリングは元の world 座標で行われる。遠方にある太陽メッシュが
+        // カリングされて描画されないのを防ぐため、常時アクティブ化する。
+        sunMesh.alwaysSelectAsActiveMesh = true;
         sunMesh.setEnabled(false);
 
         // 初期位置（options > デフォルト 東京駅付近）
@@ -1010,6 +1029,84 @@ export class DefaultScene implements CreateSceneClass {
         // 適用すべき日時」を都度受け取って描画反映する役割に閉じる。
         let currentSunDateTime: Date | null = null;
         const fallbackSunDate = new Date(SUN_FALLBACK_DATETIME_ISO);
+
+        // ---- 太陽影 (Issue #39) ----
+        // 既定 OFF。ON 化されたときのみ ShadowGenerator を生成し、`tileManager` 経由で
+        // 既存タイル / 以後追加されるタイルメッシュへ caster/receiver を反映する。
+        let shadowGenerator: ShadowGenerator | null = null;
+        // ShadowGenerator の DirectionalLight orthographic frustum 範囲。
+        // camera.upperRadiusLimit (= CAMERA_UPPER_RADIUS, 75km) を基準に固定し、
+        // autoCalcShadowZBounds の毎フレームコストと WebGPU 不安定要因を避ける。
+        const SHADOW_FRUSTUM_RADIUS = CAMERA_UPPER_RADIUS;
+        const updateShadowFrustum = (sunDir: Vector3): void => {
+            if (!shadowGenerator) return;
+            // light.position = camera.target - sunDir * D（光源を地表上空へ移動）
+            sunLight.position.set(
+                camera.target.x - sunDir.x * SHADOW_FRUSTUM_RADIUS,
+                camera.target.y - sunDir.y * SHADOW_FRUSTUM_RADIUS,
+                camera.target.z - sunDir.z * SHADOW_FRUSTUM_RADIUS,
+            );
+            sunLight.shadowMinZ = 1;
+            sunLight.shadowMaxZ = SHADOW_FRUSTUM_RADIUS * 2;
+            sunLight.orthoLeft = -SHADOW_FRUSTUM_RADIUS;
+            sunLight.orthoRight = SHADOW_FRUSTUM_RADIUS;
+            sunLight.orthoTop = SHADOW_FRUSTUM_RADIUS;
+            sunLight.orthoBottom = -SHADOW_FRUSTUM_RADIUS;
+            sunLight.autoCalcShadowZBounds = false;
+        };
+        const shadowHooks = {
+            onAcquire: (mesh: Mesh): void => {
+                if (!shadowGenerator) return;
+                shadowGenerator.addShadowCaster(mesh);
+                mesh.receiveShadows = true;
+            },
+            onRelease: (mesh: Mesh): void => {
+                if (!shadowGenerator) return;
+                shadowGenerator.removeShadowCaster(mesh);
+                mesh.receiveShadows = false;
+            },
+        };
+        const enableSunShadows = (): void => {
+            if (shadowGenerator) return;
+            try {
+                const sg = new ShadowGenerator(1024, sunLight);
+                // フィルタ選定: `useBlurExponentialShadowMap` は内部で BlurPostProcess を
+                // 利用するが、WebGPU 経路で `infiniteDistance` のメッシュ（太陽メッシュ等）
+                // と相互作用して表示が破綻するケースが確認されたため、PostProcess を伴わない
+                // PCF (Percentage Closer Filtering) を採用する。WebGL2/WebGPU 双方で安定。
+                sg.usePercentageCloserFiltering = true;
+                sg.bias = 0.0001;
+                sg.setDarkness(0.4);
+                shadowGenerator = sg;
+                tileManager.setShadowHooks(shadowHooks);
+                tileManager.forEachActiveMesh((mesh) => {
+                    sg.addShadowCaster(mesh);
+                    mesh.receiveShadows = true;
+                });
+            } catch (err) {
+                console.warn(
+                    "[JpmapTerrain] failed to enable sun shadows:",
+                    err,
+                );
+                if (shadowGenerator) {
+                    shadowGenerator.dispose();
+                    shadowGenerator = null;
+                }
+                tileManager.setShadowHooks(null);
+            }
+        };
+        const disableSunShadows = (): void => {
+            if (!shadowGenerator) return;
+            tileManager.setShadowHooks(null);
+            const sg = shadowGenerator;
+            tileManager.forEachActiveMesh((mesh) => {
+                sg.removeShadowCaster(mesh);
+                mesh.receiveShadows = false;
+            });
+            sg.dispose();
+            shadowGenerator = null;
+        };
+
         const applySunStateForCurrent = (): void => {
             const dateForCalc = currentSunDateTime ?? fallbackSunDate;
             // 念のため Invalid Date のセーフガード（呼び出し側で `null` 同等に倒す）
@@ -1047,6 +1144,11 @@ export class DefaultScene implements CreateSceneClass {
             // 指向性ライト方向 = 太陽から地表向き = -sunDir
             sunLight.direction = state.sunDir.scale(-1);
             sunLight.intensity = state.dayFactor;
+            // 影フラスタムは光源方向に追従して更新する (Issue #39)。
+            // ShadowGenerator 未生成（OFF）時は no-op。
+            if (shadowGenerator) {
+                updateShadowFrustum(state.sunDir);
+            }
             // 環境光は夜でも完全な暗黒にならないようベース値 + 昼比例
             hemiLight.intensity = 0.2 + 0.8 * state.dayFactor;
             // 太陽メッシュ位置: カメラターゲット + sunDir * (camera.maxZ * 0.5)
@@ -1104,7 +1206,20 @@ export class DefaultScene implements CreateSceneClass {
                 currentSunDateTime = dateTime;
                 applySunStateForCurrent();
             },
+            setSunShadows: (enabled) => {
+                // 同値再呼び出しは no-op
+                if (enabled === (shadowGenerator !== null)) return;
+                if (enabled) {
+                    enableSunShadows();
+                    // フラスタムを現在の太陽方向で 1 回再センタリング
+                    applySunStateForCurrent();
+                } else {
+                    disableSunShadows();
+                }
+            },
             dispose: () => {
+                // ShadowGenerator が残っていれば確実に解放する (Issue #39)。
+                disableSunShadows();
                 // controlPanel は document.body に各 UI を直接 append しているため、
                 // ここで親要素から取り除く (T7 / Issue #121)。
                 // - compass / mapToggle は単独要素

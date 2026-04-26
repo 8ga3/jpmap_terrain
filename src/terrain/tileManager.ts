@@ -14,7 +14,7 @@ import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { TileCoord, TileKey, toTileKey, tileOffsetToWorld, convertTileZoom, computeSubTileOffset } from "./tileTypes";
 import { computeQuadtreeTiles, FrustumPlane, LodTileEntry } from "./visibleTiles";
 import { createTileCache, TileCache } from "./tileCache";
-import { createMeshPool, MeshPool } from "./meshPool";
+import { createMeshPool, MeshPool, ShadowHooks } from "./meshPool";
 import {
     TILE_SIZE,
     toTileXY,
@@ -60,6 +60,10 @@ export interface TileManager {
     queryElevationAtWorld(wx: number, wz: number): number | null;
     /** メッシュ頂点の標高が更新されたときに呼ばれるコールバック */
     onTerrainUpdated: (() => void) | null;
+    /** 太陽影 (Issue #39) caster/receiver フックを設定する。`null` で解除 */
+    setShadowHooks(hooks: ShadowHooks | null): void;
+    /** 現在アクティブな全タイルメッシュを列挙する（Issue #39 ON/OFF 切替用） */
+    forEachActiveMesh(cb: (mesh: Mesh) => void): void;
 }
 
 interface ActiveTile {
@@ -777,6 +781,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         },
         get onTerrainUpdated(): (() => void) | null {
             return terrainUpdatedCallback;
+        },
+
+        setShadowHooks(hooks: ShadowHooks | null): void {
+            meshPool.setShadowHooks(hooks);
+        },
+
+        forEachActiveMesh(cb: (mesh: Mesh) => void): void {
+            meshPool.forEachActive(cb);
         },
     };
 };

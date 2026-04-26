@@ -53,6 +53,7 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | `mapType` | `"standard" \| "photo"` | `"standard"` | 地図種類（標準地図 / 航空写真） |
 | `dateTime` | `Date \| null` | `null` | 太陽位置計算に使う日時。`null` の場合は内部の決定的なフォールバック時刻（夏至日本時間正午）を使用 |
 | `autoSunPosition` | `boolean` | `false` | `true` で実時刻に追従して内部更新（60 秒周期）、`false` で `dateTime` を固定値として使用 |
+| `showSunShadows` | `boolean` | `false` | 太陽 DirectionalLight による地形への影描画を有効化する。GPU 負荷が大きいため既定 OFF |
 
 ### 3.3 API & プロパティ
 
@@ -217,6 +218,14 @@ interface JpmapTerrain {
    */
   get autoSunPosition(): boolean;
   set autoSunPosition(value: boolean);
+
+  /**
+   * 太陽 DirectionalLight による地形への影描画を有効化するフラグ。既定 `false`（OFF）。
+   * `true` のとき `ShadowGenerator` を内部生成し、地形タイル全体を caster / receiver に登録する。
+   * `false` に戻すと `ShadowGenerator` は dispose され、GPU リソースを保持しない。
+   */
+  get showSunShadows(): boolean;
+  set showSunShadows(value: boolean);
 }
 ```
 
@@ -226,6 +235,15 @@ interface JpmapTerrain {
 - `autoSunPosition` を `true` から `false` に切り替えた瞬間、保持していた `dateTime` 値（または `null`）で再計算する。
 - `dispose()` 時に内部タイマーは確実に解放される。
 - ビジュアルテストの決定性が必要な場面（Playwright 等）では、URL クエリ `?dateTime=<ISO8601 with Z>&autoSunPosition=false` を付与し、太陽位置を完全に固定すること。
+
+**`showSunShadows` 仕様 (Issue #39):**
+
+- 既定 `false`（OFF）。OFF 時は `ShadowGenerator` を生成せず、GPU 負荷を発生させない。
+- `true` を set すると `ShadowGenerator`（解像度 1024 / `useBlurExponentialShadowMap` / `darkness=0.4`）を生成し、現時点でアクティブな地形タイルおよび以後追加されるタイルメッシュを caster / receiver として登録する。
+- `false` に戻すと caster/receiver 設定を解除し `ShadowGenerator` を dispose する。
+- 同値の再 set は no-op。`dispose()` 後の set も no-op。
+- `dispose()` 時に `ShadowGenerator` は確実に解放される。
+- URL クエリ `?showSunShadows=true|false` で初期値を制御できる（`true`/`false` 以外の値は無視）。
 
 ### 3.4 型定義
 

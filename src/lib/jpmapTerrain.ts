@@ -56,6 +56,9 @@ export class JpmapTerrain {
     /** auto モード中、最後に内部反映した実時刻。`dateTime` getter が返す値 */
     private _autoLastAppliedDate: Date | null = null;
 
+    /** 太陽 DirectionalLight 影描画 (Issue #39)。既定 OFF */
+    private _showSunShadows: boolean;
+
     private _canvas: HTMLCanvasElement | null = null;
     private _engine: AbstractEngine | null = null;
     private _scene: Scene | null = null;
@@ -84,6 +87,8 @@ export class JpmapTerrain {
         this._dateTime = JpmapTerrain._sanitizeDateTimeOption(options.dateTime);
         this._autoSunPosition =
             options.autoSunPosition ?? JPMAP_TERRAIN_DEFAULTS.autoSunPosition;
+        this._showSunShadows =
+            options.showSunShadows ?? JPMAP_TERRAIN_DEFAULTS.showSunShadows;
     }
 
     /**
@@ -186,6 +191,10 @@ export class JpmapTerrain {
                         this._tickSunTimer();
                     } else {
                         controller.setSunState(this._dateTime);
+                    }
+                    // 太陽影 (Issue #39)。既定 OFF のため通常は no-op。
+                    if (this._showSunShadows) {
+                        controller.setSunShadows(true);
                     }
                 },
             });
@@ -493,6 +502,25 @@ export class JpmapTerrain {
             // 保持されていた `_dateTime`（または null）で再計算
             this._controller?.setSunState(this._dateTime);
         }
+    }
+
+    /**
+     * 太陽 DirectionalLight による地形への影描画の有効/無効 (Issue #39)。
+     *
+     * - `true`: `ShadowGenerator` を生成し、地形タイル全体を caster / receiver に登録する。
+     * - `false`（既定）: `ShadowGenerator` を生成しない / 既存があれば dispose する。
+     * - 同値再 set は no-op。`dispose()` 後の set も no-op。
+     *
+     * GPU 負荷が比較的大きいため、必要時のみ ON にすることを推奨する。
+     */
+    public get showSunShadows(): boolean {
+        return this._showSunShadows;
+    }
+    public set showSunShadows(value: boolean) {
+        if (this._disposed) return;
+        if (this._showSunShadows === value) return;
+        this._showSunShadows = value;
+        this._controller?.setSunShadows(value);
     }
 
     /** 60 秒周期で `new Date()` を太陽計算に流し込むタイマーを開始する */

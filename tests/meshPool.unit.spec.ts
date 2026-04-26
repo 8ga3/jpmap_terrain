@@ -109,4 +109,60 @@ describe("createMeshPool", () => {
         expect(mesh1.dispose).toHaveBeenCalled();
         expect(mesh2.dispose).toHaveBeenCalled();
     });
+
+    it("setShadowHooks 設定後の acquire/release でフックが呼ばれる (Issue #39)", () => {
+        const pool = createMeshPool({
+            scene: mockScene,
+            subdivisions: 128,
+            tileSize: 100,
+        });
+        const onAcquire = jest.fn();
+        const onRelease = jest.fn();
+        pool.setShadowHooks({ onAcquire, onRelease });
+
+        const mesh = pool.acquire();
+        expect(onAcquire).toHaveBeenCalledTimes(1);
+        expect(onAcquire).toHaveBeenCalledWith(mesh);
+        expect(onRelease).not.toHaveBeenCalled();
+
+        pool.release(mesh);
+        expect(onRelease).toHaveBeenCalledTimes(1);
+        expect(onRelease).toHaveBeenCalledWith(mesh);
+    });
+
+    it("setShadowHooks(null) 後はフックが呼ばれない (Issue #39)", () => {
+        const pool = createMeshPool({
+            scene: mockScene,
+            subdivisions: 128,
+            tileSize: 100,
+        });
+        const onAcquire = jest.fn();
+        const onRelease = jest.fn();
+        pool.setShadowHooks({ onAcquire, onRelease });
+        pool.setShadowHooks(null);
+
+        const mesh = pool.acquire();
+        pool.release(mesh);
+        expect(onAcquire).not.toHaveBeenCalled();
+        expect(onRelease).not.toHaveBeenCalled();
+    });
+
+    it("forEachActive はアクティブなメッシュのみ列挙する (Issue #39)", () => {
+        const pool = createMeshPool({
+            scene: mockScene,
+            subdivisions: 128,
+            tileSize: 100,
+        });
+        const m1 = pool.acquire();
+        const m2 = pool.acquire();
+        const m3 = pool.acquire();
+        pool.release(m2);
+
+        const visited: unknown[] = [];
+        pool.forEachActive((mesh) => visited.push(mesh));
+        expect(visited).toHaveLength(2);
+        expect(visited).toContain(m1);
+        expect(visited).toContain(m3);
+        expect(visited).not.toContain(m2);
+    });
 });

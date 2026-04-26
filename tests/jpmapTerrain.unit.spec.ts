@@ -89,6 +89,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     let controllerDisposeCount = 0;
     // Issue #35: setSunState 呼び出し履歴を保持する。
     const sunStateCalls: Array<{ dateTime: Date | null }> = [];
+    // Issue #39: setSunShadows 呼び出し履歴を保持する。
+    const sunShadowsCalls: boolean[] = [];
     // #136: scene.onBeforeRenderObservable のテスト用簡易実装。
     // jpmapTerrain.ts は `add(callback)` の戻り値を `Observer` として保持し、
     // dispose 時に `remove(observer)` する。テストからは `__triggerSceneRender` で
@@ -219,6 +221,9 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                         // テスト用: 受信を記録するだけで Babylon 描画は伴わない
                         sunStateCalls.push({ dateTime: _dateTime });
                     },
+                    setSunShadows: (enabled: boolean) => {
+                        sunShadowsCalls.push(enabled);
+                    },
                     dispose: () => {
                         controllerDisposeCount++;
                     },
@@ -267,6 +272,10 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __resetSunStateCalls: (): void => {
             sunStateCalls.length = 0;
         },
+        __getSunShadowsCalls: (): boolean[] => [...sunShadowsCalls],
+        __resetSunShadowsCalls: (): void => {
+            sunShadowsCalls.length = 0;
+        },
         __triggerSceneRender: (): void => triggerSceneRender(),
     };
 });
@@ -292,6 +301,8 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __resetControllerDisposeCount: () => void;
     __getSunStateCalls: () => Array<{ dateTime: Date | null }>;
     __resetSunStateCalls: () => void;
+    __getSunShadowsCalls: () => boolean[];
+    __resetSunShadowsCalls: () => void;
     __triggerSceneRender: () => void;
 };
 
@@ -1192,6 +1203,61 @@ describe("JpmapTerrain (skeleton)", () => {
             } finally {
                 jest.useRealTimers();
             }
+        });
+    });
+
+    describe("sun shadows (Issue #39)", () => {
+        beforeEach(() => {
+            sceneMockModule.__resetSunShadowsCalls();
+        });
+
+        it("既定値は false。初期化時に setSunShadows(true) は呼ばれない", async () => {
+            const viewer = await create(createMountElement());
+            expect(viewer.showSunShadows).toBe(false);
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([]);
+        });
+
+        it("options.showSunShadows=true で初期化すると setSunShadows(true) が 1 回呼ばれる", async () => {
+            const viewer = await create(createMountElement(), {
+                showSunShadows: true,
+            });
+            expect(viewer.showSunShadows).toBe(true);
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([true]);
+        });
+
+        it("setter で値を切り替えると controller.setSunShadows が呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            sceneMockModule.__resetSunShadowsCalls();
+
+            viewer.showSunShadows = true;
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([true]);
+
+            viewer.showSunShadows = false;
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([
+                true,
+                false,
+            ]);
+        });
+
+        it("同値の再 set は controller.setSunShadows を呼ばない", async () => {
+            const viewer = await create(createMountElement());
+            sceneMockModule.__resetSunShadowsCalls();
+            viewer.showSunShadows = false; // 既定 false への再 set
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([]);
+
+            viewer.showSunShadows = true;
+            sceneMockModule.__resetSunShadowsCalls();
+            viewer.showSunShadows = true; // 再 set
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([]);
+        });
+
+        it("dispose 後の setter は no-op", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            sceneMockModule.__resetSunShadowsCalls();
+            viewer.showSunShadows = true;
+            expect(viewer.showSunShadows).toBe(false);
+            expect(sceneMockModule.__getSunShadowsCalls()).toEqual([]);
         });
     });
 });
