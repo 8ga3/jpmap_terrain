@@ -2,6 +2,7 @@
 
 import { clamp, JAPAN_BOUNDS } from "./gsiTile";
 import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
+import type { MapType } from "../lib/types";
 
 export interface LatLon {
     lat: number;
@@ -188,4 +189,57 @@ export const createUrlUpdater = (
             history.replaceState(null, "", path + search);
         }, debounceMs);
     };
+};
+
+// ---- mapType クエリ (Issue #149) ----
+
+/** `?mapType=` のクエリキー名 */
+export const MAP_TYPE_QUERY_KEY = "mapType";
+
+const MAP_TYPE_VALUES: ReadonlyArray<MapType> = ["standard", "photo"];
+
+const isMapType = (value: string): value is MapType =>
+    (MAP_TYPE_VALUES as ReadonlyArray<string>).includes(value);
+
+/**
+ * URL から `?mapType=standard|photo` を読み取る (Issue #149)。
+ *
+ * - 大小文字無視（`Standard`, `PHOTO` も可）。書き出しは小文字。
+ * - 不正値・欠落・URL 解析失敗時は `null` を返す。
+ */
+export const parseMapTypeFromUrl = (url: string): MapType | null => {
+    try {
+        const parsed = new URL(url, "http://localhost");
+        const raw = parsed.searchParams.get(MAP_TYPE_QUERY_KEY);
+        if (raw === null) return null;
+        const normalized = raw.toLowerCase();
+        return isMapType(normalized) ? normalized : null;
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * 入力 URL のクエリ部に `mapType=<value>` をマージして返す純粋関数 (Issue #149)。
+ *
+ * - パス・他クエリ（例 `?engine=`）・ハッシュは保持する。
+ * - 既存の `mapType` パラメータは上書きする。
+ * - 戻り値は `pathname + search + hash` のみ（`new URL` の dummy origin は除去）。
+ */
+export const withMapTypeInUrl = (url: string, mapType: MapType): string => {
+    const parsed = new URL(url, "http://localhost");
+    parsed.searchParams.set(MAP_TYPE_QUERY_KEY, mapType);
+    return parsed.pathname + parsed.search + parsed.hash;
+};
+
+/**
+ * `history.replaceState` で現在の URL に `?mapType=<value>` を反映する (Issue #149)。
+ * パス・他クエリ・ハッシュは保持する。`window` / `history` が未定義な環境（jsdom 等）では何もしない。
+ */
+export const updateMapTypeInUrl = (mapType: MapType): void => {
+    if (typeof window === "undefined" || typeof window.history === "undefined") {
+        return;
+    }
+    const next = withMapTypeInUrl(window.location.href, mapType);
+    window.history.replaceState(null, "", next);
 };

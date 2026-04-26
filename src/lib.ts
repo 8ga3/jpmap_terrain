@@ -14,4 +14,5 @@ export type {
     FlyToOptions,
     JpmapTerrainOptions,
     MapType,
+    MapTypeChangeListener,
 } from "./lib/types";

@@ -79,14 +79,15 @@ npm start
 
 `webgpu` 指定時に未対応ブラウザの場合は WebGL2 にフォールバックします。
 
-## URL フォーマット（緯度経度・エンジン指定）
+## URL フォーマット（緯度経度・エンジン・地図種類指定）
 
-開発デモエントリ（`src/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`）とは別です。
+開発デモエントリ（`src/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` / `mapType` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`、`MapType` は `"standard" | "photo"`）とは別です。
 
-- 形式: `http://localhost:8080/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>`（`webgl` は URL クエリでのみ後方互換として受け付け、内部的に `webgl2` に正規化）
+- 形式: `http://localhost:8080/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>&mapType=<standard|photo>`（`webgl` は URL クエリでのみ後方互換として受け付け、内部的に `webgl2` に正規化）
 - 例:
   - `http://localhost:8080/@35.681236,139.767125?engine=webgpu`（東京駅・WebGPU）
   - `http://localhost:8080/@35.3606,138.7274?engine=webgl2`（富士山・WebGL2）
+  - `http://localhost:8080/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・航空写真）
 
 ### `engine` パラメータ
 
@@ -96,6 +97,12 @@ npm start
 - `webgl` は URL クエリでのみ後方互換として受け付けられる別名で、内部的に `webgl2` に正規化されます
 - 省略時は自動選択（WebGPU 利用可能なら WebGPU、未対応なら WebGL2 にフォールバック）
 - npm パッケージの公開 API で指定できる `engine` は `"webgpu" | "webgl2"` です
+
+### `mapType` パラメータ
+
+- `standard`（標準地図）/ `photo`（航空写真）を指定できます（大小文字無視で受理、書き戻しは小文字）
+- 省略・不正値・URL 解析失敗時は `standard` にフォールバックします
+- 地図切替ボタン操作 / `viewer.mapType = ...` のいずれでも、URL のクエリ `?mapType=` が `history.replaceState` で更新されます（パス・他クエリ・ハッシュは保持）
 
 ### 緯度経度の扱い
 

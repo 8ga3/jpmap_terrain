@@ -113,3 +113,9 @@ export interface CameraChangeEvent {
 
 /** `JpmapTerrain.onCameraChange` リスナー */
 export type CameraChangeListener = (event: CameraChangeEvent) => void;
+
+/**
+ * `JpmapTerrain.onMapTypeChange` リスナー (Issue #149)。
+ * `mapType` が実際に変化したタイミングのみ呼ばれる。
+ */
+export type MapTypeChangeListener = (mapType: MapType) => void;

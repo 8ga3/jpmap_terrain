@@ -9,6 +9,10 @@ import {
     normalizeAzimuth,
     CAMERA_URL_DEFAULTS,
     CAMERA_URL_LIMITS,
+    MAP_TYPE_QUERY_KEY,
+    parseMapTypeFromUrl,
+    withMapTypeInUrl,
+    updateMapTypeInUrl,
 } from "../src/terrain/urlState";
 
 describe("urlState", () => {
@@ -383,6 +387,161 @@ describe("urlState", () => {
             expect(
                 toAtPath({ lat: 35.0, lon: 139.0, altitude: 3000 })
             ).toBe("/@35.000000,139.000000,3000,0.00,45.00");
+        });
+    });
+
+    describe("parseMapTypeFromUrl (Issue #149)", () => {
+        it("?mapType=standard を読み取る", () => {
+            expect(parseMapTypeFromUrl("http://localhost/?mapType=standard")).toBe(
+                "standard"
+            );
+        });
+
+        it("?mapType=photo を読み取る", () => {
+            expect(parseMapTypeFromUrl("http://localhost/?mapType=photo")).toBe(
+                "photo"
+            );
+        });
+
+        it("大小文字混在も許容して小文字へ正規化する", () => {
+            expect(parseMapTypeFromUrl("http://localhost/?mapType=Photo")).toBe(
+                "photo"
+            );
+            expect(parseMapTypeFromUrl("http://localhost/?mapType=STANDARD")).toBe(
+                "standard"
+            );
+        });
+
+        it("空値は null を返す", () => {
+            expect(parseMapTypeFromUrl("http://localhost/?mapType=")).toBeNull();
+        });
+
+        it("不正値は null を返す", () => {
+            expect(parseMapTypeFromUrl("http://localhost/?mapType=satellite")).toBeNull();
+        });
+
+        it("欠落は null を返す", () => {
+            expect(parseMapTypeFromUrl("http://localhost/")).toBeNull();
+        });
+
+        it("不正 URL は null を返す", () => {
+            expect(parseMapTypeFromUrl("not a url")).toBeNull();
+        });
+
+        it("MAP_TYPE_QUERY_KEY が 'mapType' であること", () => {
+            expect(MAP_TYPE_QUERY_KEY).toBe("mapType");
+        });
+    });
+
+    describe("withMapTypeInUrl (Issue #149)", () => {
+        it("既存クエリ (engine 等) を保持して mapType を追記する", () => {
+            const result = withMapTypeInUrl(
+                "http://localhost/?engine=webgl",
+                "photo"
+            );
+            expect(result).toBe("/?engine=webgl&mapType=photo");
+        });
+
+        it("ハッシュを保持する", () => {
+            const result = withMapTypeInUrl(
+                "http://localhost/path#section",
+                "standard"
+            );
+            expect(result).toBe("/path?mapType=standard#section");
+        });
+
+        it("既存の mapType は上書きする", () => {
+            const result = withMapTypeInUrl(
+                "http://localhost/?mapType=standard",
+                "photo"
+            );
+            expect(result).toBe("/?mapType=photo");
+        });
+
+        it("パス（@lat,lon 形式含む）を保持する", () => {
+            const result = withMapTypeInUrl(
+                "http://localhost/@35.681236,139.767125",
+                "photo"
+            );
+            expect(result).toBe("/@35.681236,139.767125?mapType=photo");
+        });
+    });
+
+    describe("parseMapTypeFromUrl(withMapTypeInUrl(...)) ラウンドトリップ", () => {
+        it.each(["standard", "photo"] as const)(
+            "%s を再パースして同値が得られる",
+            (value) => {
+                const next = withMapTypeInUrl(
+                    "http://localhost/?engine=webgl",
+                    value
+                );
+                expect(parseMapTypeFromUrl(`http://localhost${next}`)).toBe(value);
+            }
+        );
+    });
+
+    describe("updateMapTypeInUrl (Issue #149)", () => {
+        const originalWindow = (globalThis as { window?: unknown }).window;
+
+        afterEach(() => {
+            if (originalWindow === undefined) {
+                delete (globalThis as { window?: unknown }).window;
+            } else {
+                (globalThis as { window?: unknown }).window = originalWindow;
+            }
+        });
+
+        it("history.replaceState を呼び、?mapType=<value> を含む URL を渡す", () => {
+            const replaceSpy = jest.fn();
+            (globalThis as { window?: unknown }).window = {
+                history: { replaceState: replaceSpy },
+                location: { href: "http://localhost/?engine=webgl" },
+            };
+
+            updateMapTypeInUrl("photo");
+
+            expect(replaceSpy).toHaveBeenCalledTimes(1);
+            const args = replaceSpy.mock.calls[0];
+            expect(args[0]).toBeNull();
+            expect(args[1]).toBe("");
+            expect(args[2]).toBe("/?engine=webgl&mapType=photo");
+        });
+
+        it("既存の mapType を上書きする", () => {
+            const replaceSpy = jest.fn();
+            (globalThis as { window?: unknown }).window = {
+                history: { replaceState: replaceSpy },
+                location: { href: "http://localhost/?mapType=standard" },
+            };
+
+            updateMapTypeInUrl("photo");
+
+            expect(replaceSpy).toHaveBeenCalledWith(
+                null,
+                "",
+                "/?mapType=photo"
+            );
+        });
+
+        it("typeof window が undefined の環境では何もしない", () => {
+            delete (globalThis as { window?: unknown }).window;
+            // 例外を投げないことだけ確認
+            expect(() => updateMapTypeInUrl("photo")).not.toThrow();
+        });
+    });
+
+    describe("既存 parseCameraStateFromUrl への mapType の影響なし (Issue #149)", () => {
+        it("?mapType=photo が混入してもカメラ状態は解析される", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/@35.681236,139.767125,1500,90,60?mapType=photo"
+            );
+            expect(result).toEqual({
+                lat: 35.681236,
+                lon: 139.767125,
+                altitude: 1500,
+                azimuth: 90,
+                tilt: 60,
+            });
         });
     });
 });
