@@ -25,8 +25,8 @@ const TILT_MIN_DEG = (TILT_MIN_RAD * 180) / Math.PI;
 
 /**
  * altitude / tilt のクランプ範囲。
- * - altitude: spec/package.md に基づく [50, 75000] (m)
- * - tilt: 最小 {@link TILT_MIN_RAD} rad、最大 75°
+ * - altitude: src/scenes/default.ts の CAMERA_LOWER_RADIUS / CAMERA_UPPER_RADIUS に基づく [50, 75000] (m)
+ * - tilt: [{@link TILT_MIN_DEG}, 75]（deg）。下限は {@link TILT_MIN_RAD} rad を度換算した値
  */
 export const CAMERA_URL_LIMITS = {
     altitude: { min: 50, max: 75000 },
@@ -56,7 +56,7 @@ export const clampAltitude = (v: number): number => {
     return Math.round(c);
 };
 
-/** tilt を [0.1 rad, 75°] にクランプする */
+/** tilt を [TILT_MIN_DEG, 75]（deg）にクランプする */
 export const clampTilt = (v: number): number =>
     clamp(v, CAMERA_URL_LIMITS.tilt.min, CAMERA_URL_LIMITS.tilt.max);
 
