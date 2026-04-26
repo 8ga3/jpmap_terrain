@@ -605,25 +605,29 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         return null;
     };
 
-    /** 可視タイルを算出する共通ヘルパー */
+    /**
+     * 可視タイルを算出する共通ヘルパー。
+     * カメラ位置等に NaN/Infinity が混入していた場合は `null` を返し、
+     * 呼び出し側で applyVisibleTiles をスキップして直前の可視集合を維持する (Issue #151)。
+     */
     const computeVisible = (
         frustumPlanes: FrustumPlane[],
         maxElevation: number
-    ): LodTileEntry[] => {
+    ): LodTileEntry[] | null => {
         if (!currentCenter) return [];
         const engine = scene.getEngine();
         const camRelX = camera.position.x - camera.target.x;
         const camRelY = camera.position.y - camera.target.y;
         const camRelZ = camera.position.z - camera.target.z;
-        // 非有限値が混入すると SSE 距離が NaN になり Quadtree 採用が破綻するため
-        // 早期に空配列を返して直前の可視集合を維持させる (Issue #151)
+        // 非有限値が混入すると SSE 距離が NaN になり Quadtree 採用が破綻する。
+        // null を返して呼び出し側で更新自体をスキップさせ、直前の可視集合を維持する。
         if (
             !Number.isFinite(camRelX) ||
             !Number.isFinite(camRelY) ||
             !Number.isFinite(camRelZ) ||
             !Number.isFinite(camera.fov)
         ) {
-            return [];
+            return null;
         }
         return computeQuadtreeTiles({
             maxZoom: zoom,
@@ -695,6 +699,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             (MAX_BASE_ELEVATION + Math.max(0, altitudeOffset)) * heightScale;
 
         const visibleEntries = computeVisible(frustumPlanes, maxElevation);
+        if (visibleEntries === null) return;
         await applyVisibleTiles(visibleEntries, rid, true);
     };
 
@@ -709,6 +714,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             heightScale;
 
         const visibleEntries = computeVisible(frustumPlanes, maxElevation);
+        if (visibleEntries === null) return;
         await applyVisibleTiles(visibleEntries, rid, false);
     };
 

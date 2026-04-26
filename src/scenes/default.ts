@@ -421,6 +421,9 @@ export class DefaultScene implements CreateSceneClass {
             const { x: tx, y: ty, z: tz } = camera.target;
             // 入力 (alpha/beta/radius/target) に NaN/Infinity が混入している場合は
             // 算出が破綻するため、早期に lowerRadiusLimit を返す (Issue #151)。
+            // ここでは prev* を NaN に倒してキャッシュキーを無効化する。
+            // そうしないと、後続で正常値（直前の prev と同じ値）に戻ったとき
+            // キャッシュヒットして下限値のまま再計算されない可能性がある。
             if (
                 !Number.isFinite(alpha) ||
                 !Number.isFinite(beta) ||
@@ -429,6 +432,12 @@ export class DefaultScene implements CreateSceneClass {
                 !Number.isFinite(ty) ||
                 !Number.isFinite(tz)
             ) {
+                prevAlpha = NaN;
+                prevBeta = NaN;
+                prevRadius = NaN;
+                prevTargetX = NaN;
+                prevTargetY = NaN;
+                prevTargetZ = NaN;
                 cachedMinRadius = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 return cachedMinRadius;
             }
