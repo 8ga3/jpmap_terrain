@@ -839,6 +839,31 @@ export class DefaultScene implements CreateSceneClass {
         engine.onResizeObservable.add(updateScaleBar);
         updateScaleBar();
 
+        // ウィンドウ/canvas のリサイズ時に可視タイル集合を再計算する (Issue #150)。
+        // 可視タイル更新は通常 camera.onViewMatrixChangedObservable をトリガに走るが、
+        // リサイズ単独ではビュー行列が変わらないため発火せず、新たに視野へ入った領域の
+        // タイルが取得・描画されない。`tileManager.applyVisibleTiles` は不要解放と
+        // 新規ロードの差分処理のみ行うため、ここから refreshTerrain を呼んでも
+        // 既存タイルは保持され、ちらつきは発生しない。
+        // 連続リサイズで何度も refresh が走らないよう短い debounce を挟む。
+        const RESIZE_REFRESH_DEBOUNCE_MS = 100;
+        let resizeRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+        engine.onResizeObservable.add(() => {
+            if (resizeRefreshTimer !== null) {
+                clearTimeout(resizeRefreshTimer);
+            }
+            resizeRefreshTimer = setTimeout(() => {
+                resizeRefreshTimer = null;
+                void refreshTerrain();
+            }, RESIZE_REFRESH_DEBOUNCE_MS);
+        });
+        scene.onDisposeObservable.add(() => {
+            if (resizeRefreshTimer !== null) {
+                clearTimeout(resizeRefreshTimer);
+                resizeRefreshTimer = null;
+            }
+        });
+
         // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
         const resetCompassView = (): void => {
