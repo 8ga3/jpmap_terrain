@@ -163,6 +163,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     azimuth?: number;
                     tilt?: number;
                     mapType?: "standard" | "photo";
+                    onMapTypeChange?: (mapType: "standard" | "photo") => void;
                     onReady?: (controller: unknown) => void;
                 },
             ) => {
@@ -211,8 +212,12 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     ) => applyView(values, options?.refreshTerrain ?? true),
                     getMapType: () => lastMapType,
                     setMapType: (value: "standard" | "photo") => {
+                        const prev = lastMapType;
                         lastMapType = value;
                         setMapTypeCalls.push(value);
+                        if (prev !== value) {
+                            opts?.onMapTypeChange?.(value);
+                        }
                     },
                     setUiVisibility: (target: UiTarget, visible: boolean) => {
                         uiVisibility[target] = visible;
@@ -1030,6 +1035,123 @@ describe("JpmapTerrain (skeleton)", () => {
             sceneMockModule.__triggerSceneRender();
 
             expect(listener).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("onMapTypeChange (Issue #149)", () => {
+        beforeEach(() => {
+            sceneMockModule.__resetSetMapTypeCalls();
+            sceneMockModule.__setLastMapType("standard");
+        });
+
+        it("初回登録時には即時発火しない", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onMapTypeChange(listener);
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it("mapType setter で値が変化したらリスナーが呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onMapTypeChange(listener);
+
+            viewer.mapType = "photo";
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener).toHaveBeenCalledWith("photo");
+        });
+
+        it("同値再 set では発火しない", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onMapTypeChange(listener);
+
+            viewer.mapType = "standard"; // 既定値と同値
+            viewer.mapType = "photo";
+            viewer.mapType = "photo"; // 同値再 set
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener).toHaveBeenCalledWith("photo");
+        });
+
+        it("unsubscribe 後は呼ばれず、複数回呼んでも安全", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            const unsubscribe = viewer.onMapTypeChange(listener);
+
+            viewer.mapType = "photo";
+            expect(listener).toHaveBeenCalledTimes(1);
+
+            unsubscribe();
+            unsubscribe(); // 多重呼び出しでも例外にならない
+            viewer.mapType = "standard";
+
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it("複数リスナーを登録すると全て呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            const a = jest.fn();
+            const b = jest.fn();
+            viewer.onMapTypeChange(a);
+            viewer.onMapTypeChange(b);
+
+            viewer.mapType = "photo";
+
+            expect(a).toHaveBeenCalledTimes(1);
+            expect(b).toHaveBeenCalledTimes(1);
+        });
+
+        it("リスナーが throw しても他リスナーへの伝播が継続する", async () => {
+            const viewer = await create(createMountElement());
+            const errorSpy = jest
+                .spyOn(console, "error")
+                .mockImplementation(() => {});
+            const failing = jest.fn(() => {
+                throw new Error("listener failure");
+            });
+            const ok = jest.fn();
+            viewer.onMapTypeChange(failing);
+            viewer.onMapTypeChange(ok);
+
+            viewer.mapType = "photo";
+
+            expect(failing).toHaveBeenCalledTimes(1);
+            expect(ok).toHaveBeenCalledTimes(1);
+            expect(errorSpy).toHaveBeenCalled();
+
+            errorSpy.mockRestore();
+        });
+
+        it("dispose 後の onMapTypeChange は no-op の unsubscribe を返す", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+
+            const listener = jest.fn();
+            const unsubscribe = viewer.onMapTypeChange(listener);
+
+            expect(typeof unsubscribe).toBe("function");
+            expect(() => unsubscribe()).not.toThrow();
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it("初期 options.mapType の反映では発火しない", async () => {
+            // create 時に listener はまだ登録されていないため発火対象にはなり得ないが、
+            // 念のため「初期化直後にリスナーを付け、その後の操作で初めて発火する」ことを確認する。
+            const viewer = await create(createMountElement(), {
+                mapType: "photo",
+            });
+            const listener = jest.fn();
+            viewer.onMapTypeChange(listener);
+
+            // 初期 photo に同値再 set → 発火しない
+            viewer.mapType = "photo";
+            expect(listener).not.toHaveBeenCalled();
+
+            viewer.mapType = "standard";
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener).toHaveBeenCalledWith("standard");
         });
     });
 

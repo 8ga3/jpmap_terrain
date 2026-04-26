@@ -166,6 +166,14 @@ export interface DefaultSceneInitOptions {
     /** 地図種類（T6 で配線） */
     mapType?: "standard" | "photo";
     /**
+     * `mapType` が実際に変化した際に呼ばれるコールバック (Issue #149)。
+     *
+     * - `controller.setMapType` 経由・UI ボタンクリック経由のいずれの変化でも発火する。
+     * - 起動時の初期値設定では発火しない（呼び出し側との重複通知防止）。
+     * - 同値再 set では発火しない。
+     */
+    onMapTypeChange?: (mapType: "standard" | "photo") => void;
+    /**
      * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
      */
@@ -929,16 +937,24 @@ export class DefaultScene implements CreateSceneClass {
             );
         };
         // 初期 mapType がオプション指定されていれば反映する (T6)。
+        // 初期反映は onMapTypeChange を発火させない（呼び出し側との重複通知防止 / Issue #149）。
         if (options?.mapType) {
             const initialInternal =
                 options.mapType === "standard" ? "std" : "photo";
             tileManager.setMapType(initialInternal);
             updateMapToggleLabel(initialInternal);
         }
-        ui.mapToggle.addEventListener("click", () => {
-            const next = tileManager.mapType === "std" ? "photo" : "std";
+        // mapType の値が実際に変化した場合のみ onMapTypeChange を発火する共通ヘルパ (Issue #149)。
+        const applyMapTypeChange = (next: "std" | "photo"): void => {
+            const prev = tileManager.mapType;
+            if (prev === next) return;
             tileManager.setMapType(next);
             updateMapToggleLabel(next);
+            options?.onMapTypeChange?.(next === "std" ? "standard" : "photo");
+        };
+        ui.mapToggle.addEventListener("click", () => {
+            const next = tileManager.mapType === "std" ? "photo" : "std";
+            applyMapTypeChange(next);
         });
 
         // カメラ-地形衝突回避: 地面にめり込まないよう radius を補正してストップ
@@ -1187,8 +1203,7 @@ export class DefaultScene implements CreateSceneClass {
                 tileManager.mapType === "std" ? "standard" : "photo",
             setMapType: (value) => {
                 const internal = value === "standard" ? "std" : "photo";
-                tileManager.setMapType(internal);
-                updateMapToggleLabel(internal);
+                applyMapTypeChange(internal);
             },
             setUiVisibility: createUiVisibilityController({
                 compass: ui.compass,

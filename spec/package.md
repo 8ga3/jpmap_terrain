@@ -198,7 +198,41 @@ const unsubscribe = viewer.onCameraChange((e) => {
 unsubscribe();
 ```
 
-#### 3.3.5 太陽位置（時間による明るさ変化）
+#### 3.3.5 mapType 変化イベント (Issue #149)
+
+地図種類（`mapType`）の変化を購読する。`onCameraChange` と対称な API。
+
+```typescript
+interface JpmapTerrain {
+  /**
+   * mapType 変化リスナーを登録する。
+   *
+   * @param listener mapType 変化を受け取るリスナー
+   * @returns 登録解除関数（unsubscribe）
+   */
+  onMapTypeChange(listener: MapTypeChangeListener): () => void;
+}
+```
+
+**仕様:**
+
+- 戻り値は登録解除関数。呼び出すと当該リスナーのみが解除される。
+- **発火条件**: `mapType` が実際に変化したタイミングのみ通知する（同値の再 set は通知しない）。UI の地図切替ボタン操作・プログラム経由の `viewer.mapType = ...` の双方で発火する。
+- **初回登録時は即時発火しない**（変化があった次回以降のみ）。
+- 同一リスナーを複数回登録した場合は登録回数だけ呼ばれる。
+- リスナーが throw した場合でも、内部で例外を捕捉して `console.error` でログ出力し、他リスナーの処理は継続する。
+- `dispose()` 後に `onMapTypeChange` を呼び出した場合は登録されず、no-op の unsubscribe 関数を返す。
+
+**利用例:**
+
+```typescript
+const unsubscribe = viewer.onMapTypeChange((mapType) => {
+  console.log(`mapType changed: ${mapType}`);
+});
+unsubscribe();
+```
+
+#### 3.3.6 太陽位置（時間による明るさ変化）
 
 `dateTime` / `autoSunPosition` は **get / set 両対応**。set すると即座にライト・Skybox・太陽メッシュへ反映される。
 
@@ -245,6 +279,13 @@ interface JpmapTerrain {
 - `dispose()` 時に `ShadowGenerator` は確実に解放される。
 - URL クエリ `?showSunShadows=true|false` で初期値を制御できる（`true`/`false` 以外の値は無視）。
 
+**`mapType` URL クエリ仕様 (Issue #149):**
+
+- URL クエリ `?mapType=standard|photo` で初期値を上書きできる（デモ層）。
+- 値は大小文字無視で受理する（例: `?mapType=Photo` も `"photo"` として解釈）。書き戻し時は小文字に正規化する。
+- 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.mapType`（= `"standard"`）にフォールバックする（例外は投げない）。
+- `viewer.mapType` の変化（UI 切替ボタン / プログラム set）は `onMapTypeChange` 経由でデモ層が `history.replaceState` により URL の `?mapType=` を更新する。パス（`/@lat,lon[,...]`）と他クエリ（`engine`, `dateTime` 等）・ハッシュは保持される。
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
@@ -261,10 +302,18 @@ interface CameraChangeEvent {
 
 /** `JpmapTerrain.onCameraChange` リスナー */
 type CameraChangeListener = (event: CameraChangeEvent) => void;
+
+/** `JpmapTerrain.onMapTypeChange` リスナー (Issue #149) */
+type MapTypeChangeListener = (mapType: MapType) => void;
 ```
 
 ```typescript
-import type { CameraChangeEvent, CameraChangeListener } from "jpmap-terrain";
+import type {
+  CameraChangeEvent,
+  CameraChangeListener,
+  MapType,
+  MapTypeChangeListener,
+} from "jpmap-terrain";
 ```
 
 ### 3.5 利用例

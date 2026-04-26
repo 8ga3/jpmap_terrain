@@ -18,6 +18,8 @@ import { showToast } from "./terrain/controlPanel";
 import {
     parseCameraStateFromUrl,
     createUrlUpdater,
+    parseMapTypeFromUrl,
+    updateMapTypeInUrl,
     type CameraUrlState,
 } from "./terrain/urlState";
 
@@ -135,12 +137,14 @@ const start = async (): Promise<void> => {
     const dateTime = resolveDateTime(location.search);
     const autoSunPosition = resolveAutoSunPosition(location.search);
     const showSunShadows = resolveShowSunShadows(location.search);
+    const mapType = parseMapTypeFromUrl(location.href);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
         ...(cameraState ?? {}),
         ...(dateTime !== undefined ? { dateTime } : {}),
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
         ...(showSunShadows !== undefined ? { showSunShadows } : {}),
+        ...(mapType !== null ? { mapType } : {}),
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 
@@ -155,6 +159,11 @@ const start = async (): Promise<void> => {
             tilt: event.tilt,
         }),
     );
+
+    // URL 同期: mapType 変化のたびに `?mapType=` を反映する (Issue #149)。
+    viewer.onMapTypeChange((next) => updateMapTypeInUrl(next));
+    // 起動完了直後に一度書き込み、`?mapType=Photo` のような大小混在の値を小文字に揃える。
+    updateMapTypeInUrl(viewer.mapType);
 
     // 開発/テストビルドでのみデバッグ用に内部状態を露出する。
     // （Playwright の `window.scene.isReady()` 等が依存しているため）

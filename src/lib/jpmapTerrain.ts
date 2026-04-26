@@ -23,6 +23,7 @@ import {
     JPMAP_TERRAIN_DEFAULTS,
     JpmapTerrainOptions,
     MapType,
+    MapTypeChangeListener,
     SUN_AUTO_UPDATE_INTERVAL_MS,
 } from "./types";
 
@@ -74,6 +75,8 @@ export class JpmapTerrain {
     private _cameraObserver: Observer<Scene> | null = null;
     /** 直近にリスナー通知した値のスナップショット（初回は null） */
     private _lastCameraSnapshot: CameraChangeEvent | null = null;
+    /** `onMapTypeChange` で登録されたリスナー一覧 (Issue #149) */
+    private _mapTypeListeners: MapTypeChangeListener[] = [];
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -161,6 +164,7 @@ export class JpmapTerrain {
                 azimuth: this._azimuth,
                 tilt: this._tilt,
                 mapType: this._mapType,
+                onMapTypeChange: (next) => this._handleMapTypeChange(next),
                 onReady: (controller) => {
                     this._controller = controller;
                     // T6: 初期表示状態を controller に反映する
@@ -461,6 +465,55 @@ export class JpmapTerrain {
         this._controller?.setMapType(value);
     }
 
+    /**
+     * `mapType` が変化した際に呼ばれるリスナーを登録する (Issue #149)。
+     *
+     * - `onCameraChange` と対称な API。
+     * - UI ボタン操作・`mapType` setter のいずれの経路でも、値が変化したフレームのみ通知する。
+     * - 同値再 set では通知しない。
+     * - 戻り値の関数で登録解除（複数回呼んでも安全）。
+     * - リスナーが throw しても他リスナーへ伝播し、`console.error` で握りつぶす。
+     * - `dispose()` 後の呼び出しは何もせず、no-op の unsubscribe を返す。
+     *
+     * @param listener `mapType` 変化を受け取るリスナー
+     * @returns 登録解除関数
+     */
+    public onMapTypeChange(listener: MapTypeChangeListener): () => void {
+        if (this._disposed) {
+            return () => {
+                /* no-op: viewer is already disposed */
+            };
+        }
+        this._mapTypeListeners.push(listener);
+        let removed = false;
+        return (): void => {
+            if (removed) return;
+            removed = true;
+            const idx = this._mapTypeListeners.indexOf(listener);
+            if (idx !== -1) {
+                this._mapTypeListeners.splice(idx, 1);
+            }
+        };
+    }
+
+    /**
+     * controller から伝播される `mapType` 変化を受け取り、
+     * 内部状態の更新と登録リスナーへの通知を行う (Issue #149)。
+     * controller 側で同値再 set はフィルタ済みのため、ここでは無条件に通知する。
+     */
+    private _handleMapTypeChange(next: MapType): void {
+        if (this._disposed) return;
+        this._mapType = next;
+        const listeners = this._mapTypeListeners.slice();
+        for (const listener of listeners) {
+            try {
+                listener(next);
+            } catch (err) {
+                console.error("[JpmapTerrain] onMapTypeChange listener threw:", err);
+            }
+        }
+    }
+
     // ---- 太陽位置 (spec §3.3.5 / Issue #35) ----
 
     /**
@@ -652,6 +705,7 @@ export class JpmapTerrain {
         this._cameraObserver = null;
         this._cameraListeners = [];
         this._lastCameraSnapshot = null;
+        this._mapTypeListeners = [];
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;
