@@ -97,10 +97,6 @@ const start = async (): Promise<void> => {
         const simulated = computeSimulatedDate(elapsedSec, timelapse);
         const nowMs = performance.now();
         // setter 連打を避けるため UPDATE_INTERVAL_MS 周期に間引く。
-        if (timelapse.paused) {
-            // pause のときは初期値で 1 度だけ反映済み。RAF は止める。
-            return;
-        }
         if (nowMs - lastApplied >= UPDATE_INTERVAL_MS) {
             viewer.dateTime = simulated;
             clockHandle?.update(simulated);
@@ -109,6 +105,8 @@ const start = async (): Promise<void> => {
         window.requestAnimationFrame(tick);
     };
 
+    // `timelapse` は URL クエリから 1 度だけパースした不変オブジェクトなので、
+    // `paused === true` の場合はそもそも RAF ループ自体を起動しない（時計は初期値で固定表示）。
     if (!timelapse.paused) {
         window.requestAnimationFrame(tick);
     }
