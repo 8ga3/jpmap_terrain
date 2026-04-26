@@ -227,7 +227,7 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/viewer@35.681236,139.767125,2000,0.00,45.00"
+                "/viewer/@35.681236,139.767125,2000,0.00,45.00"
             );
         });
 
@@ -245,13 +245,13 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/viewer@35.000000,139.000000,2000,0.00,45.00"
+                "/viewer/@35.000000,139.000000,2000,0.00,45.00"
             );
         });
 
         it("pathname に既に `@lat,lon` が含まれる場合は新しい値で置き換える (Issue #155)", () => {
             globalThis.location = {
-                pathname: "/timelapse@10.0,20.0,1000,0,30",
+                pathname: "/timelapse/@10.0,20.0,1000,0,30",
                 search: "?speed=60",
             } as unknown as Location;
             const updater = createUrlUpdater(200);
@@ -266,7 +266,7 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/timelapse@35.000000,139.000000,1500,90.00,60.00?speed=60"
+                "/timelapse/@35.000000,139.000000,1500,90.00,60.00?speed=60"
             );
         });
     });
@@ -284,8 +284,8 @@ describe("urlState", () => {
             expect(extractDemoPathPrefix("/viewer.html")).toBe("/viewer");
         });
 
-        it("`/timelapse@lat,lon,...` は `/timelapse` を返す", () => {
-            expect(extractDemoPathPrefix("/timelapse@35.0,139.0,1500,0,45")).toBe("/timelapse");
+        it("`/timelapse/@lat,lon,...` は `/timelapse` を返す", () => {
+            expect(extractDemoPathPrefix("/timelapse/@35.0,139.0,1500,0,45")).toBe("/timelapse");
         });
 
         it("`/viewer.html@lat,lon` も `.html` を剥がして `/viewer` を返す", () => {
