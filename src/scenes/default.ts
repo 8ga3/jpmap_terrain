@@ -338,46 +338,10 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualX = gridResidualX + newOffsetX - gridShiftX;
             gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
 
-            // Step 1: target.y を地形参照面 (=0) に正規化する (Issue #151)。
-            // 富士山頂で Ctrl+ドラッグ retarget により target.y が 3776m 等になった
-            // まま平地に移動すると、camera.position.y = target.y + radius*cos(beta)
-            // が地表から大きく乖離し、computeQuadtreeTiles の SSE 距離計算が破綻する。
-            // y 正規化はカメラのワールド位置を保つ再射影 (computePoseForNewTarget) で行い、
-            // 視覚ジャンプを抑止する。target.y がほぼ 0 のとき (通常のパン/ズーム時) は
-            // 不要な再射影を避け、ズーム時の意図しない視覚回転を防ぐ。
-            // ここでは target.x/z は現フレーム (グリッドスナップ前) のままにし、
-            // グリッドスナップ (Step 2) と座標フレームを分離する。
-            if (Math.abs(camera.target.y) > 1e-3) {
-                const { alpha, beta, radius } = camera;
-                const sinB = Math.sin(beta);
-                const cosB = Math.cos(beta);
-                const camPos = {
-                    x: camera.target.x + radius * sinB * Math.cos(alpha),
-                    y: camera.target.y + radius * cosB,
-                    z: camera.target.z + radius * sinB * Math.sin(alpha),
-                };
-                const newTarget = {
-                    x: camera.target.x,
-                    y: 0,
-                    z: camera.target.z,
-                };
-                const pose = computePoseForNewTarget(camPos, newTarget, alpha, {
-                    lowerBeta: camera.lowerBetaLimit ?? 0,
-                    upperBeta: camera.upperBetaLimit ?? Math.PI,
-                    lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
-                    upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
-                });
-                if (pose.action === "apply") {
-                    camera.target.copyFromFloats(newTarget.x, newTarget.y, newTarget.z);
-                    camera.alpha = pose.alpha;
-                    camera.beta = pose.beta;
-                    camera.radius = pose.radius;
-                }
-                // skip 時は target.y を保持（従来挙動と等価）
-            }
-
-            // Step 2: グリッド境界スナップ (x/z のみ更新)。
-            // currentLat/Lon の更新と組み合わせて、世界の見た目は不変。
+            // target.y は retarget で地形高さに設定されている場合があるため保持する
+            // （0 代入するとリリース時に上下ジャンプが発生する）。
+            // Issue #151 の SSE 破綻は tileManager.computeVisible 側で
+            // cameraPosition.y を absolute Y で渡すことで解消済み。
             camera.target.x = gridResidualX;
             camera.target.z = gridResidualZ;
 

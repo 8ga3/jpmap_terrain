@@ -616,14 +616,23 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     ): LodTileEntry[] | null => {
         if (!currentCenter) return [];
         const engine = scene.getEngine();
+        // x/z は baseCenter (= 現在の中心タイル) 原点ローカル座標系で渡す。
+        // target はパン残差で baseCenter 近傍に保たれているため target 相対で十分。
         const camRelX = camera.position.x - camera.target.x;
-        const camRelY = camera.position.y - camera.target.y;
         const camRelZ = camera.position.z - camera.target.z;
+        // y は世界座標の絶対値を渡す (Issue #151)。
+        // `distanceFootprintToPoint` は `|cameraPosition.y|` を地表からのカメラ高度として使い、
+        // AABB の高さ (0..maxElevation) と整合させて SSE 距離を算出する。
+        // target 相対 (camera.position.y - camera.target.y) で渡すと、Ctrl+ドラッグで
+        // target.y が高所 (例: 富士山頂 ~3776m) に張り付いた場合に実効高度が縮小し、
+        // SSE 分母が破綻して採用 zoom が狂う。target.y は視野方向に直結するため
+        // 正規化はせず、ここで absolute Y を渡すことで根本解決する。
+        const camAbsY = camera.position.y;
         // 非有限値が混入すると SSE 距離が NaN になり Quadtree 採用が破綻する。
         // null を返して呼び出し側で更新自体をスキップさせ、直前の可視集合を維持する。
         if (
             !Number.isFinite(camRelX) ||
-            !Number.isFinite(camRelY) ||
+            !Number.isFinite(camAbsY) ||
             !Number.isFinite(camRelZ) ||
             !Number.isFinite(camera.fov)
         ) {
@@ -637,7 +646,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             frustumPlanes,
             cameraPosition: {
                 x: camRelX,
-                y: camRelY,
+                y: camAbsY,
                 z: camRelZ,
             },
             verticalFov: camera.fov,
