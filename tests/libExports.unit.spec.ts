@@ -16,6 +16,8 @@ import { describe, it, expect } from "@jest/globals";
 
 import * as pkg from "../src/lib";
 import type {
+    CameraChangeEvent,
+    CameraChangeListener,
     EngineType,
     FlyToOptions,
     JpmapTerrainOptions,
@@ -40,5 +42,21 @@ describe("package entry exports (T8)", () => {
         expect(map).toBe("standard");
         expect(opts.engine).toBe("webgpu");
         expect(fly.lat).toBe(0);
+    });
+
+    it("CameraChangeEvent / CameraChangeListener 型が import できる（typecheck）", () => {
+        const event: CameraChangeEvent = {
+            lat: 35.681236,
+            lon: 139.767125,
+            altitude: 2000,
+            azimuth: 0,
+            tilt: 45,
+        };
+        let received: CameraChangeEvent | null = null;
+        const listener: CameraChangeListener = (e) => {
+            received = e;
+        };
+        listener(event);
+        expect(received).toEqual(event);
     });
 });
