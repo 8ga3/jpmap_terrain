@@ -42,6 +42,21 @@ for (const target of targets) {
         expect(box!.width).toBeGreaterThan(0);
         expect(box!.height).toBeGreaterThan(0);
 
+        // シーン起動完了を待つ（`src/demos/{viewer,timelapse}/index.ts` で
+        // NODE_ENV!=='production' 時に `window.scene` を公開している）。
+        // `failedJsResponses` を判定する前に、遅延チャンクや初期タイル取得が
+        // 出揃うまで待機することでレースを防ぐ (Issue #157 PR レビュー対応)。
+        await page.waitForFunction(
+            () => {
+                const w = window as unknown as {
+                    scene?: { isReady: () => boolean };
+                };
+                return !!w.scene && w.scene.isReady();
+            },
+            { timeout: 30000 },
+        );
+        await page.waitForLoadState("networkidle", { timeout: 30000 });
+
         expect(failedJsResponses).toEqual([]);
     });
 }
