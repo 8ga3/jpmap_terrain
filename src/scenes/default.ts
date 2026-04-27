@@ -638,10 +638,12 @@ export class DefaultScene implements CreateSceneClass {
                     // (a) terrainMinRadius() … 直下レイキャスト + 標高キャッシュ
                     // (b) dragPlaneY ベース … ドラッグ中のピック点標高は確実な既知値なので、
                     //     直下タイル未ロードで (a) が下限 50 を返すケースを補完 (Issue #151)。
+                    //     ただしピック点がカメラより高い場合（カメラが見上げる山頂など）は
+                    //     直下のコリジョンには関与しないため適用しない。
                     const cosB = Math.cos(camera.beta);
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
                     let minR = terrainMinRadius();
-                    if (cosB > 1e-6) {
+                    if (cosB > 1e-6 && dragPlaneY <= cameraY) {
                         const requiredFromPick = (dragPlaneY + CAMERA_LOWER_RADIUS - camera.target.y) / cosB;
                         if (Number.isFinite(requiredFromPick) && requiredFromPick > minR) {
                             minR = requiredFromPick;
