@@ -621,24 +621,36 @@ export class DefaultScene implements CreateSceneClass {
                 //   操作感が反転して見えるため (Issue #151)。
                 // - カメラ高度に極めて近いピック点（水平線付近）はレイ交点が遠方に
                 //   発散し操作感が破綻するため、パンをスキップする。
+                // ドラッグ開始時のピック高度 (dragPlaneY) の水平面でパン。
+                // - カメラより下のピック点（通常の地形）: ピック地点を掴む方向 (anchor - current)
+                // - カメラより上のピック点（高所メッシュ）: 視点を押し動かす方向 (current - anchor)
+                //   水平より上ではレイ方向と平面が浅い角度で交わり、掴む方向だと
+                //   操作感が反転して見えるため (Issue #151)。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
                     const cameraY = camera.target.y + camera.radius * Math.cos(camera.beta);
-                    const horizonBand = Math.max(50, camera.radius * 0.02);
-                    if (Math.abs(dragPlaneY - cameraY) >= horizonBand) {
-                        const inverted = dragPlaneY > cameraY;
-                        const sign = inverted ? 1 : -1;
-                        camera.target.x += sign * (current.x - dragAnchor.x);
-                        camera.target.z += sign * (current.z - dragAnchor.z);
-                        // パン後の新ターゲット直下の地形に対し radius が不足する場合は
-                        // 地形を突き抜けないよう下限まで自動ズームアウト (Issue #151)。
-                        const minR = terrainMinRadius();
-                        const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-                        if (camera.radius < minR) {
-                            camera.radius = Math.min(minR, upper);
+                    const inverted = dragPlaneY > cameraY;
+                    const sign = inverted ? 1 : -1;
+                    camera.target.x += sign * (current.x - dragAnchor.x);
+                    camera.target.z += sign * (current.z - dragAnchor.z);
+
+                    // パン後にカメラがメッシュを突き抜けないよう radius を下限まで持ち上げる。
+                    // (a) terrainMinRadius() … 直下レイキャスト + 標高キャッシュ
+                    // (b) dragPlaneY ベース … ドラッグ中のピック点標高は確実な既知値なので、
+                    //     直下タイル未ロードで (a) が下限 50 を返すケースを補完 (Issue #151)。
+                    const cosB = Math.cos(camera.beta);
+                    const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                    let minR = terrainMinRadius();
+                    if (cosB > 1e-6) {
+                        const requiredFromPick = (dragPlaneY + CAMERA_LOWER_RADIUS - camera.target.y) / cosB;
+                        if (Number.isFinite(requiredFromPick) && requiredFromPick > minR) {
+                            minR = requiredFromPick;
                         }
-                        dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                     }
+                    if (camera.radius < minR) {
+                        camera.radius = Math.min(minR, upper);
+                    }
+                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                 }
             }
             lastPointerX = e.clientX;
