@@ -619,14 +619,19 @@ export class DefaultScene implements CreateSceneClass {
                 // - カメラより上のピック点（高所メッシュ）: 視点を押し動かす方向 (current - anchor)
                 //   水平より上ではレイ方向と平面が浅い角度で交わり、掴む方向だと
                 //   操作感が反転して見えるため (Issue #151)。
+                // - カメラ高度に極めて近いピック点（水平線付近）はレイ交点が遠方に
+                //   発散し操作感が破綻するため、パンをスキップする。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
                     const cameraY = camera.target.y + camera.radius * Math.cos(camera.beta);
-                    const inverted = dragPlaneY > cameraY;
-                    const sign = inverted ? 1 : -1;
-                    camera.target.x += sign * (current.x - dragAnchor.x);
-                    camera.target.z += sign * (current.z - dragAnchor.z);
-                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                    const horizonBand = Math.max(50, camera.radius * 0.02);
+                    if (Math.abs(dragPlaneY - cameraY) >= horizonBand) {
+                        const inverted = dragPlaneY > cameraY;
+                        const sign = inverted ? 1 : -1;
+                        camera.target.x += sign * (current.x - dragAnchor.x);
+                        camera.target.z += sign * (current.z - dragAnchor.z);
+                        dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                    }
                 }
             }
             lastPointerX = e.clientX;
