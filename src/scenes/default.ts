@@ -615,13 +615,12 @@ export class DefaultScene implements CreateSceneClass {
                 const sy = e.clientY - rect.top;
 
                 // ドラッグ開始時のピック高度 (dragPlaneY) の水平面で、
-                // カーソル直下のワールド座標が常に dragAnchor に重なるよう
-                // target.x/z を更新する。再ピック方式は水平より上の高所で
-                // ピック先が大きく飛ぶ問題があるため使わない (Issue #151)。
+                // カーソルの動きに合わせて視点（target）を同方向に動かす。
+                // ピック地点を「掴む」のではなく、視点を押し動かす操作感（Issue #151）。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
-                    camera.target.x += dragAnchor.x - current.x;
-                    camera.target.z += dragAnchor.z - current.z;
+                    camera.target.x += current.x - dragAnchor.x;
+                    camera.target.z += current.z - dragAnchor.z;
                     dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                 }
             }
