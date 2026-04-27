@@ -630,6 +630,13 @@ export class DefaultScene implements CreateSceneClass {
                         const sign = inverted ? 1 : -1;
                         camera.target.x += sign * (current.x - dragAnchor.x);
                         camera.target.z += sign * (current.z - dragAnchor.z);
+                        // パン後の新ターゲット直下の地形に対し radius が不足する場合は
+                        // 地形を突き抜けないよう下限まで自動ズームアウト (Issue #151)。
+                        const minR = terrainMinRadius();
+                        const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                        if (camera.radius < minR) {
+                            camera.radius = Math.min(minR, upper);
+                        }
                         dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                     }
                 }
