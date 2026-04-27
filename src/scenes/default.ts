@@ -527,6 +527,9 @@ export class DefaultScene implements CreateSceneClass {
 
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
             if (e.button !== 0) return;
+            // 直前操作で pointerup が取りこぼされ target.y が残留しているケースに備え、
+            // 新規ポインタ操作の冒頭で必ず target.y=0 を回復する (Issue #151)。
+            restoreTargetYZero();
             pointerDown = true;
             lastPointerX = e.clientX;
             lastPointerY = e.clientY;
