@@ -562,12 +562,16 @@ export class DefaultScene implements CreateSceneClass {
             }
 
             const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
-            if (pick?.hit && pick.pickedPoint) {
-                // メッシュピックヒット時: ピック点の高度の水平面をドラッグ平面に採用。
-                // この水平面上でカーソル直下が常にピック地点に重なるよう pan する。
+            // ドラッグ平面の決定:
+            // - メッシュピック点がカメラより低ければ、その高度の水平面を採用
+            //   （ピック地点をカーソル直下に保つ自然な grab UX）。
+            // - ピック点がカメラより高い、または空ピック時は y=0 を採用。
+            //   高所ピック面はレイとの交点が遠方に発散しステップ量・回転中心が
+            //   破綻するため (Issue #151)。
+            const cameraYAtDown = camera.target.y + camera.radius * Math.cos(camera.beta);
+            if (pick?.hit && pick.pickedPoint && pick.pickedPoint.y < cameraYAtDown) {
                 dragPlaneY = pick.pickedPoint.y;
             } else {
-                // 空ピック時: target.y=0 不変条件のため dragPlaneY = 0 固定。
                 dragPlaneY = 0;
             }
             dragAnchor = intersectPlane(sx, sy, dragPlaneY);
@@ -621,41 +625,22 @@ export class DefaultScene implements CreateSceneClass {
                 //   操作感が反転して見えるため (Issue #151)。
                 // - カメラ高度に極めて近いピック点（水平線付近）はレイ交点が遠方に
                 //   発散し操作感が破綻するため、パンをスキップする。
-                // ドラッグ開始時のピック高度 (dragPlaneY) の水平面でパン。
-                // パン量はカメラの forward / right 軸で分解する:
-                //   - right (左右): 常に grab 方向 (符号 -1)
-                //   - forward (前後): 通常は grab、ただしカメラより高いピック面 (見上げる
-                //     山の斜面など) ではレイ-平面交点の進む向きが逆転するため反転 (Issue #151)。
+                // ドラッグ開始時に決定した水平面 (dragPlaneY) でカーソル直下を
+                // アンカーする標準的な grab パン。dragPlaneY は必ず cameraY 未満
+                // （pointerdown で保証）なのでレイ-平面交点は安定する (Issue #151)。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
-                    const cameraY = camera.target.y + camera.radius * Math.cos(camera.beta);
-                    const dx = current.x - dragAnchor.x;
-                    const dz = current.z - dragAnchor.z;
-                    // カメラから target を見る水平方向（forward）と、画面右に対応する right 軸
-                    // ArcRotateCamera: camPos = target + r·(sinβ·cosα, cosβ, sinβ·sinα)
-                    // → forward (target方向の水平成分, 単位) = (-cosα, 0, -sinα)
-                    const fx = -Math.cos(camera.alpha);
-                    const fz = -Math.sin(camera.alpha);
-                    // right = forward × world_up（Babylon 左手系想定）
-                    const rx = fz;
-                    const rz = -fx;
-                    const fComp = dx * fx + dz * fz;
-                    const rComp = dx * rx + dz * rz;
-                    const fSign = dragPlaneY > cameraY ? +1 : -1;
-                    const rSign = -1;
-                    camera.target.x += fSign * fComp * fx + rSign * rComp * rx;
-                    camera.target.z += fSign * fComp * fz + rSign * rComp * rz;
+                    camera.target.x += dragAnchor.x - current.x;
+                    camera.target.z += dragAnchor.z - current.z;
 
                     // パン後にカメラがメッシュを突き抜けないよう radius を下限まで持ち上げる。
                     // (a) terrainMinRadius() … 直下レイキャスト + 標高キャッシュ
                     // (b) dragPlaneY ベース … ドラッグ中のピック点標高は確実な既知値なので、
-                    //     直下タイル未ロードで (a) が下限 50 を返すケースを補完 (Issue #151)。
-                    //     ただしピック点がカメラより高い場合（カメラが見上げる山頂など）は
-                    //     直下のコリジョンには関与しないため適用しない。
+                    //     直下タイル未ロードで (a) が下限 50 を返すケースを補完。
                     const cosB = Math.cos(camera.beta);
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
                     let minR = terrainMinRadius();
-                    if (cosB > 1e-6 && dragPlaneY <= cameraY) {
+                    if (cosB > 1e-6) {
                         const requiredFromPick = (dragPlaneY + CAMERA_LOWER_RADIUS - camera.target.y) / cosB;
                         if (Number.isFinite(requiredFromPick) && requiredFromPick > minR) {
                             minR = requiredFromPick;
