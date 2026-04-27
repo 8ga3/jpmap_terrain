@@ -643,6 +643,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
+            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         });
 
         const resetPointerState = (): void => {
@@ -651,6 +652,7 @@ export class DefaultScene implements CreateSceneClass {
             dragAnchor = null;
             dragMeshMode = false;
             commitPanOffset();
+            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         };
 
         canvas.addEventListener("pointercancel", resetPointerState);
@@ -791,8 +793,9 @@ export class DefaultScene implements CreateSceneClass {
                         // radius factor 分だけカメラ高度のみ変化
                         const newRadius = clamp(camera.radius * factor, effectiveLower2, upper);
                         const newCamY = camera.target.y + newRadius * cosB;
-                        commitPanOffset();
                         // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
+                        retargetAtCameraPosition(camX, newCamY, camZ);
+                        commitPanOffset();
                         retargetAtCameraPosition(camX, newCamY, camZ);
                     } else {
                         // Phase 1: ターゲットに向かってズーム
@@ -878,6 +881,7 @@ export class DefaultScene implements CreateSceneClass {
                 camera.target.x = centerHit.worldX;
                 camera.target.z = centerHit.worldZ;
                 commitPanOffset();
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
