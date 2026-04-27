@@ -652,11 +652,42 @@ export class DefaultScene implements CreateSceneClass {
 
         /**
          * Ctrl+drag 中に target.y を山頂などの実標高に置いた場合、リリース時に
-         * カメラのワールド位置を保ったまま target.y=0 へ戻して不変条件を回復する。
+         * target.y=0 へ戻す。alpha/beta は維持し、現在のカメラワールド位置から
+         * 視線方向 (alpha,beta) のレイと y=0 平面の交点を新 target にすることで
+         * カメラ姿勢を完全に保ったまま不変条件を回復する。
          */
         const restoreTargetYZero = (): void => {
             if (Math.abs(camera.target.y) < 1e-3) return;
-            retargetPreservingPose({ x: camera.target.x, y: 0, z: camera.target.z });
+            const { alpha, beta } = camera;
+            const sinB = Math.sin(beta);
+            const cosB = Math.cos(beta);
+            // カメラのワールド位置
+            const camX = camera.target.x + camera.radius * sinB * Math.cos(alpha);
+            const camY = camera.target.y + camera.radius * cosB;
+            const camZ = camera.target.z + camera.radius * sinB * Math.sin(alpha);
+            // ターゲット方向の単位ベクトル: (camera -> target) = -(sinβcosα, cosβ, sinβsinα)
+            const dirX = -sinB * Math.cos(alpha);
+            const dirY = -cosB;
+            const dirZ = -sinB * Math.sin(alpha);
+            if (Math.abs(dirY) < 1e-6) {
+                // 真横を向いているとき y=0 と交わらないので諦めて y のみリセット
+                camera.target.y = 0;
+                return;
+            }
+            // y=0 平面までの距離 t: camY + t*dirY = 0
+            const t = -camY / dirY;
+            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            // t が radius 範囲外、または逆向き（t<0）なら姿勢を崩さない緊急回避として
+            // y のみリセット（厳密には小ジャンプするが多くは Ctrl+drag 中の極端な姿勢のみ）。
+            if (!Number.isFinite(t) || t < lower || t > upper) {
+                camera.target.y = 0;
+                return;
+            }
+            camera.target.x = camX + t * dirX;
+            camera.target.y = 0;
+            camera.target.z = camZ + t * dirZ;
+            camera.radius = t;
         };
 
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
