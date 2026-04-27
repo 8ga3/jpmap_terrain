@@ -492,6 +492,10 @@ export class DefaultScene implements CreateSceneClass {
         let activePointerId = -1;
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
+        // ピクセルベース pan モード: カメラより高いピック点・空ピック時、
+        // レイ-平面交点が遠方で発散しステップ量が狂うため、
+        // カーソルピクセル量×radius 係数で forward/right に pan する (Issue #151)。
+        let dragPixelMode = false;
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
@@ -562,19 +566,20 @@ export class DefaultScene implements CreateSceneClass {
             }
 
             const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
-            // ドラッグ平面の決定:
-            // - メッシュピック点がカメラより低ければ、その高度の水平面を採用
-            //   （ピック地点をカーソル直下に保つ自然な grab UX）。
-            // - ピック点がカメラより高い、または空ピック時は y=0 を採用。
-            //   高所ピック面はレイとの交点が遠方に発散しステップ量・回転中心が
-            //   破綻するため (Issue #151)。
+            // ドラッグモードの決定 (Issue #151):
+            // - ピック点がカメラより低い: y=pickedY 平面での grab パン。
+            // - カメラより高い / 空ピック: レイ交点が遠方発散するため
+            //   ピクセルベース pan に切り替える。
             const cameraYAtDown = camera.target.y + camera.radius * Math.cos(camera.beta);
             if (pick?.hit && pick.pickedPoint && pick.pickedPoint.y < cameraYAtDown) {
+                dragPixelMode = false;
                 dragPlaneY = pick.pickedPoint.y;
+                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             } else {
+                dragPixelMode = true;
                 dragPlaneY = 0;
+                dragAnchor = null;
             }
-            dragAnchor = intersectPlane(sx, sy, dragPlaneY);
         });
 
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
@@ -613,18 +618,34 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = radiusBeforeTilt;
                     }
                 }
+            } else if (dragPixelMode) {
+                // ピクセルベース pan: カメラより高いピック点・空ピック時の救済 (Issue #151)。
+                // レイ-平面交点は遠方発散するため、カーソルピクセル変位 × radius 係数で
+                // forward/right に直接 target を動かす。
+                const dx = e.clientX - lastPointerX;
+                const dy = e.clientY - lastPointerY;
+                const scale = camera.radius / Math.max(canvas.clientWidth, 1);
+                // forward (target 方向の水平成分): (-cosα, 0, -sinα)
+                const fx = -Math.cos(camera.alpha);
+                const fz = -Math.sin(camera.alpha);
+                // right = forward × world_up (Babylon 左手系)
+                const rx = fz;
+                const rz = -fx;
+                // 画面上方向ドラッグ (dy<0) で前進、画面右ドラッグ (dx>0) で右移動
+                const fAmt = -dy * scale;
+                const rAmt = dx * scale;
+                camera.target.x += fAmt * fx + rAmt * rx;
+                camera.target.z += fAmt * fz + rAmt * rz;
+                const minR = terrainMinRadius();
+                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                if (camera.radius < minR) {
+                    camera.radius = Math.min(minR, upper);
+                }
             } else if (dragAnchor) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
 
-                // ドラッグ開始時のピック高度 (dragPlaneY) の水平面でパン。
-                // - カメラより下のピック点（通常の地形）: ピック地点を掴む方向 (anchor - current)
-                // - カメラより上のピック点（高所メッシュ）: 視点を押し動かす方向 (current - anchor)
-                //   水平より上ではレイ方向と平面が浅い角度で交わり、掴む方向だと
-                //   操作感が反転して見えるため (Issue #151)。
-                // - カメラ高度に極めて近いピック点（水平線付近）はレイ交点が遠方に
-                //   発散し操作感が破綻するため、パンをスキップする。
                 // ドラッグ開始時に決定した水平面 (dragPlaneY) でカーソル直下を
                 // アンカーする標準的な grab パン。dragPlaneY は必ず cameraY 未満
                 // （pointerdown で保証）なのでレイ-平面交点は安定する (Issue #151)。
@@ -667,6 +688,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
+            dragPixelMode = false;
             commitPanOffset();
         };
 
