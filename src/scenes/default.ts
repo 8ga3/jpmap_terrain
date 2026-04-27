@@ -20,6 +20,7 @@ import { createSkybox } from "../terrain/skybox";
 import { computeSunPosition } from "../terrain/sunPosition";
 import { deriveSunState } from "../terrain/sunState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
+import { computePoseForNewTarget } from "../terrain/cameraRetarget";
 
 import { createUiVisibilityController } from "../terrain/uiVisibility";
 import { SUN_FALLBACK_DATETIME_ISO } from "../lib/types";
@@ -493,6 +494,37 @@ export class DefaultScene implements CreateSceneClass {
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
 
+        /**
+         * ターゲットを付け替えカメラのワールド位置を保つよう alpha/beta/radius を再計算。
+         * limit 逸脱や退化ケースで apply されないときは false を返す。
+         */
+        const retargetPreservingPose = (newTarget: {
+            x: number;
+            y: number;
+            z: number;
+        }): boolean => {
+            const { alpha, beta, radius } = camera;
+            const sinB = Math.sin(beta);
+            const cosB = Math.cos(beta);
+            const camPos = {
+                x: camera.target.x + radius * sinB * Math.cos(alpha),
+                y: camera.target.y + radius * cosB,
+                z: camera.target.z + radius * sinB * Math.sin(alpha),
+            };
+            const result = computePoseForNewTarget(camPos, newTarget, alpha, {
+                lowerBeta: camera.lowerBetaLimit ?? 0,
+                upperBeta: camera.upperBetaLimit ?? Math.PI,
+                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
+                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
+            });
+            if (result.action !== "apply") return false;
+            camera.target.copyFromFloats(newTarget.x, newTarget.y, newTarget.z);
+            camera.alpha = result.alpha;
+            camera.beta = result.beta;
+            camera.radius = result.radius;
+            return true;
+        };
+
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -507,12 +539,21 @@ export class DefaultScene implements CreateSceneClass {
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
 
-            // Ctrl/Cmd 押下開始時: 旧版では画面中央の地点へ retargetPreservingPose で
-            // 付け替えていたが、apply 後に limit クランプ・浮動小数誤差で
-            // 視覚ジャンプが残るため撤廃 (Issue #151)。target.y=0 不変条件下では
-            // 既存 target が常に画面中央付近の y=0 平面上にあり、回転中心として十分。
+            // Ctrl/Cmd 押下開始時: 画面中央でヒットしたメッシュ点（例: 富士山山頂）を
+            // 回転中心にするため target をその点に付け替える (Issue #151)。
+            // target.y はヒットした高度を採用し、リリース時に y=0 にポーズ保持で戻す。
             if (e.ctrlKey || e.metaKey) {
                 commitPanOffset();
+                const cx = canvas.clientWidth / 2;
+                const cy = canvas.clientHeight / 2;
+                const centerPick = scene.pick(cx, cy, (m) => m.name.startsWith("tile-ground-"));
+                if (centerPick?.hit && centerPick.pickedPoint) {
+                    const p = centerPick.pickedPoint;
+                    if (retargetPreservingPose({ x: p.x, y: p.y, z: p.z })) {
+                        gridResidualX = camera.target.x;
+                        gridResidualZ = camera.target.z;
+                    }
+                }
             }
 
             // 通常ドラッグの可否判定 (Issue #151 仕様再定義):
@@ -609,10 +650,20 @@ export class DefaultScene implements CreateSceneClass {
             lastPointerY = e.clientY;
         });
 
+        /**
+         * Ctrl+drag 中に target.y を山頂などの実標高に置いた場合、リリース時に
+         * カメラのワールド位置を保ったまま target.y=0 へ戻して不変条件を回復する。
+         */
+        const restoreTargetYZero = (): void => {
+            if (Math.abs(camera.target.y) < 1e-3) return;
+            retargetPreservingPose({ x: camera.target.x, y: 0, z: camera.target.z });
+        };
+
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
             if (e.pointerId !== activePointerId) return;
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
+            restoreTargetYZero();
             commitPanOffset();
         });
 
@@ -620,6 +671,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
+            restoreTargetYZero();
             commitPanOffset();
         };
 
