@@ -299,55 +299,91 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
+        /**
+         * target.y を target.x/z 位置の地表高度に追従させる (Issue #151)。
+         * target.y が地表高度から乖離していると terrainMinRadius() のズーム下限計算
+         * `(terrainY + 50 - target.y) / cos(beta)` が破綻し、地面に近づけない／
+         * 数百 m の位置ずれが累積する。カメラのワールド位置を保ったまま target.y のみ
+         * 更新するため、target.x/z は不変で currentLat/Lon・gridResidual の整合も崩れない。
+         */
+        const syncTargetYToTerrain = (): void => {
+            const elev = tileManager.queryElevationAtWorld(camera.target.x, camera.target.z);
+            if (elev === null || !Number.isFinite(elev)) return;
+            if (Math.abs(elev - camera.target.y) <= 0.01) return;
+            const a = camera.alpha;
+            const b = camera.beta;
+            const r = camera.radius;
+            const sB = Math.sin(b);
+            const cB = Math.cos(b);
+            const camPos = {
+                x: camera.target.x + r * sB * Math.cos(a),
+                y: camera.target.y + r * cB,
+                z: camera.target.z + r * sB * Math.sin(a),
+            };
+            const newTarget = { x: camera.target.x, y: elev, z: camera.target.z };
+            const pose = computePoseForNewTarget(camPos, newTarget, a, {
+                lowerBeta: camera.lowerBetaLimit ?? 0,
+                upperBeta: camera.upperBetaLimit ?? Math.PI,
+                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
+                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
+            });
+            if (pose.action === "apply") {
+                camera.target.y = elev;
+                camera.alpha = pose.alpha;
+                camera.beta = pose.beta;
+                camera.radius = pose.radius;
+            }
+        };
+
         const commitPanOffset = (): void => {
             const tx = camera.target.x;
             const tz = camera.target.z;
-            if (tx === 0 && tz === 0) return;
-
             // 新規オフセット = 全体 - 既知のグリッド残差
             const newOffsetX = tx - gridResidualX;
             const newOffsetZ = tz - gridResidualZ;
-            if (Math.abs(newOffsetX) < 0.01 && Math.abs(newOffsetZ) < 0.01) {
-                return;
+            const hasPan =
+                Math.abs(newOffsetX) >= 0.01 || Math.abs(newOffsetZ) >= 0.01;
+
+            if (hasPan) {
+                const oldLat = currentLat;
+                const oldLon = currentLon;
+                const metersPerDegreeLon =
+                    METERS_PER_DEGREE_LAT *
+                    Math.cos((oldLat * Math.PI) / 180);
+
+                const newLat = clamp(
+                    oldLat + newOffsetZ / METERS_PER_DEGREE_LAT,
+                    JAPAN_BOUNDS.minLat,
+                    JAPAN_BOUNDS.maxLat
+                );
+                const newLon = clamp(
+                    oldLon + newOffsetX / metersPerDegreeLon,
+                    JAPAN_BOUNDS.minLon,
+                    JAPAN_BOUNDS.maxLon
+                );
+
+                const oldTile = toTileXY(oldLat, oldLon, MAX_ZOOM);
+                const newTile = toTileXY(newLat, newLon, MAX_ZOOM);
+                const tileSize = tileEdgeMeters(newLat, MAX_ZOOM);
+                const gridShiftX = (newTile.x - oldTile.x) * tileSize;
+                const gridShiftZ = -((newTile.y - oldTile.y) * tileSize);
+
+                // 残差更新: 旧残差 + 新規オフセット - グリッドシフト
+                gridResidualX = gridResidualX + newOffsetX - gridShiftX;
+                gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
+
+                // target.x/z をグリッド残差に同期。target.y は保持。
+                camera.target.x = gridResidualX;
+                camera.target.z = gridResidualZ;
+
+                currentLat = newLat;
+                currentLon = newLon;
+                void refreshTerrain();
             }
 
-            const oldLat = currentLat;
-            const oldLon = currentLon;
-            const metersPerDegreeLon =
-                METERS_PER_DEGREE_LAT *
-                Math.cos((oldLat * Math.PI) / 180);
-
-            const newLat = clamp(
-                oldLat + newOffsetZ / METERS_PER_DEGREE_LAT,
-                JAPAN_BOUNDS.minLat,
-                JAPAN_BOUNDS.maxLat
-            );
-            const newLon = clamp(
-                oldLon + newOffsetX / metersPerDegreeLon,
-                JAPAN_BOUNDS.minLon,
-                JAPAN_BOUNDS.maxLon
-            );
-
-            const oldTile = toTileXY(oldLat, oldLon, MAX_ZOOM);
-            const newTile = toTileXY(newLat, newLon, MAX_ZOOM);
-            const tileSize = tileEdgeMeters(newLat, MAX_ZOOM);
-            const gridShiftX = (newTile.x - oldTile.x) * tileSize;
-            const gridShiftZ = -((newTile.y - oldTile.y) * tileSize);
-
-            // 残差更新: 旧残差 + 新規オフセット - グリッドシフト
-            gridResidualX = gridResidualX + newOffsetX - gridShiftX;
-            gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
-
-            // target.y は retarget で地形高さに設定されている場合があるため保持する
-            // （0 代入するとリリース時に上下ジャンプが発生する）。
-            // Issue #151 の SSE 破綻は tileManager.computeVisible 側で
-            // cameraPosition.y を absolute Y で渡すことで解消済み。
-            camera.target.x = gridResidualX;
-            camera.target.z = gridResidualZ;
-
-            currentLat = newLat;
-            currentLon = newLon;
-            void refreshTerrain();
+            // パン有無に関わらず、target.y を地表追従させる（Ctrl+drag retarget 直後など、
+            // パン残差なしでズームのみ行ったケースでも target.y のドリフトを防ぐ）。
+            syncTargetYToTerrain();
         };
 
         // ---------- レイ-平面交差ユーティリティ ----------
@@ -824,6 +860,8 @@ export class DefaultScene implements CreateSceneClass {
                         const next = clamp(camera.radius * factor, effectiveLower1, upper);
                         if (!Number.isFinite(next)) return;
                         camera.radius = next;
+                        // Phase 1 でも target.y 追従を走らせる (Issue #151)
+                        commitPanOffset();
                     }
                 }
             },
