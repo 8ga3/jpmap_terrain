@@ -622,17 +622,29 @@ export class DefaultScene implements CreateSceneClass {
                 // - カメラ高度に極めて近いピック点（水平線付近）はレイ交点が遠方に
                 //   発散し操作感が破綻するため、パンをスキップする。
                 // ドラッグ開始時のピック高度 (dragPlaneY) の水平面でパン。
-                // - カメラより下のピック点（通常の地形）: ピック地点を掴む方向 (anchor - current)
-                // - カメラより上のピック点（高所メッシュ）: 視点を押し動かす方向 (current - anchor)
-                //   水平より上ではレイ方向と平面が浅い角度で交わり、掴む方向だと
-                //   操作感が反転して見えるため (Issue #151)。
+                // パン量はカメラの forward / right 軸で分解する:
+                //   - right (左右): 常に grab 方向 (符号 -1)
+                //   - forward (前後): 通常は grab、ただしカメラより高いピック面 (見上げる
+                //     山の斜面など) ではレイ-平面交点の進む向きが逆転するため反転 (Issue #151)。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
                     const cameraY = camera.target.y + camera.radius * Math.cos(camera.beta);
-                    const inverted = dragPlaneY > cameraY;
-                    const sign = inverted ? 1 : -1;
-                    camera.target.x += sign * (current.x - dragAnchor.x);
-                    camera.target.z += sign * (current.z - dragAnchor.z);
+                    const dx = current.x - dragAnchor.x;
+                    const dz = current.z - dragAnchor.z;
+                    // カメラから target を見る水平方向（forward）と、画面右に対応する right 軸
+                    // ArcRotateCamera: camPos = target + r·(sinβ·cosα, cosβ, sinβ·sinα)
+                    // → forward (target方向の水平成分, 単位) = (-cosα, 0, -sinα)
+                    const fx = -Math.cos(camera.alpha);
+                    const fz = -Math.sin(camera.alpha);
+                    // right = forward × world_up（Babylon 左手系想定）
+                    const rx = fz;
+                    const rz = -fx;
+                    const fComp = dx * fx + dz * fz;
+                    const rComp = dx * rx + dz * rz;
+                    const fSign = dragPlaneY > cameraY ? +1 : -1;
+                    const rSign = -1;
+                    camera.target.x += fSign * fComp * fx + rSign * rComp * rx;
+                    camera.target.z += fSign * fComp * fz + rSign * rComp * rz;
 
                     // パン後にカメラがメッシュを突き抜けないよう radius を下限まで持ち上げる。
                     // (a) terrainMinRadius() … 直下レイキャスト + 標高キャッシュ
