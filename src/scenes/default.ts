@@ -20,7 +20,7 @@ import { createSkybox } from "../terrain/skybox";
 import { computeSunPosition } from "../terrain/sunPosition";
 import { deriveSunState } from "../terrain/sunState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
-import { computePoseForNewTarget } from "../terrain/cameraRetarget";
+
 import { createUiVisibilityController } from "../terrain/uiVisibility";
 import { SUN_FALLBACK_DATETIME_ISO } from "../lib/types";
 
@@ -493,40 +493,6 @@ export class DefaultScene implements CreateSceneClass {
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
 
-        /**
-         * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
-         * `computePoseForNewTarget` が limit 逸脱や退化ケースなどで `apply` を返せない場合は何もせず、
-         * 既存 target を維持する。なお、sin(beta)≈0 の特異点近傍では alpha を一意に再計算できなくても、
-         * current alpha を保持したまま `apply` される場合がある。
-         * @returns 付け替えを適用したら true
-         */
-        const retargetPreservingPose = (newTarget: {
-            x: number;
-            y: number;
-            z: number;
-        }): boolean => {
-            const { alpha, beta, radius } = camera;
-            const sinB = Math.sin(beta);
-            const cosB = Math.cos(beta);
-            const camPos = {
-                x: camera.target.x + radius * sinB * Math.cos(alpha),
-                y: camera.target.y + radius * cosB,
-                z: camera.target.z + radius * sinB * Math.sin(alpha),
-            };
-            const result = computePoseForNewTarget(camPos, newTarget, alpha, {
-                lowerBeta: camera.lowerBetaLimit ?? 0,
-                upperBeta: camera.upperBetaLimit ?? Math.PI,
-                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
-                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
-            });
-            if (result.action !== "apply") return false;
-            camera.target.copyFromFloats(newTarget.x, newTarget.y, newTarget.z);
-            camera.alpha = result.alpha;
-            camera.beta = result.beta;
-            camera.radius = result.radius;
-            return true;
-        };
-
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -541,34 +507,12 @@ export class DefaultScene implements CreateSceneClass {
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
 
-            // Ctrl/Cmd 押下開始時: 回転中心を画面中央のピック点に再射影する (Issue #151)。
-            // - 画面中央でメッシュにヒットすればその xz を採用
-            // - ヒットしなければ y=0 平面交点 (空ピック相当) を採用
-            // target.y は 0 不変条件のため常に 0 で再射影。
-            // computePoseForNewTarget でカメラのワールド位置を保つので視覚ジャンプはしない。
+            // Ctrl/Cmd 押下開始時: 旧版では画面中央の地点へ retargetPreservingPose で
+            // 付け替えていたが、apply 後に limit クランプ・浮動小数誤差で
+            // 視覚ジャンプが残るため撤廃 (Issue #151)。target.y=0 不変条件下では
+            // 既存 target が常に画面中央付近の y=0 平面上にあり、回転中心として十分。
             if (e.ctrlKey || e.metaKey) {
                 commitPanOffset();
-                const cx = canvas.clientWidth / 2;
-                const cy = canvas.clientHeight / 2;
-                const centerPick = scene.pick(cx, cy, (m) => m.name.startsWith("tile-ground-"));
-                let nx: number | null = null;
-                let nz: number | null = null;
-                if (centerPick?.hit && centerPick.pickedPoint) {
-                    nx = centerPick.pickedPoint.x;
-                    nz = centerPick.pickedPoint.z;
-                } else {
-                    const planeHit = intersectPlane(cx, cy, 0);
-                    if (planeHit) {
-                        nx = planeHit.x;
-                        nz = planeHit.z;
-                    }
-                }
-                if (nx !== null && nz !== null) {
-                    if (retargetPreservingPose({ x: nx, y: 0, z: nz })) {
-                        gridResidualX = camera.target.x;
-                        gridResidualZ = camera.target.z;
-                    }
-                }
             }
 
             // 通常ドラッグの可否判定 (Issue #151 仕様再定義):
