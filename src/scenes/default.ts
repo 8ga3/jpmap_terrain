@@ -301,15 +301,13 @@ export class DefaultScene implements CreateSceneClass {
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
         //
-        // 不変条件 (Issue #151):
-        //   - camera.target.y = 0 (常に地形参照面)
+        // 不変条件 (Issue #151 改訂):
         //   - camera.target.x = gridResidualX
         //   - camera.target.z = gridResidualZ
         //   - currentLat/Lon は target.x/z と同期
-        //
-        // target.y を動かす操作（旧: Ctrl+drag retarget で地形高度に張り付ける／
-        // syncTargetYToTerrain 等）はカメラのワールド位置・SSE 距離・terrainMinRadius と
-        // 累積的に矛盾しドリフト・ジャンプ・タイルレベル破綻の原因となるため廃止する。
+        //   - camera.target.y は通常時 0、Ctrl+drag 中のみ山頂などの実標高を許容
+        //     （リリース後もそのまま保持。target.y は SSE/terrainMinRadius/dragPlaneY の
+        //      参照高度として整合する）。lat/lon 対応は target.x/z のみで決まる。
         const commitPanOffset = (): void => {
             const tx = camera.target.x;
             const tz = camera.target.z;
@@ -350,9 +348,9 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualX = gridResidualX + newOffsetX - gridShiftX;
             gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
 
-            // target を残差基準にスナップ。target.y は 0 固定。
+            // target を残差基準にスナップ。target.y は Ctrl+drag で山頂中心の回転を
+            // 許容するため触らない（lat/lon 対応は x/z のみを使用）。
             camera.target.x = gridResidualX;
-            camera.target.y = 0;
             camera.target.z = gridResidualZ;
 
             currentLat = newLat;
@@ -650,51 +648,10 @@ export class DefaultScene implements CreateSceneClass {
             lastPointerY = e.clientY;
         });
 
-        /**
-         * Ctrl+drag 中に target.y を山頂などの実標高に置いた場合、リリース時に
-         * target.y=0 へ戻す。alpha/beta は維持し、現在のカメラワールド位置から
-         * 視線方向 (alpha,beta) のレイと y=0 平面の交点を新 target にすることで
-         * カメラ姿勢を完全に保ったまま不変条件を回復する。
-         */
-        const restoreTargetYZero = (): void => {
-            if (Math.abs(camera.target.y) < 1e-3) return;
-            const { alpha, beta } = camera;
-            const sinB = Math.sin(beta);
-            const cosB = Math.cos(beta);
-            // カメラのワールド位置
-            const camX = camera.target.x + camera.radius * sinB * Math.cos(alpha);
-            const camY = camera.target.y + camera.radius * cosB;
-            const camZ = camera.target.z + camera.radius * sinB * Math.sin(alpha);
-            // ターゲット方向の単位ベクトル: (camera -> target) = -(sinβcosα, cosβ, sinβsinα)
-            const dirX = -sinB * Math.cos(alpha);
-            const dirY = -cosB;
-            const dirZ = -sinB * Math.sin(alpha);
-            if (Math.abs(dirY) < 1e-6) {
-                // 真横を向いているとき y=0 と交わらないので諦めて y のみリセット
-                camera.target.y = 0;
-                return;
-            }
-            // y=0 平面までの距離 t: camY + t*dirY = 0
-            const t = -camY / dirY;
-            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-            // t が radius 範囲外、または逆向き（t<0）なら姿勢を崩さない緊急回避として
-            // y のみリセット（厳密には小ジャンプするが多くは Ctrl+drag 中の極端な姿勢のみ）。
-            if (!Number.isFinite(t) || t < lower || t > upper) {
-                camera.target.y = 0;
-                return;
-            }
-            camera.target.x = camX + t * dirX;
-            camera.target.y = 0;
-            camera.target.z = camZ + t * dirZ;
-            camera.radius = t;
-        };
-
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
             if (e.pointerId !== activePointerId) return;
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
-            restoreTargetYZero();
             commitPanOffset();
         });
 
@@ -702,7 +659,6 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
-            restoreTargetYZero();
             commitPanOffset();
         };
 
