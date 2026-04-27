@@ -299,91 +299,64 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
-        /**
-         * target.y を target.x/z 位置の地表高度に追従させる (Issue #151)。
-         * target.y が地表高度から乖離していると terrainMinRadius() のズーム下限計算
-         * `(terrainY + 50 - target.y) / cos(beta)` が破綻し、地面に近づけない／
-         * 数百 m の位置ずれが累積する。カメラのワールド位置を保ったまま target.y のみ
-         * 更新するため、target.x/z は不変で currentLat/Lon・gridResidual の整合も崩れない。
-         */
-        const syncTargetYToTerrain = (): void => {
-            const elev = tileManager.queryElevationAtWorld(camera.target.x, camera.target.z);
-            if (elev === null || !Number.isFinite(elev)) return;
-            if (Math.abs(elev - camera.target.y) <= 0.01) return;
-            const a = camera.alpha;
-            const b = camera.beta;
-            const r = camera.radius;
-            const sB = Math.sin(b);
-            const cB = Math.cos(b);
-            const camPos = {
-                x: camera.target.x + r * sB * Math.cos(a),
-                y: camera.target.y + r * cB,
-                z: camera.target.z + r * sB * Math.sin(a),
-            };
-            const newTarget = { x: camera.target.x, y: elev, z: camera.target.z };
-            const pose = computePoseForNewTarget(camPos, newTarget, a, {
-                lowerBeta: camera.lowerBetaLimit ?? 0,
-                upperBeta: camera.upperBetaLimit ?? Math.PI,
-                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
-                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
-            });
-            if (pose.action === "apply") {
-                camera.target.y = elev;
-                camera.alpha = pose.alpha;
-                camera.beta = pose.beta;
-                camera.radius = pose.radius;
-            }
-        };
-
+        //
+        // 不変条件 (Issue #151):
+        //   - camera.target.y = 0 (常に地形参照面)
+        //   - camera.target.x = gridResidualX
+        //   - camera.target.z = gridResidualZ
+        //   - currentLat/Lon は target.x/z と同期
+        //
+        // target.y を動かす操作（旧: Ctrl+drag retarget で地形高度に張り付ける／
+        // syncTargetYToTerrain 等）はカメラのワールド位置・SSE 距離・terrainMinRadius と
+        // 累積的に矛盾しドリフト・ジャンプ・タイルレベル破綻の原因となるため廃止する。
         const commitPanOffset = (): void => {
             const tx = camera.target.x;
             const tz = camera.target.z;
             // 新規オフセット = 全体 - 既知のグリッド残差
             const newOffsetX = tx - gridResidualX;
             const newOffsetZ = tz - gridResidualZ;
-            const hasPan =
-                Math.abs(newOffsetX) >= 0.01 || Math.abs(newOffsetZ) >= 0.01;
-
-            if (hasPan) {
-                const oldLat = currentLat;
-                const oldLon = currentLon;
-                const metersPerDegreeLon =
-                    METERS_PER_DEGREE_LAT *
-                    Math.cos((oldLat * Math.PI) / 180);
-
-                const newLat = clamp(
-                    oldLat + newOffsetZ / METERS_PER_DEGREE_LAT,
-                    JAPAN_BOUNDS.minLat,
-                    JAPAN_BOUNDS.maxLat
-                );
-                const newLon = clamp(
-                    oldLon + newOffsetX / metersPerDegreeLon,
-                    JAPAN_BOUNDS.minLon,
-                    JAPAN_BOUNDS.maxLon
-                );
-
-                const oldTile = toTileXY(oldLat, oldLon, MAX_ZOOM);
-                const newTile = toTileXY(newLat, newLon, MAX_ZOOM);
-                const tileSize = tileEdgeMeters(newLat, MAX_ZOOM);
-                const gridShiftX = (newTile.x - oldTile.x) * tileSize;
-                const gridShiftZ = -((newTile.y - oldTile.y) * tileSize);
-
-                // 残差更新: 旧残差 + 新規オフセット - グリッドシフト
-                gridResidualX = gridResidualX + newOffsetX - gridShiftX;
-                gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
-
-                // target.x/z をグリッド残差に同期。target.y は保持。
-                camera.target.x = gridResidualX;
-                camera.target.z = gridResidualZ;
-
-                currentLat = newLat;
-                currentLon = newLon;
-                void refreshTerrain();
+            if (
+                Math.abs(newOffsetX) < 0.01 &&
+                Math.abs(newOffsetZ) < 0.01
+            ) {
+                return;
             }
 
-            // パン有無に関わらず、target.y を地表追従させる（Ctrl+drag retarget 直後など、
-            // パン残差なしでズームのみ行ったケースでも target.y のドリフトを防ぐ）。
-            syncTargetYToTerrain();
+            const oldLat = currentLat;
+            const oldLon = currentLon;
+            const metersPerDegreeLon =
+                METERS_PER_DEGREE_LAT *
+                Math.cos((oldLat * Math.PI) / 180);
+
+            const newLat = clamp(
+                oldLat + newOffsetZ / METERS_PER_DEGREE_LAT,
+                JAPAN_BOUNDS.minLat,
+                JAPAN_BOUNDS.maxLat
+            );
+            const newLon = clamp(
+                oldLon + newOffsetX / metersPerDegreeLon,
+                JAPAN_BOUNDS.minLon,
+                JAPAN_BOUNDS.maxLon
+            );
+
+            const oldTile = toTileXY(oldLat, oldLon, MAX_ZOOM);
+            const newTile = toTileXY(newLat, newLon, MAX_ZOOM);
+            const tileSize = tileEdgeMeters(newLat, MAX_ZOOM);
+            const gridShiftX = (newTile.x - oldTile.x) * tileSize;
+            const gridShiftZ = -((newTile.y - oldTile.y) * tileSize);
+
+            // 残差更新: 旧残差 + 新規オフセット - グリッドシフト
+            gridResidualX = gridResidualX + newOffsetX - gridShiftX;
+            gridResidualZ = gridResidualZ + newOffsetZ - gridShiftZ;
+
+            // target を残差基準にスナップ。target.y は 0 固定。
+            camera.target.x = gridResidualX;
+            camera.target.y = 0;
+            camera.target.z = gridResidualZ;
+
+            currentLat = newLat;
+            currentLon = newLon;
+            void refreshTerrain();
         };
 
         // ---------- レイ-平面交差ユーティリティ ----------
@@ -579,19 +552,19 @@ export class DefaultScene implements CreateSceneClass {
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
 
-            // Ctrl/Cmd 押下開始時: 画面中央の地形メッシュ交点を回転中心にする
-            // （カメラのワールド位置は保持されるためジャンプは発生しない）
+            // Ctrl/Cmd 押下開始時: 画面中央の y=0 平面交点を回転中心にする。
+            // target.y=0 不変条件を守るため、地形メッシュのピック高度ではなく
+            // y=0 平面との交点を採用する (Issue #151)。
+            // カメラのワールド位置を保つ再射影 (computePoseForNewTarget) を行うため
+            // 視覚ジャンプは発生しない。skip された場合は target を変更しない。
             if (e.ctrlKey || e.metaKey) {
                 // 直前までの pan オフセットを lat/lon に反映してから target を差し替える
                 commitPanOffset();
                 const cx = canvas.clientWidth / 2;
                 const cy = canvas.clientHeight / 2;
-                const centerPick = scene.pick(cx, cy, (m) =>
-                    m.name.startsWith("tile-ground-")
-                );
-                if (centerPick?.hit && centerPick.pickedPoint) {
-                    const p = centerPick.pickedPoint;
-                    if (retargetPreservingPose({ x: p.x, y: p.y, z: p.z })) {
+                const centerHit = intersectPlane(cx, cy, 0);
+                if (centerHit) {
+                    if (retargetPreservingPose({ x: centerHit.x, y: 0, z: centerHit.z })) {
                         // 新 target の xz を新たなグリッド残差基準として同期
                         gridResidualX = camera.target.x;
                         gridResidualZ = camera.target.z;
@@ -609,13 +582,10 @@ export class DefaultScene implements CreateSceneClass {
                 dragPlaneY = pick.pickedPoint.y;
                 dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             } else {
-                // フォールバック: 既存の平面交差モード。
-                // dragPlaneY を camera.target.y に揃えることで、Ctrl+drag retarget 後など
-                // target.y が非ゼロな状態でもドラッグスケールが現在の target 高度と
-                // 整合する (Issue #151)。Y=0 固定だと target.y > 0 のとき空ピック時の
-                // ドラッグ移動量が地形面と乖離し、操作感が破綻する。
+                // フォールバック: 平面交差モード。target.y=0 不変条件のため
+                // dragPlaneY も常に 0 で十分（Issue #151）。
                 dragMeshMode = false;
-                dragPlaneY = camera.target.y;
+                dragPlaneY = 0;
                 dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             }
         });
@@ -853,15 +823,13 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = newRadius;
                         commitPanOffset();
                     } else {
-                        // Phase 1: ターゲットに向かってズーム
+                        // Phase 1: ターゲットに向かってズーム（target は不変）
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
                         if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         const next = clamp(camera.radius * factor, effectiveLower1, upper);
                         if (!Number.isFinite(next)) return;
                         camera.radius = next;
-                        // Phase 1 でも target.y 追従を走らせる (Issue #151)
-                        commitPanOffset();
                     }
                 }
             },
