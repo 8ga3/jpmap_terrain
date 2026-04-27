@@ -627,13 +627,23 @@ export class DefaultScene implements CreateSceneClass {
                 const sy = e.clientY - rect.top;
 
                 // ドラッグ開始時に決定した水平面 (dragPlaneY) でカーソル直下を
-                // アンカーする標準的な grab パン。dragAnchor が存在する時点で
-                // pointerdown の判定（pickY < cameraY、距離 < MAX_DRAG_PICK_DISTANCE）を
-                // 通過しているのでレイ-平面交点は安定。
+                // アンカーする標準的な grab パン。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
-                    camera.target.x += dragAnchor.x - current.x;
-                    camera.target.z += dragAnchor.z - current.z;
+                    let dx = dragAnchor.x - current.x;
+                    let dz = dragAnchor.z - current.z;
+                    // 遠景・水平線付近のドラッグでレイ交点が大きく動き、1フレームの移動量が
+                    // 際限なく膨らむのを抑制する (Issue #151)。
+                    // 1フレームあたりの最大移動距離をカメラの radius に比例した値に制限。
+                    const maxStep = camera.radius * 0.5;
+                    const stepLen = Math.hypot(dx, dz);
+                    if (stepLen > maxStep && stepLen > 0) {
+                        const k = maxStep / stepLen;
+                        dx *= k;
+                        dz *= k;
+                    }
+                    camera.target.x += dx;
+                    camera.target.z += dz;
 
                     // パン後にカメラがメッシュを突き抜けないよう radius を下限まで持ち上げる。
                     const cosB = Math.cos(camera.beta);
