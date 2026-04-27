@@ -20,7 +20,6 @@ import { createSkybox } from "../terrain/skybox";
 import { computeSunPosition } from "../terrain/sunPosition";
 import { deriveSunState } from "../terrain/sunState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
-import { computePoseForNewTarget } from "../terrain/cameraRetarget";
 import { createUiVisibilityController } from "../terrain/uiVisibility";
 import { SUN_FALLBACK_DATETIME_ISO } from "../lib/types";
 
@@ -421,7 +420,7 @@ export class DefaultScene implements CreateSceneClass {
             const ray = new Ray(
                 new Vector3(camX, camY, camZ),
                 Vector3.Down(),
-                Math.max(camY + 1000, CAMERA_LOWER_RADIUS + 1000)
+                Math.max(camY, CAMERA_LOWER_RADIUS) + 1000
             );
             const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
 
@@ -445,6 +444,54 @@ export class DefaultScene implements CreateSceneClass {
             return cachedMinRadius;
         };
 
+        /**
+         * 新しいカメラワールド座標を起点に、現在の視線方向で Ray を飛ばし、
+         * 地形メッシュ（無ければ y=0 平面）との交点を新しいターゲットとして
+         * `camera.setTarget()` に渡す。`setTarget()` が radius / alpha / beta を再計算する。
+         *
+         * 垂直ズーム後など、カメラ位置だけを動かしたあとに target を地形上へ
+         * 再投影するために使用する。
+         */
+        const retargetAtCameraPosition = (
+            camX: number,
+            camY: number,
+            camZ: number
+        ): void => {
+            const sinB = Math.sin(camera.beta);
+            const cosB = Math.cos(camera.beta);
+            // カメラ → ターゲット方向（球面座標から導出した単位ベクトル）
+            const dirX = -sinB * Math.cos(camera.alpha);
+            const dirY = -cosB;
+            const dirZ = -sinB * Math.sin(camera.alpha);
+
+            const origin = new Vector3(camX, camY, camZ);
+            const direction = new Vector3(dirX, dirY, dirZ);
+            const ray = new Ray(origin, direction, CAMERA_FAR_CLIP);
+            const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
+
+            let targetX: number;
+            let targetY: number;
+            let targetZ: number;
+            if (pick?.hit && pick.pickedPoint) {
+                targetX = pick.pickedPoint.x;
+                targetY = pick.pickedPoint.y;
+                targetZ = pick.pickedPoint.z;
+            } else if (Math.abs(dirY) > 1e-6) {
+                // フォールバック: y=0 平面との交点
+                const t = (0 - camY) / dirY;
+                if (t <= 0) return;
+                targetX = camX + dirX * t;
+                targetY = 0;
+                targetZ = camZ + dirZ * t;
+            } else {
+                return;
+            }
+
+            // 先にカメラ位置を反映してから setTarget で alpha/beta/radius を再計算させる
+            camera.setPosition(new Vector3(camX, camY, camZ));
+            camera.setTarget(new Vector3(targetX, targetY, targetZ));
+        };
+
         // ---------- カスタムマウスハンドラ ----------
         let pointerDown = false;
         let lastPointerX = 0;
@@ -464,40 +511,6 @@ export class DefaultScene implements CreateSceneClass {
             return { lat, lon };
         };
 
-        /**
-         * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
-         * `computePoseForNewTarget` が limit 逸脱や退化ケースなどで `apply` を返せない場合は何もせず、
-         * 既存 target を維持する。なお、sin(beta)≈0 の特異点近傍では alpha を一意に再計算できなくても、
-         * current alpha を保持したまま `apply` される場合がある。
-         * @returns 付け替えを適用したら true
-         */
-        const retargetPreservingPose = (newTarget: {
-            x: number;
-            y: number;
-            z: number;
-        }): boolean => {
-            const { alpha, beta, radius } = camera;
-            const sinB = Math.sin(beta);
-            const cosB = Math.cos(beta);
-            const camPos = {
-                x: camera.target.x + radius * sinB * Math.cos(alpha),
-                y: camera.target.y + radius * cosB,
-                z: camera.target.z + radius * sinB * Math.sin(alpha),
-            };
-            const result = computePoseForNewTarget(camPos, newTarget, alpha, {
-                lowerBeta: camera.lowerBetaLimit ?? 0,
-                upperBeta: camera.upperBetaLimit ?? Math.PI,
-                lowerRadius: camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS,
-                upperRadius: camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
-            });
-            if (result.action !== "apply") return false;
-            camera.target.copyFromFloats(newTarget.x, newTarget.y, newTarget.z);
-            camera.alpha = result.alpha;
-            camera.beta = result.beta;
-            camera.radius = result.radius;
-            return true;
-        };
-
         canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
@@ -507,10 +520,6 @@ export class DefaultScene implements CreateSceneClass {
             lastPointerY = e.clientY;
             activePointerId = e.pointerId;
             canvas.setPointerCapture(e.pointerId);
-
-            const rect = canvas.getBoundingClientRect();
-            const sx = e.clientX - rect.left;
-            const sy = e.clientY - rect.top;
 
             // Ctrl/Cmd 押下開始時: 画面中央の地形メッシュ交点を回転中心にする
             // （カメラのワールド位置は保持されるためジャンプは発生しない）
@@ -523,29 +532,33 @@ export class DefaultScene implements CreateSceneClass {
                     m.name.startsWith("tile-ground-")
                 );
                 if (centerPick?.hit && centerPick.pickedPoint) {
-                    const p = centerPick.pickedPoint;
-                    if (retargetPreservingPose({ x: p.x, y: p.y, z: p.z })) {
-                        // 新 target の xz を新たなグリッド残差基準として同期
-                        gridResidualX = camera.target.x;
-                        gridResidualZ = camera.target.z;
-                    }
+                    camera.setTarget(centerPick.pickedPoint);
+                    // 新 target の xz を新たなグリッド残差基準として同期
+                    gridResidualX = camera.target.x;
+                    gridResidualZ = camera.target.z;
                 }
-            }
-
-            const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
-            if (pick?.hit && pick.pickedPoint) {
-                // メッシュピックモード: 緯度経度アンカーを保存
-                dragMeshMode = true;
-                const latLon = worldToLatLon(pick.pickedPoint.x, pick.pickedPoint.z);
-                dragAnchorLat = latLon.lat;
-                dragAnchorLon = latLon.lon;
-                dragPlaneY = pick.pickedPoint.y;
-                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             } else {
-                // フォールバック: 既存の平面交差モード
-                dragMeshMode = false;
-                dragPlaneY = 0;
-                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                // 単独ドラッグ
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+
+                const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
+                if (pick?.hit && pick.pickedPoint) {
+                    // メッシュピックモード: 緯度経度アンカーを保存
+                    dragMeshMode = true;
+                    const latLon = worldToLatLon(pick.pickedPoint.x, pick.pickedPoint.z);
+                    dragAnchorLat = latLon.lat;
+                    dragAnchorLon = latLon.lon;
+                    dragPlaneY = pick.pickedPoint.y;
+                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                } else {
+                    // フォールバック: 既存の平面交差モード
+                    dragMeshMode = false;
+                    dragPlaneY = 0;
+                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                }
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             }
         });
 
@@ -585,6 +598,8 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = radiusBeforeTilt;
                     }
                 }
+                lastPointerX = e.clientX;
+                lastPointerY = e.clientY;
             } else if (dragAnchor || dragMeshMode) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
@@ -621,9 +636,8 @@ export class DefaultScene implements CreateSceneClass {
                         dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                     }
                 }
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             }
-            lastPointerX = e.clientX;
-            lastPointerY = e.clientY;
         });
 
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
@@ -771,12 +785,15 @@ export class DefaultScene implements CreateSceneClass {
                         if (zoomIn && camera.radius <= effectiveLower2) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         const sinB = Math.sin(camera.beta);
+                        const cosB = Math.cos(camera.beta);
+                        // 現在のカメラワールド座標（緯度経度固定）
                         const camX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
                         const camZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
+                        // radius factor 分だけカメラ高度のみ変化
                         const newRadius = clamp(camera.radius * factor, effectiveLower2, upper);
-                        camera.target.x = camX - newRadius * sinB * Math.cos(camera.alpha);
-                        camera.target.z = camZ - newRadius * sinB * Math.sin(camera.alpha);
-                        camera.radius = newRadius;
+                        const newCamY = camera.target.y + newRadius * cosB;
+                        // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
+                        retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
                     } else {
                         // Phase 1: ターゲットに向かってズーム
@@ -786,6 +803,7 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
                     }
                 }
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             },
             { passive: false }
         );
