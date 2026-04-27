@@ -768,6 +768,7 @@ export class DefaultScene implements CreateSceneClass {
                 if (hit && isPickNearTarget(hit)) {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
+                    retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -792,18 +793,18 @@ export class DefaultScene implements CreateSceneClass {
                         // radius factor 分だけカメラ高度のみ変化
                         const newRadius = clamp(camera.radius * factor, effectiveLower2, upper);
                         const newCamY = camera.target.y + newRadius * cosB;
+                        commitPanOffset();
                         // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
                         retargetAtCameraPosition(camX, newCamY, camZ);
-                        commitPanOffset();
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
                         if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
+                        retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
                     }
                 }
-                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             },
             { passive: false }
         );
