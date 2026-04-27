@@ -614,13 +614,18 @@ export class DefaultScene implements CreateSceneClass {
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
 
-                // ドラッグ開始時のピック高度 (dragPlaneY) の水平面で、
-                // カーソルの動きに合わせて視点（target）を同方向に動かす。
-                // ピック地点を「掴む」のではなく、視点を押し動かす操作感（Issue #151）。
+                // ドラッグ開始時のピック高度 (dragPlaneY) の水平面でパン。
+                // - カメラより下のピック点（通常の地形）: ピック地点を掴む方向 (anchor - current)
+                // - カメラより上のピック点（高所メッシュ）: 視点を押し動かす方向 (current - anchor)
+                //   水平より上ではレイ方向と平面が浅い角度で交わり、掴む方向だと
+                //   操作感が反転して見えるため (Issue #151)。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
-                    camera.target.x += current.x - dragAnchor.x;
-                    camera.target.z += current.z - dragAnchor.z;
+                    const cameraY = camera.target.y + camera.radius * Math.cos(camera.beta);
+                    const inverted = dragPlaneY > cameraY;
+                    const sign = inverted ? 1 : -1;
+                    camera.target.x += sign * (current.x - dragAnchor.x);
+                    camera.target.z += sign * (current.z - dragAnchor.z);
                     dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                 }
             }
