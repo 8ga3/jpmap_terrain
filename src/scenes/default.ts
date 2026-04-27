@@ -598,8 +598,6 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = radiusBeforeTilt;
                     }
                 }
-                lastPointerX = e.clientX;
-                lastPointerY = e.clientY;
             } else if (dragAnchor || dragMeshMode) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
