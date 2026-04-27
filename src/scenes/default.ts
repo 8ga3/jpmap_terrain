@@ -494,8 +494,9 @@ export class DefaultScene implements CreateSceneClass {
         let dragPlaneY = 0;
         // ドラッグ可否の閾値 (Issue #151):
         // ピック点とカメラ位置の距離がこれ以上のときはドラッグしない。
-        // 遠距離ピックだと grab pan のステップ量が取り回しのつかないジャンプになるため。
-        const MAX_DRAG_PICK_DISTANCE = 10000;
+        // カメラ最大高度 (CAMERA_UPPER_RADIUS = 75km) と揃え、
+        // 高高度時にも遠景以外を grab pan できるようにする。
+        const MAX_DRAG_PICK_DISTANCE = CAMERA_UPPER_RADIUS;
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
