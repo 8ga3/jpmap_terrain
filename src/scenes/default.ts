@@ -492,10 +492,10 @@ export class DefaultScene implements CreateSceneClass {
         let activePointerId = -1;
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
-        // ピクセルベース pan モード: カメラより高いピック点・空ピック時、
-        // レイ-平面交点が遠方で発散しステップ量が狂うため、
-        // カーソルピクセル量×radius 係数で forward/right に pan する (Issue #151)。
-        let dragPixelMode = false;
+        // ドラッグ可否の閾値 (Issue #151):
+        // ピック点とカメラ位置の距離がこれ以上のときはドラッグしない。
+        // 遠距離ピックだと grab pan のステップ量が取り回しのつかないジャンプになるため。
+        const MAX_DRAG_PICK_DISTANCE = 10000;
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
@@ -545,40 +545,58 @@ export class DefaultScene implements CreateSceneClass {
             const sx = e.clientX - rect.left;
             const sy = e.clientY - rect.top;
 
-            // Ctrl/Cmd 押下開始時: 画面中央の y=0 平面交点を回転中心にする。
-            // target.y=0 不変条件を守るため、地形メッシュのピック高度ではなく
-            // y=0 平面との交点を採用する (Issue #151)。
-            // カメラのワールド位置を保つ再射影 (computePoseForNewTarget) を行うため
-            // 視覚ジャンプは発生しない。skip された場合は target を変更しない。
+            // Ctrl/Cmd 押下開始時: 回転中心を画面中央のピック点に再射影する (Issue #151)。
+            // - 画面中央でメッシュにヒットすればその xz を採用
+            // - ヒットしなければ y=0 平面交点 (空ピック相当) を採用
+            // target.y は 0 不変条件のため常に 0 で再射影。
+            // computePoseForNewTarget でカメラのワールド位置を保つので視覚ジャンプはしない。
             if (e.ctrlKey || e.metaKey) {
-                // 直前までの pan オフセットを lat/lon に反映してから target を差し替える
                 commitPanOffset();
                 const cx = canvas.clientWidth / 2;
                 const cy = canvas.clientHeight / 2;
-                const centerHit = intersectPlane(cx, cy, 0);
-                if (centerHit) {
-                    if (retargetPreservingPose({ x: centerHit.x, y: 0, z: centerHit.z })) {
-                        // 新 target の xz を新たなグリッド残差基準として同期
+                const centerPick = scene.pick(cx, cy, (m) => m.name.startsWith("tile-ground-"));
+                let nx: number | null = null;
+                let nz: number | null = null;
+                if (centerPick?.hit && centerPick.pickedPoint) {
+                    nx = centerPick.pickedPoint.x;
+                    nz = centerPick.pickedPoint.z;
+                } else {
+                    const planeHit = intersectPlane(cx, cy, 0);
+                    if (planeHit) {
+                        nx = planeHit.x;
+                        nz = planeHit.z;
+                    }
+                }
+                if (nx !== null && nz !== null) {
+                    if (retargetPreservingPose({ x: nx, y: 0, z: nz })) {
                         gridResidualX = camera.target.x;
                         gridResidualZ = camera.target.z;
                     }
                 }
             }
 
+            // 通常ドラッグの可否判定 (Issue #151 仕様再定義):
+            //   1. メッシュにヒットすること
+            //   2. ピック点 Y がカメラ Y より低いこと（カメラ高度以上はドラッグ不可）
+            //   3. カメラ位置からピック点までの距離が MAX_DRAG_PICK_DISTANCE 未満
+            // 上記すべてを満たすときのみ grab pan を有効化。それ以外は dragAnchor=null で
+            // pointermove のドラッグ処理がスキップされる。
+            const sinB = Math.sin(camera.beta);
+            const cosB = Math.cos(camera.beta);
+            const camWX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
+            const camWY = camera.target.y + camera.radius * cosB;
+            const camWZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
             const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
-            // ドラッグモードの決定 (Issue #151):
-            // - ピック点がカメラより低い: y=pickedY 平面での grab パン。
-            // - カメラより高い / 空ピック: レイ交点が遠方発散するため
-            //   ピクセルベース pan に切り替える。
-            const cameraYAtDown = camera.target.y + camera.radius * Math.cos(camera.beta);
-            if (pick?.hit && pick.pickedPoint && pick.pickedPoint.y < cameraYAtDown) {
-                dragPixelMode = false;
-                dragPlaneY = pick.pickedPoint.y;
-                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
-            } else {
-                dragPixelMode = true;
-                dragPlaneY = 0;
-                dragAnchor = null;
+            dragAnchor = null;
+            if (pick?.hit && pick.pickedPoint && pick.pickedPoint.y < camWY) {
+                const dxp = pick.pickedPoint.x - camWX;
+                const dyp = pick.pickedPoint.y - camWY;
+                const dzp = pick.pickedPoint.z - camWZ;
+                const dist2 = dxp * dxp + dyp * dyp + dzp * dzp;
+                if (dist2 < MAX_DRAG_PICK_DISTANCE * MAX_DRAG_PICK_DISTANCE) {
+                    dragPlaneY = pick.pickedPoint.y;
+                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
+                }
             }
         });
 
@@ -618,46 +636,21 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = radiusBeforeTilt;
                     }
                 }
-            } else if (dragPixelMode) {
-                // ピクセルベース pan: カメラより高いピック点・空ピック時の救済 (Issue #151)。
-                // レイ-平面交点は遠方発散するため、カーソルピクセル変位 × radius 係数で
-                // forward/right に直接 target を動かす。
-                const dx = e.clientX - lastPointerX;
-                const dy = e.clientY - lastPointerY;
-                const scale = camera.radius / Math.max(canvas.clientWidth, 1);
-                // forward (target 方向の水平成分): (-cosα, 0, -sinα)
-                const fx = -Math.cos(camera.alpha);
-                const fz = -Math.sin(camera.alpha);
-                // right = forward × world_up (Babylon 左手系)
-                const rx = fz;
-                const rz = -fx;
-                // 画面上方向ドラッグ (dy<0) で前進、画面右ドラッグ (dx>0) で右移動
-                const fAmt = -dy * scale;
-                const rAmt = dx * scale;
-                camera.target.x += fAmt * fx + rAmt * rx;
-                camera.target.z += fAmt * fz + rAmt * rz;
-                const minR = terrainMinRadius();
-                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-                if (camera.radius < minR) {
-                    camera.radius = Math.min(minR, upper);
-                }
             } else if (dragAnchor) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
 
                 // ドラッグ開始時に決定した水平面 (dragPlaneY) でカーソル直下を
-                // アンカーする標準的な grab パン。dragPlaneY は必ず cameraY 未満
-                // （pointerdown で保証）なのでレイ-平面交点は安定する (Issue #151)。
+                // アンカーする標準的な grab パン。dragAnchor が存在する時点で
+                // pointerdown の判定（pickY < cameraY、距離 < MAX_DRAG_PICK_DISTANCE）を
+                // 通過しているのでレイ-平面交点は安定。
                 const current = intersectPlane(sx, sy, dragPlaneY);
                 if (current) {
                     camera.target.x += dragAnchor.x - current.x;
                     camera.target.z += dragAnchor.z - current.z;
 
                     // パン後にカメラがメッシュを突き抜けないよう radius を下限まで持ち上げる。
-                    // (a) terrainMinRadius() … 直下レイキャスト + 標高キャッシュ
-                    // (b) dragPlaneY ベース … ドラッグ中のピック点標高は確実な既知値なので、
-                    //     直下タイル未ロードで (a) が下限 50 を返すケースを補完。
                     const cosB = Math.cos(camera.beta);
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
                     let minR = terrainMinRadius();
@@ -688,7 +681,6 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
-            dragPixelMode = false;
             commitPanOffset();
         };
 
