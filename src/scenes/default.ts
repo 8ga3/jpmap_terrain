@@ -492,17 +492,6 @@ export class DefaultScene implements CreateSceneClass {
         let activePointerId = -1;
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
-        let dragMeshMode = false;
-        let dragAnchorLat = 0;
-        let dragAnchorLon = 0;
-
-        /** ワールド座標(wx, wz)を現在のgrid基準で緯度経度に変換 */
-        const worldToLatLon = (wx: number, wz: number): { lat: number; lon: number } => {
-            const metersPerDegreeLon = METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
-            const lat = currentLat + (wz - gridResidualZ) / METERS_PER_DEGREE_LAT;
-            const lon = currentLon + (wx - gridResidualX) / metersPerDegreeLon;
-            return { lat, lon };
-        };
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
@@ -574,20 +563,14 @@ export class DefaultScene implements CreateSceneClass {
 
             const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
             if (pick?.hit && pick.pickedPoint) {
-                // メッシュピックモード: 緯度経度アンカーを保存
-                dragMeshMode = true;
-                const latLon = worldToLatLon(pick.pickedPoint.x, pick.pickedPoint.z);
-                dragAnchorLat = latLon.lat;
-                dragAnchorLon = latLon.lon;
+                // メッシュピックヒット時: ピック点の高度の水平面をドラッグ平面に採用。
+                // この水平面上でカーソル直下が常にピック地点に重なるよう pan する。
                 dragPlaneY = pick.pickedPoint.y;
-                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             } else {
-                // フォールバック: 平面交差モード。target.y=0 不変条件のため
-                // dragPlaneY も常に 0 で十分（Issue #151）。
-                dragMeshMode = false;
+                // 空ピック時: target.y=0 不変条件のため dragPlaneY = 0 固定。
                 dragPlaneY = 0;
-                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             }
+            dragAnchor = intersectPlane(sx, sy, dragPlaneY);
         });
 
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
@@ -626,41 +609,20 @@ export class DefaultScene implements CreateSceneClass {
                         camera.radius = radiusBeforeTilt;
                     }
                 }
-            } else if (dragAnchor || dragMeshMode) {
+            } else if (dragAnchor) {
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
 
-                if (dragMeshMode) {
-                    // メッシュピックモード: 現在のカーソル位置でメッシュをピック
-                    const movePick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
-                    if (movePick?.hit && movePick.pickedPoint) {
-                        const currentLatLon = worldToLatLon(movePick.pickedPoint.x, movePick.pickedPoint.z);
-                        const deltaLat = dragAnchorLat - currentLatLon.lat;
-                        const deltaLon = dragAnchorLon - currentLatLon.lon;
-                        // 緯度経度差分をワールド座標のオフセットに変換
-                        const metersPerDegreeLon = METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
-                        camera.target.x += deltaLon * metersPerDegreeLon;
-                        camera.target.z += deltaLat * METERS_PER_DEGREE_LAT;
-                        // 平面交差アンカーも同期（フォールバック切替に備える）
-                        dragAnchor = intersectPlane(sx, sy, dragPlaneY);
-                    } else if (dragAnchor) {
-                        // メッシュピック失敗時: 平面交差パンにフォールバック
-                        const current = intersectPlane(sx, sy, dragPlaneY);
-                        if (current) {
-                            camera.target.x += dragAnchor.x - current.x;
-                            camera.target.z += dragAnchor.z - current.z;
-                            dragAnchor = intersectPlane(sx, sy, dragPlaneY);
-                        }
-                    }
-                } else if (dragAnchor) {
-                    // フォールバック: 既存の平面交差パン
-                    const current = intersectPlane(sx, sy, dragPlaneY);
-                    if (current) {
-                        camera.target.x += dragAnchor.x - current.x;
-                        camera.target.z += dragAnchor.z - current.z;
-                        dragAnchor = intersectPlane(sx, sy, dragPlaneY);
-                    }
+                // ドラッグ開始時のピック高度 (dragPlaneY) の水平面で、
+                // カーソル直下のワールド座標が常に dragAnchor に重なるよう
+                // target.x/z を更新する。再ピック方式は水平より上の高所で
+                // ピック先が大きく飛ぶ問題があるため使わない (Issue #151)。
+                const current = intersectPlane(sx, sy, dragPlaneY);
+                if (current) {
+                    camera.target.x += dragAnchor.x - current.x;
+                    camera.target.z += dragAnchor.z - current.z;
+                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                 }
             }
             lastPointerX = e.clientX;
@@ -678,7 +640,6 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
-            dragMeshMode = false;
             commitPanOffset();
         };
 
