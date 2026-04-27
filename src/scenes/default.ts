@@ -492,11 +492,6 @@ export class DefaultScene implements CreateSceneClass {
         let activePointerId = -1;
         let dragAnchor: { x: number; z: number } | null = null;
         let dragPlaneY = 0;
-        // ドラッグ可否の閾値 (Issue #151):
-        // ピック点とカメラ位置の距離がこれ以上のときはドラッグしない。
-        // カメラ最大高度 (CAMERA_UPPER_RADIUS = 75km) と揃え、
-        // 高高度時にも遠景以外を grab pan できるようにする。
-        const MAX_DRAG_PICK_DISTANCE = CAMERA_UPPER_RADIUS;
 
         /**
          * 新ターゲットに付け替え、カメラのワールド位置を保つよう alpha/beta/radius を再計算する。
@@ -579,25 +574,14 @@ export class DefaultScene implements CreateSceneClass {
             // 通常ドラッグの可否判定 (Issue #151 仕様再定義):
             //   1. メッシュにヒットすること
             //   2. ピック点 Y がカメラ Y より低いこと（カメラ高度以上はドラッグ不可）
-            //   3. カメラ位置からピック点までの距離が MAX_DRAG_PICK_DISTANCE 未満
-            // 上記すべてを満たすときのみ grab pan を有効化。それ以外は dragAnchor=null で
-            // pointermove のドラッグ処理がスキップされる。
-            const sinB = Math.sin(camera.beta);
-            const cosB = Math.cos(camera.beta);
-            const camWX = camera.target.x + camera.radius * sinB * Math.cos(camera.alpha);
-            const camWY = camera.target.y + camera.radius * cosB;
-            const camWZ = camera.target.z + camera.radius * sinB * Math.sin(camera.alpha);
+            // 距離制限は実用上の不利益（画面隅の遠景がドラッグ不可になる）が大きく
+            // ユーザー指示で撤廃。
+            const camWY = camera.target.y + camera.radius * Math.cos(camera.beta);
             const pick = scene.pick(sx, sy, (m) => m.name.startsWith("tile-ground-"));
             dragAnchor = null;
             if (pick?.hit && pick.pickedPoint && pick.pickedPoint.y < camWY) {
-                const dxp = pick.pickedPoint.x - camWX;
-                const dyp = pick.pickedPoint.y - camWY;
-                const dzp = pick.pickedPoint.z - camWZ;
-                const dist2 = dxp * dxp + dyp * dyp + dzp * dzp;
-                if (dist2 < MAX_DRAG_PICK_DISTANCE * MAX_DRAG_PICK_DISTANCE) {
-                    dragPlaneY = pick.pickedPoint.y;
-                    dragAnchor = intersectPlane(sx, sy, dragPlaneY);
-                }
+                dragPlaneY = pick.pickedPoint.y;
+                dragAnchor = intersectPlane(sx, sy, dragPlaneY);
             }
         });
 
