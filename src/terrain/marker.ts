@@ -108,62 +108,68 @@ const resolve = (options: MarkerOptions): ResolvedMarker => ({
 });
 
 interface LineMeshes {
-    outer: Mesh;
-    inner: Mesh;
-    outerMaterial: StandardMaterial;
-    innerMaterial: StandardMaterial;
+    mesh: Mesh;
+    material: StandardMaterial;
+    texture: DynamicTexture;
 }
 
 /**
- * 垂直線をビルボード平面 2 枚 (外側=白縁, 内側=黒コア) で表現する。
+ * 垂直線を 1 枚のビルボード平面 + DynamicTexture で表現する。
  *
- * - `BILLBOARDMODE_Y` により Y 軸回転のみで常にカメラへ正面を向ける。
- * - 高さは applyTransform 時に `dynamicLineHeight` を Y スケールへ流し込む。
- * - 幅は `line.width` をベースとし、X スケールでカメラ距離一定 (distScale) を反映する。
- * - 縁取り幅は内側幅の 50% を片側に確保し、上端も同量だけ延ばして額縁状にする。
+ * - DT に「白い背景に黒コアのインセット矩形」を描き、平面を outerW × outerH に伸ばす。
+ *   結果として常に「黒バー + 白縁取り」になり、別メッシュ重ねによる z-fight が発生しない。
+ * - 縁取りの太さは plane のスケール比例で決まる（applyTransform 側で
+ *   `outerW = innerW + 2*border`、`outerH = lineHeight + border` に設定する）。
  */
 const createLineMesh = (
     scene: Scene,
     id: string,
     line: Required<MarkerLineOptions>,
 ): LineMeshes => {
-    const inner = CreatePlane(
-        `marker-line-inner-${id}`,
+    // 64x64 で十分。NEAREST サンプリングで境界がにじまない。
+    const TEX_W = 64;
+    const TEX_H = 64;
+    const texture = new DynamicTexture(
+        `marker-line-${id}`,
+        { width: TEX_W, height: TEX_H },
+        scene,
+        false,
+    );
+    texture.hasAlpha = true;
+    texture.updateSamplingMode(1); // NEAREST_NEAREST = 1
+    texture.wrapU = 0; // CLAMP_ADDRESSMODE = 0
+    texture.wrapV = 0;
+    const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, TEX_W, TEX_H);
+    // 全体を白で塗り、内側を黒（line.color）で塗り潰すことで縁取りを表現。
+    // 横は 25/50/25、縦は plane のアス比で延びるので 25/75 比率で代表しておく
+    // （上端の白縁取りが border 分、底辺は 0）。
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, TEX_W, TEX_H);
+    ctx.fillStyle = Color3.FromHexString(line.color).toHexString();
+    const xL = Math.floor(TEX_W * 0.25);
+    const xR = Math.ceil(TEX_W * 0.75);
+    const yT = Math.floor(TEX_H * 0.25);
+    ctx.fillRect(xL, yT, xR - xL, TEX_H - yT);
+    texture.update(false);
+
+    const mesh = CreatePlane(
+        `marker-line-${id}`,
         { width: 1, height: 1 },
         scene,
     );
-    inner.billboardMode = AbstractMesh.BILLBOARDMODE_Y;
-    inner.renderingGroupId = RENDERING_GROUP_ID;
-    inner.isPickable = false;
-    const innerMaterial = new StandardMaterial(
-        `marker-line-inner-mat-${id}`,
-        scene,
-    );
-    innerMaterial.emissiveColor = Color3.FromHexString(line.color);
-    innerMaterial.disableLighting = true;
-    innerMaterial.backFaceCulling = false;
-    // 内側を縁取りより手前へ寄せて Z-fight を回避する。
-    innerMaterial.zOffset = -1;
-    inner.material = innerMaterial;
+    mesh.billboardMode = AbstractMesh.BILLBOARDMODE_Y;
+    mesh.renderingGroupId = RENDERING_GROUP_ID;
+    mesh.isPickable = false;
+    const material = new StandardMaterial(`marker-line-mat-${id}`, scene);
+    material.disableLighting = true;
+    material.backFaceCulling = false;
+    material.useAlphaFromDiffuseTexture = true;
+    material.emissiveColor = Color3.White();
+    material.diffuseTexture = texture;
+    mesh.material = material;
 
-    const outer = CreatePlane(
-        `marker-line-outer-${id}`,
-        { width: 1, height: 1 },
-        scene,
-    );
-    outer.billboardMode = AbstractMesh.BILLBOARDMODE_Y;
-    outer.renderingGroupId = RENDERING_GROUP_ID;
-    outer.isPickable = false;
-    const outerMaterial = new StandardMaterial(
-        `marker-line-outer-mat-${id}`,
-        scene,
-    );
-    outerMaterial.emissiveColor = Color3.White();
-    outerMaterial.disableLighting = true;
-    outerMaterial.backFaceCulling = false;
-    outer.material = outerMaterial;
-
-    return { outer, inner, outerMaterial, innerMaterial };
+    return { mesh, material, texture };
 };
 
 interface IconTextMeshes {
@@ -207,6 +213,8 @@ const createIconTextMesh = (
     let strokePx = 0;
     let textWidthPx = 0;
     let textHeightPx = 0;
+    // テキスト下端の内側パディング: アイコンが存在する場合は半分にしてアイコンを近づける。
+    let textBottomPadPx = 0;
     if (text) {
         lines = text.value.split("\n");
         const lineCount = Math.max(lines.length, 1);
@@ -229,8 +237,10 @@ const createIconTextMesh = (
         lineHeightPx = text.fontSize * text.lineHeight;
         const totalTextHeightPx = lineHeightPx * lineCount;
         const innerPad = padPx + strokePx;
+        // アイコンが下に並ぶ場合は底側パディングを半分に詰めて寄せる。
+        textBottomPadPx = icon ? innerPad * 0.5 : innerPad;
         textWidthPx = Math.ceil((maxLineWidth + innerPad * 2) * dpr);
-        textHeightPx = Math.ceil((totalTextHeightPx + innerPad * 2) * dpr);
+        textHeightPx = Math.ceil((totalTextHeightPx + innerPad + textBottomPadPx) * dpr);
     }
 
     // アイコン領域サイズ (px)。icon.width/height は world m なので dpr 換算で px にする。
@@ -396,8 +406,7 @@ export const createMarkerNode = (
 
     const applyVisibility = (): void => {
         const visible = logicalEnabled && elevationResolved;
-        lineMeshes.outer.setEnabled(visible);
-        lineMeshes.inner.setEnabled(visible);
+        lineMeshes.mesh.setEnabled(visible);
         iconTextMeshes?.mesh.setEnabled(visible);
     };
     applyVisibility();
@@ -421,12 +430,9 @@ export const createMarkerNode = (
         const outerW = innerW + border * 2;
         const outerH = lineHeight + border;
 
-        // 内側 (黒コア): 平面 1×1 を innerW × lineHeight にスケールし、底辺を地表に合わせる。
-        lineMeshes.inner.scaling.set(innerW, lineHeight, 1);
-        lineMeshes.inner.position.set(wx, elev + lineHeight / 2, wz);
-        // 外側 (白縁): innerW + 2*border 幅、上端を border 分だけ高くした位置に置く。
-        lineMeshes.outer.scaling.set(outerW, outerH, 1);
-        lineMeshes.outer.position.set(wx, elev + outerH / 2, wz);
+        // 1 枚プレーン: outerW × outerH に伸ばし、底辺を地表に合わせる。
+        lineMeshes.mesh.scaling.set(outerW, outerH, 1);
+        lineMeshes.mesh.position.set(wx, elev + outerH / 2, wz);
 
         // アイコン+テキストの合成プレーン:
         // - 線の先端 (lineTopY) をアイコン中心に合わせる。
@@ -450,10 +456,9 @@ export const createMarkerNode = (
         iconTextMeshes = null;
     };
     const disposeLine = (): void => {
-        lineMeshes.outerMaterial.dispose();
-        lineMeshes.innerMaterial.dispose();
-        lineMeshes.outer.dispose();
-        lineMeshes.inner.dispose();
+        lineMeshes.material.dispose();
+        lineMeshes.texture.dispose();
+        lineMeshes.mesh.dispose();
     };
 
     return {
