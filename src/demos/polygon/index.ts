@@ -56,11 +56,12 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
         label: "terrain (地表+100m)",
         options: {
             // 約 400m × 400m の四角形（地形追従、地表から +100m オフセット）
+            // 他のポリゴンと重ならないよう西側 (lon -0.006° ≒ -540m) にずらして配置
             points: [
-                { lat: 35.6225, lon: 139.5126, altitude: 100 },
-                { lat: 35.6261, lon: 139.5126, altitude: 100 },
-                { lat: 35.6261, lon: 139.5170, altitude: 100 },
-                { lat: 35.6225, lon: 139.5170, altitude: 100 },
+                { lat: 35.6225, lon: 139.5066, altitude: 100 },
+                { lat: 35.6261, lon: 139.5066, altitude: 100 },
+                { lat: 35.6261, lon: 139.5110, altitude: 100 },
+                { lat: 35.6225, lon: 139.5110, altitude: 100 },
             ],
             altitudeMode: "terrain",
             labels: ["NW +100m", "NE +100m", "SE +100m", "SW +100m"],
@@ -101,11 +102,12 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
         label: "closed=true (ループ 500m)",
         options: {
             // 約 200m × 250m の四角形を closed=true でループ表示
+            // 他のポリゴンと重ならないよう東側 (lon +0.006° ≒ +540m) にずらして配置
             points: [
-                { lat: 35.6235, lon: 139.5135, altitude: 500 },
-                { lat: 35.6253, lon: 139.5135, altitude: 500 },
-                { lat: 35.6253, lon: 139.5161, altitude: 500 },
-                { lat: 35.6235, lon: 139.5161, altitude: 500 },
+                { lat: 35.6235, lon: 139.5195, altitude: 500 },
+                { lat: 35.6253, lon: 139.5195, altitude: 500 },
+                { lat: 35.6253, lon: 139.5221, altitude: 500 },
+                { lat: 35.6235, lon: 139.5221, altitude: 500 },
             ],
             altitudeMode: "absolute",
             closed: true,
