@@ -186,7 +186,7 @@ export const MARKER_DEFAULTS = {
     line: { color: "#000000", width: 4, height: 500 },
     icon: { width: 200, height: 200 },
     text: {
-        fontSize: 36,
+        fontSize: 18,
         color: "#000000",
         backgroundColor: "transparent",
         lineHeight: 1.2,

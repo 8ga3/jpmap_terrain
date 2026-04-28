@@ -200,7 +200,23 @@ const createIconMesh = (
     material.emissiveColor = Color3.White();
     material.disableLighting = true;
     material.useAlphaFromDiffuseTexture = true;
-    const texture = new Texture(icon.url, scene);
+    // テクスチャ読み込みの診断をしやすいよう onError でログを出す。
+    // その他パラメータ: noMipmap=true / invertY=false で SVG データ URL との互換性を上げる。
+    const texture = new Texture(
+        icon.url,
+        scene,
+        true, // noMipmap
+        false, // invertY (SVG / data URL は上下反転しない)
+        Texture.TRILINEAR_SAMPLINGMODE,
+        null,
+        (msg, ex) => {
+            console.warn(
+                `[jpmap-terrain] marker icon texture load failed: id=${id}`,
+                msg,
+                ex,
+            );
+        },
+    );
     texture.hasAlpha = true;
     material.diffuseTexture = texture;
     mesh.material = material;
