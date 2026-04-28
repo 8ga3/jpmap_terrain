@@ -297,6 +297,20 @@ export interface PolygonOptions {
 }
 
 /**
+ * 点単位の部分更新型 (Issue #173)。
+ *
+ * - `lat` / `lon` / `altitude` / `label` のいずれか（複数可）を指定可能。
+ * - `label` に `null` を渡した場合、当該 index のラベル（メッシュ）を削除する。
+ * - `altitudeMode` はポリゴン全体の属性のため partial には含めない。
+ */
+export interface PolygonPointPartial {
+    readonly lat?: number;
+    readonly lon?: number;
+    readonly altitude?: number;
+    readonly label?: string | null;
+}
+
+/**
  * `JpmapTerrain.updatePolygon`（#173 で公開予定）の部分更新型。
  * `#170` では `PolygonManager` 内部実装でのみ使用する。
  */
@@ -323,7 +337,7 @@ export interface PolygonHandle {
     readonly points: readonly Readonly<PolygonPointOptions>[];
     readonly closed: boolean;
     readonly altitudeMode: AltitudeMode;
-    readonly labels: ReadonlyArray<string> | undefined;
+    readonly labels: ReadonlyArray<string | undefined> | undefined;
     readonly style: Readonly<Required<PolygonStyleOptions>>;
     readonly enabled: boolean;
     /** 垂線の表示状態 */
