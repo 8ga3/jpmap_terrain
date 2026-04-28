@@ -35,9 +35,7 @@ const MAX_DT_SIZE = 1024;
  */
 const TEXT_WORLD_PX_PER_M = 1;
 
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);
-
-/**
+const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);/**
  * `icon.url` を検証する。`javascript:` / `vbscript:` 等の危険スキームを拒否する。
  *
  * - 空文字: 例外
@@ -64,11 +62,6 @@ export const validateIconUrl = (url: string): void => {
     if (parsed.protocol === "data:" && !/^data:image\//i.test(trimmed)) {
         throw new Error("addMarker: data URL must be image/*");
     }
-};
-
-const ceilPow2 = (n: number): number => {
-    if (n <= 1) return 1;
-    return 2 ** Math.ceil(Math.log2(n));
 };
 
 interface ResolvedMarker {
@@ -264,15 +257,15 @@ const createTextMesh = (
     const totalTextHeightPx = lineHeightPx * lineCount;
     // 縁取り分も収まるよう余白に加算する。
     const innerPad = padPx + strokePx;
+    // テクスチャサイズは実サイズと一致させる（pow2 パディングをやめてプレーンとキャンバスの
+    // アスペクトを揃えることで、マーカー間で文字サイズ・縦横比を一定に保つ）。
     const dtWidth = Math.min(
         MAX_DT_SIZE,
-        ceilPow2(Math.max(1, Math.ceil((maxLineWidth + innerPad * 2) * dpr))),
+        Math.max(1, Math.ceil((maxLineWidth + innerPad * 2) * dpr)),
     );
     const dtHeight = Math.min(
         MAX_DT_SIZE,
-        ceilPow2(
-            Math.max(1, Math.ceil((totalTextHeightPx + innerPad * 2) * dpr)),
-        ),
+        Math.max(1, Math.ceil((totalTextHeightPx + innerPad * 2) * dpr)),
     );
     const texture = new DynamicTexture(
         `marker-text-${id}`,
@@ -307,9 +300,10 @@ const createTextMesh = (
     }
     texture.update(false);
 
-    const widthWorld = (maxLineWidth + innerPad * 2) / TEXT_WORLD_PX_PER_M;
-    const heightWorld =
-        (totalTextHeightPx + innerPad * 2) / TEXT_WORLD_PX_PER_M;
+    // プレーンサイズ = キャンバスサイズ / dpr。テクスチャとプレーンのアスペクト・サイズが一致し、
+    // distScale 適用後もスクリーン上の文字サイズがマーカー間で同一になる。
+    const widthWorld = dtWidth / dpr / TEXT_WORLD_PX_PER_M;
+    const heightWorld = dtHeight / dpr / TEXT_WORLD_PX_PER_M;
     const mesh = CreatePlane(
         `marker-text-${id}`,
         { width: widthWorld, height: heightWorld },
