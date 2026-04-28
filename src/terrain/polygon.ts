@@ -16,6 +16,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
+import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
@@ -103,6 +104,7 @@ export interface PolygonNode {
     setEnabledLogical(enabled: boolean): void;
     setVerticalsEnabledLogical(enabled: boolean): void;
     setLabelsEnabledLogical(enabled: boolean): void;
+    setWallsEnabledLogical(enabled: boolean): void;
     setElevationResolved(resolved: boolean): void;
     getHandle(): PolygonHandle;
     dispose(): void;
@@ -313,6 +315,33 @@ const buildLinePath = (
 };
 
 /**
+ * 壁 Ribbon の pathArray を構築する。
+ * 上側 row = 各頂点の世界座標、下側 row = 同じ XZ で Y を地表値に置き換えたもの。
+ * `closed=true` のときは先頭頂点を末尾にも追加して閉じる。
+ *
+ * Ribbon は updatable + instance 更新時に長さを変えられないため、
+ * 構築時の長さ（`closed ? N+1 : N`）で固定される。
+ */
+const buildWallPathArray = (
+    worldPoints: readonly Vector3[],
+    groundYs: readonly (number | null)[],
+    closed: boolean,
+): [Vector3[], Vector3[]] => {
+    const top: Vector3[] = worldPoints.map((p) => new Vector3(p.x, p.y, p.z));
+    const ground: Vector3[] = worldPoints.map((p, i) => {
+        const gy = groundYs[i];
+        return new Vector3(p.x, gy ?? 0, p.z);
+    });
+    if (closed && top.length >= 2) {
+        const ft = top[0];
+        const fg = ground[0];
+        top.push(new Vector3(ft.x, ft.y, ft.z));
+        ground.push(new Vector3(fg.x, fg.y, fg.z));
+    }
+    return [top, ground];
+};
+
+/**
  * `PolygonNode` を生成する。`points.length >= 2` 前提（`PolygonManager` 側で検証済み）。
  */
 export const createPolygonNode = (
@@ -331,7 +360,15 @@ export const createPolygonNode = (
         options.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled;
     let labelsEnabled =
         options.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled;
+    let wallsEnabled =
+        options.wallsEnabled ?? POLYGON_DEFAULTS.wallsEnabled;
     let elevationResolved = altitudeMode === "absolute";
+
+    // wallsEnabled が false の間は Ribbon 更新をスキップするため、適用した
+    // worldPoints / groundYs の直近スナップショットを保持して、
+    // 再 enable 時に即時で位置を追い付かせる。`null` は未適用を表す。
+    let lastWorldPoints: Vector3[] | null = null;
+    let lastGroundYs: (number | null)[] | null = null;
 
     // 頂点はディープコピーして外部からの破壊変更を無効化する。
     const points: PolygonPointOptions[] = options.points.map((p) => ({
@@ -383,11 +420,44 @@ export const createPolygonNode = (
     lineMesh.isPickable = false;
     lineMesh.parent = root;
 
+    // 壁 Ribbon (#172): 上 row = 各頂点 world、下 row = 地表 Y。
+    // 構築時は groundY を 0 とした placeholder を渡し、applyTransform で実値で更新する。
+    const initialGroundYs: (number | null)[] = points.map(() => null);
+    const initialWallPathArray = buildWallPathArray(
+        initialPath,
+        initialGroundYs,
+        closed,
+    );
+    let wallMesh: Mesh = CreateRibbon(
+        `polygon-${id}-walls`,
+        {
+            pathArray: initialWallPathArray,
+            updatable: true,
+            // 半透明の壁を裏面からも見えるようにする。
+            sideOrientation: Mesh.DOUBLESIDE,
+            closeArray: false,
+        },
+        scene,
+    );
+    const wallMaterial = new StandardMaterial(`polygon-${id}-walls-mat`, scene);
+    wallMaterial.disableLighting = true;
+    wallMaterial.backFaceCulling = false;
+    wallMaterial.emissiveColor = Color3.FromHexString(style.wallColor);
+    wallMaterial.alpha = style.wallOpacity;
+    // 半透明の z-fight 緩和（同一面が前後関係で乱れないようにする）。
+    if (style.wallOpacity < 1) {
+        wallMaterial.needDepthPrePass = true;
+    }
+    wallMesh.material = wallMaterial;
+    wallMesh.renderingGroupId = RENDERING_GROUP_ID;
+    wallMesh.isPickable = false;
+    wallMesh.parent = root;
+
     const applyVisibility = (): void => {
         const visible = logicalEnabled && elevationResolved;
         root.setEnabled(visible);
-        // 子要素の個別 ON/OFF（垂線・ラベル）。root が無効なら自動で隠れるので、
-        // root が有効なときに verticals/labels の個別設定を反映する。
+        // 子要素の個別 ON/OFF（垂線・ラベル・壁）。root が無効なら自動で隠れるので、
+        // root が有効なときに verticals/labels/walls の個別設定を反映する。
         for (const entry of dropEntries) {
             entry.mesh.setEnabled(visible && verticalsEnabled);
         }
@@ -395,6 +465,7 @@ export const createPolygonNode = (
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
         }
+        wallMesh.setEnabled(visible && wallsEnabled);
     };
     applyVisibility();
 
@@ -456,6 +527,26 @@ export const createPolygonNode = (
             { path: tubePath, instance: lineMesh },
             scene,
         );
+
+        // 壁 Ribbon (#172) の更新。非表示中はスキップしてフレーム負荷を下げるが、
+        // 上で lastWorldPoints / lastGroundYs にスナップしておき、setWallsEnabled(true) 時に
+        // 即時で同一データで Ribbon を再適用して stale 表示を避ける。
+        lastWorldPoints = worldPoints.map(
+            (p) => new Vector3(p.x, p.y, p.z),
+        );
+        lastGroundYs = groundYs.slice();
+        if (wallsEnabled) {
+            const wallPathArray = buildWallPathArray(
+                worldPoints,
+                groundYs,
+                closed,
+            );
+            wallMesh = CreateRibbon(
+                `polygon-${id}-walls`,
+                { pathArray: wallPathArray, instance: wallMesh },
+                scene,
+            );
+        }
     };
 
     const getHandle = (): PolygonHandle => ({
@@ -468,6 +559,7 @@ export const createPolygonNode = (
         enabled: logicalEnabled,
         verticalsEnabled,
         labelsEnabled,
+        wallsEnabled,
         elevationResolved,
     });
 
@@ -491,6 +583,8 @@ export const createPolygonNode = (
         labelEntries.length = 0;
         lineMaterial.dispose();
         lineMesh.dispose();
+        wallMaterial.dispose();
+        wallMesh.dispose();
         root.dispose();
     };
 
@@ -510,6 +604,31 @@ export const createPolygonNode = (
         },
         setLabelsEnabledLogical(enabled: boolean): void {
             labelsEnabled = enabled;
+            applyVisibility();
+        },
+        setWallsEnabledLogical(enabled: boolean): void {
+            const wasEnabled = wallsEnabled;
+            wallsEnabled = enabled;
+            // false → true に切り替わったタイミングで stale を避けるため、
+            // 直近適用された worldPoints / groundYs で Ribbon を即時再計算する。
+            if (
+                enabled &&
+                !wasEnabled &&
+                lastWorldPoints !== null &&
+                lastGroundYs !== null &&
+                lastWorldPoints.length === sphereEntries.length
+            ) {
+                const wallPathArray = buildWallPathArray(
+                    lastWorldPoints,
+                    lastGroundYs,
+                    closed,
+                );
+                wallMesh = CreateRibbon(
+                    `polygon-${id}-walls`,
+                    { pathArray: wallPathArray, instance: wallMesh },
+                    scene,
+                );
+            }
             applyVisibility();
         },
         setElevationResolved(resolved: boolean): void {

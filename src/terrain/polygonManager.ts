@@ -41,6 +41,7 @@ export interface PolygonManager {
     setEnabled(id: string, enabled: boolean): void;
     setVerticalsEnabled(id: string, enabled: boolean): void;
     setLabelsEnabled(id: string, enabled: boolean): void;
+    setWallsEnabled(id: string, enabled: boolean): void;
     list(): readonly string[];
     dispose(): void;
 }
@@ -202,6 +203,13 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
             }
             const node = requireNode(id);
             node.setLabelsEnabledLogical(enabled);
+        },
+        setWallsEnabled(id: string, enabled: boolean): void {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            node.setWallsEnabledLogical(enabled);
         },
         list(): readonly string[] {
             return Array.from(nodes.keys());

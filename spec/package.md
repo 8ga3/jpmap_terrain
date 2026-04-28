@@ -345,7 +345,7 @@ interface MarkerOptions {
 
 任意の点列を受け取り、地表または絶対標高に沿って **ポイント球体** と **ポリライン** を表示する API（基盤）。
 
-##### 3.3.8.1 公開 API（基盤＋ポリライン＋垂線/ラベル: Issue #170 / #171）
+##### 3.3.8.1 公開 API（基盤＋ポリライン＋垂線/ラベル＋壁: Issue #170 / #171 / #172）
 
 ```typescript
 interface JpmapTerrain {
@@ -361,6 +361,8 @@ interface JpmapTerrain {
   setVerticalsEnabled(id: string, enabled: boolean): void;
   /** ラベル表示をポリゴン単位で ON/OFF (#171) */
   setLabelsEnabled(id: string, enabled: boolean): void;
+  /** 壁表示をポリゴン単位で ON/OFF (#172) */
+  setWallsEnabled(id: string, enabled: boolean): void;
   /** 全 id を生成順で返す */
   listPolygons(): readonly string[];
 }
@@ -382,21 +384,22 @@ interface PolygonStyleOptions {
   lineColor?: string;      // CSS color (default "#ff0000")
   lineOpacity?: number;    // 0..1 (default 1)
   lineWidth?: number;      // m (Tube radius, default 2)
-  // 以下は #171/#172 で実装予約（型のみ先出し）
-  dropLineColor?: string;
-  dropLineWidth?: number;
-  dropLineOpacity?: number;
-  labelColor?: string;
-  labelBackgroundColor?: string;
-  labelFontSize?: number;
-  wallColor?: string;
-  wallOpacity?: number;
+  // #171 で実装
+  dropLineColor?: string;     // CSS color (default "#ff0000")
+  dropLineWidth?: number;     // m (Tube radius, default 1)
+  dropLineOpacity?: number;   // 0..1 (default 1)
+  labelColor?: string;        // CSS color (default "#000000")
+  labelBackgroundColor?: string; // CSS color (default "transparent")
+  labelFontSize?: number;     // px (default 14)
+  // #172 で実装
+  wallColor?: string;         // CSS color (default "#ff0000")
+  wallOpacity?: number;       // 0..1 (default 0.3)
 }
 
 interface PolygonOptions {
   points: ReadonlyArray<PolygonPointOptions>; // 2 点以上
   altitudeMode?: AltitudeMode;                // default "terrain"
-  /** `true` でポリラインの末尾と先頭を結んで閉じる（#170 はポリラインのみ閉じる）。default false */
+  /** `true` でポリラインの末尾と先頭を結んで閉じる。壁・垂線も同様に閉じられる (#172)。default false */
   closed?: boolean;
   /** ラベル（点ごと）。#171 で実装済み。`labels[i]` が文字列のときその点にラベルを描画する。 */
   labels?: ReadonlyArray<string>;
@@ -406,6 +409,8 @@ interface PolygonOptions {
   verticalsEnabled?: boolean;
   /** ラベルの表示 (#171 実装済み)。default true */
   labelsEnabled?: boolean;
+  /** 隣接垂線間をつなぐ壁の表示 (#172 実装済み)。default true */
+  wallsEnabled?: boolean;
 }
 ```
 
@@ -419,7 +424,7 @@ interface PolygonOptions {
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
 - **#171 実装済み**: 各点から地表（タイル標高、未解決時は Y=0 フォールバック）へ落とす垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
-- **#172 で実装予定（型予約済み）**: 隣接垂線間を結ぶ「壁」（`closed` 時の閉じも含む）、`wallColor` / `wallOpacity`。
+- **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=地表 Y の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。`renderingGroupId=1` はポリライン・垂線・球・ラベルと同一。
 - **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
 ### 3.4 型定義
