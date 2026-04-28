@@ -168,8 +168,9 @@ const start = async (): Promise<void> => {
     // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。
     // アイコン: WebGPU の ImageBitmap デコーダは SVG を扱えないため、
-    // Canvas API で赤いピンを描画して PNG data URL に変換する。
-    const buildPinIconUrl = (): string => {
+    // Canvas API で「丸 + グリフ」を描画して PNG data URL に変換する。
+    type IconGlyph = "letter-s" | "house" | "building";
+    const buildCircleIconUrl = (glyph: IconGlyph): string => {
         const size = 64;
         const c = document.createElement("canvas");
         c.width = size;
@@ -177,13 +178,9 @@ const start = async (): Promise<void> => {
         const ctx = c.getContext("2d");
         if (!ctx) return "";
         ctx.clearRect(0, 0, size, size);
-        // ピン本体
+        // 円本体（赤地・白縁）
         ctx.beginPath();
-        ctx.moveTo(32, 2);
-        ctx.bezierCurveTo(20, 2, 10, 12, 10, 24);
-        ctx.bezierCurveTo(10, 38, 32, 62, 32, 62);
-        ctx.bezierCurveTo(32, 62, 54, 38, 54, 24);
-        ctx.bezierCurveTo(54, 12, 44, 2, 32, 2);
+        ctx.arc(32, 32, 28, 0, Math.PI * 2);
         ctx.closePath();
         ctx.fillStyle = "#e53935";
         ctx.fill();
@@ -191,31 +188,60 @@ const start = async (): Promise<void> => {
         ctx.lineWidth = 3;
         ctx.strokeStyle = "#ffffff";
         ctx.stroke();
-        // 中心の白い円
-        ctx.beginPath();
-        ctx.arc(32, 24, 8, 0, Math.PI * 2);
+
+        // グリフ（白）
         ctx.fillStyle = "#ffffff";
-        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        if (glyph === "letter-s") {
+            // 東京駅: 丸に "S"
+            ctx.font = "bold 38px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("S", 32, 34);
+        } else if (glyph === "house") {
+            // 皇居: 丸に家
+            // 屋根 (三角)
+            ctx.beginPath();
+            ctx.moveTo(32, 16);
+            ctx.lineTo(52, 32);
+            ctx.lineTo(12, 32);
+            ctx.closePath();
+            ctx.fill();
+            // 壁 (四角)
+            ctx.fillRect(18, 32, 28, 18);
+            // ドア (赤抜き)
+            ctx.fillStyle = "#e53935";
+            ctx.fillRect(28, 38, 8, 12);
+        } else {
+            // 都庁: 丸にビル (高さ違いの 3 棟)
+            ctx.fillRect(14, 32, 10, 20); // 左 (低)
+            ctx.fillRect(27, 22, 10, 30); // 中央 (高)
+            ctx.fillRect(40, 28, 10, 24); // 右 (中)
+            // 窓 (赤抜き) — 中央棟のみ
+            ctx.fillStyle = "#e53935";
+            ctx.fillRect(30, 26, 4, 4);
+            ctx.fillRect(30, 34, 4, 4);
+            ctx.fillRect(30, 42, 4, 4);
+        }
         return c.toDataURL("image/png");
     };
-    const PIN_ICON_URL = buildPinIconUrl();
     try {
         viewer.addMarker("tokyo-station", {
             lat: 35.681236,
             lon: 139.767125,
-            icon: { url: PIN_ICON_URL },
+            icon: { url: buildCircleIconUrl("letter-s") },
             text: { value: "東京駅" },
         });
         viewer.addMarker("imperial-palace", {
             lat: 35.685175,
             lon: 139.7528,
-            icon: { url: PIN_ICON_URL },
+            icon: { url: buildCircleIconUrl("house") },
             text: { value: "皇居" },
         });
         viewer.addMarker("tokyo-metropolitan-government", {
             lat: 35.6896,
             lon: 139.6917,
-            icon: { url: PIN_ICON_URL },
+            icon: { url: buildCircleIconUrl("building") },
             text: { value: "東京都庁\n(新宿)" },
         });
     } catch (err) {
