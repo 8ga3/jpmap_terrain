@@ -116,10 +116,10 @@ interface LineMeshes {
 /**
  * 垂直線を 1 枚のビルボード平面 + DynamicTexture で表現する。
  *
- * - DT に「白い背景に黒コアのインセット矩形」を描き、平面を outerW × outerH に伸ばす。
- *   結果として常に「黒バー + 白縁取り」になり、別メッシュ重ねによる z-fight が発生しない。
+ * - DT に「左右だけ白縁・中央は黒コア」を描き、平面を outerW × lineHeight に伸ばす。
+ *   結果として常に「黒バー + 左右の白縁」になり、別メッシュ重ねによる z-fight が発生しない。
  * - 縁取りの太さは plane のスケール比例で決まる（applyTransform 側で
- *   `outerW = innerW + 2*border`、`outerH = lineHeight + border` に設定する）。
+ *   `outerW = innerW + 2*border` に設定する。上下方向には白縁を持たない）。
  */
 const createLineMesh = (
     scene: Scene,
@@ -141,16 +141,14 @@ const createLineMesh = (
     texture.wrapV = 0;
     const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, TEX_W, TEX_H);
-    // 全体を白で塗り、内側を黒（line.color）で塗り潰すことで縁取りを表現。
-    // 横は 25/50/25、縦は plane のアス比で延びるので 25/75 比率で代表しておく
-    // （上端の白縁取りが border 分、底辺は 0）。
+    // 左右だけに白縁を残し、上下方向は黒（line.color）が端まで届くようにする。
+    // 横の比率は 25/50/25（左白・中央黒・右白）、縦は全域を黒で塗りつぶす。
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, TEX_W, TEX_H);
     ctx.fillStyle = Color3.FromHexString(line.color).toHexString();
     const xL = Math.floor(TEX_W * 0.25);
     const xR = Math.ceil(TEX_W * 0.75);
-    const yT = Math.floor(TEX_H * 0.25);
-    ctx.fillRect(xL, yT, xR - xL, TEX_H - yT);
+    ctx.fillRect(xL, 0, xR - xL, TEX_H);
     texture.update(false);
 
     const mesh = CreatePlane(
@@ -425,14 +423,13 @@ export const createMarkerNode = (
                 : resolved.line.height * distScale;
         // 線の幅は distScale でスクリーン定幅に保つ。
         const innerW = Math.max(resolved.line.width, 0.5) * distScale;
-        // 縁取り幅 (片側) = 内側幅の 50%。上端も同量だけ延ばして額縁状にする。
+        // 縁取り幅 (片側) = 内側幅の 50%。左右だけに白縁を持たせる（上下は地表/アイコンに突き当たるので不要）。
         const border = innerW * 0.5;
         const outerW = innerW + border * 2;
-        const outerH = lineHeight + border;
 
-        // 1 枚プレーン: outerW × outerH に伸ばし、底辺を地表に合わせる。
-        lineMeshes.mesh.scaling.set(outerW, outerH, 1);
-        lineMeshes.mesh.position.set(wx, elev + outerH / 2, wz);
+        // 1 枚プレーン: outerW × lineHeight に伸ばし、底辺を地表に合わせる。
+        lineMeshes.mesh.scaling.set(outerW, lineHeight, 1);
+        lineMeshes.mesh.position.set(wx, elev + lineHeight / 2, wz);
 
         // アイコン+テキストの合成プレーン:
         // - 線の先端 (lineTopY) をアイコン中心に合わせる。
