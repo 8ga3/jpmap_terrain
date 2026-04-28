@@ -6,7 +6,11 @@
  */
 
 import { jest } from "@jest/globals";
-import type { PolygonOptions } from "../src/lib/types";
+import type {
+    PolygonOptions,
+    PolygonPointOptions,
+    PolygonPointPartial,
+} from "../src/lib/types";
 
 interface StubNode {
     id: string;
@@ -28,6 +32,10 @@ interface StubNode {
     setLabelsEnabledHistory: boolean[];
     setWallsEnabledHistory: boolean[];
     setElevationResolvedHistory: boolean[];
+    insertCalls: Array<{ index: number; point: PolygonPointOptions }>;
+    removeCalls: number[];
+    updateCalls: Array<{ index: number; partial: PolygonPointPartial }>;
+    replaceCalls: Array<readonly PolygonPointOptions[]>;
 }
 
 const created: StubNode[] = [];
@@ -55,6 +63,10 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             setLabelsEnabledHistory: [],
             setWallsEnabledHistory: [],
             setElevationResolvedHistory: [],
+            insertCalls: [],
+            removeCalls: [],
+            updateCalls: [],
+            replaceCalls: [],
         };
         const wrapped = {
             ...node,
@@ -105,6 +117,41 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             }),
             dispose: () => {
                 node.disposed = true;
+            },
+            insertPoint: (index: number, point: PolygonPointOptions) => {
+                node.insertCalls.push({ index, point });
+                node.points.splice(index, 0, { ...point });
+            },
+            removePoint: (index: number) => {
+                node.removeCalls.push(index);
+                node.points.splice(index, 1);
+            },
+            updatePoint: (
+                index: number,
+                partial: PolygonPointPartial,
+            ) => {
+                node.updateCalls.push({ index, partial });
+                const cur = node.points[index];
+                if (cur) {
+                    node.points[index] = {
+                        ...cur,
+                        ...(partial.lat !== undefined
+                            ? { lat: partial.lat }
+                            : {}),
+                        ...(partial.lon !== undefined
+                            ? { lon: partial.lon }
+                            : {}),
+                        ...(partial.altitude !== undefined
+                            ? { altitude: partial.altitude }
+                            : {}),
+                    };
+                }
+            },
+            replacePoints: (
+                points: readonly PolygonPointOptions[],
+            ) => {
+                node.replaceCalls.push(points.map((p) => ({ ...p })));
+                node.points = points.map((p) => ({ ...p }));
             },
         };
         // 内部状態を `created` 経由でテストから観測するため、両方のオブジェクトを
@@ -438,5 +485,123 @@ describe("PolygonManager update (#170 では未公開)", () => {
         expect(() => mgr.update("a", { enabled: false })).toThrow(
             /not implemented/,
         );
+    });
+});
+
+describe("PolygonManager 点編集 API (#173)", () => {
+    // `created` (mock 内で push される StubNode) の最新エントリを参照することで、
+    // PolygonManager が node 側へ委譲したかを履歴で検証する。
+    it("insertPoint が node.insertPoint へ委譲され、handle を返す", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        const node = created[created.length - 1];
+        const handle = mgr.insertPoint("a", 1, {
+            lat: 35.6815,
+            lon: 139.7675,
+        });
+        expect(node.insertCalls).toEqual([
+            { index: 1, point: { lat: 35.6815, lon: 139.7675 } },
+        ]);
+        expect(handle.id).toBe("a");
+    });
+
+    it("insertPoint は JAPAN_BOUNDS 外で throw（node 委譲前）", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        expect(() => mgr.insertPoint("a", 0, { lat: 0, lon: 0 })).toThrow(
+            /JAPAN_BOUNDS/,
+        );
+    });
+
+    it("removePoint が node.removePoint へ委譲される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        const node = created[created.length - 1];
+        mgr.removePoint("a", 0);
+        expect(node.removeCalls).toEqual([0]);
+    });
+
+    it("updatePoint が node.updatePoint へ委譲される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        const node = created[created.length - 1];
+        mgr.updatePoint("a", 1, { altitude: 50 });
+        expect(node.updateCalls).toEqual([
+            { index: 1, partial: { altitude: 50 } },
+        ]);
+    });
+
+    it("updatePoint は lat/lon partial で JAPAN_BOUNDS 検査が走る", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        expect(() =>
+            mgr.updatePoint("a", 0, { lat: 0, lon: 0 }),
+        ).toThrow(/JAPAN_BOUNDS/);
+    });
+
+    it("replacePoints は points.length<2 で throw", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        expect(() =>
+            mgr.replacePoints("a", [{ lat: 35.681, lon: 139.767 }]),
+        ).toThrow(/at least 2/);
+    });
+
+    it("replacePoints が node.replacePoints へ委譲される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        const node = created[created.length - 1];
+        const next = [
+            { lat: 35.681, lon: 139.767 },
+            { lat: 35.682, lon: 139.768 },
+        ];
+        mgr.replacePoints("a", next);
+        expect(node.replaceCalls.length).toBe(1);
+        expect(node.replaceCalls[0]).toEqual(next);
+    });
+
+    it("未存在 id で insert/remove/update/replace は throw", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        expect(() =>
+            mgr.insertPoint("missing", 0, { lat: 35.681, lon: 139.767 }),
+        ).toThrow(/not found/);
+        expect(() => mgr.removePoint("missing", 0)).toThrow(/not found/);
+        expect(() => mgr.updatePoint("missing", 0, { lat: 35.681 })).toThrow(
+            /not found/,
+        );
+        expect(() =>
+            mgr.replacePoints("missing", [
+                { lat: 35.681, lon: 139.767 },
+                { lat: 35.682, lon: 139.768 },
+            ]),
+        ).toThrow(/not found/);
+    });
+
+    it("dispose 後の insert/remove/update/replace は throw", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        mgr.dispose();
+        expect(() =>
+            mgr.insertPoint("a", 0, { lat: 35.681, lon: 139.767 }),
+        ).toThrow(/disposed/);
+        expect(() => mgr.removePoint("a", 0)).toThrow(/disposed/);
+        expect(() => mgr.updatePoint("a", 0, { lat: 35.681 })).toThrow(
+            /disposed/,
+        );
+        expect(() =>
+            mgr.replacePoints("a", [
+                { lat: 35.681, lon: 139.767 },
+                { lat: 35.682, lon: 139.768 },
+            ]),
+        ).toThrow(/disposed/);
     });
 });

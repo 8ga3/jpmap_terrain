@@ -717,3 +717,197 @@ describe("createPolygonNode 壁 (#172)", () => {
         expect(path[0][1].y).toBe(200);
     });
 });
+
+describe("createPolygonNode 点編集 API (#173)", () => {
+    const basePoints = [
+        { lat: 35.0, lon: 139.0, altitude: 100 },
+        { lat: 35.1, lon: 139.1, altitude: 200 },
+        { lat: 35.2, lon: 139.2, altitude: 300 },
+    ];
+
+    it("insertPoint で sphere / drop / line / wall が再構築され、handle.points が伸びる", () => {
+        const node = createPolygonNode(sceneStub, "pi", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        const sphereBefore = sphereCalls.length;
+        const tubeBefore = tubeCalls.length;
+        const ribbonBefore = ribbonCalls.length;
+        node.insertPoint(1, { lat: 35.05, lon: 139.05, altitude: 150 });
+        // sphere: 新規 1 本、drop: 新規 1 本、line/wall: 1 回 dispose+再生成。
+        expect(sphereCalls.length - sphereBefore).toBe(1);
+        // 垂線 (drop) 新規 1 + line 再生成 1 = +2 Tube call
+        expect(tubeCalls.length - tubeBefore).toBe(2);
+        expect(ribbonCalls.length - ribbonBefore).toBe(1);
+        const h = node.getHandle();
+        expect(h.points.length).toBe(4);
+        expect(h.points[1].lat).toBe(35.05);
+    });
+
+    it("insertPoint は範囲外 index で RangeError", () => {
+        const node = createPolygonNode(sceneStub, "pi2", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        expect(() =>
+            node.insertPoint(-1, { lat: 35, lon: 139, altitude: 0 }),
+        ).toThrow(RangeError);
+        expect(() =>
+            node.insertPoint(99, { lat: 35, lon: 139, altitude: 0 }),
+        ).toThrow(RangeError);
+    });
+
+    it("insertPoint は absolute モードで altitude 未指定なら throw", () => {
+        const node = createPolygonNode(sceneStub, "pi3", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        expect(() => node.insertPoint(0, { lat: 35, lon: 139 })).toThrow(
+            /absolute/,
+        );
+    });
+
+    it("removePoint で末尾 sphere / drop が dispose され、line/wall が再生成される", () => {
+        const node = createPolygonNode(sceneStub, "pr", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        const tubeBefore = tubeCalls.length;
+        const ribbonBefore = ribbonCalls.length;
+        const sphereMeshBefore = allMeshes.find(
+            (m) => m.name === "polygon-pr-point-2",
+        );
+        const dropMeshBefore = allMeshes.find(
+            (m) => m.name === "polygon-pr-drop-2",
+        );
+        node.removePoint(2);
+        expect(sphereMeshBefore?.disposed).toBe(true);
+        expect(dropMeshBefore?.disposed).toBe(true);
+        // line/wall 1 回ずつ再生成。
+        expect(tubeCalls.length - tubeBefore).toBe(1);
+        expect(ribbonCalls.length - ribbonBefore).toBe(1);
+        expect(node.getHandle().points.length).toBe(2);
+    });
+
+    it("removePoint は残り 2 点未満で throw", () => {
+        const node = createPolygonNode(sceneStub, "pr2", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+        });
+        expect(() => node.removePoint(0)).toThrow(/at least 2/);
+    });
+
+    it("updatePoint は点数同一なので line/wall を dispose しない", () => {
+        const node = createPolygonNode(sceneStub, "pu", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        const lineMesh = allMeshes.find((m) => m.name === "polygon-pu-line");
+        const wallMesh = allMeshes.find((m) => m.name === "polygon-pu-walls");
+        const tubeBefore = tubeCalls.length;
+        const ribbonBefore = ribbonCalls.length;
+        node.updatePoint(0, { altitude: 999 });
+        // 点数不変 → 再生成なし。Tube/Ribbon の追加 call も発生しない。
+        expect(lineMesh?.disposed).toBe(false);
+        expect(wallMesh?.disposed).toBe(false);
+        expect(tubeCalls.length).toBe(tubeBefore);
+        expect(ribbonCalls.length).toBe(ribbonBefore);
+        expect(node.getHandle().points[0].altitude).toBe(999);
+    });
+
+    it("updatePoint(label) は sparse 同期する: 文字列で生成、null で破棄", () => {
+        const node = createPolygonNode(sceneStub, "pul", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        // labels 未指定 → handle.labels=undefined。
+        expect(node.getHandle().labels).toBeUndefined();
+
+        node.updatePoint(1, { label: "L1" });
+        // index=1 にラベル平面が新規生成される。
+        const planeAfterAdd = planeCalls.filter((p) =>
+            p.name.startsWith("polygon-pul-label-"),
+        );
+        expect(planeAfterAdd.length).toBe(1);
+        const labels1 = node.getHandle().labels;
+        expect(labels1).toBeDefined();
+        expect(labels1?.[0]).toBeUndefined();
+        expect(labels1?.[1]).toBe("L1");
+
+        // null 指定でラベル mesh が dispose される。
+        const labelMesh = allMeshes.find(
+            (m) => m.name === "polygon-pul-label-1",
+        );
+        node.updatePoint(1, { label: null });
+        expect(labelMesh?.disposed).toBe(true);
+        const labels2 = node.getHandle().labels;
+        expect(labels2?.[1]).toBeUndefined();
+    });
+
+    it("updatePoint は範囲外で RangeError、altitudeMode=absolute では altitude=undefined のままなら throw しない (現状値継承)", () => {
+        const node = createPolygonNode(sceneStub, "pu2", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        expect(() => node.updatePoint(99, { lat: 35 })).toThrow(RangeError);
+        // partial.altitude 未指定でも、現状の altitude を継承するため throw しない。
+        expect(() => node.updatePoint(0, { lat: 35.5 })).not.toThrow();
+    });
+
+    it("replacePoints で全 sphere/drop/label が dispose+再生成され、line/wall も再構築される", () => {
+        const node = createPolygonNode(sceneStub, "prep", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+            labels: ["a", "b", "c"],
+        });
+        const labelDtBefore = dynamicTextures.filter((t) =>
+            t.name.startsWith("polygon-prep-label-"),
+        );
+        const sphereBefore = sphereCalls.length;
+        const tubeBefore = tubeCalls.length;
+        const ribbonBefore = ribbonCalls.length;
+        node.replacePoints([
+            { lat: 35.5, lon: 139.5, altitude: 50 },
+            { lat: 35.6, lon: 139.6, altitude: 60 },
+        ]);
+        // sphere 新規 2 本、drop 新規 2 本、line+wall 各 1 回再構築。
+        expect(sphereCalls.length - sphereBefore).toBe(2);
+        expect(tubeCalls.length - tubeBefore).toBe(2 + 1);
+        expect(ribbonCalls.length - ribbonBefore).toBe(1);
+        // 旧 label の DT が dispose される。
+        for (const dt of labelDtBefore) {
+            expect(dt.disposed).toBe(true);
+        }
+        const h = node.getHandle();
+        expect(h.points.length).toBe(2);
+        // labels は全 undefined（hasLabels=true は維持）。
+        expect(h.labels).toBeDefined();
+        expect(h.labels?.[0]).toBeUndefined();
+    });
+
+    it("replacePoints は 2 点未満で throw", () => {
+        const node = createPolygonNode(sceneStub, "prep2", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        expect(() =>
+            node.replacePoints([{ lat: 35, lon: 139, altitude: 0 }]),
+        ).toThrow(/at least 2/);
+    });
+
+    it("replacePoints は緯度経度範囲外で RangeError", () => {
+        const node = createPolygonNode(sceneStub, "prep3", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        expect(() =>
+            node.replacePoints([
+                { lat: 35, lon: 139, altitude: 0 },
+                { lat: 999, lon: 139, altitude: 0 },
+            ]),
+        ).toThrow(RangeError);
+    });
+});
