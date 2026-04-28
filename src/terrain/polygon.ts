@@ -365,10 +365,12 @@ export const createPolygonNode = (
     let elevationResolved = altitudeMode === "absolute";
 
     // wallsEnabled が false の間は Ribbon 更新をスキップするため、適用した
-    // worldPoints / groundYs の直近スナップショットを保持して、
-    // 再 enable 時に即時で位置を追い付かせる。`null` は未適用を表す。
-    let lastWorldPoints: Vector3[] | null = null;
-    let lastGroundYs: (number | null)[] | null = null;
+    // worldPoints / groundYs の参照を保持して、再 enable 時に即時で
+    // 位置を追い付かせる。呼び出し側 (PolygonManager.tickPolygon) は毎フレーム
+    // 新規配列を生成するため、参照保持でも次フレームに上書きされず
+    // 時間取り不整合は起きない。`null` は未適用を表す。
+    let lastWorldPoints: readonly Vector3[] | null = null;
+    let lastGroundYs: readonly (number | null)[] | null = null;
 
     // 頂点はディープコピーして外部からの破壊変更を無効化する。
     const points: PolygonPointOptions[] = options.points.map((p) => ({
@@ -529,12 +531,10 @@ export const createPolygonNode = (
         );
 
         // 壁 Ribbon (#172) の更新。非表示中はスキップしてフレーム負荷を下げるが、
-        // 上で lastWorldPoints / lastGroundYs にスナップしておき、setWallsEnabled(true) 時に
-        // 即時で同一データで Ribbon を再適用して stale 表示を避ける。
-        lastWorldPoints = worldPoints.map(
-            (p) => new Vector3(p.x, p.y, p.z),
-        );
-        lastGroundYs = groundYs.slice();
+        // 上で lastWorldPoints / lastGroundYs の参照を保持しておき、setWallsEnabled(true)
+        // 時に同一データで Ribbon を再適用して stale 表示を避ける。
+        lastWorldPoints = worldPoints;
+        lastGroundYs = groundYs;
         if (wallsEnabled) {
             const wallPathArray = buildWallPathArray(
                 worldPoints,
