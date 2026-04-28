@@ -26,6 +26,7 @@ interface StubNode {
     setEnabledHistory: boolean[];
     setVerticalsEnabledHistory: boolean[];
     setLabelsEnabledHistory: boolean[];
+    setWallsEnabledHistory: boolean[];
     setElevationResolvedHistory: boolean[];
 }
 
@@ -52,6 +53,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             setEnabledHistory: [],
             setVerticalsEnabledHistory: [],
             setLabelsEnabledHistory: [],
+            setWallsEnabledHistory: [],
             setElevationResolvedHistory: [],
         };
         const wrapped = {
@@ -83,6 +85,9 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             },
             setLabelsEnabledLogical: (v: boolean) => {
                 node.setLabelsEnabledHistory.push(v);
+            },
+            setWallsEnabledLogical: (v: boolean) => {
+                node.setWallsEnabledHistory.push(v);
             },
             setElevationResolved: (v: boolean) => {
                 node.elevationResolved = v;
@@ -366,11 +371,21 @@ describe("PolygonManager enable / disable", () => {
         expect(created[0].setLabelsEnabledHistory).toEqual([false, true]);
     });
 
-    it("未存在 id の setVerticalsEnabled / setLabelsEnabled は throw (Issue #171)", () => {
+    it("setWallsEnabled が node.setWallsEnabledLogical へ委譲される (Issue #172)", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        mgr.setWallsEnabled("a", false);
+        mgr.setWallsEnabled("a", true);
+        expect(created[0].setWallsEnabledHistory).toEqual([false, true]);
+    });
+
+    it("未存在 id の setVerticalsEnabled / setLabelsEnabled / setWallsEnabled は throw", () => {
         const { ctx } = buildCtx(0);
         const mgr = createPolygonManager(ctx);
         expect(() => mgr.setVerticalsEnabled("missing", false)).toThrow(/not found/);
         expect(() => mgr.setLabelsEnabled("missing", false)).toThrow(/not found/);
+        expect(() => mgr.setWallsEnabled("missing", false)).toThrow(/not found/);
     });
 });
 
@@ -395,6 +410,7 @@ describe("PolygonManager dispose", () => {
         expect(() => mgr.setEnabled("a", false)).toThrow(/disposed/);
         expect(() => mgr.setVerticalsEnabled("a", false)).toThrow(/disposed/);
         expect(() => mgr.setLabelsEnabled("a", false)).toThrow(/disposed/);
+        expect(() => mgr.setWallsEnabled("a", false)).toThrow(/disposed/);
     });
 
     it("dispose 後の get は null、list は []、remove は no-op", () => {

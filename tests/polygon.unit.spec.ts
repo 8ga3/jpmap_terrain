@@ -47,7 +47,18 @@ const tubeCalls: Array<{
     options: { path: unknown[]; instance?: StubMesh; updatable?: boolean };
 }> = [];
 const planeCalls: Array<{ name: string; options: { width: number; height: number } }> = [];
+const ribbonCalls: Array<{
+    name: string;
+    options: { pathArray?: unknown[][]; instance?: StubMesh };
+}> = [];
 const dynamicTextures: Array<{ name: string; disposed: boolean }> = [];
+interface StubMaterialRecord {
+    name: string;
+    alpha: number;
+    needDepthPrePass: boolean;
+    emissiveColor: { r: number; g: number; b: number } | null;
+}
+const materials: StubMaterialRecord[] = [];
 const transformNodes: StubTransformNode[] = [];
 const allMeshes: StubMesh[] = [];
 
@@ -128,9 +139,11 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
         public alpha = 1;
         public backFaceCulling = true;
         public disableLighting = false;
+        public needDepthPrePass = false;
         public emissiveColor: { r: number; g: number; b: number } | null = null;
         constructor(name: string) {
             this.name = name;
+            materials.push(this);
         }
         dispose(): void {
             this.disposed = true;
@@ -158,7 +171,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/transformNode", () => ({
 
 // Mesh は NO_CAP 静的定数のみ参照される。
 jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
-    Mesh: { NO_CAP: 0 },
+    Mesh: { NO_CAP: 0, DOUBLESIDE: 2 },
 }));
 
 jest.unstable_mockModule(
@@ -169,6 +182,20 @@ jest.unstable_mockModule(
             options: { width: number; height: number },
         ): StubMesh => {
             planeCalls.push({ name, options });
+            return buildMesh(name);
+        },
+    }),
+);
+
+jest.unstable_mockModule(
+    "@babylonjs/core/Meshes/Builders/ribbonBuilder",
+    () => ({
+        CreateRibbon: (
+            name: string,
+            options: { pathArray?: unknown[][]; instance?: StubMesh },
+        ): StubMesh => {
+            ribbonCalls.push({ name, options });
+            if (options.instance) return options.instance;
             return buildMesh(name);
         },
     }),
@@ -235,9 +262,11 @@ beforeEach(() => {
     sphereCalls.length = 0;
     tubeCalls.length = 0;
     planeCalls.length = 0;
+    ribbonCalls.length = 0;
     dynamicTextures.length = 0;
     transformNodes.length = 0;
     allMeshes.length = 0;
+    materials.length = 0;
 });
 
 describe("createPolygonNode 構築", () => {
@@ -493,5 +522,198 @@ describe("createPolygonNode enabled / dispose", () => {
             expect(dt.disposed).toBe(true);
         }
         expect(transformNodes[0].disposed).toBe(true);
+    });
+});
+
+describe("createPolygonNode 壁 (#172)", () => {
+    it("構築時に壁 Ribbon が 1 本生成される (closed=false)", () => {
+        createPolygonNode(sceneStub, "pW1", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+                { lat: 35.2, lon: 139.2, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+        });
+        expect(ribbonCalls.length).toBe(1);
+        const initial = ribbonCalls[0].options.pathArray as unknown[][];
+        // pathArray = [topRow, groundRow]
+        expect(initial.length).toBe(2);
+        expect(initial[0].length).toBe(3);
+        expect(initial[1].length).toBe(3);
+    });
+
+    it("closed=true で壁 Ribbon の各 row 末尾に先頭頂点が append される", async () => {
+        const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
+        const node = createPolygonNode(sceneStub, "pW2", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+                { lat: 35.2, lon: 139.2, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+            closed: true,
+        });
+        node.applyTransform(
+            [
+                new Vector3(0, 100, 0),
+                new Vector3(50, 100, 0),
+                new Vector3(50, 100, 50),
+            ],
+            [10, 20, 30],
+            1,
+        );
+        // 構築 1 + 更新 1 = 2 回
+        expect(ribbonCalls.length).toBe(2);
+        const update = ribbonCalls[1].options.pathArray as Array<
+            Array<{ x: number; y: number; z: number }>
+        >;
+        expect(update[0].length).toBe(4); // top row: 3 + 1 (先頭再追加)
+        expect(update[1].length).toBe(4);
+        // top: y は worldPoints[i].y がそのまま入る
+        expect(update[0][0].y).toBe(100);
+        expect(update[0][3].y).toBe(100);
+        // ground: y は groundYs[i]、末尾は先頭の groundY
+        expect(update[1][0].y).toBe(10);
+        expect(update[1][3].y).toBe(10);
+    });
+
+    it("applyTransform で壁 Ribbon が instance 指定で更新される", async () => {
+        const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
+        const node = createPolygonNode(sceneStub, "pW3", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+        });
+        const before = ribbonCalls.length;
+        node.applyTransform(
+            [new Vector3(0, 100, 0), new Vector3(50, 100, 0)],
+            [0, 0],
+            1,
+        );
+        expect(ribbonCalls.length - before).toBe(1);
+        expect(ribbonCalls[before].options.instance).toBeDefined();
+    });
+
+    it("setWallsEnabledLogical(false) で壁メッシュの setEnabled(false) が呼ばれ、その後の更新がスキップされる", async () => {
+        const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
+        const node = createPolygonNode(sceneStub, "pW4", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+        });
+        const wallMeshes = allMeshes.filter(
+            (m) => m.name === "polygon-pW4-walls",
+        );
+        expect(wallMeshes.length).toBe(1);
+        node.setWallsEnabledLogical(false);
+        expect(wallMeshes[0].enabledHistory).toContain(false);
+        expect(node.getHandle().wallsEnabled).toBe(false);
+
+        const before = ribbonCalls.length;
+        node.applyTransform(
+            [new Vector3(0, 100, 0), new Vector3(50, 100, 0)],
+            [0, 0],
+            1,
+        );
+        // wallsEnabled=false の間は CreateRibbon 更新を行わない。
+        expect(ribbonCalls.length).toBe(before);
+
+        node.setWallsEnabledLogical(true);
+        node.applyTransform(
+            [new Vector3(0, 100, 0), new Vector3(50, 100, 0)],
+            [0, 0],
+            1,
+        );
+        // 再 enable 時に直近スナップショットで 1 回 + applyTransform で 1 回 = +2
+        expect(ribbonCalls.length).toBe(before + 2);
+    });
+
+    it("wallsEnabled は初期値 true、PolygonOptions.wallsEnabled=false で初期 hide になる", () => {
+        const node = createPolygonNode(sceneStub, "pW5", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+            wallsEnabled: false,
+        });
+        expect(node.getHandle().wallsEnabled).toBe(false);
+        const wallMesh = allMeshes.find((m) => m.name === "polygon-pW5-walls");
+        expect(wallMesh).toBeDefined();
+        // 初回 applyVisibility で false が積まれる。
+        expect(wallMesh!.enabledHistory).toContain(false);
+    });
+
+    it("wallColor / wallOpacity が壁マテリアルへ反映され、半透明時は needDepthPrePass=true となる", () => {
+        createPolygonNode(sceneStub, "pW6", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+            style: { wallColor: "#00ff00", wallOpacity: 0.5 },
+        });
+        const wallMat = materials.find(
+            (m) => m.name === "polygon-pW6-walls-mat",
+        );
+        expect(wallMat).toBeDefined();
+        expect(wallMat!.alpha).toBe(0.5);
+        expect(wallMat!.needDepthPrePass).toBe(true);
+        // emissive: #00ff00 → r=0, g=1, b=0
+        expect(wallMat!.emissiveColor!.r).toBe(0);
+        expect(wallMat!.emissiveColor!.g).toBe(1);
+        expect(wallMat!.emissiveColor!.b).toBe(0);
+    });
+
+    it("wallOpacity=1 のときは needDepthPrePass を有効化しない", () => {
+        createPolygonNode(sceneStub, "pW7", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+            style: { wallOpacity: 1 },
+        });
+        const wallMat = materials.find(
+            (m) => m.name === "polygon-pW7-walls-mat",
+        );
+        expect(wallMat).toBeDefined();
+        expect(wallMat!.alpha).toBe(1);
+        expect(wallMat!.needDepthPrePass).toBe(false);
+    });
+
+    it("wallsEnabled を false→true に切り替えた直後に Ribbon が直近 transform で再適用される (stale 回避)", async () => {
+        const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
+        const node = createPolygonNode(sceneStub, "pW8", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+        });
+        // 一度 transform を適用して直近スナップショットを保持させる。
+        node.applyTransform(
+            [new Vector3(10, 100, 0), new Vector3(50, 200, 0)],
+            [10, 20],
+            1,
+        );
+        node.setWallsEnabledLogical(false);
+        const before = ribbonCalls.length;
+        node.setWallsEnabledLogical(true);
+        // 再 enable で 1 回 Ribbon 再適用される。
+        expect(ribbonCalls.length).toBe(before + 1);
+        const lastCall = ribbonCalls[ribbonCalls.length - 1];
+        expect(lastCall.options.instance).toBeDefined();
+        const path = lastCall.options.pathArray as Array<
+            Array<{ y: number }>
+        >;
+        // 直近 worldPoints の Y が反映されていること。
+        expect(path[0][0].y).toBe(100);
+        expect(path[0][1].y).toBe(200);
     });
 });

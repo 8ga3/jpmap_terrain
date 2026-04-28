@@ -84,7 +84,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
     createPolygonNode: (
         _scene: unknown,
         id: string,
-        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean },
+        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean; wallsEnabled?: boolean },
     ) => {
         let enabled = options.enabled ?? true;
         const altitudeMode = options.altitudeMode ?? "terrain";
@@ -107,6 +107,9 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             setLabelsEnabledLogical: () => {
                 /* no-op */
             },
+            setWallsEnabledLogical: () => {
+                /* no-op */
+            },
             setElevationResolved: (v: boolean) => {
                 elevationResolved = v;
             },
@@ -120,6 +123,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
                 enabled,
                 verticalsEnabled: options.verticalsEnabled ?? true,
                 labelsEnabled: options.labelsEnabled ?? true,
+                wallsEnabled: options.wallsEnabled ?? true,
                 elevationResolved,
             }),
             dispose: () => {
@@ -1495,6 +1499,13 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setLabelsEnabled("p1", true)).not.toThrow();
         });
 
+        it("setWallsEnabled は存在する id に対して throw しない (Issue #172)", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            expect(() => viewer.setWallsEnabled("p1", false)).not.toThrow();
+            expect(() => viewer.setWallsEnabled("p1", true)).not.toThrow();
+        });
+
         it("dispose 後の addPolygon は throw、その他 API は no-op / null / [] を返す", async () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
@@ -1505,6 +1516,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
             expect(() => viewer.setVerticalsEnabled("p1", false)).not.toThrow();
             expect(() => viewer.setLabelsEnabled("p1", false)).not.toThrow();
+            expect(() => viewer.setWallsEnabled("p1", false)).not.toThrow();
         });
     });
 });

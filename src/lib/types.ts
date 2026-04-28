@@ -260,9 +260,9 @@ export interface PolygonStyleOptions {
     labelBackgroundColor?: string;
     /** ラベル文字サイズ (px)。default 14 */
     labelFontSize?: number;
-    /** 壁の色 CSS（#172 で適用）。 */
+    /** 壁の色 CSS (#172)。default `#ff0000` */
     wallColor?: string;
-    /** 壁の不透明度 [0,1]（#172 で適用）。 */
+    /** 壁の不透明度 [0,1] (#172)。default 0.3 */
     wallOpacity?: number;
 }
 
@@ -292,6 +292,8 @@ export interface PolygonOptions {
     verticalsEnabled?: boolean;
     /** ポイント脇のラベルの表示 ON/OFF。default true */
     labelsEnabled?: boolean;
+    /** 隣接垂線間をつなぐ「壁」の表示 ON/OFF (#172)。default true */
+    wallsEnabled?: boolean;
 }
 
 /**
@@ -309,6 +311,7 @@ export type PolygonUpdate = Partial<
         | "enabled"
         | "verticalsEnabled"
         | "labelsEnabled"
+        | "wallsEnabled"
     >
 >;
 
@@ -327,6 +330,8 @@ export interface PolygonHandle {
     readonly verticalsEnabled: boolean;
     /** ラベルの表示状態 */
     readonly labelsEnabled: boolean;
+    /** 壁の表示状態 (#172) */
+    readonly wallsEnabled: boolean;
     /**
      * `terrain` モード時、全頂点の標高が解決済みなら true。
      * `absolute` モード時は常に true。
@@ -346,6 +351,7 @@ export const POLYGON_DEFAULTS = {
     enabled: true,
     verticalsEnabled: true,
     labelsEnabled: true,
+    wallsEnabled: true,
     style: {
         lineColor: "#ff0000",
         lineWidth: 2,

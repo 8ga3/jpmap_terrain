@@ -69,6 +69,8 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
                 lineColor: "#ff5252",
                 pointDiameter: 18,
                 lineWidth: 3,
+                wallColor: "#ff5252",
+                wallOpacity: 0.3,
             },
         },
     },
@@ -89,6 +91,8 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
                 lineColor: "#42a5f5",
                 pointDiameter: 24,
                 lineWidth: 4,
+                wallColor: "#42a5f5",
+                wallOpacity: 0.4,
             },
         },
     },
@@ -111,6 +115,8 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
                 lineColor: "#ffca28",
                 pointDiameter: 18,
                 lineWidth: 3,
+                wallColor: "#ffca28",
+                wallOpacity: 0.5,
             },
         },
     },
@@ -174,6 +180,14 @@ const buildControls = (
         buildToggle("✔ ラベル ON", "✕ ラベル OFF", true, (next) => {
             for (const def of polygons) {
                 viewer.setLabelsEnabled(def.id, next);
+            }
+        }),
+    );
+    // 壁 ON/OFF (Issue #172)
+    container.appendChild(
+        buildToggle("✔ 壁 ON", "✕ 壁 OFF", true, (next) => {
+            for (const def of polygons) {
+                viewer.setWallsEnabled(def.id, next);
             }
         }),
     );
