@@ -232,7 +232,7 @@ export interface PolygonPointOptions {
  * ポリゴン全体のスタイル（spec/package.md §3.3.8.1）。
  *
  * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は #170 で適用。
- * - `dropLine*` / `label*` は #171 で適用予定。`#170` では型予約のみ（既定値で埋めるが描画には未使用）。
+ * - `dropLine*` / `label*` は #171 で適用。
  * - `wallColor` / `wallOpacity` は #172 で適用予定。
  */
 export interface PolygonStyleOptions {
@@ -248,17 +248,17 @@ export interface PolygonStyleOptions {
     pointDiameter?: number;
     /** 球の不透明度 [0,1]。default 1 */
     pointOpacity?: number;
-    /** 垂線の色 CSS（#171 で適用）。 */
+    /** 垂線の色 CSS。default `#ff0000` */
     dropLineColor?: string;
-    /** 垂線の太さ (m, world)（#171 で適用）。 */
+    /** 垂線の太さ (m, world、Tube 半径)。default 1 */
     dropLineWidth?: number;
-    /** 垂線の不透明度 [0,1]（#171 で適用）。 */
+    /** 垂線の不透明度 [0,1]。default 1 */
     dropLineOpacity?: number;
-    /** ラベル文字色 CSS（#171 で適用）。 */
+    /** ラベル文字色 CSS。default `#000000` */
     labelColor?: string;
-    /** ラベル背景色 CSS（#171 で適用）。 */
+    /** ラベル背景色 CSS。default `"transparent"`。不透明色を指定するとラベル領域全体をその色で塗る。 */
     labelBackgroundColor?: string;
-    /** ラベル文字サイズ (px)（#171 で適用）。 */
+    /** ラベル文字サイズ (px)。default 14 */
     labelFontSize?: number;
     /** 壁の色 CSS（#172 で適用）。 */
     wallColor?: string;
@@ -281,13 +281,17 @@ export interface PolygonOptions {
     altitudeMode?: AltitudeMode;
     /**
      * ラベル（点ごと）。`points[i]` に対応する文字列を `labels[i]` で渡す。
-     * `#171` で描画予定。`#170` では受け取るが描画はしない。
+     * 値が指定された点にのみラベル平面（ビルボード + DynamicTexture）を描画する。
      */
     labels?: ReadonlyArray<string>;
     /** スタイル */
     style?: PolygonStyleOptions;
     /** default true */
     enabled?: boolean;
+    /** 各ポイントから地表へ落とす垂線の表示 ON/OFF。default true */
+    verticalsEnabled?: boolean;
+    /** ポイント脇のラベルの表示 ON/OFF。default true */
+    labelsEnabled?: boolean;
 }
 
 /**
@@ -303,6 +307,8 @@ export type PolygonUpdate = Partial<
         | "labels"
         | "style"
         | "enabled"
+        | "verticalsEnabled"
+        | "labelsEnabled"
     >
 >;
 
@@ -317,6 +323,10 @@ export interface PolygonHandle {
     readonly labels: ReadonlyArray<string> | undefined;
     readonly style: Readonly<Required<PolygonStyleOptions>>;
     readonly enabled: boolean;
+    /** 垂線の表示状態 */
+    readonly verticalsEnabled: boolean;
+    /** ラベルの表示状態 */
+    readonly labelsEnabled: boolean;
     /**
      * `terrain` モード時、全頂点の標高が解決済みなら true。
      * `absolute` モード時は常に true。
@@ -327,14 +337,15 @@ export interface PolygonHandle {
 /**
  * ポリゴンの既定値（spec/package.md §3.3.8.1）。
  *
- * `style` は仕様書記載の #170 範囲既定値（`#ff0000` / 直径 20m / 線幅 2m / opacity 1）を採用する。
- * `dropLine*` / `label*` / `wallColor` / `wallOpacity` は型予約のため、ハンドル `style` の
- * `Required<>` を満たすための既定値を内部的に保持するが、`#170` では描画には使用されない。
+ * `style` は仕様書記載の既定値を採用する。
+ * `wallColor` / `wallOpacity` は #172 で適用予定（型予約）。
  */
 export const POLYGON_DEFAULTS = {
     closed: false,
     altitudeMode: "terrain" as AltitudeMode,
     enabled: true,
+    verticalsEnabled: true,
+    labelsEnabled: true,
     style: {
         lineColor: "#ff0000",
         lineWidth: 2,
@@ -342,13 +353,13 @@ export const POLYGON_DEFAULTS = {
         pointColor: "#ff0000",
         pointDiameter: 20,
         pointOpacity: 1,
-        // 以下は #171 / #172 用の予約値（描画未使用）。Required<> 充足のために保持。
         dropLineColor: "#ff0000",
         dropLineWidth: 1,
         dropLineOpacity: 1,
-        labelColor: "#ffffff",
-        labelBackgroundColor: "#000000",
+        labelColor: "#000000",
+        labelBackgroundColor: "transparent",
         labelFontSize: 14,
+        // 以下は #172 用の予約値（描画未使用）。Required<> 充足のために保持。
         wallColor: "#ff0000",
         wallOpacity: 0.3,
     },

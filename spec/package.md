@@ -345,7 +345,7 @@ interface MarkerOptions {
 
 任意の点列を受け取り、地表または絶対標高に沿って **ポイント球体** と **ポリライン** を表示する API（基盤）。
 
-##### 3.3.8.1 公開 API（基盤＋ポリライン: Issue #170）
+##### 3.3.8.1 公開 API（基盤＋ポリライン＋垂線/ラベル: Issue #170 / #171）
 
 ```typescript
 interface JpmapTerrain {
@@ -357,6 +357,10 @@ interface JpmapTerrain {
   removePolygon(id: string): void;
   /** enabled の薄いショートカット */
   setPolygonEnabled(id: string, enabled: boolean): void;
+  /** 各点からの垂線表示をポリゴン単位で ON/OFF (#171) */
+  setVerticalsEnabled(id: string, enabled: boolean): void;
+  /** ラベル表示をポリゴン単位で ON/OFF (#171) */
+  setLabelsEnabled(id: string, enabled: boolean): void;
   /** 全 id を生成順で返す */
   listPolygons(): readonly string[];
 }
@@ -394,10 +398,14 @@ interface PolygonOptions {
   altitudeMode?: AltitudeMode;                // default "terrain"
   /** `true` でポリラインの末尾と先頭を結んで閉じる（#170 はポリラインのみ閉じる）。default false */
   closed?: boolean;
-  /** ラベル（点ごと）。#171 で描画予定。#170 では受け取るが描画しない。 */
+  /** ラベル（点ごと）。#171 で実装済み。`labels[i]` が文字列のときその点にラベルを描画する。 */
   labels?: ReadonlyArray<string>;
   style?: PolygonStyleOptions;
   enabled?: boolean;                          // default true
+  /** 各点から地表へ落とす垂線の表示 (#171 実装済み)。default true */
+  verticalsEnabled?: boolean;
+  /** ラベルの表示 (#171 実装済み)。default true */
+  labelsEnabled?: boolean;
 }
 ```
 
@@ -410,7 +418,7 @@ interface PolygonOptions {
 - JAPAN_BOUNDS 外の点・`points.length < 2`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
-- **#171 で実装予定（型予約済み）**: 各ポイントから地表へ落とす垂線、ポイント脇のラベル（`labels`）。
+- **#171 実装済み**: 各点から地表（タイル標高、未解決時は Y=0 フォールバック）へ落とす垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
 - **#172 で実装予定（型予約済み）**: 隣接垂線間を結ぶ「壁」（`closed` 時の閉じも含む）、`wallColor` / `wallOpacity`。
 - **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 

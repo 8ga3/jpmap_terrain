@@ -84,7 +84,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
     createPolygonNode: (
         _scene: unknown,
         id: string,
-        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean },
+        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean },
     ) => {
         let enabled = options.enabled ?? true;
         const altitudeMode = options.altitudeMode ?? "terrain";
@@ -101,6 +101,12 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             setEnabledLogical: (v: boolean) => {
                 enabled = v;
             },
+            setVerticalsEnabledLogical: () => {
+                /* no-op */
+            },
+            setLabelsEnabledLogical: () => {
+                /* no-op */
+            },
             setElevationResolved: (v: boolean) => {
                 elevationResolved = v;
             },
@@ -112,6 +118,8 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
                 labels: undefined,
                 style: {} as unknown as Record<string, unknown>,
                 enabled,
+                verticalsEnabled: options.verticalsEnabled ?? true,
+                labelsEnabled: options.labelsEnabled ?? true,
                 elevationResolved,
             }),
             dispose: () => {
@@ -1478,6 +1486,15 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
         });
 
+        it("setVerticalsEnabled / setLabelsEnabled は存在する id に対して throw しない (Issue #171)", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            expect(() => viewer.setVerticalsEnabled("p1", false)).not.toThrow();
+            expect(() => viewer.setVerticalsEnabled("p1", true)).not.toThrow();
+            expect(() => viewer.setLabelsEnabled("p1", false)).not.toThrow();
+            expect(() => viewer.setLabelsEnabled("p1", true)).not.toThrow();
+        });
+
         it("dispose 後の addPolygon は throw、その他 API は no-op / null / [] を返す", async () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
@@ -1486,6 +1503,8 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(viewer.listPolygons()).toEqual([]);
             expect(() => viewer.removePolygon("p1")).not.toThrow();
             expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
+            expect(() => viewer.setVerticalsEnabled("p1", false)).not.toThrow();
+            expect(() => viewer.setLabelsEnabled("p1", false)).not.toThrow();
         });
     });
 });

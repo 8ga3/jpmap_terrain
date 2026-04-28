@@ -21,8 +21,11 @@ interface StubNode {
     elevationResolved: boolean;
     applyTransformCalls: number;
     lastWorldPoints: Array<{ x: number; y: number; z: number }>;
+    lastGroundYs: Array<number | null>;
     disposed: boolean;
     setEnabledHistory: boolean[];
+    setVerticalsEnabledHistory: boolean[];
+    setLabelsEnabledHistory: boolean[];
     setElevationResolvedHistory: boolean[];
 }
 
@@ -44,8 +47,11 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             elevationResolved: altitudeMode === "absolute",
             applyTransformCalls: 0,
             lastWorldPoints: [],
+            lastGroundYs: [],
             disposed: false,
             setEnabledHistory: [],
+            setVerticalsEnabledHistory: [],
+            setLabelsEnabledHistory: [],
             setElevationResolvedHistory: [],
         };
         const wrapped = {
@@ -56,6 +62,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
                     y: number;
                     z: number;
                 }>,
+                groundYs?: ReadonlyArray<number | null>,
             ) => {
                 node.applyTransformCalls++;
                 node.lastWorldPoints = worldPoints.map((p) => ({
@@ -63,10 +70,19 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
                     y: p.y,
                     z: p.z,
                 }));
+                if (groundYs) {
+                    node.lastGroundYs = groundYs.slice();
+                }
             },
             setEnabledLogical: (v: boolean) => {
                 node.enabled = v;
                 node.setEnabledHistory.push(v);
+            },
+            setVerticalsEnabledLogical: (v: boolean) => {
+                node.setVerticalsEnabledHistory.push(v);
+            },
+            setLabelsEnabledLogical: (v: boolean) => {
+                node.setLabelsEnabledHistory.push(v);
             },
             setElevationResolved: (v: boolean) => {
                 node.elevationResolved = v;
@@ -331,6 +347,31 @@ describe("PolygonManager enable / disable", () => {
         const mgr = createPolygonManager(ctx);
         expect(() => mgr.setEnabled("missing", false)).toThrow(/not found/);
     });
+
+    it("setVerticalsEnabled が node.setVerticalsEnabledLogical へ委譲される (Issue #171)", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        mgr.setVerticalsEnabled("a", false);
+        mgr.setVerticalsEnabled("a", true);
+        expect(created[0].setVerticalsEnabledHistory).toEqual([false, true]);
+    });
+
+    it("setLabelsEnabled が node.setLabelsEnabledLogical へ委譲される (Issue #171)", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints });
+        mgr.setLabelsEnabled("a", false);
+        mgr.setLabelsEnabled("a", true);
+        expect(created[0].setLabelsEnabledHistory).toEqual([false, true]);
+    });
+
+    it("未存在 id の setVerticalsEnabled / setLabelsEnabled は throw (Issue #171)", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        expect(() => mgr.setVerticalsEnabled("missing", false)).toThrow(/not found/);
+        expect(() => mgr.setLabelsEnabled("missing", false)).toThrow(/not found/);
+    });
 });
 
 describe("PolygonManager dispose", () => {
@@ -352,6 +393,8 @@ describe("PolygonManager dispose", () => {
         mgr.dispose();
         expect(() => mgr.add("a", { points: validPoints })).toThrow(/disposed/);
         expect(() => mgr.setEnabled("a", false)).toThrow(/disposed/);
+        expect(() => mgr.setVerticalsEnabled("a", false)).toThrow(/disposed/);
+        expect(() => mgr.setLabelsEnabled("a", false)).toThrow(/disposed/);
     });
 
     it("dispose 後の get は null、list は []、remove は no-op", () => {
