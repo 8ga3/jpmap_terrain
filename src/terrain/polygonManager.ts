@@ -24,6 +24,8 @@ import {
     POLYGON_DEFAULTS,
     type PolygonHandle,
     type PolygonOptions,
+    type PolygonPointOptions,
+    type PolygonPointPartial,
     type PolygonUpdate,
 } from "../lib/types";
 
@@ -42,6 +44,28 @@ export interface PolygonManager {
     setVerticalsEnabled(id: string, enabled: boolean): void;
     setLabelsEnabled(id: string, enabled: boolean): void;
     setWallsEnabled(id: string, enabled: boolean): void;
+    /**
+     * 指定 index に新しい頂点を挿入する (#173)。`index === points.length` で末尾追加。
+     * 範囲外 / 緯度経度範囲外 / `absolute` モードでの altitude 未指定 は throw。
+     */
+    insertPoint(
+        id: string,
+        index: number,
+        point: PolygonPointOptions,
+    ): PolygonHandle;
+    /** 指定 index の頂点を削除する (#173)。残り 2 点未満になる場合は throw。 */
+    removePoint(id: string, index: number): PolygonHandle;
+    /** 指定 index の頂点を部分更新する (#173)。 */
+    updatePoint(
+        id: string,
+        index: number,
+        partial: PolygonPointPartial,
+    ): PolygonHandle;
+    /** 全頂点を置き換える (#173)。`points.length < 2` は throw。 */
+    replacePoints(
+        id: string,
+        points: readonly PolygonPointOptions[],
+    ): PolygonHandle;
     list(): readonly string[];
     dispose(): void;
 }
@@ -210,6 +234,86 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
             }
             const node = requireNode(id);
             node.setWallsEnabledLogical(enabled);
+        },
+        insertPoint(
+            id: string,
+            index: number,
+            point: PolygonPointOptions,
+        ): PolygonHandle {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            // assertLatLonInBounds は addPolygon と同じ JAPAN_BOUNDS 検査で揃える。
+            assertLatLonInBounds(
+                point.lat,
+                point.lon,
+                `JpmapTerrain.insertPolygonPoint[${id}]`,
+            );
+            node.insertPoint(index, point);
+            tickPolygon(node);
+            return node.getHandle();
+        },
+        removePoint(id: string, index: number): PolygonHandle {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            node.removePoint(index);
+            tickPolygon(node);
+            return node.getHandle();
+        },
+        updatePoint(
+            id: string,
+            index: number,
+            partial: PolygonPointPartial,
+        ): PolygonHandle {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            // 緯度経度の partial がある場合は JAPAN_BOUNDS チェックを先行する。
+            if (partial.lat !== undefined || partial.lon !== undefined) {
+                const current = node.points[index];
+                const lat = partial.lat ?? current?.lat;
+                const lon = partial.lon ?? current?.lon;
+                if (lat !== undefined && lon !== undefined) {
+                    assertLatLonInBounds(
+                        lat,
+                        lon,
+                        `JpmapTerrain.updatePolygonPoint[${id}][${index}]`,
+                    );
+                }
+            }
+            node.updatePoint(index, partial);
+            tickPolygon(node);
+            return node.getHandle();
+        },
+        replacePoints(
+            id: string,
+            points: readonly PolygonPointOptions[],
+        ): PolygonHandle {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            if (!points || points.length < 2) {
+                throw new Error(
+                    `JpmapTerrain.replacePolygonPoints[${id}]: points must contain at least 2 entries (got ${
+                        points?.length ?? 0
+                    })`,
+                );
+            }
+            for (let i = 0; i < points.length; i++) {
+                assertLatLonInBounds(
+                    points[i].lat,
+                    points[i].lon,
+                    `JpmapTerrain.replacePolygonPoints[${id}][${i}]`,
+                );
+            }
+            node.replacePoints(points);
+            tickPolygon(node);
+            return node.getHandle();
         },
         list(): readonly string[] {
             return Array.from(nodes.keys());

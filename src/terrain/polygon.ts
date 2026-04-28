@@ -30,6 +30,7 @@ import {
     type PolygonHandle,
     type PolygonOptions,
     type PolygonPointOptions,
+    type PolygonPointPartial,
     type PolygonStyleOptions,
 } from "../lib/types";
 
@@ -106,6 +107,17 @@ export interface PolygonNode {
     setLabelsEnabledLogical(enabled: boolean): void;
     setWallsEnabledLogical(enabled: boolean): void;
     setElevationResolved(resolved: boolean): void;
+    /**
+     * 頂点列の編集 API (#173)。
+     * いずれも内部状態（points / labels / メッシュ配列）を更新したのち、
+     * 即時の applyTransform を呼ばずに完了する（呼び出し側が tick で反映する）。
+     * 点数が変化した場合 lineMesh / wallMesh は dispose され、次回 applyTransform
+     * 時に instance なしで再生成される。
+     */
+    insertPoint(index: number, point: PolygonPointOptions): void;
+    removePoint(index: number): void;
+    updatePoint(index: number, partial: PolygonPointPartial): void;
+    replacePoints(points: readonly PolygonPointOptions[]): void;
     getHandle(): PolygonHandle;
     dispose(): void;
 }
@@ -351,9 +363,6 @@ export const createPolygonNode = (
 ): PolygonNode => {
     const closed = options.closed ?? POLYGON_DEFAULTS.closed;
     const altitudeMode = options.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode;
-    const labels = options.labels
-        ? Object.freeze([...options.labels])
-        : undefined;
     const style = resolveStyle(options.style);
     let logicalEnabled = options.enabled ?? POLYGON_DEFAULTS.enabled;
     let verticalsEnabled =
@@ -379,6 +388,14 @@ export const createPolygonNode = (
         altitude: p.altitude,
     }));
 
+    // ラベルは常に points と同じ長さで保持する (#173)。`undefined` はラベルなし。
+    // 一度でも labels が指定された（または `updatePoint(label)` で設定された）場合、
+    // getHandle().labels で外部に露出する。
+    let hasLabels = options.labels !== undefined;
+    const labels: (string | undefined)[] = points.map((_, i) =>
+        options.labels ? options.labels[i] : undefined,
+    );
+
     const root = new TransformNode(`polygon-${id}`, scene);
 
     // 各頂点に対応する球を 1 つだけ作る。スケールは applyTransform で更新する。
@@ -393,7 +410,7 @@ export const createPolygonNode = (
 
     // labels[i] が指定された頂点にのみラベルを作る。indexed by 頂点 index。
     const labelEntries: (LabelEntry | null)[] = points.map((_pt, index) => {
-        const text = labels ? labels[index] : undefined;
+        const text = labels[index];
         if (text === undefined || text === null) return null;
         return createLabelMesh(scene, id, index, text, style, root);
     });
@@ -470,6 +487,118 @@ export const createPolygonNode = (
         wallMesh.setEnabled(visible && wallsEnabled);
     };
     applyVisibility();
+
+    /**
+     * 点数変更時の lineMesh / wallMesh 再生成 (#173)。
+     * Babylon の `CreateTube` / `CreateRibbon` は instance 更新時に頂点数を変えられないため、
+     * insert/remove/replace で点数が変わった直後に既存メッシュを dispose し、
+     * 新しい点数に合わせた placeholder で作り直す。Material は再 attach する。
+     */
+    const rebuildLineMeshForCurrentPointCount = (): void => {
+        lineMesh.dispose();
+        const placeholder: Vector3[] = points.map(
+            (_, i) => new Vector3(i, 0, 0),
+        );
+        const path = buildLinePath(placeholder, closed);
+        lineMesh = CreateTube(
+            `polygon-${id}-line`,
+            {
+                path,
+                radius: Math.max(style.lineWidth, 0.001),
+                updatable: true,
+                cap: Mesh.NO_CAP,
+            },
+            scene,
+        );
+        lineMesh.material = lineMaterial;
+        lineMesh.renderingGroupId = RENDERING_GROUP_ID;
+        lineMesh.isPickable = false;
+        lineMesh.parent = root;
+    };
+    const rebuildWallMeshForCurrentPointCount = (): void => {
+        wallMesh.dispose();
+        const placeholder: Vector3[] = points.map(
+            (_, i) => new Vector3(i, 0, 0),
+        );
+        const groundPlaceholder: (number | null)[] = points.map(() => null);
+        const pathArray = buildWallPathArray(
+            placeholder,
+            groundPlaceholder,
+            closed,
+        );
+        wallMesh = CreateRibbon(
+            `polygon-${id}-walls`,
+            {
+                pathArray,
+                updatable: true,
+                sideOrientation: Mesh.DOUBLESIDE,
+                closeArray: false,
+            },
+            scene,
+        );
+        wallMesh.material = wallMaterial;
+        wallMesh.renderingGroupId = RENDERING_GROUP_ID;
+        wallMesh.isPickable = false;
+        wallMesh.parent = root;
+    };
+
+    /** 点数変動時の共通後処理。stale キャッシュをクリアし可視状態を再評価する。 */
+    const onPointCountChanged = (): void => {
+        rebuildLineMeshForCurrentPointCount();
+        rebuildWallMeshForCurrentPointCount();
+        // 再 enable 時の stale 適用を防ぐためキャッシュ破棄。
+        lastWorldPoints = null;
+        lastGroundYs = null;
+        // terrain モードで再評価するまで一旦 hide。次回 tick で resolve される。
+        if (altitudeMode === "terrain") {
+            elevationResolved = false;
+        }
+        applyVisibility();
+    };
+
+    /** 内部: lat/lon/altitude のバリデーション (#173)。 */
+    const assertValidPoint = (p: PolygonPointOptions, prefix: string): void => {
+        if (!Number.isFinite(p.lat) || p.lat < -90 || p.lat > 90) {
+            throw new RangeError(`${prefix}: lat out of range (got ${p.lat})`);
+        }
+        if (!Number.isFinite(p.lon) || p.lon < -180 || p.lon > 180) {
+            throw new RangeError(`${prefix}: lon out of range (got ${p.lon})`);
+        }
+        if (p.altitude !== undefined && !Number.isFinite(p.altitude)) {
+            throw new RangeError(
+                `${prefix}: altitude must be a finite number (got ${p.altitude})`,
+            );
+        }
+        if (altitudeMode === "absolute" && p.altitude === undefined) {
+            throw new Error(
+                `${prefix}: altitudeMode="absolute" requires altitude on every point`,
+            );
+        }
+    };
+
+    /** ラベル mesh を index に対応するエントリに設定 / 解放する (#173)。 */
+    const setLabelAt = (index: number, value: string | undefined): void => {
+        const existing = labelEntries[index];
+        if (value === undefined) {
+            if (existing) {
+                existing.texture.dispose();
+                existing.material.dispose();
+                existing.mesh.dispose();
+                labelEntries[index] = null;
+            }
+            labels[index] = undefined;
+            return;
+        }
+        // value が定義済み: 既存があれば dispose して作り直す（テキスト変更に対応）。
+        if (existing) {
+            existing.texture.dispose();
+            existing.material.dispose();
+            existing.mesh.dispose();
+        }
+        labelEntries[index] = createLabelMesh(scene, id, index, value, style, root);
+        labels[index] = value;
+        hasLabels = true;
+    };
 
     const applyTransform = (
         worldPoints: readonly Vector3[],
@@ -554,7 +683,7 @@ export const createPolygonNode = (
         points: points.map((p) => ({ ...p })),
         closed,
         altitudeMode,
-        labels,
+        labels: hasLabels ? Object.freeze([...labels]) : undefined,
         style: { ...style },
         enabled: logicalEnabled,
         verticalsEnabled,
@@ -634,6 +763,145 @@ export const createPolygonNode = (
         setElevationResolved(resolved: boolean): void {
             elevationResolved = resolved;
             applyVisibility();
+        },
+        insertPoint(index: number, point: PolygonPointOptions): void {
+            const prefix = `polygon[${id}].insertPoint`;
+            if (!Number.isInteger(index) || index < 0 || index > points.length) {
+                throw new RangeError(
+                    `${prefix}: index out of range (got ${index}, length=${points.length})`,
+                );
+            }
+            assertValidPoint(point, prefix);
+            points.splice(index, 0, {
+                lat: point.lat,
+                lon: point.lon,
+                altitude: point.altitude,
+            });
+            // sphere / drop / label を index 位置に挿入する。
+            const sphere = createPointSphere(
+                scene,
+                id,
+                index,
+                style,
+                root,
+            );
+            sphereEntries.splice(index, 0, sphere);
+            const drop = createDropLine(scene, id, index, style, root);
+            dropEntries.splice(index, 0, drop);
+            labels.splice(index, 0, undefined);
+            labelEntries.splice(index, 0, null);
+            onPointCountChanged();
+        },
+        removePoint(index: number): void {
+            const prefix = `polygon[${id}].removePoint`;
+            if (!Number.isInteger(index) || index < 0 || index >= points.length) {
+                throw new RangeError(
+                    `${prefix}: index out of range (got ${index}, length=${points.length})`,
+                );
+            }
+            if (points.length <= 2) {
+                throw new Error(
+                    `${prefix}: cannot remove (must keep at least 2 points)`,
+                );
+            }
+            points.splice(index, 1);
+            const sphere = sphereEntries.splice(index, 1)[0];
+            sphere.material.dispose();
+            sphere.mesh.dispose();
+            const drop = dropEntries.splice(index, 1)[0];
+            drop.material.dispose();
+            drop.mesh.dispose();
+            labels.splice(index, 1);
+            const lbl = labelEntries.splice(index, 1)[0];
+            if (lbl) {
+                lbl.texture.dispose();
+                lbl.material.dispose();
+                lbl.mesh.dispose();
+            }
+            onPointCountChanged();
+        },
+        updatePoint(index: number, partial: PolygonPointPartial): void {
+            const prefix = `polygon[${id}].updatePoint`;
+            if (!Number.isInteger(index) || index < 0 || index >= points.length) {
+                throw new RangeError(
+                    `${prefix}: index out of range (got ${index}, length=${points.length})`,
+                );
+            }
+            const current = points[index];
+            const next: PolygonPointOptions = {
+                lat: partial.lat ?? current.lat,
+                lon: partial.lon ?? current.lon,
+                altitude:
+                    partial.altitude !== undefined
+                        ? partial.altitude
+                        : current.altitude,
+            };
+            assertValidPoint(next, prefix);
+            points[index] = next;
+            if (partial.label !== undefined) {
+                if (partial.label === null) {
+                    setLabelAt(index, undefined);
+                } else {
+                    setLabelAt(index, partial.label);
+                }
+            }
+            // 点数は不変なので line/wall は再生成しない。次回 applyTransform で位置反映。
+            // terrain モードで lat/lon が変われば標高再解決が必要なため hide 復帰。
+            if (
+                altitudeMode === "terrain" &&
+                (partial.lat !== undefined || partial.lon !== undefined)
+            ) {
+                elevationResolved = false;
+                applyVisibility();
+            }
+        },
+        replacePoints(newPoints: readonly PolygonPointOptions[]): void {
+            const prefix = `polygon[${id}].replacePoints`;
+            if (!newPoints || newPoints.length < 2) {
+                throw new Error(
+                    `${prefix}: points must contain at least 2 entries (got ${
+                        newPoints?.length ?? 0
+                    })`,
+                );
+            }
+            for (let i = 0; i < newPoints.length; i++) {
+                assertValidPoint(newPoints[i], `${prefix}[${i}]`);
+            }
+            // 既存 sphere / drop / label を全 dispose してから再構築する。
+            for (const entry of sphereEntries) {
+                entry.material.dispose();
+                entry.mesh.dispose();
+            }
+            sphereEntries.length = 0;
+            for (const entry of dropEntries) {
+                entry.material.dispose();
+                entry.mesh.dispose();
+            }
+            dropEntries.length = 0;
+            for (const entry of labelEntries) {
+                if (!entry) continue;
+                entry.texture.dispose();
+                entry.material.dispose();
+                entry.mesh.dispose();
+            }
+            labelEntries.length = 0;
+            labels.length = 0;
+            points.length = 0;
+            for (let i = 0; i < newPoints.length; i++) {
+                const p = newPoints[i];
+                points.push({
+                    lat: p.lat,
+                    lon: p.lon,
+                    altitude: p.altitude,
+                });
+                sphereEntries.push(
+                    createPointSphere(scene, id, i, style, root),
+                );
+                dropEntries.push(createDropLine(scene, id, i, style, root));
+                labels.push(undefined);
+                labelEntries.push(null);
+            }
+            onPointCountChanged();
         },
         getHandle,
         dispose,
