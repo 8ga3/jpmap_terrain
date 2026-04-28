@@ -1,16 +1,19 @@
 /**
- * ポリゴンデモ (Issue #170)
+ * ポリゴンデモ (Issue #170 / #171)
  *
  * `JpmapTerrain` の Polygon 公開 API（`addPolygon` / `setPolygonEnabled` /
- * `removePolygon` / `listPolygons` / `getPolygon`）を目視確認するためのデモ。
+ * `setVerticalsEnabled` / `setLabelsEnabled` / `removePolygon` / `listPolygons` /
+ * `getPolygon`）を目視確認するためのデモ。
  *
- * 仕様 (#170 範囲):
+ * 仕様 (#170 / #171 範囲):
  * - `altitudeMode: "terrain"` で地形に沿って表示するポリライン
  * - `altitudeMode: "absolute"` で絶対標高 (m) のポリライン
  * - `closed: true` で末尾と先頭を結んだループ
+ * - 各頂点から地表へ落とす垂線と頂点ラベル（#171）
  *
  * 操作:
  * - 画面右上のボタンで各ポリゴンの enabled を ON/OFF
+ * - 垂線 / ラベル の全体 ON/OFF ボタン
  *
  * 開発デモ層につき `src/lib/**` には依存型のみ依存し、内部実装は触らない。
  */
@@ -60,6 +63,7 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
                 { lat: 35.6225, lon: 139.5170, altitude: 100 },
             ],
             altitudeMode: "terrain",
+            labels: ["NW +100m", "NE +100m", "SE +100m", "SW +100m"],
             style: {
                 pointColor: "#ff5252",
                 lineColor: "#ff5252",
@@ -79,6 +83,7 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
                 { lat: 35.6243, lon: 139.5165, altitude: 300 },
             ],
             altitudeMode: "absolute",
+            labels: ["abs A", "abs B", "abs C"],
             style: {
                 pointColor: "#42a5f5",
                 lineColor: "#42a5f5",
@@ -100,6 +105,7 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
             ],
             altitudeMode: "absolute",
             closed: true,
+            labels: ["P1", "P2", "P3", "P4"],
             style: {
                 pointColor: "#ffca28",
                 lineColor: "#ffca28",
@@ -110,7 +116,7 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
     },
 ];
 
-/** 操作 UI（enabled トグル）を構築する。 */
+/** 操作 UI（enabled トグル + 垂線/ラベル全体トグル）を構築する。 */
 const buildControls = (
     container: HTMLElement,
     viewer: JpmapTerrain,
@@ -135,6 +141,42 @@ const buildControls = (
         container.appendChild(btn);
         refreshLabel();
     }
+
+    // 垂線/ラベルの全体トグル (Issue #171)
+    const buildToggle = (
+        labelOn: string,
+        labelOff: string,
+        initial: boolean,
+        onClick: (next: boolean) => void,
+    ): HTMLButtonElement => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        let state = initial;
+        const refresh = (): void => {
+            btn.textContent = state ? labelOn : labelOff;
+        };
+        btn.addEventListener("click", () => {
+            state = !state;
+            onClick(state);
+            refresh();
+        });
+        refresh();
+        return btn;
+    };
+    container.appendChild(
+        buildToggle("✔ 垂線 ON", "✕ 垂線 OFF", true, (next) => {
+            for (const def of polygons) {
+                viewer.setVerticalsEnabled(def.id, next);
+            }
+        }),
+    );
+    container.appendChild(
+        buildToggle("✔ ラベル ON", "✕ ラベル OFF", true, (next) => {
+            for (const def of polygons) {
+                viewer.setLabelsEnabled(def.id, next);
+            }
+        }),
+    );
 };
 
 const start = async (): Promise<void> => {

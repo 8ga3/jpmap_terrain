@@ -24,11 +24,13 @@ interface StubMesh {
     material: StubMaterial | null;
     renderingGroupId: number;
     isPickable: boolean;
+    billboardMode: number;
     position: { x: number; y: number; z: number; set: (x: number, y: number, z: number) => void };
     scaling: { x: number; y: number; z: number; setAll: (v: number) => void };
+    enabledHistory: boolean[];
     disposed: boolean;
     dispose(): void;
-    setEnabled?: (v: boolean) => void;
+    setEnabled(v: boolean): void;
 }
 
 interface StubTransformNode {
@@ -44,6 +46,8 @@ const tubeCalls: Array<{
     name: string;
     options: { path: unknown[]; instance?: StubMesh; updatable?: boolean };
 }> = [];
+const planeCalls: Array<{ name: string; options: { width: number; height: number } }> = [];
+const dynamicTextures: Array<{ name: string; disposed: boolean }> = [];
 const transformNodes: StubTransformNode[] = [];
 const allMeshes: StubMesh[] = [];
 
@@ -54,6 +58,7 @@ const buildMesh = (name: string): StubMesh => {
         material: null,
         renderingGroupId: 0,
         isPickable: true,
+        billboardMode: 0,
         position: {
             x: 0,
             y: 0,
@@ -74,9 +79,13 @@ const buildMesh = (name: string): StubMesh => {
                 this.z = v;
             },
         },
+        enabledHistory: [],
         disposed: false,
         dispose() {
             this.disposed = true;
+        },
+        setEnabled(v: boolean) {
+            this.enabledHistory.push(v);
         },
     };
     allMeshes.push(mesh);
@@ -152,6 +161,72 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
     Mesh: { NO_CAP: 0 },
 }));
 
+jest.unstable_mockModule(
+    "@babylonjs/core/Meshes/Builders/planeBuilder",
+    () => ({
+        CreatePlane: (
+            name: string,
+            options: { width: number; height: number },
+        ): StubMesh => {
+            planeCalls.push({ name, options });
+            return buildMesh(name);
+        },
+    }),
+);
+
+jest.unstable_mockModule(
+    "@babylonjs/core/Materials/Textures/dynamicTexture",
+    () => ({
+        DynamicTexture: class {
+            public name: string;
+            public hasAlpha = false;
+            public vScale = 1;
+            public vOffset = 0;
+            public disposed = false;
+            constructor(name: string) {
+                this.name = name;
+                dynamicTextures.push(this);
+            }
+            getContext(): unknown {
+                // 文字幅 measure をスタブ。長さ * 8 を文字幅とする。
+                return {
+                    font: "",
+                    textBaseline: "",
+                    textAlign: "",
+                    fillStyle: "",
+                    strokeStyle: "",
+                    lineWidth: 0,
+                    lineJoin: "",
+                    miterLimit: 0,
+                    measureText: (s: string) => ({ width: s.length * 8 }),
+                    fillRect: (): void => {
+                        /* noop */
+                    },
+                    clearRect: (): void => {
+                        /* noop */
+                    },
+                    fillText: (): void => {
+                        /* noop */
+                    },
+                    strokeText: (): void => {
+                        /* noop */
+                    },
+                };
+            }
+            update(): void {
+                /* noop */
+            }
+            dispose(): void {
+                this.disposed = true;
+            }
+        },
+    }),
+);
+
+jest.unstable_mockModule("@babylonjs/core/Meshes/abstractMesh", () => ({
+    AbstractMesh: { BILLBOARDMODE_ALL: 7 },
+}));
+
 const { createPolygonNode } = await import("../src/terrain/polygon");
 
 const sceneStub = {} as unknown as Parameters<typeof createPolygonNode>[0];
@@ -159,12 +234,14 @@ const sceneStub = {} as unknown as Parameters<typeof createPolygonNode>[0];
 beforeEach(() => {
     sphereCalls.length = 0;
     tubeCalls.length = 0;
+    planeCalls.length = 0;
+    dynamicTextures.length = 0;
     transformNodes.length = 0;
     allMeshes.length = 0;
 });
 
 describe("createPolygonNode 構築", () => {
-    it("頂点数分の球と 1 本の Tube を生成する (closed=false)", () => {
+    it("頂点数分の球と垂線 Tube + 1 本のポリライン Tube を生成する (closed=false)", () => {
         const node = createPolygonNode(sceneStub, "p1", {
             points: [
                 { lat: 35.0, lon: 139.0 },
@@ -173,8 +250,8 @@ describe("createPolygonNode 構築", () => {
             ],
         });
         expect(sphereCalls.length).toBe(3);
-        // 初期構築の Tube 1 回 + 即時 applyTransform は呼ばれていないので 1 回のみ
-        expect(tubeCalls.length).toBe(1);
+        // 構築時: 垂線 Tube 3 本 + ポリライン Tube 1 本 = 4
+        expect(tubeCalls.length).toBe(4);
         expect(node.id).toBe("p1");
         expect(transformNodes.length).toBe(1);
         expect(transformNodes[0].name).toBe("polygon-p1");
@@ -189,14 +266,15 @@ describe("createPolygonNode 構築", () => {
             ],
             closed: true,
         });
-        const initialPath = tubeCalls[0].options.path as Array<{
+        // 末尾の Tube call がポリライン本体（垂線が先に 3 本構築される）。
+        const lineCall = tubeCalls[tubeCalls.length - 1];
+        const initialPath = lineCall.options.path as Array<{
             x: number;
             y: number;
             z: number;
         }>;
         // 3 点 + closed の先頭再追加 = 4
         expect(initialPath.length).toBe(4);
-        // 先頭と末尾は別オブジェクト（参照分離）かつ同値。
         expect(initialPath[0]).not.toBe(initialPath[initialPath.length - 1]);
         expect(initialPath[0].x).toBe(initialPath[initialPath.length - 1].x);
         expect(initialPath[0].y).toBe(initialPath[initialPath.length - 1].y);
@@ -213,10 +291,35 @@ describe("createPolygonNode 構築", () => {
         });
         expect(node.getHandle().elevationResolved).toBe(true);
     });
+
+    it("labels[i] が指定された頂点にのみラベル平面を生成する", () => {
+        createPolygonNode(sceneStub, "pL", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            labels: ["A", "", "C"],
+        });
+        // 空文字列もラベル対象（明示指定されている）。3 点 → 3 plane。
+        expect(planeCalls.length).toBe(3);
+    });
+
+    it("labels が一切指定されない場合はラベル平面を作らない", () => {
+        createPolygonNode(sceneStub, "pL2", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+        });
+        expect(planeCalls.length).toBe(0);
+    });
 });
 
 describe("createPolygonNode applyTransform", () => {
-    it("applyTransform で Tube が instance 指定で更新される", async () => {
+    it("applyTransform でポリライン Tube が instance 指定で更新される", async () => {
         const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
         const node = createPolygonNode(sceneStub, "p4", {
             points: [
@@ -225,13 +328,18 @@ describe("createPolygonNode applyTransform", () => {
             ],
             altitudeMode: "absolute",
         });
+        const beforeLen = tubeCalls.length;
         node.applyTransform(
             [new Vector3(0, 0, 0), new Vector3(100, 5, 200)],
+            [0, 0],
             1,
         );
-        // 構築時 1 回 + applyTransform 1 回
-        expect(tubeCalls.length).toBe(2);
-        expect(tubeCalls[1].options.instance).toBeDefined();
+        // 各頂点の垂線更新 (2) + ポリライン更新 (1)
+        expect(tubeCalls.length - beforeLen).toBe(3);
+        // applyTransform 由来の呼び出しはすべて instance 指定。
+        for (let i = beforeLen; i < tubeCalls.length; i++) {
+            expect(tubeCalls[i].options.instance).toBeDefined();
+        }
     });
 
     it("absolute モードで applyTransform に渡された Y がそのまま使われる", async () => {
@@ -245,11 +353,68 @@ describe("createPolygonNode applyTransform", () => {
         });
         node.applyTransform(
             [new Vector3(10, 100, 20), new Vector3(30, 200, 40)],
+            [0, 0],
             1,
         );
-        const path = tubeCalls[1].options.path as Array<{ y: number }>;
+        // 末尾呼び出しがポリライン更新（垂線 2 本の後）。
+        const lineUpdate = tubeCalls[tubeCalls.length - 1];
+        const path = lineUpdate.options.path as Array<{ y: number }>;
         expect(path[0].y).toBe(100);
         expect(path[1].y).toBe(200);
+    });
+
+    it("垂線の終端 Y が groundYs に追従する（null は 0 フォールバック）", async () => {
+        const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
+        const node = createPolygonNode(sceneStub, "pV", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+        });
+        const beforeLen = tubeCalls.length;
+        node.applyTransform(
+            [new Vector3(0, 100, 0), new Vector3(50, 100, 0)],
+            [25, null],
+            1,
+        );
+        // 構築直後の applyTransform: 垂線 2 本 + ポリライン 1 本 が追加される。
+        const drop0 = tubeCalls[beforeLen];
+        const drop1 = tubeCalls[beforeLen + 1];
+        const drop0Path = drop0.options.path as Array<{ y: number }>;
+        const drop1Path = drop1.options.path as Array<{ y: number }>;
+        expect(drop0Path[0].y).toBe(100);
+        expect(drop0Path[1].y).toBe(25);
+        expect(drop1Path[0].y).toBe(100);
+        expect(drop1Path[1].y).toBe(0); // null → 0 フォールバック
+    });
+
+    it("ラベル位置が球より上 (Y オフセット) に配置される", async () => {
+        const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
+        const node = createPolygonNode(sceneStub, "pLpos", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 100 },
+                { lat: 35.1, lon: 139.1, altitude: 100 },
+            ],
+            altitudeMode: "absolute",
+            labels: ["X", "Y"],
+            style: { pointDiameter: 20 },
+        });
+        node.applyTransform(
+            [new Vector3(0, 100, 0), new Vector3(50, 100, 0)],
+            [0, 0],
+            1,
+        );
+        // ラベル平面は plane 順序で記録されている。
+        // sphere の position(=100) より上にあること。
+        // allMeshes のうち polygon-pLpos-label-* を抽出する。
+        const labelMeshes = allMeshes.filter((m) =>
+            m.name.startsWith("polygon-pLpos-label-"),
+        );
+        expect(labelMeshes.length).toBe(2);
+        for (const lm of labelMeshes) {
+            expect(lm.position.y).toBeGreaterThan(100);
+        }
     });
 });
 
@@ -263,13 +428,53 @@ describe("createPolygonNode enabled / dispose", () => {
             altitudeMode: "absolute",
         });
         const root = transformNodes[0];
-        // 構築時の applyVisibility 呼び出しを差し引いて、明示的な false 切替を確認する
         const beforeLen = root.enabledHistory.length;
         node.setEnabledLogical(false);
         expect(root.enabledHistory.slice(beforeLen)).toContain(false);
     });
 
-    it("dispose で全 sphere / Tube / material / root が dispose される", () => {
+    it("setVerticalsEnabledLogical で垂線メッシュの setEnabled が連動する", () => {
+        const node = createPolygonNode(sceneStub, "pVe", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+        });
+        const dropMeshes = allMeshes.filter((m) =>
+            m.name.startsWith("polygon-pVe-drop-"),
+        );
+        expect(dropMeshes.length).toBe(2);
+        node.setVerticalsEnabledLogical(false);
+        for (const dm of dropMeshes) {
+            expect(dm.enabledHistory).toContain(false);
+        }
+        expect(node.getHandle().verticalsEnabled).toBe(false);
+        node.setVerticalsEnabledLogical(true);
+        expect(node.getHandle().verticalsEnabled).toBe(true);
+    });
+
+    it("setLabelsEnabledLogical でラベルメッシュの setEnabled が連動する", () => {
+        const node = createPolygonNode(sceneStub, "pLe", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            labels: ["a", "b"],
+        });
+        const labelMeshes = allMeshes.filter((m) =>
+            m.name.startsWith("polygon-pLe-label-"),
+        );
+        expect(labelMeshes.length).toBe(2);
+        node.setLabelsEnabledLogical(false);
+        for (const lm of labelMeshes) {
+            expect(lm.enabledHistory).toContain(false);
+        }
+        expect(node.getHandle().labelsEnabled).toBe(false);
+    });
+
+    it("dispose で sphere / drop / label / line / material / texture / root が全て解放される", () => {
         const node = createPolygonNode(sceneStub, "p7", {
             points: [
                 { lat: 35.0, lon: 139.0, altitude: 0 },
@@ -277,11 +482,15 @@ describe("createPolygonNode enabled / dispose", () => {
                 { lat: 35.2, lon: 139.2, altitude: 0 },
             ],
             altitudeMode: "absolute",
+            labels: ["a", "b", "c"],
         });
         node.dispose();
-        // 構築時の全 mesh が dispose 済み
         for (const m of allMeshes) {
             expect(m.disposed).toBe(true);
+        }
+        // probe DT は構築時に dispose 済み、ラベル DT は dispose() で解放される。
+        for (const dt of dynamicTextures) {
+            expect(dt.disposed).toBe(true);
         }
         expect(transformNodes[0].disposed).toBe(true);
     });

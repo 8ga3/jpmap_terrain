@@ -785,6 +785,16 @@ export class JpmapTerrain {
         this._polygonManager.setEnabled(id, enabled);
     }
 
+    public setVerticalsEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._polygonManager) return;
+        this._polygonManager.setVerticalsEnabled(id, enabled);
+    }
+
+    public setLabelsEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._polygonManager) return;
+        this._polygonManager.setLabelsEnabled(id, enabled);
+    }
+
     public listPolygons(): readonly string[] {
         if (this._disposed) return [];
         return this._polygonManager?.list() ?? [];

@@ -39,6 +39,8 @@ export interface PolygonManager {
     update(id: string, partial: PolygonUpdate): PolygonHandle;
     remove(id: string): void;
     setEnabled(id: string, enabled: boolean): void;
+    setVerticalsEnabled(id: string, enabled: boolean): void;
+    setLabelsEnabled(id: string, enabled: boolean): void;
     list(): readonly string[];
     dispose(): void;
 }
@@ -73,20 +75,24 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
      */
     const tickPolygon = (node: PolygonNode): void => {
         const worldPoints: Vector3[] = [];
+        const groundYs: (number | null)[] = [];
         let allResolved = true;
         for (const pt of node.points) {
             const { wx, wz } = latLonToWorld(ctx, pt.lat, pt.lon);
+            const elev = ctx.tileManager.queryElevationAtWorld(wx, wz);
             let wy: number;
             if (node.altitudeMode === "absolute") {
                 // validateOptions で undefined は弾いている前提。
                 wy = pt.altitude ?? 0;
+                // 垂線終端用の地表 Y。null のときは applyTransform 側で 0 フォールバック。
+                groundYs.push(elev);
             } else {
-                const elev = ctx.tileManager.queryElevationAtWorld(wx, wz);
                 if (elev === null) {
                     allResolved = false;
                     break;
                 }
                 wy = elev + (pt.altitude ?? 0);
+                groundYs.push(elev);
             }
             worldPoints.push(new Vector3(wx, wy, wz));
         }
@@ -109,7 +115,7 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
         cz /= n;
         const scale = computeDistanceScale(ctx, cx, cy, cz);
         node.setElevationResolved(true);
-        node.applyTransform(worldPoints, scale);
+        node.applyTransform(worldPoints, groundYs, scale);
     };
 
     const tickFrame = (): void => {
@@ -182,6 +188,20 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
             }
             const node = requireNode(id);
             node.setEnabledLogical(enabled);
+        },
+        setVerticalsEnabled(id: string, enabled: boolean): void {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            node.setVerticalsEnabledLogical(enabled);
+        },
+        setLabelsEnabled(id: string, enabled: boolean): void {
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const node = requireNode(id);
+            node.setLabelsEnabledLogical(enabled);
         },
         list(): readonly string[] {
             return Array.from(nodes.keys());
