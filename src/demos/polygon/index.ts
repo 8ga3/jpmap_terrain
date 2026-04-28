@@ -193,6 +193,96 @@ const buildControls = (
             }
         }),
     );
+
+    // 点編集 API デモ (Issue #173)。`yomiuri-closed` を編集対象とする。
+    const editTargetId = "yomiuri-closed";
+    let insertCounter = 0;
+    let updateCounter = 0;
+    let replaceToggle = false;
+    const buildEditButton = (
+        label: string,
+        onClick: () => void,
+    ): HTMLButtonElement => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = label;
+        btn.dataset.polygonEdit = label;
+        btn.addEventListener("click", () => {
+            try {
+                onClick();
+            } catch (err) {
+                console.warn(
+                    `[jpmap-terrain demo] polygon edit "${label}" failed:`,
+                    err,
+                );
+            }
+        });
+        return btn;
+    };
+    container.appendChild(
+        buildEditButton("点 insert", () => {
+            // 既存頂点列の中央付近に少しずつズラした点を順次挿入する。
+            const handle = viewer.getPolygon(editTargetId);
+            if (!handle || handle.points.length === 0) return;
+            const idx = Math.min(
+                handle.points.length,
+                1 + (insertCounter % handle.points.length),
+            );
+            const base = handle.points[idx - 1];
+            const offset = 0.0003 * (insertCounter + 1);
+            viewer.insertPolygonPoint(editTargetId, idx, {
+                lat: base.lat + offset,
+                lon: base.lon + offset,
+                altitude: base.altitude ?? 500,
+            });
+            insertCounter++;
+        }),
+    );
+    container.appendChild(
+        buildEditButton("点 remove", () => {
+            // 末尾を削除（ただし 2 点未満にはしない）。
+            const handle = viewer.getPolygon(editTargetId);
+            if (!handle) return;
+            if (handle.points.length <= 2) return;
+            viewer.removePolygonPoint(
+                editTargetId,
+                handle.points.length - 1,
+            );
+        }),
+    );
+    container.appendChild(
+        buildEditButton("点 update", () => {
+            // 先頭頂点の altitude をトグル風に上下させる。
+            const handle = viewer.getPolygon(editTargetId);
+            if (!handle || handle.points.length === 0) return;
+            updateCounter++;
+            const altitude = 500 + ((updateCounter % 4) * 80);
+            viewer.updatePolygonPoint(editTargetId, 0, {
+                altitude,
+                label: `upd${updateCounter}`,
+            });
+        }),
+    );
+    container.appendChild(
+        buildEditButton("点 replace", () => {
+            // 2 種類の頂点列を交互に切り替える。
+            replaceToggle = !replaceToggle;
+            const altitude = 500;
+            const next = replaceToggle
+                ? [
+                      { lat: 35.6235, lon: 139.5135, altitude },
+                      { lat: 35.6260, lon: 139.5135, altitude },
+                      { lat: 35.6260, lon: 139.5170, altitude },
+                  ]
+                : [
+                      { lat: 35.6235, lon: 139.5135, altitude },
+                      { lat: 35.6253, lon: 139.5135, altitude },
+                      { lat: 35.6253, lon: 139.5161, altitude },
+                      { lat: 35.6235, lon: 139.5161, altitude },
+                  ];
+            viewer.replacePolygonPoints(editTargetId, next);
+        }),
+    );
 };
 
 const start = async (): Promise<void> => {
