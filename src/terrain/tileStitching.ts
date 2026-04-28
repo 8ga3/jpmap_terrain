@@ -124,3 +124,92 @@ export const stitchTileEdges = (
         if (!Number.isNaN(avg)) target[last * tileSize + last] = avg;
     }
 };
+
+/** クロスレベル縫い合わせで参照する粗タイル隣接情報 */
+export interface CoarseEdgeNeighbor {
+    /** 粗タイルの標高データ（target と同じ tileSize 解像度） */
+    elevation: Float32Array;
+    /** target から見た粗タイルの方向 */
+    direction: "top" | "bottom" | "left" | "right";
+    /** target が属する親タイル内でのサブ位置 X（0..scale-1） */
+    subX: number;
+    /** target が属する親タイル内でのサブ位置 Y（0..scale-1） */
+    subY: number;
+    /** 親 1 辺あたりの target タイル数（= 2^(targetZoom - coarseZoom)） */
+    scale: number;
+}
+
+/**
+ * 異 zoom 隣接（粗タイル）と target タイルの境界辺を縫い合わせる。
+ *
+ * - target（細タイル）の境界辺の各ピクセルを、粗タイル対応辺の線形補間値で
+ *   in-place に上書きする（粗タイル側は変更しない）。
+ * - これにより細タイルが粗タイルにスナップされ、T-junction 隙間を解消する。
+ * - NaN は補間から除外。両端が NaN の場合はそのピクセルを変更しない。
+ * - 角は辺の端点として処理される。同一角に複数方向の隣接情報が指定された場合は
+ *   呼び出し順に上書きされるため、安定化のため呼び出し側で順序を一定にすること。
+ */
+export const stitchTileEdgesCrossLevel = (
+    target: Float32Array,
+    coarseNeighbors: readonly CoarseEdgeNeighbor[],
+    tileSize: number,
+): void => {
+    const last = tileSize - 1;
+    if (last <= 0) return;
+
+    for (const n of coarseNeighbors) {
+        const subSize = tileSize / n.scale; // 粗タイル内で target が占めるピクセル幅
+        for (let i = 0; i <= last; i++) {
+            const u = i / last; // 0..1（target 辺方向）
+            // 粗タイルの対応辺上での位置（連続値）
+            const along =
+                n.direction === "top" || n.direction === "bottom"
+                    ? n.subX * subSize + u * (subSize - 1)
+                    : n.subY * subSize + u * (subSize - 1);
+            const lo = Math.max(0, Math.min(last, Math.floor(along)));
+            const hi = Math.max(0, Math.min(last, lo + 1));
+            const t = along - lo;
+
+            let coarseIdxLo: number;
+            let coarseIdxHi: number;
+            let targetIdx: number;
+            switch (n.direction) {
+                case "top":
+                    // target row=0 ↔ coarse row=last
+                    coarseIdxLo = last * tileSize + lo;
+                    coarseIdxHi = last * tileSize + hi;
+                    targetIdx = i;
+                    break;
+                case "bottom":
+                    // target row=last ↔ coarse row=0
+                    coarseIdxLo = lo;
+                    coarseIdxHi = hi;
+                    targetIdx = last * tileSize + i;
+                    break;
+                case "left":
+                    // target col=0 ↔ coarse col=last
+                    coarseIdxLo = lo * tileSize + last;
+                    coarseIdxHi = hi * tileSize + last;
+                    targetIdx = i * tileSize;
+                    break;
+                case "right":
+                    // target col=last ↔ coarse col=0
+                    coarseIdxLo = lo * tileSize;
+                    coarseIdxHi = hi * tileSize;
+                    targetIdx = i * tileSize + last;
+                    break;
+            }
+
+            const a = n.elevation[coarseIdxLo];
+            const b = n.elevation[coarseIdxHi];
+            let v: number;
+            const aNaN = Number.isNaN(a);
+            const bNaN = Number.isNaN(b);
+            if (aNaN && bNaN) continue;
+            else if (aNaN) v = b;
+            else if (bNaN) v = a;
+            else v = a * (1 - t) + b * t;
+            target[targetIdx] = v;
+        }
+    }
+};
