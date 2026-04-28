@@ -29,6 +29,8 @@ import {
     MarkerUpdate,
     PolygonHandle,
     PolygonOptions,
+    PolygonPointOptions,
+    PolygonPointPartial,
     SUN_AUTO_UPDATE_INTERVAL_MS,
 } from "./types";
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
@@ -803,6 +805,52 @@ export class JpmapTerrain {
     public listPolygons(): readonly string[] {
         if (this._disposed) return [];
         return this._polygonManager?.list() ?? [];
+    }
+
+    /**
+     * 指定 index に新しい頂点を挿入する (#173)。`index === points.length` で末尾追加。
+     * 範囲外 index・JAPAN_BOUNDS 外・`absolute` モードで altitude 未指定 は throw。
+     * dispose 後 / マネージャ未初期化 / 未存在 id は throw。
+     */
+    public insertPolygonPoint(
+        id: string,
+        index: number,
+        point: PolygonPointOptions,
+    ): PolygonHandle {
+        this._assertAlive();
+        return this._requirePolygonManager().insertPoint(id, index, point);
+    }
+
+    /**
+     * 指定 index の頂点を削除する (#173)。残り 2 点未満になる場合は throw。
+     */
+    public removePolygonPoint(id: string, index: number): PolygonHandle {
+        this._assertAlive();
+        return this._requirePolygonManager().removePoint(id, index);
+    }
+
+    /**
+     * 指定 index の頂点を部分更新する (#173)。
+     * `partial.label === null` のときラベルを削除する。`undefined` のフィールドは現状維持。
+     */
+    public updatePolygonPoint(
+        id: string,
+        index: number,
+        partial: PolygonPointPartial,
+    ): PolygonHandle {
+        this._assertAlive();
+        return this._requirePolygonManager().updatePoint(id, index, partial);
+    }
+
+    /**
+     * 全頂点を置き換える (#173)。`points.length < 2` は throw。
+     */
+    public replacePolygonPoints(
+        id: string,
+        points: readonly PolygonPointOptions[],
+    ): PolygonHandle {
+        this._assertAlive();
+        return this._requirePolygonManager().replacePoints(id, points);
     }
 
     // ---- ライフサイクル (spec §3.3.3) ----
