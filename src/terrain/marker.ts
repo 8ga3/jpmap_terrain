@@ -520,14 +520,16 @@ export const createMarkerNode = (
             applyVisibility();
         },
         getHandle(): MarkerHandle {
+            // 利用者が返却オブジェクトを書き換えても内部状態に影響しないよう、
+            // 各 sub-object を浅いコピーして返す（read-only スナップショット）。
             return {
                 id,
                 lat,
                 lon,
                 enabled: logicalEnabled,
-                icon: resolved.icon,
-                text: resolved.text,
-                line: resolved.line,
+                icon: resolved.icon ? { ...resolved.icon } : null,
+                text: resolved.text ? { ...resolved.text } : null,
+                line: { ...resolved.line },
                 elevationResolved,
             };
         },
