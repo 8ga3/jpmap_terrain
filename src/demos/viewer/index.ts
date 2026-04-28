@@ -166,21 +166,22 @@ const start = async (): Promise<void> => {
     updateMapTypeInUrl(viewer.mapType);
 
     // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
+    // fontSize はワールド m 相当の値になっており、高度 2000m で表示したときに読めるサイズを与える。
     try {
         viewer.addMarker("tokyo-station", {
             lat: 35.681236,
             lon: 139.767125,
-            text: { value: "東京駅", fontSize: 16 },
+            text: { value: "東京駅", fontSize: 80 },
         });
         viewer.addMarker("imperial-palace", {
             lat: 35.685175,
             lon: 139.7528,
-            text: { value: "皇居", fontSize: 16 },
+            text: { value: "皇居", fontSize: 80 },
         });
         viewer.addMarker("tokyo-metropolitan-government", {
             lat: 35.6896,
             lon: 139.6917,
-            text: { value: "東京都庁\n(新宿)", fontSize: 16 },
+            text: { value: "東京都庁\n(新宿)", fontSize: 80 },
         });
     } catch (err) {
         console.warn("[jpmap-terrain demo] failed to add demo markers:", err);

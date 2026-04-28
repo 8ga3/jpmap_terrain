@@ -305,15 +305,15 @@ interface MarkerOptions {
   icon?: { url: string; width?: number; height?: number };
   text?: {
     value: string;          // "\n" で改行
-    fontSize?: number;      // px (default 14)
+    fontSize?: number;      // 1 行のおおよそのワールド m 高さ (default 60)
     color?: string;         // CSS color (default "#ffffff")
     backgroundColor?: string; // CSS color (default "rgba(0,0,0,0.6)")
     lineHeight?: number;    // 倍率 (default 1.2)
   };
   line?: {
     color?: string;  // default "#ffffff"
-    width?: number;  // m (default 1.5)
-    height?: number; // m (default 200)
+    width?: number;  // m (default 20)
+    height?: number; // m (default 500)
   };
   enabled?: boolean; // default true
 }

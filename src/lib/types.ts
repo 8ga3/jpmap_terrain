@@ -183,10 +183,10 @@ export interface MarkerHandle {
 
 export const MARKER_DEFAULTS = {
     enabled: true,
-    line: { color: "#ffffff", width: 1.5, height: 200 },
-    icon: { width: 64, height: 64 },
+    line: { color: "#ffffff", width: 20, height: 500 },
+    icon: { width: 200, height: 200 },
     text: {
-        fontSize: 14,
+        fontSize: 60,
         color: "#ffffff",
         backgroundColor: "rgba(0,0,0,0.6)",
         lineHeight: 1.2,
