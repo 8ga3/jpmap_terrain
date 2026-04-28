@@ -9,7 +9,6 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
@@ -24,16 +23,8 @@ import {
     type MarkerUpdate,
 } from "../lib/types";
 
-const ICON_TEXT_GAP_M = 4;
 const RENDERING_GROUP_ID = 1;
 const MAX_DT_SIZE = 1024;
-/**
- * `fontSize` (ピクセル表記) を 1ピクセル = N ワールド m として描画プレーンのサイズを決定するための分母。
- *
- * デフォルト表示高度 2000m 付近でもテキストが判読可能なサイズになるよう 1 としている。
- * より小さく見せたい場合は `MarkerOptions.text.fontSize` で調整する。
- */
-const TEXT_WORLD_PX_PER_M = 1;
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);/**
  * `icon.url` を検証する。`javascript:` / `vbscript:` 等の危険スキームを拒否する。
@@ -175,170 +166,178 @@ const createLineMesh = (
     return { outer, inner, outerMaterial, innerMaterial };
 };
 
-interface IconMeshes {
-    mesh: Mesh;
-    material: StandardMaterial;
-    texture: Texture;
-    widthWorld: number;
-    heightWorld: number;
-}
-
-const createIconMesh = (
-    scene: Scene,
-    id: string,
-    icon: Required<MarkerIconOptions>,
-): IconMeshes => {
-    const mesh = CreatePlane(
-        `marker-icon-${id}`,
-        { width: icon.width, height: icon.height },
-        scene,
-    );
-    mesh.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
-    mesh.renderingGroupId = RENDERING_GROUP_ID;
-    mesh.isPickable = false;
-    const material = new StandardMaterial(`marker-icon-mat-${id}`, scene);
-    material.disableLighting = true;
-    material.backFaceCulling = false;
-    // disableLighting=true により diffuseTexture はそのまま画面に出る（lighting 計算スキップ）。
-    // useAlphaFromDiffuseTexture により SVG の alpha チャンネルで形状を切り抜く。
-    material.useAlphaFromDiffuseTexture = true;
-    material.emissiveColor = Color3.Black();
-    const texture = new Texture(
-        icon.url,
-        scene,
-        true, // noMipmap
-        true, // invertY (PNG/Canvas は UV と Y 軸が逆なので true)
-        Texture.TRILINEAR_SAMPLINGMODE,
-        undefined,
-        (msg, ex) => {
-            console.warn(
-                `[jpmap-terrain] marker icon texture load failed: id=${id}`,
-                msg,
-                ex,
-            );
-            // ロード失敗時は赤いフォールバックでジオメトリ位置を可視化する。
-            material.emissiveColor = new Color3(1, 0, 0);
-            material.diffuseTexture = null;
-        },
-    );
-    texture.hasAlpha = true;
-    material.diffuseTexture = texture;
-    mesh.material = material;
-    return {
-        mesh,
-        material,
-        texture,
-        widthWorld: icon.width,
-        heightWorld: icon.height,
-    };
-};
-
-interface TextMeshes {
+interface IconTextMeshes {
     mesh: Mesh;
     material: StandardMaterial;
     texture: DynamicTexture;
     widthWorld: number;
     heightWorld: number;
+    /** プレーン下部に占めるアイコン領域の高さ (world m)。アイコン無しの場合 0。 */
+    iconHeightWorld: number;
+    /** プレーン上部に占めるテキスト領域の高さ (world m)。テキスト無しの場合 0。 */
+    textHeightWorld: number;
 }
 
-const createTextMesh = (
+/**
+ * アイコン画像とテキストを 1 枚の板ポリ（DynamicTexture）にまとめて描画する。
+ * - 上半分: テキスト（複数行・縁取り付き、中央揃え）
+ * - 下半分: アイコン画像（非同期 Image ロード、ロード完了後に canvas へ drawImage して update）
+ * - 板の幅は max(textWidth, iconWidth) に揃え、両領域とも水平中央に配置する。
+ * - 板の左右はアスペクト維持のためテクスチャと同サイズ（dpr 換算）。
+ */
+const createIconTextMesh = (
     scene: Scene,
     id: string,
-    text: Required<MarkerTextOptions>,
-): TextMeshes => {
-    const lines = text.value.split("\n");
-    const lineCount = Math.max(lines.length, 1);
+    icon: Required<MarkerIconOptions> | null,
+    text: Required<MarkerTextOptions> | null,
+): IconTextMeshes | null => {
+    if (!icon && !text) return null;
+
     const dpr =
         typeof globalThis !== "undefined" &&
         typeof (globalThis as { devicePixelRatio?: number }).devicePixelRatio ===
             "number"
             ? Math.max((globalThis as { devicePixelRatio: number }).devicePixelRatio, 1)
             : 1;
-    const padPx = Math.round(text.fontSize * 0.4);
-    // 縁取り幅 (px)。フォントサイズの ~12% を目安にし、最低 2px を確保する。
-    const strokePx = Math.max(2, Math.round(text.fontSize * 0.12));
-    // 暫定 DT を作って measureText で各行の最大幅を計測する
-    const probe = new DynamicTexture(
-        `marker-text-probe-${id}`,
-        { width: 16, height: 16 },
-        scene,
-        false,
-    );
-    const probeCtx = probe.getContext();
-    const fontStr = `${text.fontSize}px sans-serif`;
-    probeCtx.font = fontStr;
-    let maxLineWidth = 0;
-    for (const ln of lines) {
-        const m = probeCtx.measureText(ln === "" ? " " : ln);
-        if (m.width > maxLineWidth) maxLineWidth = m.width;
+
+    // テキスト領域サイズ (px)
+    let lines: string[] = [];
+    let lineHeightPx = 0;
+    let padPx = 0;
+    let strokePx = 0;
+    let textWidthPx = 0;
+    let textHeightPx = 0;
+    if (text) {
+        lines = text.value.split("\n");
+        const lineCount = Math.max(lines.length, 1);
+        padPx = Math.round(text.fontSize * 0.4);
+        strokePx = Math.max(2, Math.round(text.fontSize * 0.12));
+        const probe = new DynamicTexture(
+            `marker-iconText-probe-${id}`,
+            { width: 16, height: 16 },
+            scene,
+            false,
+        );
+        const probeCtx = probe.getContext();
+        probeCtx.font = `${text.fontSize}px sans-serif`;
+        let maxLineWidth = 0;
+        for (const ln of lines) {
+            const m = probeCtx.measureText(ln === "" ? " " : ln);
+            if (m.width > maxLineWidth) maxLineWidth = m.width;
+        }
+        probe.dispose();
+        lineHeightPx = text.fontSize * text.lineHeight;
+        const totalTextHeightPx = lineHeightPx * lineCount;
+        const innerPad = padPx + strokePx;
+        textWidthPx = Math.ceil((maxLineWidth + innerPad * 2) * dpr);
+        textHeightPx = Math.ceil((totalTextHeightPx + innerPad * 2) * dpr);
     }
-    probe.dispose();
-    const lineHeightPx = text.fontSize * text.lineHeight;
-    const totalTextHeightPx = lineHeightPx * lineCount;
-    // 縁取り分も収まるよう余白に加算する。
-    const innerPad = padPx + strokePx;
-    // テクスチャサイズは実サイズと一致させる（pow2 パディングをやめてプレーンとキャンバスの
-    // アスペクトを揃えることで、マーカー間で文字サイズ・縦横比を一定に保つ）。
+
+    // アイコン領域サイズ (px)。icon.width/height は world m なので dpr 換算で px にする。
+    let iconWidthPx = 0;
+    let iconHeightPx = 0;
+    if (icon) {
+        iconWidthPx = Math.max(1, Math.ceil(icon.width * dpr));
+        iconHeightPx = Math.max(1, Math.ceil(icon.height * dpr));
+    }
+
     const dtWidth = Math.min(
         MAX_DT_SIZE,
-        Math.max(1, Math.ceil((maxLineWidth + innerPad * 2) * dpr)),
+        Math.max(1, Math.max(textWidthPx, iconWidthPx)),
     );
     const dtHeight = Math.min(
         MAX_DT_SIZE,
-        Math.max(1, Math.ceil((totalTextHeightPx + innerPad * 2) * dpr)),
+        Math.max(1, textHeightPx + iconHeightPx),
     );
+
     const texture = new DynamicTexture(
-        `marker-text-${id}`,
+        `marker-iconText-${id}`,
         { width: dtWidth, height: dtHeight },
         scene,
         false,
     );
     texture.hasAlpha = true;
-    // Plane の UV と DynamicTexture canvas の Y 軸を一致させる（上下反転防止）。
+    // Plane の UV と canvas の Y 軸を一致させる（上下反転防止）。
     texture.vScale = -1;
     texture.vOffset = 1;
+
     const ctx = texture.getContext();
-    // 背景は描かず透明のままにする（ウィンドウ非表示要件）。
-    ctx.clearRect(0, 0, dtWidth, dtHeight);
     const ctx2d = ctx as unknown as CanvasRenderingContext2D;
-    ctx2d.font = `${text.fontSize * dpr}px sans-serif`;
-    ctx2d.textBaseline = "top";
-    ctx2d.textAlign = "center";
-    ctx2d.lineJoin = "round";
-    ctx2d.miterLimit = 2;
-    const centerX = dtWidth / 2;
-    const startY = innerPad * dpr;
-    // 1) 白の縁取りを strokeText で描き、2) その上に黒の本体を fillText する。
-    ctx2d.lineWidth = strokePx * 2 * dpr; // strokeText は中心線基準なので 2 倍
-    ctx2d.strokeStyle = "#ffffff";
-    for (let i = 0; i < lines.length; i++) {
-        ctx2d.strokeText(lines[i], centerX, startY + i * lineHeightPx * dpr);
-    }
-    ctx2d.fillStyle = text.color;
-    for (let i = 0; i < lines.length; i++) {
-        ctx2d.fillText(lines[i], centerX, startY + i * lineHeightPx * dpr);
+    ctx2d.clearRect(0, 0, dtWidth, dtHeight);
+
+    // 上半分にテキストを描く
+    if (text) {
+        ctx2d.font = `${text.fontSize * dpr}px sans-serif`;
+        ctx2d.textBaseline = "top";
+        ctx2d.textAlign = "center";
+        ctx2d.lineJoin = "round";
+        ctx2d.miterLimit = 2;
+        const innerPad = padPx + strokePx;
+        const startY = innerPad * dpr;
+        const centerX = dtWidth / 2;
+        // 1) 白の縁取り → 2) 黒の本体
+        ctx2d.lineWidth = strokePx * 2 * dpr;
+        ctx2d.strokeStyle = "#ffffff";
+        for (let i = 0; i < lines.length; i++) {
+            ctx2d.strokeText(lines[i], centerX, startY + i * lineHeightPx * dpr);
+        }
+        ctx2d.fillStyle = text.color;
+        for (let i = 0; i < lines.length; i++) {
+            ctx2d.fillText(lines[i], centerX, startY + i * lineHeightPx * dpr);
+        }
     }
     texture.update(false);
 
-    // プレーンサイズ = キャンバスサイズ / dpr。テクスチャとプレーンのアスペクト・サイズが一致し、
-    // distScale 適用後もスクリーン上の文字サイズがマーカー間で同一になる。
-    const widthWorld = dtWidth / dpr / TEXT_WORLD_PX_PER_M;
-    const heightWorld = dtHeight / dpr / TEXT_WORLD_PX_PER_M;
+    const widthWorld = dtWidth / dpr;
+    const heightWorld = dtHeight / dpr;
+    const iconHeightWorld = iconHeightPx / dpr;
+    const textHeightWorld = textHeightPx / dpr;
+
     const mesh = CreatePlane(
-        `marker-text-${id}`,
+        `marker-iconText-${id}`,
         { width: widthWorld, height: heightWorld },
         scene,
     );
     mesh.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
     mesh.renderingGroupId = RENDERING_GROUP_ID;
     mesh.isPickable = false;
-    const material = new StandardMaterial(`marker-text-mat-${id}`, scene);
+    const material = new StandardMaterial(`marker-iconText-mat-${id}`, scene);
     material.emissiveColor = Color3.White();
     material.disableLighting = true;
     material.useAlphaFromDiffuseTexture = true;
     material.diffuseTexture = texture;
     mesh.material = material;
-    return { mesh, material, texture, widthWorld, heightWorld };
+
+    // アイコン画像を非同期にロードして下半分へ描き込む（Canvas で描いた PNG data URL や
+    // CORS 許可済み http(s) を想定）。
+    if (icon) {
+        const img = new Image();
+        // クロスオリジン対応: 失敗してもタグ自体は読み込まれるため crossOrigin を試行する。
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const dx = (dtWidth - iconWidthPx) / 2;
+            const dy = textHeightPx;
+            ctx2d.drawImage(img, dx, dy, iconWidthPx, iconHeightPx);
+            texture.update(false);
+        };
+        img.onerror = () => {
+            console.warn(
+                `[jpmap-terrain] marker icon image load failed: id=${id}`,
+                icon.url,
+            );
+        };
+        img.src = icon.url;
+    }
+
+    return {
+        mesh,
+        material,
+        texture,
+        widthWorld,
+        heightWorld,
+        iconHeightWorld,
+        textHeightWorld,
+    };
 };
 
 export interface MarkerNode {
@@ -388,19 +387,18 @@ export const createMarkerNode = (
     let elevationResolved = false;
 
     let lineMeshes: LineMeshes = createLineMesh(scene, id, resolved.line);
-    let iconMeshes: IconMeshes | null = resolved.icon
-        ? createIconMesh(scene, id, resolved.icon)
-        : null;
-    let textMeshes: TextMeshes | null = resolved.text
-        ? createTextMesh(scene, id, resolved.text)
-        : null;
+    let iconTextMeshes: IconTextMeshes | null = createIconTextMesh(
+        scene,
+        id,
+        resolved.icon,
+        resolved.text,
+    );
 
     const applyVisibility = (): void => {
         const visible = logicalEnabled && elevationResolved;
         lineMeshes.outer.setEnabled(visible);
         lineMeshes.inner.setEnabled(visible);
-        iconMeshes?.mesh.setEnabled(visible);
-        textMeshes?.mesh.setEnabled(visible);
+        iconTextMeshes?.mesh.setEnabled(visible);
     };
     applyVisibility();
 
@@ -430,43 +428,26 @@ export const createMarkerNode = (
         lineMeshes.outer.scaling.set(outerW, outerH, 1);
         lineMeshes.outer.position.set(wx, elev + outerH / 2, wz);
 
-        const baseY = elev + lineHeight;
-        const iconH = (iconMeshes?.heightWorld ?? 0) * distScale;
-        const textH = (textMeshes?.heightWorld ?? 0) * distScale;
-        const gap = ICON_TEXT_GAP_M * distScale;
-        if (iconMeshes) {
-            iconMeshes.mesh.scaling.set(distScale, distScale, distScale);
-        }
-        if (textMeshes) {
-            textMeshes.mesh.scaling.set(distScale, distScale, distScale);
-        }
-        if (iconMeshes && textMeshes) {
-            iconMeshes.mesh.position.set(wx, baseY + iconH / 2, wz);
-            textMeshes.mesh.position.set(
-                wx,
-                baseY + iconH + gap + textH / 2,
-                wz,
-            );
-        } else if (iconMeshes) {
-            iconMeshes.mesh.position.set(wx, baseY + iconH / 2, wz);
-        } else if (textMeshes) {
-            textMeshes.mesh.position.set(wx, baseY + textH / 2, wz);
+        // アイコン+テキストの合成プレーン:
+        // - 線の先端 (lineTopY) をアイコン中心に合わせる。
+        // - プレーン内訳 (上→下): textHeight, iconHeight。
+        //   plane center.y = lineTopY + textHeight*distScale / 2
+        //   （icon 無しなら plane center = lineTopY = text bottom、
+        //     text 無しなら plane center = lineTopY = icon center）
+        if (iconTextMeshes) {
+            iconTextMeshes.mesh.scaling.set(distScale, distScale, distScale);
+            const lineTopY = elev + lineHeight;
+            const textH = iconTextMeshes.textHeightWorld * distScale;
+            iconTextMeshes.mesh.position.set(wx, lineTopY + textH / 2, wz);
         }
     };
 
-    const disposeIcon = (): void => {
-        if (!iconMeshes) return;
-        iconMeshes.texture.dispose();
-        iconMeshes.material.dispose();
-        iconMeshes.mesh.dispose();
-        iconMeshes = null;
-    };
-    const disposeText = (): void => {
-        if (!textMeshes) return;
-        textMeshes.texture.dispose();
-        textMeshes.material.dispose();
-        textMeshes.mesh.dispose();
-        textMeshes = null;
+    const disposeIconText = (): void => {
+        if (!iconTextMeshes) return;
+        iconTextMeshes.texture.dispose();
+        iconTextMeshes.material.dispose();
+        iconTextMeshes.mesh.dispose();
+        iconTextMeshes = null;
     };
     const disposeLine = (): void => {
         lineMeshes.outerMaterial.dispose();
@@ -505,19 +486,23 @@ export const createMarkerNode = (
                 disposeLine();
                 lineMeshes = createLineMesh(scene, id, resolved.line);
             }
-            if (partial.icon !== undefined) {
-                resolved = { ...resolved, icon: resolveIcon(partial.icon) };
-                disposeIcon();
-                if (resolved.icon) {
-                    iconMeshes = createIconMesh(scene, id, resolved.icon);
+            // icon / text どちらかが変化したら 1 枚のプレーンを作り直す。
+            const iconChanged = partial.icon !== undefined;
+            const textChanged = partial.text !== undefined;
+            if (iconChanged || textChanged) {
+                if (iconChanged) {
+                    resolved = { ...resolved, icon: resolveIcon(partial.icon) };
                 }
-            }
-            if (partial.text !== undefined) {
-                resolved = { ...resolved, text: resolveText(partial.text) };
-                disposeText();
-                if (resolved.text) {
-                    textMeshes = createTextMesh(scene, id, resolved.text);
+                if (textChanged) {
+                    resolved = { ...resolved, text: resolveText(partial.text) };
                 }
+                disposeIconText();
+                iconTextMeshes = createIconTextMesh(
+                    scene,
+                    id,
+                    resolved.icon,
+                    resolved.text,
+                );
             }
             if (partial.enabled !== undefined) {
                 logicalEnabled = partial.enabled;
@@ -538,8 +523,7 @@ export const createMarkerNode = (
             };
         },
         dispose(): void {
-            disposeIcon();
-            disposeText();
+            disposeIconText();
             disposeLine();
         },
     };
