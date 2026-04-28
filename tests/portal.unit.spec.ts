@@ -13,6 +13,8 @@ describe("buildPortalHtml", () => {
         const html = buildPortalHtml();
         expect(html).toContain('href="viewer"');
         expect(html).toContain('href="timelapse"');
+        // ポリゴンデモ (Issue #170) もポータル一覧に並ぶ。
+        expect(html).toContain('href="polygon"');
         expect(html).toContain("<h1>");
     });
 

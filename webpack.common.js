@@ -35,6 +35,13 @@ const ENTRY_DEFINITIONS = [
         filename: "timelapse.html",
         title: "jpmap_terrain – タイムラプスデモ",
     },
+    {
+        name: "polygon",
+        entry: "src/demos/polygon/index.ts",
+        template: "public/polygon.html",
+        filename: "polygon.html",
+        title: "jpmap_terrain – ポリゴンデモ",
+    },
 ];
 
 const entry = Object.fromEntries(

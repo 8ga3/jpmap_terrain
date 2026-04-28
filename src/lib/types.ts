@@ -202,3 +202,154 @@ export const MARKER_DEFAULTS = {
     },
     textMaxLength: 512,
 } as const;
+
+// ---- ポリゴン (Issue #169 / #170) ----
+
+/**
+ * ポリゴン頂点の Y 値解決方法。
+ * - `terrain` (default): タイル標高に追従する。1 点でも未解決の場合はポリゴン全体を非表示にする。
+ * - `absolute`: `altitude` (m) を絶対高度として使用する。`altitude` 未指定の点があれば throw する。
+ */
+export type AltitudeMode = "terrain" | "absolute";
+
+/**
+ * ポリゴンを構成する 1 頂点。
+ */
+export interface PolygonPointOptions {
+    /** 緯度 (度) */
+    lat: number;
+    /** 経度 (度) */
+    lon: number;
+    /**
+     * 高度 (m)。
+     * - `altitudeMode === "absolute"` のとき必須。海抜高度として Y に直接採用する。
+     * - `altitudeMode === "terrain"` のとき任意。指定値は地表標高への加算オフセット (m)。未指定時は 0。
+     */
+    altitude?: number;
+}
+
+/**
+ * ポリゴン全体のスタイル（spec/package.md §3.3.8.1）。
+ *
+ * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は #170 で適用。
+ * - `dropLine*` / `label*` は #171 で適用予定。`#170` では型予約のみ（既定値で埋めるが描画には未使用）。
+ * - `wallColor` / `wallOpacity` は #172 で適用予定。
+ */
+export interface PolygonStyleOptions {
+    /** 線色 CSS。default `#ff0000` */
+    lineColor?: string;
+    /** 線太さ (m, world)。default 2 */
+    lineWidth?: number;
+    /** 線の不透明度 [0,1]。default 1 */
+    lineOpacity?: number;
+    /** 球の色 CSS。default `#ff0000` */
+    pointColor?: string;
+    /** 球の直径 (m, world、distScale 適用前)。default 20 */
+    pointDiameter?: number;
+    /** 球の不透明度 [0,1]。default 1 */
+    pointOpacity?: number;
+    /** 垂線の色 CSS（#171 で適用）。 */
+    dropLineColor?: string;
+    /** 垂線の太さ (m, world)（#171 で適用）。 */
+    dropLineWidth?: number;
+    /** 垂線の不透明度 [0,1]（#171 で適用）。 */
+    dropLineOpacity?: number;
+    /** ラベル文字色 CSS（#171 で適用）。 */
+    labelColor?: string;
+    /** ラベル背景色 CSS（#171 で適用）。 */
+    labelBackgroundColor?: string;
+    /** ラベル文字サイズ (px)（#171 で適用）。 */
+    labelFontSize?: number;
+    /** 壁の色 CSS（#172 で適用）。 */
+    wallColor?: string;
+    /** 壁の不透明度 [0,1]（#172 で適用）。 */
+    wallOpacity?: number;
+}
+
+/**
+ * ポリゴン追加オプション。
+ */
+export interface PolygonOptions {
+    /** 頂点列。最低 2 点。 */
+    points: readonly PolygonPointOptions[];
+    /**
+     * `true` の場合、最後の頂点と最初の頂点を結ぶ線を 1 本追加する（#170）。
+     * 面塗りなどは #172 で実装する。default false
+     */
+    closed?: boolean;
+    /** 高度モード。default `"terrain"` */
+    altitudeMode?: AltitudeMode;
+    /**
+     * ラベル（点ごと）。`points[i]` に対応する文字列を `labels[i]` で渡す。
+     * `#171` で描画予定。`#170` では受け取るが描画はしない。
+     */
+    labels?: ReadonlyArray<string>;
+    /** スタイル */
+    style?: PolygonStyleOptions;
+    /** default true */
+    enabled?: boolean;
+}
+
+/**
+ * `JpmapTerrain.updatePolygon`（#173 で公開予定）の部分更新型。
+ * `#170` では `PolygonManager` 内部実装でのみ使用する。
+ */
+export type PolygonUpdate = Partial<
+    Pick<
+        PolygonOptions,
+        | "points"
+        | "closed"
+        | "altitudeMode"
+        | "labels"
+        | "style"
+        | "enabled"
+    >
+>;
+
+/**
+ * `JpmapTerrain.addPolygon` / `getPolygon` の戻り値（read-only スナップショット）。
+ */
+export interface PolygonHandle {
+    readonly id: string;
+    readonly points: readonly Readonly<PolygonPointOptions>[];
+    readonly closed: boolean;
+    readonly altitudeMode: AltitudeMode;
+    readonly labels: ReadonlyArray<string> | undefined;
+    readonly style: Readonly<Required<PolygonStyleOptions>>;
+    readonly enabled: boolean;
+    /**
+     * `terrain` モード時、全頂点の標高が解決済みなら true。
+     * `absolute` モード時は常に true。
+     */
+    readonly elevationResolved: boolean;
+}
+
+/**
+ * ポリゴンの既定値（spec/package.md §3.3.8.1）。
+ *
+ * `style` は仕様書記載の #170 範囲既定値（`#ff0000` / 直径 20m / 線幅 2m / opacity 1）を採用する。
+ * `dropLine*` / `label*` / `wallColor` / `wallOpacity` は型予約のため、ハンドル `style` の
+ * `Required<>` を満たすための既定値を内部的に保持するが、`#170` では描画には使用されない。
+ */
+export const POLYGON_DEFAULTS = {
+    closed: false,
+    altitudeMode: "terrain" as AltitudeMode,
+    enabled: true,
+    style: {
+        lineColor: "#ff0000",
+        lineWidth: 2,
+        lineOpacity: 1,
+        pointColor: "#ff0000",
+        pointDiameter: 20,
+        pointOpacity: 1,
+        // 以下は #171 / #172 用の予約値（描画未使用）。Required<> 充足のために保持。
+        dropLineColor: "#ff0000",
+        dropLineWidth: 1,
+        dropLineOpacity: 1,
+        labelColor: "#ffffff",
+        labelBackgroundColor: "#000000",
+        labelFontSize: 14,
+        wallColor: "#ff0000",
+        wallOpacity: 0.3,
+    },
+} as const;

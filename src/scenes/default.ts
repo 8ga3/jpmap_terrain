@@ -571,9 +571,11 @@ export class DefaultScene implements CreateSceneClass {
                 );
                 if (centerPick?.hit && centerPick.pickedPoint) {
                     camera.setTarget(centerPick.pickedPoint);
-                    // 新 target の xz を新たなグリッド残差基準として同期
-                    gridResidualX = camera.target.x;
-                    gridResidualZ = camera.target.z;
+                    // ターゲット差分を緯度経度へ折り込み、Marker/Polygon の位置基準
+                    // (currentLat/Lon と gridResidualX/Z) を新ターゲットと整合させる。
+                    // これを行わずに gridResidualX/Z だけ更新すると、currentLat/Lon
+                    // との不整合により Polygon ノードが回転開始時に微小ジャンプする (#170)。
+                    commitPanOffset();
                 }
             } else {
                 // 単独ドラッグ

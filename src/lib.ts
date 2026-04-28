@@ -21,4 +21,10 @@ export type {
     MarkerOptions,
     MarkerTextOptions,
     MarkerUpdate,
+    AltitudeMode,
+    PolygonPointOptions,
+    PolygonStyleOptions,
+    PolygonOptions,
+    PolygonUpdate,
+    PolygonHandle,
 } from "./lib/types";

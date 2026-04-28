@@ -27,9 +27,12 @@ import {
     MarkerHandle,
     MarkerOptions,
     MarkerUpdate,
+    PolygonHandle,
+    PolygonOptions,
     SUN_AUTO_UPDATE_INTERVAL_MS,
 } from "./types";
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
+import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
 
 /**
  * jpmap-terrain ビューア。
@@ -84,6 +87,9 @@ export class JpmapTerrain {
 
     /** マーカー管理 (Issue #167)。`onReady` で初期化される */
     private _markerManager: MarkerManager | null = null;
+
+    /** ポリゴン管理 (Issue #170)。`onReady` で初期化される */
+    private _polygonManager: PolygonManager | null = null;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -209,6 +215,10 @@ export class JpmapTerrain {
                     }
                     // マーカー (Issue #167)。境界コンテキスト経由で manager を構築する。
                     this._markerManager = createMarkerManager(
+                        controller.getMarkerContext(),
+                    );
+                    // ポリゴン (Issue #170)。MarkerContext と同一のコンテキストを共有する。
+                    this._polygonManager = createPolygonManager(
                         controller.getMarkerContext(),
                     );
                 },
@@ -741,6 +751,45 @@ export class JpmapTerrain {
         return this._markerManager?.list() ?? [];
     }
 
+    // ---- ポリゴン (Issue #170) ----
+
+    private _requirePolygonManager(): PolygonManager {
+        if (!this._polygonManager) {
+            throw new Error("JpmapTerrain polygon manager is not ready yet");
+        }
+        return this._polygonManager;
+    }
+
+    /**
+     * dispose 後のポリゴン API はマーカーと同方針で統一する:
+     * - 戻り値が `PolygonHandle`（非 null）の API（`addPolygon`）は throw。
+     * - 戻り値が void / `PolygonHandle | null` / `readonly string[]` の API は no-op として扱う。
+     */
+    public addPolygon(id: string, options: PolygonOptions): PolygonHandle {
+        this._assertAlive();
+        return this._requirePolygonManager().add(id, options);
+    }
+
+    public getPolygon(id: string): PolygonHandle | null {
+        if (this._disposed || !this._polygonManager) return null;
+        return this._polygonManager.get(id);
+    }
+
+    public removePolygon(id: string): void {
+        if (this._disposed || !this._polygonManager) return;
+        this._polygonManager.remove(id);
+    }
+
+    public setPolygonEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._polygonManager) return;
+        this._polygonManager.setEnabled(id, enabled);
+    }
+
+    public listPolygons(): readonly string[] {
+        if (this._disposed) return [];
+        return this._polygonManager?.list() ?? [];
+    }
+
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
@@ -786,6 +835,15 @@ export class JpmapTerrain {
                 console.error("[JpmapTerrain] markerManager.dispose threw:", err);
             }
             this._markerManager = null;
+        }
+        // ポリゴンマネージャも Scene dispose 前に解放する (Issue #170)。
+        if (this._polygonManager) {
+            try {
+                this._polygonManager.dispose();
+            } catch (err) {
+                console.error("[JpmapTerrain] polygonManager.dispose threw:", err);
+            }
+            this._polygonManager = null;
         }
         // controlPanel が body に追加した UI 要素を Scene dispose 前に除去する。
         if (this._controller) {
