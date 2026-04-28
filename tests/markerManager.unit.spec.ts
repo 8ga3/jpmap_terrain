@@ -143,6 +143,7 @@ const buildCtx = (
             gridResidualX: 0,
             gridResidualZ: 0,
         }),
+        getCameraPosition: () => ({ x: 0, y: 1000, z: 0 }),
     };
     return {
         ctx,

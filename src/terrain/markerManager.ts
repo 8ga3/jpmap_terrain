@@ -55,6 +55,23 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
         return { wx, wz };
     };
 
+    /**
+     * スケール基準距離 (m)。カメラ距離がこの値なら scale=1、それ以上は distance/refDistance
+     * 倍してスクリーン空間サイズを一定に保つ。
+     */
+    const REF_DISTANCE_M = 1000;
+
+    const computeDistScale = (wx: number, wy: number, wz: number): number => {
+        const cam = ctx.getCameraPosition();
+        const dx = cam.x - wx;
+        const dy = cam.y - wy;
+        const dz = cam.z - wz;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const scale = dist / REF_DISTANCE_M;
+        // 近すぎるとテクスチャ補間が荷重になるため下限を設ける
+        return Math.max(scale, 0.1);
+    };
+
     const tickFrame = (): void => {
         for (const node of nodes.values()) {
             const { wx, wz } = computeWorld(node.lat, node.lon);
@@ -64,7 +81,8 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
                 continue;
             }
             node.setElevationResolved(true);
-            node.applyTransform(wx, elev, wz);
+            const scale = computeDistScale(wx, elev, wz);
+            node.applyTransform(wx, elev, wz, scale);
         }
     };
 
@@ -105,7 +123,8 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
             const elev = ctx.tileManager.queryElevationAtWorld(wx, wz);
             if (elev !== null) {
                 node.setElevationResolved(true);
-                node.applyTransform(wx, elev, wz);
+                const scale = computeDistScale(wx, elev, wz);
+                node.applyTransform(wx, elev, wz, scale);
             }
             return node.getHandle();
         },
