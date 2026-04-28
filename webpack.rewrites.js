@@ -12,5 +12,7 @@ module.exports = {
         { from: /^\/viewer\.html(?:\/?@.*)?\/?$/, to: '/viewer.html' },
         { from: /^\/timelapse(?:\/@.*)?\/?$/, to: '/timelapse.html' },
         { from: /^\/timelapse\.html(?:\/?@.*)?\/?$/, to: '/timelapse.html' },
+        { from: /^\/polygon(?:\/@.*)?\/?$/, to: '/polygon.html' },
+        { from: /^\/polygon\.html(?:\/?@.*)?\/?$/, to: '/polygon.html' },
     ],
 };

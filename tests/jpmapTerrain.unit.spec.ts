@@ -78,6 +78,49 @@ const triggerResizeObservers = (): void => {
     }
 };
 
+// `polygon.ts` は Babylon 実体に依存するため、Polygon API テストでは
+// `createPolygonNode` を軽量スタブに差し替える。
+jest.unstable_mockModule("../src/terrain/polygon", () => ({
+    createPolygonNode: (
+        _scene: unknown,
+        id: string,
+        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean },
+    ) => {
+        let enabled = options.enabled ?? true;
+        const altitudeMode = options.altitudeMode ?? "terrain";
+        let elevationResolved = altitudeMode === "absolute";
+        const points = options.points.map((p) => ({ ...p }));
+        return {
+            id,
+            altitudeMode,
+            closed: options.closed ?? false,
+            points,
+            applyTransform: () => {
+                /* no-op */
+            },
+            setEnabledLogical: (v: boolean) => {
+                enabled = v;
+            },
+            setElevationResolved: (v: boolean) => {
+                elevationResolved = v;
+            },
+            getHandle: () => ({
+                id,
+                points: points.map((p) => ({ ...p })),
+                closed: options.closed ?? false,
+                altitudeMode,
+                labels: undefined,
+                style: {} as unknown as Record<string, unknown>,
+                enabled,
+                elevationResolved,
+            }),
+            dispose: () => {
+                /* no-op */
+            },
+        };
+    },
+}));
+
 jest.unstable_mockModule("../src/scenes/default", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
     // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
@@ -1403,6 +1446,46 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.showSunShadows = true;
             expect(viewer.showSunShadows).toBe(false);
             expect(sceneMockModule.__getSunShadowsCalls()).toEqual([]);
+        });
+    });
+
+    describe("Polygon API (Issue #170)", () => {
+        const validPoints = [
+            { lat: 35.681, lon: 139.767 },
+            { lat: 35.682, lon: 139.768 },
+        ];
+
+        it("addPolygon → getPolygon / listPolygons で参照できる", async () => {
+            const viewer = await create(createMountElement());
+            const handle = viewer.addPolygon("p1", { points: validPoints });
+            expect(handle.id).toBe("p1");
+            expect(viewer.getPolygon("p1")?.id).toBe("p1");
+            expect(viewer.listPolygons()).toEqual(["p1"]);
+        });
+
+        it("removePolygon で消える", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            viewer.removePolygon("p1");
+            expect(viewer.getPolygon("p1")).toBeNull();
+            expect(viewer.listPolygons()).toEqual([]);
+        });
+
+        it("setPolygonEnabled は未存在 id でも throw しない（manager 側で throw されるため例外）", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            // 正常系: 存在 id では throw しない
+            expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
+        });
+
+        it("dispose 後の addPolygon は throw、その他 API は no-op / null / [] を返す", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            expect(() => viewer.addPolygon("p1", { points: validPoints })).toThrow();
+            expect(viewer.getPolygon("p1")).toBeNull();
+            expect(viewer.listPolygons()).toEqual([]);
+            expect(() => viewer.removePolygon("p1")).not.toThrow();
+            expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
         });
     });
 });

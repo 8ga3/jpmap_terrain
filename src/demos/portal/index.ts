@@ -30,6 +30,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "24 時間を 1 分に圧縮して太陽位置・陰影をアニメーションし、アナログ時計で同期表示するショーケース。",
         href: "timelapse",
     },
+    {
+        title: "ポリゴン (Issue #170)",
+        description:
+            "PolygonManager 公開 API の動作確認デモ。terrain / absolute / closed の 3 種類のポリラインを表示し、enabled トグルで切替できます。",
+        href: "polygon",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";

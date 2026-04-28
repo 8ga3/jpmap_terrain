@@ -341,6 +341,79 @@ interface MarkerOptions {
 - 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.mapType`（= `"standard"`）にフォールバックする（例外は投げない）。
 - `viewer.mapType` の変化（UI 切替ボタン / プログラム set）は `onMapTypeChange` 経由でデモ層が `history.replaceState` により URL の `?mapType=` を更新する。パス（`/@lat,lon[,...]`）と他クエリ（`engine`, `dateTime` 等）・ハッシュは保持される。
 
+#### 3.3.8 ポリゴン (Issue #169)
+
+任意の点列を受け取り、地表または絶対標高に沿って **ポイント球体** と **ポリライン** を表示する API（基盤）。
+
+##### 3.3.8.1 公開 API（基盤＋ポリライン: Issue #170）
+
+```typescript
+interface JpmapTerrain {
+  /** ポリゴン追加。同 id 重複は throw、points 2 未満は throw、JAPAN_BOUNDS 外は throw。 */
+  addPolygon(id: string, options: PolygonOptions): PolygonHandle;
+  /** 取得。未存在は null */
+  getPolygon(id: string): PolygonHandle | null;
+  /** 削除。未存在は no-op + warn */
+  removePolygon(id: string): void;
+  /** enabled の薄いショートカット */
+  setPolygonEnabled(id: string, enabled: boolean): void;
+  /** 全 id を生成順で返す */
+  listPolygons(): readonly string[];
+}
+
+type AltitudeMode = "absolute" | "terrain";
+
+interface PolygonPointOptions {
+  lat: number;
+  lon: number;
+  /** `altitudeMode === "absolute"` のとき必須値 (m)。`"terrain"` のときは地表からのオフセット (m)、未指定時は 0 */
+  altitude?: number;
+}
+
+interface PolygonStyleOptions {
+  // #170 で実装
+  pointColor?: string;     // CSS color (default "#ff0000")
+  pointOpacity?: number;   // 0..1 (default 1)
+  pointDiameter?: number;  // m (default 20)
+  lineColor?: string;      // CSS color (default "#ff0000")
+  lineOpacity?: number;    // 0..1 (default 1)
+  lineWidth?: number;      // m (Tube radius, default 2)
+  // 以下は #171/#172 で実装予約（型のみ先出し）
+  dropLineColor?: string;
+  dropLineWidth?: number;
+  dropLineOpacity?: number;
+  labelColor?: string;
+  labelBackgroundColor?: string;
+  labelFontSize?: number;
+  wallColor?: string;
+  wallOpacity?: number;
+}
+
+interface PolygonOptions {
+  points: ReadonlyArray<PolygonPointOptions>; // 2 点以上
+  altitudeMode?: AltitudeMode;                // default "terrain"
+  /** `true` でポリラインの末尾と先頭を結んで閉じる（#170 はポリラインのみ閉じる）。default false */
+  closed?: boolean;
+  /** ラベル（点ごと）。#171 で描画予定。#170 では受け取るが描画しない。 */
+  labels?: ReadonlyArray<string>;
+  style?: PolygonStyleOptions;
+  enabled?: boolean;                          // default true
+}
+```
+
+**#170 範囲の仕様:**
+
+- `points` の各点に対し、`altitudeMode === "absolute"` なら `altitude` をそのまま Y に採用する。`"terrain"` ならタイル標高 (m) を Y に採用し、`altitude` が指定されている場合は地表からのオフセットとして加算する。
+- `terrain` モードで 1 点でも標高未解決の間は **ポリゴン全体を hide** し、`onTerrainUpdated` 後に自動表示する（例外は投げない）。
+- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、`renderingGroupId = 1`）。スケールはカメラ距離に応じて screen-stable に動的更新される。
+- 隣接点間を **CreateTube**（`updatable: true`、半径 `style.lineWidth`）で結ぶ。`closed = true` のとき末尾→先頭も結ぶ。
+- JAPAN_BOUNDS 外の点・`points.length < 2`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。
+- 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
+- `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
+- **#171 で実装予定（型予約済み）**: 各ポイントから地表へ落とす垂線、ポイント脇のラベル（`labels`）。
+- **#172 で実装予定（型予約済み）**: 隣接垂線間を結ぶ「壁」（`closed` 時の閉じも含む）、`wallColor` / `wallOpacity`。
+- **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
@@ -368,6 +441,13 @@ import type {
   CameraChangeListener,
   MapType,
   MapTypeChangeListener,
+  // ポリゴン (Issue #170)
+  AltitudeMode,
+  PolygonPointOptions,
+  PolygonStyleOptions,
+  PolygonOptions,
+  PolygonUpdate,
+  PolygonHandle,
 } from "jpmap-terrain";
 ```
 

@@ -22,6 +22,12 @@ import type {
     FlyToOptions,
     JpmapTerrainOptions,
     MapType,
+    AltitudeMode,
+    PolygonPointOptions,
+    PolygonStyleOptions,
+    PolygonOptions,
+    PolygonUpdate,
+    PolygonHandle,
 } from "../src/lib";
 
 describe("package entry exports (T8)", () => {
@@ -58,5 +64,33 @@ describe("package entry exports (T8)", () => {
         };
         listener(event);
         expect(received).toEqual(event);
+    });
+
+    // #170: ポリゴン公開型 (AltitudeMode / PolygonPointOptions / PolygonStyleOptions /
+    // PolygonOptions / PolygonUpdate / PolygonHandle) がパッケージエントリから import 可能であること。
+    it("ポリゴン公開型 (Issue #170) がパッケージエントリから import できる（typecheck）", () => {
+        const altitudeMode: AltitudeMode = "terrain";
+        const point: PolygonPointOptions = { lat: 35.0, lon: 139.0 };
+        const style: PolygonStyleOptions = {
+            pointColor: "#ff0000",
+            lineWidth: 2,
+        };
+        const opts: PolygonOptions = {
+            points: [point, { lat: 35.1, lon: 139.1 }],
+            altitudeMode,
+            closed: false,
+            style,
+        };
+        const update: PolygonUpdate = { enabled: false };
+        // PolygonHandle は実装が返すスナップショット型であり、テストでは形だけ検証する。
+        const handleShape: Pick<PolygonHandle, "id" | "altitudeMode"> = {
+            id: "p1",
+            altitudeMode,
+        };
+
+        expect(opts.points.length).toBe(2);
+        expect(update.enabled).toBe(false);
+        expect(handleShape.id).toBe("p1");
+        expect(style.pointColor).toBe("#ff0000");
     });
 });
