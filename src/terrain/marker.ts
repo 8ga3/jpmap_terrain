@@ -182,6 +182,12 @@ interface IconTextMeshes {
     iconHeightWorld: number;
     /** プレーン上部に占めるテキスト領域の高さ (world m)。テキスト無しの場合 0。 */
     textHeightWorld: number;
+    /**
+     * dispose 済みフラグ。アイコン画像の非同期ロードが dispose
+     * 後に完了した際、解放済みの texture / mesh にアクセスして例外を
+     * 引き起こさないよう onload コールバックで参照してガードする。
+     */
+    disposed: boolean;
 }
 
 /**
@@ -323,13 +329,27 @@ const createIconTextMesh = (
     material.diffuseTexture = texture;
     mesh.material = material;
 
+    const handle: IconTextMeshes = {
+        mesh,
+        material,
+        texture,
+        widthWorld,
+        heightWorld,
+        iconHeightWorld,
+        textHeightWorld,
+        disposed: false,
+    };
+
     // アイコン画像を非同期にロードして下半分へ描き込む（Canvas で描いた PNG data URL や
     // CORS 許可済み http(s) を想定）。
+    // dispose 後に onload が走った場合は解放済み texture / mesh への誤アクセスを避けるため、
+    // handle.disposed を確認してからガードする。
     if (icon) {
         const img = new Image();
         // クロスオリジン対応: 失敗してもタグ自体は読み込まれるため crossOrigin を試行する。
         img.crossOrigin = "anonymous";
         img.onload = () => {
+            if (handle.disposed) return;
             const dx = (dtWidth - iconWidthPx) / 2;
             const dy = textHeightPx;
             ctx2d.drawImage(img, dx, dy, iconWidthPx, iconHeightPx);
@@ -344,15 +364,7 @@ const createIconTextMesh = (
         img.src = icon.url;
     }
 
-    return {
-        mesh,
-        material,
-        texture,
-        widthWorld,
-        heightWorld,
-        iconHeightWorld,
-        textHeightWorld,
-    };
+    return handle;
 };
 
 export interface MarkerNode {
@@ -454,6 +466,9 @@ export const createMarkerNode = (
 
     const disposeIconText = (): void => {
         if (!iconTextMeshes) return;
+        // 非同期アイコン onload がこの後に走ったときにガードされるよう
+        // 先に disposed フラグを立ててからリソースを解放する。
+        iconTextMeshes.disposed = true;
         iconTextMeshes.texture.dispose();
         iconTextMeshes.material.dispose();
         iconTextMeshes.mesh.dispose();
