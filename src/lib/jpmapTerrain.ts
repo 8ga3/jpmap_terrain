@@ -703,6 +703,14 @@ export class JpmapTerrain {
         return this._markerManager;
     }
 
+    /**
+     * dispose 後のマーカー API は次の方針で統一する:
+     * - 戻り値が `MarkerHandle`（非 null）の API（`addMarker` / `updateMarker`）は
+     *   呼び出し側が結果を必ず使うため、明示的に `Error` を投げる。
+     * - 戻り値が void / `MarkerHandle | null` / `readonly string[]` の API
+     *   （`getMarker` / `removeMarker` / `setMarkerEnabled` / `listMarkers`）は
+     *   片付け中のクリーンアップで安全に呼べるよう no-op として扱う。
+     */
     public addMarker(id: string, options: MarkerOptions): MarkerHandle {
         this._assertAlive();
         return this._requireMarkerManager().add(id, options);
@@ -724,11 +732,12 @@ export class JpmapTerrain {
     }
 
     public setMarkerEnabled(id: string, enabled: boolean): void {
-        this._assertAlive();
-        this._requireMarkerManager().setEnabled(id, enabled);
+        if (this._disposed || !this._markerManager) return;
+        this._markerManager.setEnabled(id, enabled);
     }
 
     public listMarkers(): readonly string[] {
+        if (this._disposed) return [];
         return this._markerManager?.list() ?? [];
     }
 
