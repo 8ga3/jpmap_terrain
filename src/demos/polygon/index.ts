@@ -327,6 +327,7 @@ const start = async (): Promise<void> => {
 
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
+        (window as unknown as { scene: unknown }).scene = viewer.__debugScene;
     }
 };
 
