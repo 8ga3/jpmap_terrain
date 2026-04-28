@@ -129,6 +129,36 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             dispose: () => {
                 /* no-op */
             },
+            insertPoint: (
+                index: number,
+                point: { lat: number; lon: number; altitude?: number },
+            ) => {
+                points.splice(index, 0, { ...point });
+            },
+            removePoint: (index: number) => {
+                points.splice(index, 1);
+            },
+            updatePoint: (
+                index: number,
+                partial: {
+                    lat?: number;
+                    lon?: number;
+                    altitude?: number;
+                    label?: string | null;
+                },
+            ) => {
+                const cur = points[index];
+                if (!cur) return;
+                if (partial.lat !== undefined) cur.lat = partial.lat;
+                if (partial.lon !== undefined) cur.lon = partial.lon;
+                if (partial.altitude !== undefined) cur.altitude = partial.altitude;
+            },
+            replacePoints: (
+                next: readonly { lat: number; lon: number; altitude?: number }[],
+            ) => {
+                points.length = 0;
+                for (const p of next) points.push({ ...p });
+            },
         };
     },
 }));
@@ -1517,6 +1547,98 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setVerticalsEnabled("p1", false)).not.toThrow();
             expect(() => viewer.setLabelsEnabled("p1", false)).not.toThrow();
             expect(() => viewer.setWallsEnabled("p1", false)).not.toThrow();
+        });
+    });
+
+    describe("Polygon point edit API (Issue #173)", () => {
+        const validPoints = [
+            { lat: 35.681, lon: 139.767 },
+            { lat: 35.682, lon: 139.768 },
+            { lat: 35.683, lon: 139.769 },
+        ];
+
+        it("insertPolygonPoint で頂点が増える", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            const handle = viewer.insertPolygonPoint("p1", 1, {
+                lat: 35.6815,
+                lon: 139.7675,
+            });
+            expect(handle.points.length).toBe(4);
+            expect(handle.points[1].lat).toBeCloseTo(35.6815);
+        });
+
+        it("removePolygonPoint で頂点が減る", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            const handle = viewer.removePolygonPoint("p1", 0);
+            expect(handle.points.length).toBe(2);
+        });
+
+        it("updatePolygonPoint は partial を反映する", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", {
+                points: validPoints.map((p) => ({ ...p, altitude: 0 })),
+                altitudeMode: "absolute",
+            });
+            const handle = viewer.updatePolygonPoint("p1", 0, {
+                altitude: 123,
+            });
+            expect(handle.points[0].altitude).toBe(123);
+        });
+
+        it("replacePolygonPoints で全置換される", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            const next = [
+                { lat: 35.7, lon: 139.7 },
+                { lat: 35.71, lon: 139.71 },
+            ];
+            const handle = viewer.replacePolygonPoints("p1", next);
+            expect(handle.points.length).toBe(2);
+            expect(handle.points[0].lat).toBeCloseTo(35.7);
+        });
+
+        it("未存在 id の点編集 API は throw", async () => {
+            const viewer = await create(createMountElement());
+            expect(() =>
+                viewer.insertPolygonPoint("nope", 0, {
+                    lat: 35.681,
+                    lon: 139.767,
+                }),
+            ).toThrow();
+            expect(() => viewer.removePolygonPoint("nope", 0)).toThrow();
+            expect(() =>
+                viewer.updatePolygonPoint("nope", 0, { lat: 35.681 }),
+            ).toThrow();
+            expect(() =>
+                viewer.replacePolygonPoints("nope", [
+                    { lat: 35.681, lon: 139.767 },
+                    { lat: 35.682, lon: 139.768 },
+                ]),
+            ).toThrow();
+        });
+
+        it("dispose 後の点編集 API は throw", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addPolygon("p1", { points: validPoints });
+            viewer.dispose();
+            expect(() =>
+                viewer.insertPolygonPoint("p1", 0, {
+                    lat: 35.681,
+                    lon: 139.767,
+                }),
+            ).toThrow();
+            expect(() => viewer.removePolygonPoint("p1", 0)).toThrow();
+            expect(() =>
+                viewer.updatePolygonPoint("p1", 0, { lat: 35.681 }),
+            ).toThrow();
+            expect(() =>
+                viewer.replacePolygonPoints("p1", [
+                    { lat: 35.681, lon: 139.767 },
+                    { lat: 35.682, lon: 139.768 },
+                ]),
+            ).toThrow();
         });
     });
 });
