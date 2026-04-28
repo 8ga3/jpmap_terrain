@@ -243,6 +243,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                             gridResidualX: 0,
                             gridResidualZ: 0,
                         }),
+                        getCameraPosition: () => ({ x: 0, y: 0, z: 0 }),
                     }),
                     dispose: () => {
                         controllerDisposeCount++;

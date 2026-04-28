@@ -70,6 +70,8 @@ export interface MarkerContext {
         gridResidualX: number;
         gridResidualZ: number;
     };
+    /** 現在のカメラワールド位置。スクリーン空間サイズ一定のスケール計算で利用される */
+    getCameraPosition(): { x: number; y: number; z: number };
 }
 
 /**
@@ -1344,6 +1346,11 @@ export class DefaultScene implements CreateSceneClass {
                     lon: currentLon,
                     gridResidualX,
                     gridResidualZ,
+                }),
+                getCameraPosition: () => ({
+                    x: camera.globalPosition.x,
+                    y: camera.globalPosition.y,
+                    z: camera.globalPosition.z,
                 }),
             }),
         };

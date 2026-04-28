@@ -126,32 +126,57 @@ const resolve = (options: MarkerOptions): ResolvedMarker => ({
 });
 
 interface LineMeshes {
-    mesh: Mesh;
-    material: StandardMaterial;
+    outer: Mesh;
+    inner: Mesh;
+    outerMaterial: StandardMaterial;
+    innerMaterial: StandardMaterial;
 }
 
+/**
+ * 垂直線を 「外側（縁取り色） + 内側（コア色）」の二重チューブで表現する。
+ * `line.color` をコア色、縁取りは白固定とし、両者はデフォルトスケール (1) で描画され、
+ * 距離一定スケールは mesh.scaling で外部から調整する。
+ */
 const createLineMesh = (
     scene: Scene,
     id: string,
     line: Required<MarkerLineOptions>,
 ): LineMeshes => {
-    const mesh = CreateTube(
-        `marker-line-${id}`,
-        {
-            path: [Vector3.Zero(), new Vector3(0, line.height, 0)],
-            radius: Math.max(line.width / 2, 0.01),
-            tessellation: 8,
-            updatable: false,
-        },
+    const outerRadius = Math.max(line.width / 2, 0.05);
+    // 内側は外側の 50% を目安にし、極端に細いときも最低限見えるようクランプする。
+    const innerRadius = Math.max(outerRadius * 0.5, 0.02);
+    const path = [Vector3.Zero(), new Vector3(0, line.height, 0)];
+    const outer = CreateTube(
+        `marker-line-outer-${id}`,
+        { path, radius: outerRadius, tessellation: 8, updatable: false },
         scene,
     );
-    const material = new StandardMaterial(`marker-line-mat-${id}`, scene);
-    material.emissiveColor = Color3.FromHexString(line.color);
-    material.disableLighting = true;
-    mesh.material = material;
-    mesh.renderingGroupId = RENDERING_GROUP_ID;
-    mesh.isPickable = false;
-    return { mesh, material };
+    const inner = CreateTube(
+        `marker-line-inner-${id}`,
+        { path, radius: innerRadius, tessellation: 8, updatable: false },
+        scene,
+    );
+    const outerMaterial = new StandardMaterial(
+        `marker-line-outer-mat-${id}`,
+        scene,
+    );
+    outerMaterial.emissiveColor = Color3.White();
+    outerMaterial.disableLighting = true;
+    outer.material = outerMaterial;
+    outer.renderingGroupId = RENDERING_GROUP_ID;
+    outer.isPickable = false;
+    const innerMaterial = new StandardMaterial(
+        `marker-line-inner-mat-${id}`,
+        scene,
+    );
+    innerMaterial.emissiveColor = Color3.FromHexString(line.color);
+    innerMaterial.disableLighting = true;
+    inner.material = innerMaterial;
+    inner.renderingGroupId = RENDERING_GROUP_ID;
+    inner.isPickable = false;
+    // 内側を手前に描画して艦色体を俺閐させるための Z-fight 選出オフセット。
+    inner.material.zOffset = -1;
+    return { outer, inner, outerMaterial, innerMaterial };
 };
 
 interface IconMeshes {
@@ -214,6 +239,8 @@ const createTextMesh = (
             ? Math.max((globalThis as { devicePixelRatio: number }).devicePixelRatio, 1)
             : 1;
     const padPx = Math.round(text.fontSize * 0.4);
+    // 縁取り幅 (px)。フォントサイズの ~12% を目安にし、最低 2px を確保する。
+    const strokePx = Math.max(2, Math.round(text.fontSize * 0.12));
     // 暫定 DT を作って measureText で各行の最大幅を計測する
     const probe = new DynamicTexture(
         `marker-text-probe-${id}`,
@@ -232,14 +259,16 @@ const createTextMesh = (
     probe.dispose();
     const lineHeightPx = text.fontSize * text.lineHeight;
     const totalTextHeightPx = lineHeightPx * lineCount;
+    // 縁取り分も収まるよう余白に加算する。
+    const innerPad = padPx + strokePx;
     const dtWidth = Math.min(
         MAX_DT_SIZE,
-        ceilPow2(Math.max(1, Math.ceil((maxLineWidth + padPx * 2) * dpr))),
+        ceilPow2(Math.max(1, Math.ceil((maxLineWidth + innerPad * 2) * dpr))),
     );
     const dtHeight = Math.min(
         MAX_DT_SIZE,
         ceilPow2(
-            Math.max(1, Math.ceil((totalTextHeightPx + padPx * 2) * dpr)),
+            Math.max(1, Math.ceil((totalTextHeightPx + innerPad * 2) * dpr)),
         ),
     );
     const texture = new DynamicTexture(
@@ -249,30 +278,35 @@ const createTextMesh = (
         false,
     );
     texture.hasAlpha = true;
+    // Plane の UV と DynamicTexture canvas の Y 軸を一致させる（上下反転防止）。
+    texture.vScale = -1;
+    texture.vOffset = 1;
     const ctx = texture.getContext();
+    // 背景は描かず透明のままにする（ウィンドウ非表示要件）。
     ctx.clearRect(0, 0, dtWidth, dtHeight);
-    if (text.backgroundColor !== "transparent") {
-        ctx.fillStyle = text.backgroundColor;
-        ctx.fillRect(0, 0, dtWidth, dtHeight);
-    }
-    ctx.font = `${text.fontSize * dpr}px sans-serif`;
-    ctx.fillStyle = text.color;
-    // `ICanvasRenderingContext` に textBaseline が無い（Babylon の最小型定義）ため、
-    // 実体は CanvasRenderingContext2D 互換。安全に as 経由でフィールドを設定する。
-    (ctx as unknown as { textBaseline: CanvasTextBaseline }).textBaseline =
-        "top";
+    const ctx2d = ctx as unknown as CanvasRenderingContext2D;
+    ctx2d.font = `${text.fontSize * dpr}px sans-serif`;
+    ctx2d.textBaseline = "top";
+    ctx2d.textAlign = "center";
+    ctx2d.lineJoin = "round";
+    ctx2d.miterLimit = 2;
+    const centerX = dtWidth / 2;
+    const startY = innerPad * dpr;
+    // 1) 白の縁取りを strokeText で描き、2) その上に黒の本体を fillText する。
+    ctx2d.lineWidth = strokePx * 2 * dpr; // strokeText は中心線基準なので 2 倍
+    ctx2d.strokeStyle = "#ffffff";
     for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(
-            lines[i],
-            padPx * dpr,
-            (padPx + i * lineHeightPx) * dpr,
-        );
+        ctx2d.strokeText(lines[i], centerX, startY + i * lineHeightPx * dpr);
+    }
+    ctx2d.fillStyle = text.color;
+    for (let i = 0; i < lines.length; i++) {
+        ctx2d.fillText(lines[i], centerX, startY + i * lineHeightPx * dpr);
     }
     texture.update(false);
 
-    const widthWorld = (maxLineWidth + padPx * 2) / TEXT_WORLD_PX_PER_M;
+    const widthWorld = (maxLineWidth + innerPad * 2) / TEXT_WORLD_PX_PER_M;
     const heightWorld =
-        (totalTextHeightPx + padPx * 2) / TEXT_WORLD_PX_PER_M;
+        (totalTextHeightPx + innerPad * 2) / TEXT_WORLD_PX_PER_M;
     const mesh = CreatePlane(
         `marker-text-${id}`,
         { width: widthWorld, height: heightWorld },
@@ -294,7 +328,11 @@ export interface MarkerNode {
     readonly id: string;
     readonly lat: number;
     readonly lon: number;
-    applyTransform(wx: number, elev: number, wz: number): void;
+    /**
+     * 位置とスクリーン一定スケールを適用する。
+     * @param distScale カメラ距離に比例したスケール倍率。未指定時は 1。
+     */
+    applyTransform(wx: number, elev: number, wz: number, distScale?: number): void;
     setEnabledLogical(enabled: boolean): void;
     setElevationResolved(resolved: boolean): void;
     update(partial: MarkerUpdate, newLat: number, newLon: number): void;
@@ -335,22 +373,40 @@ export const createMarkerNode = (
 
     const applyVisibility = (): void => {
         const visible = logicalEnabled && elevationResolved;
-        lineMeshes.mesh.setEnabled(visible);
+        lineMeshes.outer.setEnabled(visible);
+        lineMeshes.inner.setEnabled(visible);
         iconMeshes?.mesh.setEnabled(visible);
         textMeshes?.mesh.setEnabled(visible);
     };
     applyVisibility();
 
-    const applyTransform = (wx: number, elev: number, wz: number): void => {
-        lineMeshes.mesh.position.set(wx, elev, wz);
-        const baseY = elev + resolved.line.height;
-        const iconH = iconMeshes?.heightWorld ?? 0;
-        const textH = textMeshes?.heightWorld ?? 0;
+    const applyTransform = (
+        wx: number,
+        elev: number,
+        wz: number,
+        distScale = 1,
+    ): void => {
+        // 線: 足元を地表に固定し、Y 軸方向に distScale 倍して伸ばす。
+        // 太さ（X/Z）も distScale で反映させるとカメラ距離に関わらず見た目の太さが一定になる。
+        lineMeshes.outer.position.set(wx, elev, wz);
+        lineMeshes.inner.position.set(wx, elev, wz);
+        lineMeshes.outer.scaling.set(distScale, distScale, distScale);
+        lineMeshes.inner.scaling.set(distScale, distScale, distScale);
+        const baseY = elev + resolved.line.height * distScale;
+        const iconH = (iconMeshes?.heightWorld ?? 0) * distScale;
+        const textH = (textMeshes?.heightWorld ?? 0) * distScale;
+        const gap = ICON_TEXT_GAP_M * distScale;
+        if (iconMeshes) {
+            iconMeshes.mesh.scaling.set(distScale, distScale, distScale);
+        }
+        if (textMeshes) {
+            textMeshes.mesh.scaling.set(distScale, distScale, distScale);
+        }
         if (iconMeshes && textMeshes) {
             iconMeshes.mesh.position.set(wx, baseY + iconH / 2, wz);
             textMeshes.mesh.position.set(
                 wx,
-                baseY + iconH + ICON_TEXT_GAP_M + textH / 2,
+                baseY + iconH + gap + textH / 2,
                 wz,
             );
         } else if (iconMeshes) {
@@ -375,8 +431,10 @@ export const createMarkerNode = (
         textMeshes = null;
     };
     const disposeLine = (): void => {
-        lineMeshes.material.dispose();
-        lineMeshes.mesh.dispose();
+        lineMeshes.outerMaterial.dispose();
+        lineMeshes.innerMaterial.dispose();
+        lineMeshes.outer.dispose();
+        lineMeshes.inner.dispose();
     };
 
     return {
