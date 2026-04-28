@@ -1471,10 +1471,10 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(viewer.listPolygons()).toEqual([]);
         });
 
-        it("setPolygonEnabled は未存在 id でも throw しない（manager 側で throw されるため例外）", async () => {
+        it("setPolygonEnabled は存在する id に対して有効/無効を切り替えても throw しない", async () => {
             const viewer = await create(createMountElement());
             viewer.addPolygon("p1", { points: validPoints });
-            // 正常系: 存在 id では throw しない
+            // 正常系: 登録済み id に対する切り替えは例外にならない
             expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
         });
 
