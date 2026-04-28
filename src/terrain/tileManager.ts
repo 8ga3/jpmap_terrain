@@ -24,7 +24,7 @@ import {
     MapType,
     fillInvalidPixels,
 } from "./gsiTile";
-import { stitchTileEdges } from "./tileStitching";
+import { stitchTileEdges, stitchTileEdgesCrossLevel, CoarseEdgeNeighbor } from "./tileStitching";
 
 export interface TileManagerOptions {
     scene: Scene;
@@ -79,6 +79,12 @@ const DEFAULT_CACHE_CAPACITY = 192;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
+/**
+ * クロスレベル縫い合わせを適用する「カメラ近傍」判定の距離係数。
+ * タイル中心とカメラの 3D 距離が `tileSize × NEAR_DISTANCE_TILES_FACTOR` 以下なら近傍とみなす。
+ * 値が大きいほど縫い合わせ対象が広がる。遠方タイルは隙間が視認しにくいため、近傍のみに限定する。
+ */
+const NEAR_DISTANCE_TILES_FACTOR = 3;
 
 /** 頂点Y座標を標高値で更新 */
 const applyElevation = (
@@ -492,6 +498,85 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         };
     };
 
+    /**
+     * カメラがタイル中心に近いか判定する。
+     * タイル中心（XZ 平面上）とカメラ（target 原点ローカル）との 3D 距離が
+     * `tileSize × NEAR_DISTANCE_TILES_FACTOR` 以下なら true。
+     * クロスレベル縫い合わせを近傍に限定するために用いる。
+     */
+    const isTileNearCamera = (coord: TileCoord, tileSize: number): boolean => {
+        if (!currentCenter) return false;
+        const center = convertTileZoom(currentCenter, coord.zoom);
+        const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+        const dx = coord.x - center.x;
+        const dy = coord.y - center.y;
+        const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
+        // camera position は target 原点ローカル。タイル中心は y=0 平面。
+        const cx = camera.position.x - camera.target.x;
+        const cy = camera.position.y - camera.target.y;
+        const cz = camera.position.z - camera.target.z;
+        const ex = wx - cx;
+        const ez = wz - cz;
+        const dist = Math.sqrt(ex * ex + cy * cy + ez * ez);
+        return dist <= tileSize * NEAR_DISTANCE_TILES_FACTOR;
+    };
+
+    /**
+     * target タイルの 4 辺それぞれについて、辺を共有する粗 zoom のアクティブタイルを
+     * 1 つだけ選んで返す（同じ辺で複数候補があれば最も細かい粗 zoom を採用）。
+     * 同 zoom の隣接タイルが存在する場合はその辺は対象外（同 zoom の縫い合わせに任せる）。
+     */
+    const getCoarseEdgeNeighbors = (coord: TileCoord): CoarseEdgeNeighbor[] => {
+        const result: CoarseEdgeNeighbor[] = [];
+        const { zoom: z, x, y } = coord;
+        const dirs = [
+            { dir: "top" as const, ndx: 0, ndy: -1 },
+            { dir: "bottom" as const, ndx: 0, ndy: 1 },
+            { dir: "left" as const, ndx: -1, ndy: 0 },
+            { dir: "right" as const, ndx: 1, ndy: 0 },
+        ];
+        for (const d of dirs) {
+            // 同 zoom 隣接が存在すればクロスレベル不要
+            const sameZoomKey = toTileKey({ zoom: z, x: x + d.ndx, y: y + d.ndy });
+            if (activeTiles.has(sameZoomKey)) continue;
+
+            // 粗 zoom を z-1 から minZoom まで降順で探索（細かい粗 zoom を優先）
+            for (let zp = z - 1; zp >= minZoom; zp--) {
+                const diff = z - zp;
+                const scale = 1 << diff;
+                const subX = x & (scale - 1);
+                const subY = y & (scale - 1);
+                // target の辺が親タイルの境界辺と一致する条件
+                let onParentEdge: boolean;
+                switch (d.dir) {
+                    case "top": onParentEdge = subY === 0; break;
+                    case "bottom": onParentEdge = subY === scale - 1; break;
+                    case "left": onParentEdge = subX === 0; break;
+                    case "right": onParentEdge = subX === scale - 1; break;
+                }
+                if (!onParentEdge) continue;
+
+                const px = x >> diff;
+                const py = y >> diff;
+                const ncx = px + d.ndx;
+                const ncy = py + d.ndy;
+                const nKey = toTileKey({ zoom: zp, x: ncx, y: ncy });
+                if (!activeTiles.has(nKey)) continue;
+                const entry = cache.get(nKey);
+                if (!entry) continue;
+                result.push({
+                    elevation: entry.elevation,
+                    direction: d.dir,
+                    subX,
+                    subY,
+                    scale,
+                });
+                break;
+            }
+        }
+        return result;
+    };
+
     /** タイルの標高データをステッチ＋NaN埋めしてメッシュに適用 */
     const applyStitchedElevation = (
         mesh: Mesh,
@@ -507,9 +592,19 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // 標高データのコピーを作成（キャッシュの元データを保持するため）
         const stitched = new Float32Array(elevation);
 
-        // 隣接タイルと辺を縫い合わせ
+        // 隣接タイルと辺を縫い合わせ（同 zoom）
         const neighbors = getNeighborElevations(coord);
         stitchTileEdges(stitched, neighbors, TILE_SIZE);
+
+        // 異 zoom 隣接（粗タイル）と縫い合わせ。カメラ近傍タイルのみ対象。
+        // 遠方タイルは隙間が視認しにくい一方、毎フレーム再計算されるため負荷を抑える。
+        const tileSize = tileSizeForZoom(coord.zoom);
+        if (isTileNearCamera(coord, tileSize)) {
+            const coarse = getCoarseEdgeNeighbors(coord);
+            if (coarse.length > 0) {
+                stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
+            }
+        }
 
         // NaN を埋める
         fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
@@ -549,6 +644,29 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (!activeTiles.has(neighborKey)) continue;
             pendingRestitch.add(neighborKey);
         }
+
+        // クロスレベル: coord（粗タイル/同 zoom 問わず）の辺を共有する細タイルを再ステッチ。
+        // coord が粗タイルなら、隣接する細タイルがそのスナップ先として coord を参照しうる。
+        // coord が細タイルなら、隣接する更に細い別 zoom タイルへの影響は限定的だが、
+        // 自身の cross-level スナップは applyStitchedElevation で初回適用済み。
+        for (const [k, t] of activeTiles) {
+            if (t.coord.zoom <= z) continue;
+            const diff = t.coord.zoom - z;
+            const scale = 1 << diff;
+            const tpx = t.coord.x >> diff;
+            const tpy = t.coord.y >> diff;
+            const tsubX = t.coord.x & (scale - 1);
+            const tsubY = t.coord.y & (scale - 1);
+            // 細タイル t が coord と辺を共有する条件
+            const adjTop = tpx === x && tpy === y - 1 && tsubY === scale - 1; // t の上に coord
+            const adjBottom = tpx === x && tpy === y + 1 && tsubY === 0; // t の下に coord
+            const adjLeft = tpx === x - 1 && tpy === y && tsubX === scale - 1;
+            const adjRight = tpx === x + 1 && tpy === y && tsubX === 0;
+            if (adjTop || adjBottom || adjLeft || adjRight) {
+                pendingRestitch.add(k);
+            }
+        }
+
         if (restitchRafId === null) {
             restitchRafId = requestAnimationFrame(flushRestitch);
         }
