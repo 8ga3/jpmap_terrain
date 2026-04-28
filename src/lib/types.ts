@@ -125,11 +125,11 @@ export type MapTypeChangeListener = (mapType: MapType) => void;
 export interface MarkerTextOptions {
     /** テキスト本体。"\n" で複数行。最大 512 chars（超過は console.warn のうえ truncate） */
     value: string;
-    /** フォントサイズ(px)。default 14 */
+    /** フォントサイズ(px)。default 18 */
     fontSize?: number;
-    /** CSS color。default "#ffffff" */
+    /** CSS color。default "#000000" */
     color?: string;
-    /** 背景色。default "rgba(0,0,0,0.6)"。"transparent" 可 */
+    /** 背景色。default "transparent"（透明）。CSS color を指定可 */
     backgroundColor?: string;
     /** 行高倍率。default 1.2 */
     lineHeight?: number;
@@ -138,18 +138,27 @@ export interface MarkerTextOptions {
 export interface MarkerIconOptions {
     /** 画像URL。`javascript:` / `vbscript:` 等は拒否 */
     url: string;
-    /** 表示幅(world meters)。default 64 */
+    /** 表示幅(world meters)。default 40 */
     width?: number;
-    /** 表示高(world meters)。default 64 */
+    /** 表示高(world meters)。default 40 */
     height?: number;
 }
 
 export interface MarkerLineOptions {
-    /** 線色 CSS。default "#ffffff" */
+    /**
+     * 線色 CSS。default "#000000"。
+     * Canvas `fillStyle` に直接代入されるため CSS で許容される表記
+     * （`#RRGGBB` / `rgb(...)` / `red` 等）が利用可能。
+     */
     color?: string;
-    /** 線幅(world meters)。default 1.5 */
+    /** 線幅(world meters)。default 4 */
     width?: number;
-    /** 線の長さ(地表からビルボード基点)。default 200 */
+    /**
+     * 線の長さ (m)。default 500。
+     * 実装はカメラ距離・仰角に応じた動的高さを優先採用するため、
+     * 通常はカメラ距離が解決できないテスト/フォールバック時の参考値となる
+     * （`spec/package.md §3.3.7` 参照）。
+     */
     height?: number;
 }
 
