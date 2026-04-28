@@ -141,11 +141,13 @@ const createLineMesh = (
     texture.wrapV = 0;
     const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, TEX_W, TEX_H);
-    // 左右だけに白縁を残し、上下方向は黒（line.color）が端まで届くようにする。
-    // 横の比率は 25/50/25（左白・中央黒・右白）、縦は全域を黒で塗りつぶす。
+    // 左右だけに白縁を残し、上下方向は line.color が端まで届くようにする。
+    // 横の比率は 25/50/25（左白・中央色・右白）、縦は全域を塗りつぶす。
+    // line.color は CSS で許容される表記（"#RRGGBB" / "rgb(...)" / "red" 等）を
+    // そのまま fillStyle に代入できる。
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, TEX_W, TEX_H);
-    ctx.fillStyle = Color3.FromHexString(line.color).toHexString();
+    ctx.fillStyle = line.color;
     const xL = Math.floor(TEX_W * 0.25);
     const xR = Math.ceil(TEX_W * 0.75);
     ctx.fillRect(xL, 0, xR - xL, TEX_H);
