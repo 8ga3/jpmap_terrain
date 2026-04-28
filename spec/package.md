@@ -305,15 +305,15 @@ interface MarkerOptions {
   icon?: { url: string; width?: number; height?: number };
   text?: {
     value: string;          // "\n" で改行
-    fontSize?: number;      // 1 行のおおよそのワールド m 高さ (default 16)
+    fontSize?: number;      // フォントサイズ(px) (default 18)
     color?: string;         // CSS color (default "#000000")
     backgroundColor?: string; // CSS color (default "transparent")
     lineHeight?: number;    // 倍率 (default 1.2)
   };
   line?: {
-    color?: string;  // default "#000000"
-    width?: number;  // m (default 8)
-    height?: number; // m (default 500)
+    color?: string;  // CSS color (default "#000000")
+    width?: number;  // m (default 4)
+    height?: number; // m (default 500)。動的高さ計算が無効な場合のフォールバック値
   };
   enabled?: boolean; // default true
 }
@@ -323,7 +323,11 @@ interface MarkerOptions {
 
 - `icon` と `text` は **少なくとも片方が必須**。両方指定時は **上=text、下=icon** の順で線の上にスタックする。
 - ビルボードは `BILLBOARDMODE_ALL` でカメラ常時追従。`renderingGroupId = 1` で最前面に描画する。
-- 表示位置の高さは「タイル表面の標高 + `line.height`」。標高未取得地点では描画を保留し、対応するタイルロード後（`onTerrainUpdated`）に自動で表示する（例外は投げない）。
+- 表示位置の高さは **「タイル表面の標高 + 線の高さ」**。線の高さはカメラ距離・仰角から
+  動的に算出される値（`radius * 0.1 * clamp(sin(beta), 0.3, 1)` を 100m–10000m にクランプ）を採用し、
+  カメラ距離が変わってもスクリーン上で安定した長さに見えるようにする。`line.height` は
+  動的計算が利用できないテスト/フォールバック時の基準値として保持する。
+  標高未取得地点では描画を保留し、対応するタイルロード後（`onTerrainUpdated`）に自動で表示する（例外は投げない）。
 - `icon.url` は `http(s):` / `data:image/...` / 相対パスのみ許可。`javascript:` 等のスキームは Error。
 - `lat`/`lon` が JAPAN_BOUNDS 外、`MarkerOptions` 不正属性の場合は Error。
 - `addMarker` の戻り値および `getMarker` は read-only スナップショット（更新は必ず `updateMarker` 経由）。
