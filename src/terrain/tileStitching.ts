@@ -146,8 +146,10 @@ export interface CoarseEdgeNeighbor {
  *   in-place に上書きする（粗タイル側は変更しない）。
  * - これにより細タイルが粗タイルにスナップされ、T-junction 隙間を解消する。
  * - NaN は補間から除外。両端が NaN の場合はそのピクセルを変更しない。
- * - 角は辺の端点として処理される。同一角に複数方向の隣接情報が指定された場合は
- *   呼び出し順に上書きされるため、安定化のため呼び出し側で順序を一定にすること。
+ * - 角ピクセルは上書きしない。同 zoom 隣接タイルが角を共有する場合に、
+ *   隣接細タイル同士で異なる粗サンプル位置にスナップされて角値が不一致となる
+ *   （= 同 zoom タイル間に新たな亀裂が生じる）のを防ぐため、角は
+ *   `stitchTileEdges`（同 zoom）の処理結果をそのまま保持する。
  */
 export const stitchTileEdgesCrossLevel = (
     target: Float32Array,
@@ -155,11 +157,12 @@ export const stitchTileEdgesCrossLevel = (
     tileSize: number,
 ): void => {
     const last = tileSize - 1;
-    if (last <= 0) return;
+    if (last <= 1) return; // 角しかないサイズでは何もしない
 
     for (const n of coarseNeighbors) {
         const subSize = tileSize / n.scale; // 粗タイル内で target が占めるピクセル幅
-        for (let i = 0; i <= last; i++) {
+        // 角ピクセル (i=0, i=last) は除外し、辺の内側のみを上書きする。
+        for (let i = 1; i < last; i++) {
             const u = i / last; // 0..1（target 辺方向）
             // 粗タイルの対応辺上での位置（連続値）
             const along =

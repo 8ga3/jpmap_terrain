@@ -2,8 +2,10 @@ import { describe, it, expect } from "@jest/globals";
 import {
     nanMean,
     stitchTileEdges,
-    StitchNeighbors,
     stitchTileEdgesCrossLevel,
+} from "../src/terrain/tileStitching";
+import type {
+    StitchNeighbors,
     CoarseEdgeNeighbor,
 } from "../src/terrain/tileStitching";
 
@@ -246,7 +248,7 @@ describe("stitchTileEdgesCrossLevel", () => {
         expect(target).toEqual(copy);
     });
 
-    it("上辺: 粗タイル一定値で target 上辺がスナップされる", () => {
+    it("上辺: 粗タイル一定値で target 上辺がスナップされる（角除く）", () => {
         const target = fill(S, 10);
         const coarse = fill(S, 50);
         // scale=2, subX=0, subY=0 → target は粗タイルの左上の子
@@ -258,14 +260,17 @@ describe("stitchTileEdgesCrossLevel", () => {
             scale: 2,
         };
         stitchTileEdgesCrossLevel(target, [neighbor], S);
-        // 粗タイルが一定値なので target 上辺は全て 50 にスナップ
-        for (let i = 0; i < S; i++) expect(target[i]).toBe(50);
+        // 粗タイルが一定値なので target 上辺の辺内部は 50 にスナップ
+        for (let i = 1; i < S - 1; i++) expect(target[i]).toBe(50);
+        // 角は変えない（同 zoom ステッチの結果を保持）
+        expect(target[0]).toBe(10);
+        expect(target[S - 1]).toBe(10);
         // 内部は変わらない
         expect(target[S]).toBe(10);
         expect(target[S + 1]).toBe(10);
     });
 
-    it("下辺: 粗タイルの上辺の対応区間にスナップされる", () => {
+    it("下辺: 粗タイルの上辺の対応区間にスナップされる（角除く）", () => {
         const target = fill(S, 10);
         const coarse = fill(S, 30);
         const neighbor: CoarseEdgeNeighbor = {
@@ -277,10 +282,13 @@ describe("stitchTileEdgesCrossLevel", () => {
         };
         stitchTileEdgesCrossLevel(target, [neighbor], S);
         const lastRow = (S - 1) * S;
-        for (let i = 0; i < S; i++) expect(target[lastRow + i]).toBe(30);
+        for (let i = 1; i < S - 1; i++) expect(target[lastRow + i]).toBe(30);
+        // 角は変えない
+        expect(target[lastRow]).toBe(10);
+        expect(target[lastRow + (S - 1)]).toBe(10);
     });
 
-    it("左辺と右辺: 一定値の粗タイルにスナップされる", () => {
+    it("左辺と右辺: 一定値の粗タイルにスナップされる（角除く）", () => {
         const target = fill(S, 10);
         const coarseL = fill(S, 70);
         const coarseR = fill(S, 80);
@@ -289,10 +297,15 @@ describe("stitchTileEdgesCrossLevel", () => {
             { elevation: coarseR, direction: "right", subX: 1, subY: 0, scale: 2 },
         ];
         stitchTileEdgesCrossLevel(target, neighbors, S);
-        for (let r = 0; r < S; r++) {
+        for (let r = 1; r < S - 1; r++) {
             expect(target[r * S]).toBe(70);
             expect(target[r * S + (S - 1)]).toBe(80);
         }
+        // 角は変えない
+        expect(target[0]).toBe(10);
+        expect(target[(S - 1) * S]).toBe(10);
+        expect(target[S - 1]).toBe(10);
+        expect(target[(S - 1) * S + (S - 1)]).toBe(10);
     });
 
     it("粗タイルの値が辺方向に勾配を持つ場合、線形補間で間の値になる", () => {
@@ -315,10 +328,14 @@ describe("stitchTileEdgesCrossLevel", () => {
             scale: 2,
         };
         stitchTileEdgesCrossLevel(target, [neighbor], S);
-        for (let i = 0; i < S; i++) {
+        // 角除く i=1..S-2 で期待値 = u*3 (u=i/(S-1))
+        for (let i = 1; i < S - 1; i++) {
             const expected = (i / (S - 1)) * 3;
             expect(target[i]).toBeCloseTo(expected, 6);
         }
+        // 角は変えない
+        expect(target[0]).toBe(100);
+        expect(target[S - 1]).toBe(100);
     });
 
     it("粗タイル両端 NaN の場合は target を変更しない", () => {
@@ -332,13 +349,16 @@ describe("stitchTileEdgesCrossLevel", () => {
             scale: 2,
         };
         stitchTileEdgesCrossLevel(target, [neighbor], S);
-        for (let i = 0; i < S; i++) expect(target[i]).toBe(99);
+        for (let i = 1; i < S - 1; i++) expect(target[i]).toBe(99);
+        // 角は元より変わらない
+        expect(target[0]).toBe(99);
+        expect(target[S - 1]).toBe(99);
     });
 
     it("粗タイル片側 NaN なら有効値で埋める", () => {
-        // 粗タイル下辺 col=0 のみ 50、他は NaN
+        // 粗タイル下辺 col=1 のみ 50、他は NaN
         const coarse = fillNaN(S);
-        coarse[(S - 1) * S + 0] = 50;
+        coarse[(S - 1) * S + 1] = 50;
         const target = fill(S, 10);
         const neighbor: CoarseEdgeNeighbor = {
             elevation: coarse,
@@ -348,11 +368,11 @@ describe("stitchTileEdgesCrossLevel", () => {
             scale: 2,
         };
         stitchTileEdgesCrossLevel(target, [neighbor], S);
-        // i=0: a=coarse[last,0]=50, b=coarse[last,1]=NaN → 50 にスナップ
-        expect(target[0]).toBe(50);
+        // i=1: along=3/(S-1)≈0.43 → lo=0(NaN), hi=1(50) → 50 にスナップ
+        expect(target[1]).toBe(50);
     });
 
-    it("scale=4: subSize=2 でも適切な範囲を参照する", () => {
+    it("scale=4: subSize=2 でも適切な範囲を参照する（角除く）", () => {
         const SS = 8;
         // 粗タイル下辺 col=4..6 範囲（subX=2, scale=4 → along base = 2*2=4）が値 7、その他 0
         const coarse = new Float32Array(SS * SS);
@@ -366,8 +386,11 @@ describe("stitchTileEdgesCrossLevel", () => {
             scale: 4,
         };
         stitchTileEdgesCrossLevel(target, [neighbor], SS);
-        // i=0: along=4 → coarse[last,4]=7 ・i=last(7): along=4+1=5 → coarse[last,5]=7
-        expect(target[0]).toBe(7);
-        expect(target[SS - 1]).toBe(7);
+        // i=1..SS-2 の辺内部は粗タイル col=4..5 近傍に補間されて 7 付近
+        // （伝達関数より、その区間はすべて 7 にスナップ）
+        for (let i = 1; i < SS - 1; i++) expect(target[i]).toBe(7);
+        // 角は変わらない
+        expect(target[0]).toBe(0);
+        expect(target[SS - 1]).toBe(0);
     });
 });
