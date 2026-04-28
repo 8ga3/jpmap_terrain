@@ -279,6 +279,57 @@ interface JpmapTerrain {
 - `dispose()` 時に `ShadowGenerator` は確実に解放される。
 - URL クエリ `?showSunShadows=true|false` で初期値を制御できる（`true`/`false` 以外の値は無視）。
 
+#### 3.3.7 マーカー (Issue #167)
+
+任意地点に、地表から垂直に伸びる線とその先のビルボード（アイコン＋改行テキスト）を表示する機能。
+
+```typescript
+interface JpmapTerrain {
+  /** マーカー追加。同 id 重複は throw、icon/text 双方未指定は throw。 */
+  addMarker(id: string, options: MarkerOptions): MarkerHandle;
+  /** 取得。未存在は null */
+  getMarker(id: string): MarkerHandle | null;
+  /** 部分更新。未存在は throw */
+  updateMarker(id: string, partial: MarkerUpdate): MarkerHandle;
+  /** 削除。未存在は no-op + warn */
+  removeMarker(id: string): void;
+  /** enabled の薄いショートカット */
+  setMarkerEnabled(id: string, enabled: boolean): void;
+  /** 全 id を生成順で返す */
+  listMarkers(): readonly string[];
+}
+
+interface MarkerOptions {
+  lat: number;
+  lon: number;
+  icon?: { url: string; width?: number; height?: number };
+  text?: {
+    value: string;          // "\n" で改行
+    fontSize?: number;      // px (default 14)
+    color?: string;         // CSS color (default "#ffffff")
+    backgroundColor?: string; // CSS color (default "rgba(0,0,0,0.6)")
+    lineHeight?: number;    // 倍率 (default 1.2)
+  };
+  line?: {
+    color?: string;  // default "#ffffff"
+    width?: number;  // m (default 1.5)
+    height?: number; // m (default 200)
+  };
+  enabled?: boolean; // default true
+}
+```
+
+**仕様:**
+
+- `icon` と `text` は **少なくとも片方が必須**。両方指定時は **上=text、下=icon** の順で線の上にスタックする。
+- ビルボードは `BILLBOARDMODE_ALL` でカメラ常時追従。`renderingGroupId = 1` で最前面に描画する。
+- 表示位置の高さは「タイル表面の標高 + `line.height`」。標高未取得地点では描画を保留し、対応するタイルロード後（`onTerrainUpdated`）に自動で表示する（例外は投げない）。
+- `icon.url` は `http(s):` / `data:image/...` / 相対パスのみ許可。`javascript:` 等のスキームは Error。
+- `lat`/`lon` が JAPAN_BOUNDS 外、`MarkerOptions` 不正属性の場合は Error。
+- `addMarker` の戻り値および `getMarker` は read-only スナップショット（更新は必ず `updateMarker` 経由）。
+- `dispose()` で全マーカーリソース（Mesh / Material / Texture）を解放する。
+- マーカーは別機能（タイムラプス等）から内部的に利用可能。
+
 **`mapType` URL クエリ仕様 (Issue #149):**
 
 - URL クエリ `?mapType=standard|photo` で初期値を上書きできる（デモ層）。
@@ -357,36 +408,11 @@ import type {
 
 ### 4.2 追加 API
 
+§3.3.7 でマーカー基本機能（CRUD + enable/disable）が正式仕様化された (Issue #167)。
+本節では、後日実装予定の **3D モデル配置** のみ残す。
+
 ```typescript
 interface JpmapTerrain {
-  // --- マーカー ---
-  /** 任意地点に画像マーカーを追加する */
-  addImageMarker(id: string, options: {
-    lat: number;
-    lon: number;
-    imageUrl: string;
-    width?: number;
-    height?: number;
-  }): void;
-  /** マーカーの表示・非表示を切り替える */
-  setMarkerVisible(id: string, visible: boolean): void;
-  /** マーカーを削除する */
-  removeMarker(id: string): void;
-
-  // --- テキストラベル ---
-  /** 任意地点にテキストラベルを追加する */
-  addLabel(id: string, options: {
-    lat: number;
-    lon: number;
-    text: string;
-    fontSize?: number;
-    color?: string;
-  }): void;
-  /** ラベルの表示・非表示を切り替える */
-  setLabelVisible(id: string, visible: boolean): void;
-  /** ラベルを削除する */
-  removeLabel(id: string): void;
-
   // --- 3Dモデル ---
   /** 任意地点に3Dモデルを配置する */
   addModel(id: string, options: {
@@ -403,6 +429,7 @@ interface JpmapTerrain {
 }
 ```
 
+> マーカー（旧 `addImageMarker` / `addLabel`）は §3.3.7 の `addMarker` に統合された (Issue #167)。
 > 日時 (`dateTime` / `autoSunPosition`) は §3.3.5 で正式仕様化済み。
 
 ## 5. パッケージ構成

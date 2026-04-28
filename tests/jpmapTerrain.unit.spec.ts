@@ -229,6 +229,21 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     setSunShadows: (enabled: boolean) => {
                         sunShadowsCalls.push(enabled);
                     },
+                    getMarkerContext: () => ({
+                        scene: { onBeforeRenderObservable: createSceneObservable() },
+                        tileManager: {
+                            queryElevationAtWorld: () => 0,
+                            subscribeTerrainUpdated: () => () => {
+                                /* no-op */
+                            },
+                        },
+                        getOrigin: () => ({
+                            lat,
+                            lon,
+                            gridResidualX: 0,
+                            gridResidualZ: 0,
+                        }),
+                    }),
                     dispose: () => {
                         controllerDisposeCount++;
                     },
@@ -243,6 +258,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     }
     return {
         DefaultScene,
+        METERS_PER_DEGREE_LAT: 111320,
         __getRefreshCount: (): number => refreshCallCount,
         __resetRefreshCount: (): void => {
             refreshCallCount = 0;

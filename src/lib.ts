@@ -15,4 +15,10 @@ export type {
     JpmapTerrainOptions,
     MapType,
     MapTypeChangeListener,
+    MarkerHandle,
+    MarkerIconOptions,
+    MarkerLineOptions,
+    MarkerOptions,
+    MarkerTextOptions,
+    MarkerUpdate,
 } from "./lib/types";

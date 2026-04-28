@@ -48,7 +48,29 @@ const CAMERA_FAR_CLIP = 400000;
 const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
 
 /** 1度の緯度あたりのメートル数（概算） */
-const METERS_PER_DEGREE_LAT = 111320;
+export const METERS_PER_DEGREE_LAT = 111320;
+
+/**
+ * MarkerManager 構築用の境界コンテキスト (Issue #167)。
+ *
+ * `JpmapTerrain` から `getMarkerContext()` で取得し、`createMarkerManager` に渡す。
+ * `DefaultScene` 内部のクロージャ（カメラ位置・grid 残差）を直接参照させず、
+ * 必要な値・関数のみを露出する。
+ */
+export interface MarkerContext {
+    scene: Scene;
+    tileManager: {
+        queryElevationAtWorld(wx: number, wz: number): number | null;
+        /** @returns 既存 onTerrainUpdated を chain で保持しつつ、追加 listener を register する unsubscribe 関数 */
+        subscribeTerrainUpdated(listener: () => void): () => void;
+    };
+    getOrigin(): {
+        lat: number;
+        lon: number;
+        gridResidualX: number;
+        gridResidualZ: number;
+    };
+}
 
 /**
  * `DefaultScene` 経由で外部からカメラ・位置を操作するためのコントローラ (T5 / Issue #119)。
@@ -143,6 +165,9 @@ export interface DefaultSceneController {
      * Scene/Engine の dispose は `JpmapTerrain` 側で行う（このメソッドはあくまで UI 限定）。
      */
     dispose(): void;
+
+    /** @internal MarkerManager 構築用コンテキスト (Issue #167) */
+    getMarkerContext(): MarkerContext;
 }
 
 /**
@@ -998,8 +1023,23 @@ export class DefaultScene implements CreateSceneClass {
         scene.onBeforeRenderObservable.add(clampCameraAboveTerrain);
 
         // メッシュ標高更新時にキャッシュを無効化して即座に再チェック
+        const terrainUpdatedListeners: Array<() => void> = [];
         tileManager.onTerrainUpdated = () => {
             prevAlpha = NaN; // terrainMinRadius のキャッシュを無効化
+            for (const fn of terrainUpdatedListeners.slice()) {
+                try {
+                    fn();
+                } catch (err) {
+                    console.warn("[jpmap-terrain] terrain listener failed:", err);
+                }
+            }
+        };
+        const subscribeTerrainUpdated = (listener: () => void): (() => void) => {
+            terrainUpdatedListeners.push(listener);
+            return () => {
+                const idx = terrainUpdatedListeners.indexOf(listener);
+                if (idx !== -1) terrainUpdatedListeners.splice(idx, 1);
+            };
         };
 
         // カメラ移動時の自動タイル更新
@@ -1292,6 +1332,20 @@ export class DefaultScene implements CreateSceneClass {
                     removeFromParent(ui.scaleBar.attribution);
                 }
             },
+            getMarkerContext: () => ({
+                scene,
+                tileManager: {
+                    queryElevationAtWorld: (wx, wz) =>
+                        tileManager.queryElevationAtWorld(wx, wz),
+                    subscribeTerrainUpdated,
+                },
+                getOrigin: () => ({
+                    lat: currentLat,
+                    lon: currentLon,
+                    gridResidualX,
+                    gridResidualZ,
+                }),
+            }),
         };
         options?.onReady?.(controller);
 

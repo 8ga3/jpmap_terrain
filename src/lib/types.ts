@@ -119,3 +119,77 @@ export type CameraChangeListener = (event: CameraChangeEvent) => void;
  * `mapType` が実際に変化したタイミングのみ呼ばれる。
  */
 export type MapTypeChangeListener = (mapType: MapType) => void;
+
+// ---- マーカー (Issue #167) ----
+
+export interface MarkerTextOptions {
+    /** テキスト本体。"\n" で複数行。最大 512 chars（超過は console.warn のうえ truncate） */
+    value: string;
+    /** フォントサイズ(px)。default 14 */
+    fontSize?: number;
+    /** CSS color。default "#ffffff" */
+    color?: string;
+    /** 背景色。default "rgba(0,0,0,0.6)"。"transparent" 可 */
+    backgroundColor?: string;
+    /** 行高倍率。default 1.2 */
+    lineHeight?: number;
+}
+
+export interface MarkerIconOptions {
+    /** 画像URL。`javascript:` / `vbscript:` 等は拒否 */
+    url: string;
+    /** 表示幅(world meters)。default 64 */
+    width?: number;
+    /** 表示高(world meters)。default 64 */
+    height?: number;
+}
+
+export interface MarkerLineOptions {
+    /** 線色 CSS。default "#ffffff" */
+    color?: string;
+    /** 線幅(world meters)。default 1.5 */
+    width?: number;
+    /** 線の長さ(地表からビルボード基点)。default 200 */
+    height?: number;
+}
+
+export interface MarkerOptions {
+    lat: number;
+    lon: number;
+    icon?: MarkerIconOptions;
+    text?: MarkerTextOptions;
+    line?: MarkerLineOptions;
+    /** default true */
+    enabled?: boolean;
+}
+
+export type MarkerUpdate = Partial<
+    Pick<MarkerOptions, "icon" | "text" | "line" | "enabled">
+> & {
+    lat?: number;
+    lon?: number;
+};
+
+export interface MarkerHandle {
+    readonly id: string;
+    readonly lat: number;
+    readonly lon: number;
+    readonly enabled: boolean;
+    readonly icon: Readonly<MarkerIconOptions> | null;
+    readonly text: Readonly<MarkerTextOptions> | null;
+    readonly line: Readonly<Required<MarkerLineOptions>>;
+    readonly elevationResolved: boolean;
+}
+
+export const MARKER_DEFAULTS = {
+    enabled: true,
+    line: { color: "#ffffff", width: 1.5, height: 200 },
+    icon: { width: 64, height: 64 },
+    text: {
+        fontSize: 14,
+        color: "#ffffff",
+        backgroundColor: "rgba(0,0,0,0.6)",
+        lineHeight: 1.2,
+    },
+    textMaxLength: 512,
+} as const;
