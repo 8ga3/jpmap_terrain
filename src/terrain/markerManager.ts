@@ -35,7 +35,7 @@ const assertInBounds = (lat: number, lon: number): void => {
         lon > JAPAN_BOUNDS.maxLon
     ) {
         throw new Error(
-            `addMarker: lat/lon out of JAPAN_BOUNDS (lat=${lat}, lon=${lon})`,
+            `marker: lat/lon out of JAPAN_BOUNDS (lat=${lat}, lon=${lon})`,
         );
     }
 };
