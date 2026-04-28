@@ -238,7 +238,7 @@ export interface PolygonPointOptions {
 export interface PolygonStyleOptions {
     /** 線色 CSS。default `#ff0000` */
     lineColor?: string;
-    /** 線太さ (m, world)。default 2 */
+    /** 線描画に用いる Tube の半径 (m, world)。default 2 */
     lineWidth?: number;
     /** 線の不透明度 [0,1]。default 1 */
     lineOpacity?: number;
