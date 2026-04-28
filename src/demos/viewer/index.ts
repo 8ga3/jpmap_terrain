@@ -167,18 +167,38 @@ const start = async (): Promise<void> => {
 
     // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。
-    // アイコンは赤いピン形状の SVG を base64 化した data URL で渡す（Babylon Texture が確実に読める形式）。
-    const PIN_SVG =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
-        '<path d="M32 2C20 2 10 12 10 24c0 14 22 38 22 38s22-24 22-38C54 12 44 2 32 2z" ' +
-        'fill="#e53935" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>' +
-        '<circle cx="32" cy="24" r="8" fill="#ffffff"/>' +
-        "</svg>";
-    const PIN_ICON_URL =
-        "data:image/svg+xml;base64," +
-        (typeof btoa === "function"
-            ? btoa(PIN_SVG)
-            : Buffer.from(PIN_SVG, "utf-8").toString("base64"));
+    // アイコン: WebGPU の ImageBitmap デコーダは SVG を扱えないため、
+    // Canvas API で赤いピンを描画して PNG data URL に変換する。
+    const buildPinIconUrl = (): string => {
+        const size = 64;
+        const c = document.createElement("canvas");
+        c.width = size;
+        c.height = size;
+        const ctx = c.getContext("2d");
+        if (!ctx) return "";
+        ctx.clearRect(0, 0, size, size);
+        // ピン本体
+        ctx.beginPath();
+        ctx.moveTo(32, 2);
+        ctx.bezierCurveTo(20, 2, 10, 12, 10, 24);
+        ctx.bezierCurveTo(10, 38, 32, 62, 32, 62);
+        ctx.bezierCurveTo(32, 62, 54, 38, 54, 24);
+        ctx.bezierCurveTo(54, 12, 44, 2, 32, 2);
+        ctx.closePath();
+        ctx.fillStyle = "#e53935";
+        ctx.fill();
+        ctx.lineJoin = "round";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        // 中心の白い円
+        ctx.beginPath();
+        ctx.arc(32, 24, 8, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+        return c.toDataURL("image/png");
+    };
+    const PIN_ICON_URL = buildPinIconUrl();
     try {
         viewer.addMarker("tokyo-station", {
             lat: 35.681236,
