@@ -199,23 +199,17 @@ const createIconMesh = (
     const material = new StandardMaterial(`marker-icon-mat-${id}`, scene);
     material.disableLighting = true;
     material.backFaceCulling = false;
-    // 初期は白フォールバック。テクスチャ読み込み完了で emissiveTexture / opacityTexture を割り当てる。
-    // disableLighting=true のため diffuseColor は反映されない点に注意（emissiveColor のみ寄与）。
-    material.emissiveColor = Color3.White();
-    // SVG / data URL 互換のため noMipmap=true / invertY=false。
+    // disableLighting=true により diffuseTexture はそのまま画面に出る（lighting 計算スキップ）。
+    // useAlphaFromDiffuseTexture により SVG の alpha チャンネルで形状を切り抜く。
+    material.useAlphaFromDiffuseTexture = true;
+    material.emissiveColor = Color3.Black();
     const texture = new Texture(
         icon.url,
         scene,
         true, // noMipmap
         false, // invertY (SVG / data URL は上下反転しない)
         Texture.TRILINEAR_SAMPLINGMODE,
-        () => {
-            // ロード成功時に割り当てる。emissiveTexture でフルブライト表示し、
-            // opacityTexture に同じテクスチャを割り当てて SVG の透明領域を抜く。
-            texture.hasAlpha = true;
-            material.emissiveTexture = texture;
-            material.opacityTexture = texture;
-        },
+        undefined,
         (msg, ex) => {
             console.warn(
                 `[jpmap-terrain] marker icon texture load failed: id=${id}`,
@@ -224,9 +218,11 @@ const createIconMesh = (
             );
             // ロード失敗時は赤いフォールバックでジオメトリ位置を可視化する。
             material.emissiveColor = new Color3(1, 0, 0);
+            material.diffuseTexture = null;
         },
     );
     texture.hasAlpha = true;
+    material.diffuseTexture = texture;
     mesh.material = material;
     return {
         mesh,

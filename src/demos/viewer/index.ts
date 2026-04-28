@@ -167,16 +167,18 @@ const start = async (): Promise<void> => {
 
     // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。
-    // アイコンは赤いピン形状の SVG をインラインの data URL で渡す。
+    // アイコンは赤いピン形状の SVG を base64 化した data URL で渡す（Babylon Texture が確実に読める形式）。
+    const PIN_SVG =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
+        '<path d="M32 2C20 2 10 12 10 24c0 14 22 38 22 38s22-24 22-38C54 12 44 2 32 2z" ' +
+        'fill="#e53935" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>' +
+        '<circle cx="32" cy="24" r="8" fill="#ffffff"/>' +
+        "</svg>";
     const PIN_ICON_URL =
-        "data:image/svg+xml," +
-        encodeURIComponent(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
-                '<path d="M32 2C20 2 10 12 10 24c0 14 22 38 22 38s22-24 22-38C54 12 44 2 32 2z" ' +
-                'fill="#e53935" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>' +
-                '<circle cx="32" cy="24" r="8" fill="#ffffff"/>' +
-                "</svg>",
-        );
+        "data:image/svg+xml;base64," +
+        (typeof btoa === "function"
+            ? btoa(PIN_SVG)
+            : Buffer.from(PIN_SVG, "utf-8").toString("base64"));
     try {
         viewer.addMarker("tokyo-station", {
             lat: 35.681236,
