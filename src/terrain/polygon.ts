@@ -414,7 +414,7 @@ export const createPolygonNode = (
         }
         const sphereDiameter = Math.max(style.pointDiameter, 0.001);
         const sphereRadiusWorld = sphereDiameter * pointScale * 0.5;
-        // ラベル下端を球トップから 1 フォント高さぶん離す。
+        // 球トップとラベル下端の間隔。`LABEL_GAP_FONT_RATIO === 0` ならギャップなし。
         const labelGap = style.labelFontSize * pointScale * LABEL_GAP_FONT_RATIO;
         for (let i = 0; i < sphereEntries.length; i++) {
             const sphere = sphereEntries[i].mesh;
@@ -437,7 +437,7 @@ export const createPolygonNode = (
             );
 
             // ラベル: 球の上にオフセット配置 + distScale 連動。
-            // 中心位置 = 球中心 + 球半径 + ギャップ(font 1つ分) + ラベル平面の半分。
+            // 中心位置 = 球中心 + 球半径 + ギャップ + ラベル平面の半分。
             const label = labelEntries[i];
             if (label) {
                 const labelHalfWorld = label.heightWorld * pointScale * 0.5;
