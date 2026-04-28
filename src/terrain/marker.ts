@@ -6,9 +6,7 @@
  */
 
 import type { Scene } from "@babylonjs/core/scene";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
@@ -133,49 +131,54 @@ interface LineMeshes {
 }
 
 /**
- * 垂直線を 「外側（縁取り色） + 内側（コア色）」の二重チューブで表現する。
- * `line.color` をコア色、縁取りは白固定とし、両者はデフォルトスケール (1) で描画され、
- * 距離一定スケールは mesh.scaling で外部から調整する。
+ * 垂直線をビルボード平面 2 枚 (外側=白縁, 内側=黒コア) で表現する。
+ *
+ * - `BILLBOARDMODE_Y` により Y 軸回転のみで常にカメラへ正面を向ける。
+ * - 高さは applyTransform 時に `dynamicLineHeight` を Y スケールへ流し込む。
+ * - 幅は `line.width` をベースとし、X スケールでカメラ距離一定 (distScale) を反映する。
+ * - 縁取り幅は内側幅の 50% を片側に確保し、上端も同量だけ延ばして額縁状にする。
  */
 const createLineMesh = (
     scene: Scene,
     id: string,
     line: Required<MarkerLineOptions>,
 ): LineMeshes => {
-    const outerRadius = Math.max(line.width / 2, 0.05);
-    // 内側は外側の 50% を目安にし、極端に細いときも最低限見えるようクランプする。
-    const innerRadius = Math.max(outerRadius * 0.5, 0.02);
-    const path = [Vector3.Zero(), new Vector3(0, line.height, 0)];
-    const outer = CreateTube(
-        `marker-line-outer-${id}`,
-        { path, radius: outerRadius, tessellation: 8, updatable: false },
-        scene,
-    );
-    const inner = CreateTube(
+    const inner = CreatePlane(
         `marker-line-inner-${id}`,
-        { path, radius: innerRadius, tessellation: 8, updatable: false },
+        { width: 1, height: 1 },
         scene,
     );
-    const outerMaterial = new StandardMaterial(
-        `marker-line-outer-mat-${id}`,
-        scene,
-    );
-    outerMaterial.emissiveColor = Color3.White();
-    outerMaterial.disableLighting = true;
-    outer.material = outerMaterial;
-    outer.renderingGroupId = RENDERING_GROUP_ID;
-    outer.isPickable = false;
+    inner.billboardMode = AbstractMesh.BILLBOARDMODE_Y;
+    inner.renderingGroupId = RENDERING_GROUP_ID;
+    inner.isPickable = false;
     const innerMaterial = new StandardMaterial(
         `marker-line-inner-mat-${id}`,
         scene,
     );
     innerMaterial.emissiveColor = Color3.FromHexString(line.color);
     innerMaterial.disableLighting = true;
+    innerMaterial.backFaceCulling = false;
+    // 内側を縁取りより手前へ寄せて Z-fight を回避する。
+    innerMaterial.zOffset = -1;
     inner.material = innerMaterial;
-    inner.renderingGroupId = RENDERING_GROUP_ID;
-    inner.isPickable = false;
-    // 内側を手前に描画して艦色体を俺閐させるための Z-fight 選出オフセット。
-    inner.material.zOffset = -1;
+
+    const outer = CreatePlane(
+        `marker-line-outer-${id}`,
+        { width: 1, height: 1 },
+        scene,
+    );
+    outer.billboardMode = AbstractMesh.BILLBOARDMODE_Y;
+    outer.renderingGroupId = RENDERING_GROUP_ID;
+    outer.isPickable = false;
+    const outerMaterial = new StandardMaterial(
+        `marker-line-outer-mat-${id}`,
+        scene,
+    );
+    outerMaterial.emissiveColor = Color3.White();
+    outerMaterial.disableLighting = true;
+    outerMaterial.backFaceCulling = false;
+    outer.material = outerMaterial;
+
     return { outer, inner, outerMaterial, innerMaterial };
 };
 
@@ -329,10 +332,17 @@ export interface MarkerNode {
     readonly lat: number;
     readonly lon: number;
     /**
-     * 位置とスクリーン一定スケールを適用する。
-     * @param distScale カメラ距離に比例したスケール倍率。未指定時は 1。
+     * 位置・スケール・線高さを 1 フレーム分まとめて反映する。
+     * @param distScale カメラ距離に応じたスクリーン一定スケール（幅・アイコン・テキストへ適用）。
+     * @param dynamicLineHeight 線の高さ (m)。`undefined` の場合は `line.height` をそのまま使用する。
      */
-    applyTransform(wx: number, elev: number, wz: number, distScale?: number): void;
+    applyTransform(
+        wx: number,
+        elev: number,
+        wz: number,
+        distScale?: number,
+        dynamicLineHeight?: number,
+    ): void;
     setEnabledLogical(enabled: boolean): void;
     setElevationResolved(resolved: boolean): void;
     update(partial: MarkerUpdate, newLat: number, newLon: number): void;
@@ -385,14 +395,28 @@ export const createMarkerNode = (
         elev: number,
         wz: number,
         distScale = 1,
+        dynamicLineHeight?: number,
     ): void => {
-        // 線: 足元を地表に固定し、Y 軸方向に distScale 倍して伸ばす。
-        // 太さ（X/Z）も distScale で反映させるとカメラ距離に関わらず見た目の太さが一定になる。
-        lineMeshes.outer.position.set(wx, elev, wz);
-        lineMeshes.inner.position.set(wx, elev, wz);
-        lineMeshes.outer.scaling.set(distScale, distScale, distScale);
-        lineMeshes.inner.scaling.set(distScale, distScale, distScale);
-        const baseY = elev + resolved.line.height * distScale;
+        // 線の高さ: 動的指定があればそれを使い、無ければ resolved.line.height (×distScale で screen-constant) にフォールバック。
+        const lineHeight =
+            dynamicLineHeight !== undefined && dynamicLineHeight > 0
+                ? dynamicLineHeight
+                : resolved.line.height * distScale;
+        // 線の幅は distScale でスクリーン定幅に保つ。
+        const innerW = Math.max(resolved.line.width, 0.5) * distScale;
+        // 縁取り幅 (片側) = 内側幅の 50%。上端も同量だけ延ばして額縁状にする。
+        const border = innerW * 0.5;
+        const outerW = innerW + border * 2;
+        const outerH = lineHeight + border;
+
+        // 内側 (黒コア): 平面 1×1 を innerW × lineHeight にスケールし、底辺を地表に合わせる。
+        lineMeshes.inner.scaling.set(innerW, lineHeight, 1);
+        lineMeshes.inner.position.set(wx, elev + lineHeight / 2, wz);
+        // 外側 (白縁): innerW + 2*border 幅、上端を border 分だけ高くした位置に置く。
+        lineMeshes.outer.scaling.set(outerW, outerH, 1);
+        lineMeshes.outer.position.set(wx, elev + outerH / 2, wz);
+
+        const baseY = elev + lineHeight;
         const iconH = (iconMeshes?.heightWorld ?? 0) * distScale;
         const textH = (textMeshes?.heightWorld ?? 0) * distScale;
         const gap = ICON_TEXT_GAP_M * distScale;

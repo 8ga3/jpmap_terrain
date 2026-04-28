@@ -72,7 +72,26 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
         return Math.max(scale, 0.1);
     };
 
+    /**
+     * 動的な線高さ (m) をカメラ位置と beta 角度から計算する。
+     *
+     * 画面中央付近にマーカーが表示されるよう、カメラ距離 (radius) に対して
+     * 一定割合の高さにしつつ、仰角 (beta=真上が 0、水平が π/2) で豊かに調整する。
+     * - radius * 0.05 をベースとし、sin(beta) で 0.3 〜1.0 にクランプした係数を掛ける。
+     * - 下限 50m、上限 5000m で見た目の肉付きを安定させる。
+     */
+    const computeDynamicLineHeight = (): number => {
+        const cam = ctx.getCameraPosition();
+        const radius = Math.max(cam.radius, 1);
+        const sinBeta = Math.sin(cam.beta);
+        const factor = Math.min(1, Math.max(0.3, sinBeta));
+        const h = radius * 0.05 * factor;
+        return Math.min(5000, Math.max(50, h));
+    };
+
     const tickFrame = (): void => {
+        if (nodes.size === 0) return;
+        const dynamicLineHeight = computeDynamicLineHeight();
         for (const node of nodes.values()) {
             const { wx, wz } = computeWorld(node.lat, node.lon);
             const elev = ctx.tileManager.queryElevationAtWorld(wx, wz);
@@ -82,7 +101,7 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
             }
             node.setElevationResolved(true);
             const scale = computeDistScale(wx, elev, wz);
-            node.applyTransform(wx, elev, wz, scale);
+            node.applyTransform(wx, elev, wz, scale, dynamicLineHeight);
         }
     };
 
@@ -124,7 +143,8 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
             if (elev !== null) {
                 node.setElevationResolved(true);
                 const scale = computeDistScale(wx, elev, wz);
-                node.applyTransform(wx, elev, wz, scale);
+                const dynamicLineHeight = computeDynamicLineHeight();
+                node.applyTransform(wx, elev, wz, scale, dynamicLineHeight);
             }
             return node.getHandle();
         },

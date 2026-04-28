@@ -70,8 +70,19 @@ export interface MarkerContext {
         gridResidualX: number;
         gridResidualZ: number;
     };
-    /** 現在のカメラワールド位置。スクリーン空間サイズ一定のスケール計算で利用される */
-    getCameraPosition(): { x: number; y: number; z: number };
+    /**
+     * 現在のカメラ状態。
+     * - position: ワールド位置 (distScale 計算用)
+     * - radius / beta: ArcRotateCamera のレディアスと仰角。
+     *   マーカー高さをカメラ距離・仰角に応じて動的に決めるために使用される。
+     */
+    getCameraPosition(): {
+        x: number;
+        y: number;
+        z: number;
+        radius: number;
+        beta: number;
+    };
 }
 
 /**
@@ -1351,6 +1362,8 @@ export class DefaultScene implements CreateSceneClass {
                     x: camera.globalPosition.x,
                     y: camera.globalPosition.y,
                     z: camera.globalPosition.z,
+                    radius: camera.radius,
+                    beta: camera.beta,
                 }),
             }),
         };
