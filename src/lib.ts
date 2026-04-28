@@ -23,6 +23,7 @@ export type {
     MarkerUpdate,
     AltitudeMode,
     PolygonPointOptions,
+    PolygonPointPartial,
     PolygonStyleOptions,
     PolygonOptions,
     PolygonUpdate,
