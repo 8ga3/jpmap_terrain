@@ -277,6 +277,11 @@ const createIconTextMesh = (
 
     // 上半分にテキストを描く
     if (text) {
+        // 1) backgroundColor が "transparent" 以外なら、テキスト領域の背景を塗る。
+        if (text.backgroundColor && text.backgroundColor !== "transparent") {
+            ctx2d.fillStyle = text.backgroundColor;
+            ctx2d.fillRect(0, 0, dtWidth, textHeightPx);
+        }
         ctx2d.font = `${text.fontSize * dpr}px sans-serif`;
         ctx2d.textBaseline = "top";
         ctx2d.textAlign = "center";
@@ -285,7 +290,7 @@ const createIconTextMesh = (
         const innerPad = padPx + strokePx;
         const startY = innerPad * dpr;
         const centerX = dtWidth / 2;
-        // 1) 白の縁取り → 2) 黒の本体
+        // 2) 白の縁取り → 3) テキスト本体
         ctx2d.lineWidth = strokePx * 2 * dpr;
         ctx2d.strokeStyle = "#ffffff";
         for (let i = 0; i < lines.length; i++) {
