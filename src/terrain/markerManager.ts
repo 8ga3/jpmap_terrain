@@ -77,16 +77,16 @@ export const createMarkerManager = (ctx: MarkerContext): MarkerManager => {
      *
      * 画面中央付近にマーカーが表示されるよう、カメラ距離 (radius) に対して
      * 一定割合の高さにしつつ、仰角 (beta=真上が 0、水平が π/2) で豊かに調整する。
-     * - radius * 0.05 をベースとし、sin(beta) で 0.3 〜1.0 にクランプした係数を掛ける。
-     * - 下限 50m、上限 5000m で見た目の肉付きを安定させる。
+     * - radius * 0.1 をベースとし、sin(beta) で 0.3 〜1.0 にクランプした係数を掛ける。
+     * - 下限 100m、上限 10000m で見た目の肉付きを安定させる。
      */
     const computeDynamicLineHeight = (): number => {
         const cam = ctx.getCameraPosition();
         const radius = Math.max(cam.radius, 1);
         const sinBeta = Math.sin(cam.beta);
         const factor = Math.min(1, Math.max(0.3, sinBeta));
-        const h = radius * 0.05 * factor;
-        return Math.min(5000, Math.max(50, h));
+        const h = radius * 0.1 * factor;
+        return Math.min(10000, Math.max(100, h));
     };
 
     const tickFrame = (): void => {

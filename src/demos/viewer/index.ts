@@ -167,20 +167,33 @@ const start = async (): Promise<void> => {
 
     // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。
+    // アイコンは赤いピン形状の SVG をインラインの data URL で渡す。
+    const PIN_ICON_URL =
+        "data:image/svg+xml;utf8," +
+        encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+                '<path d="M32 2C20 2 10 12 10 24c0 14 22 38 22 38s22-24 22-38C54 12 44 2 32 2z" ' +
+                'fill="#e53935" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>' +
+                '<circle cx="32" cy="24" r="8" fill="#ffffff"/>' +
+                "</svg>",
+        );
     try {
         viewer.addMarker("tokyo-station", {
             lat: 35.681236,
             lon: 139.767125,
+            icon: { url: PIN_ICON_URL },
             text: { value: "東京駅" },
         });
         viewer.addMarker("imperial-palace", {
             lat: 35.685175,
             lon: 139.7528,
+            icon: { url: PIN_ICON_URL },
             text: { value: "皇居" },
         });
         viewer.addMarker("tokyo-metropolitan-government", {
             lat: 35.6896,
             lon: 139.6917,
+            icon: { url: PIN_ICON_URL },
             text: { value: "東京都庁\n(新宿)" },
         });
     } catch (err) {
