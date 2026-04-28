@@ -407,6 +407,11 @@ export const createPolygonNode = (
             // ディフェンシブ: 想定外。何もしない（次フレームで更新されうる）。
             return;
         }
+        if (groundYs.length !== sphereEntries.length) {
+            // groundYs の長さ不一致は呼び出し側バグ。黙って 0 フォールバックせず
+            // 当フレームの更新をスキップして検知しやすくする。
+            return;
+        }
         const sphereDiameter = Math.max(style.pointDiameter, 0.001);
         const sphereRadiusWorld = sphereDiameter * pointScale * 0.5;
         // ラベル下端を球トップから 1 フォント高さぶん離す。
