@@ -165,6 +165,27 @@ const start = async (): Promise<void> => {
     // 起動完了直後に一度書き込み、`?mapType=Photo` のような大小混在の値を小文字に揃える。
     updateMapTypeInUrl(viewer.mapType);
 
+    // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
+    try {
+        viewer.addMarker("tokyo-station", {
+            lat: 35.681236,
+            lon: 139.767125,
+            text: { value: "東京駅", fontSize: 16 },
+        });
+        viewer.addMarker("imperial-palace", {
+            lat: 35.685175,
+            lon: 139.7528,
+            text: { value: "皇居", fontSize: 16 },
+        });
+        viewer.addMarker("tokyo-metropolitan-government", {
+            lat: 35.6896,
+            lon: 139.6917,
+            text: { value: "東京都庁\n(新宿)", fontSize: 16 },
+        });
+    } catch (err) {
+        console.warn("[jpmap-terrain demo] failed to add demo markers:", err);
+    }
+
     // 開発/テストビルドでのみデバッグ用に内部状態を露出する。
     // （Playwright の `window.scene.isReady()` 等が依存しているため）
     // `__debugScene` は @internal 扱いの公式デバッグアクセサ（spec/package.md には未記載）。

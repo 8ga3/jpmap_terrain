@@ -24,8 +24,12 @@ import {
     JpmapTerrainOptions,
     MapType,
     MapTypeChangeListener,
+    MarkerHandle,
+    MarkerOptions,
+    MarkerUpdate,
     SUN_AUTO_UPDATE_INTERVAL_MS,
 } from "./types";
+import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
 
 /**
  * jpmap-terrain ビューア。
@@ -77,6 +81,9 @@ export class JpmapTerrain {
     private _lastCameraSnapshot: CameraChangeEvent | null = null;
     /** `onMapTypeChange` で登録されたリスナー一覧 (Issue #149) */
     private _mapTypeListeners: MapTypeChangeListener[] = [];
+
+    /** マーカー管理 (Issue #167)。`onReady` で初期化される */
+    private _markerManager: MarkerManager | null = null;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -200,6 +207,10 @@ export class JpmapTerrain {
                     if (this._showSunShadows) {
                         controller.setSunShadows(true);
                     }
+                    // マーカー (Issue #167)。境界コンテキスト経由で manager を構築する。
+                    this._markerManager = createMarkerManager(
+                        controller.getMarkerContext(),
+                    );
                 },
             });
             this._scene = scene;
@@ -677,6 +688,50 @@ export class JpmapTerrain {
         }
     }
 
+    // ---- マーカー (Issue #167) ----
+
+    private _assertAlive(): void {
+        if (this._disposed) {
+            throw new Error("JpmapTerrain has been disposed");
+        }
+    }
+
+    private _requireMarkerManager(): MarkerManager {
+        if (!this._markerManager) {
+            throw new Error("JpmapTerrain marker manager is not ready yet");
+        }
+        return this._markerManager;
+    }
+
+    public addMarker(id: string, options: MarkerOptions): MarkerHandle {
+        this._assertAlive();
+        return this._requireMarkerManager().add(id, options);
+    }
+
+    public getMarker(id: string): MarkerHandle | null {
+        if (this._disposed || !this._markerManager) return null;
+        return this._markerManager.get(id);
+    }
+
+    public updateMarker(id: string, partial: MarkerUpdate): MarkerHandle {
+        this._assertAlive();
+        return this._requireMarkerManager().update(id, partial);
+    }
+
+    public removeMarker(id: string): void {
+        if (this._disposed || !this._markerManager) return;
+        this._markerManager.remove(id);
+    }
+
+    public setMarkerEnabled(id: string, enabled: boolean): void {
+        this._assertAlive();
+        this._requireMarkerManager().setEnabled(id, enabled);
+    }
+
+    public listMarkers(): readonly string[] {
+        return this._markerManager?.list() ?? [];
+    }
+
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
@@ -713,6 +768,15 @@ export class JpmapTerrain {
         if (this._onWindowResize) {
             window.removeEventListener("resize", this._onWindowResize);
             this._onWindowResize = null;
+        }
+        // マーカーマネージャを Scene dispose 前に解放する (Issue #167)。
+        if (this._markerManager) {
+            try {
+                this._markerManager.dispose();
+            } catch (err) {
+                console.error("[JpmapTerrain] markerManager.dispose threw:", err);
+            }
+            this._markerManager = null;
         }
         // controlPanel が body に追加した UI 要素を Scene dispose 前に除去する。
         if (this._controller) {
