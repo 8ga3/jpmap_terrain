@@ -24,7 +24,8 @@ import {
     MapType,
     fillInvalidPixels,
 } from "./gsiTile";
-import { stitchTileEdges, stitchTileEdgesCrossLevel, CoarseEdgeNeighbor } from "./tileStitching";
+import { stitchTileEdges, stitchTileEdgesCrossLevel } from "./tileStitching";
+import type { CoarseEdgeNeighbor } from "./tileStitching";
 
 export interface TileManagerOptions {
     scene: Scene;
@@ -597,7 +598,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         stitchTileEdges(stitched, neighbors, TILE_SIZE);
 
         // 異 zoom 隣接（粗タイル）と縫い合わせ。カメラ近傍タイルのみ対象。
-        // 遠方タイルは隙間が視認しにくい一方、毎フレーム再計算されるため負荷を抑える。
+        // 遠方タイルは隙間が視認しにくいため、タイル再適用時の計算コストを抑える目的で対象外にする。
         const tileSize = tileSizeForZoom(coord.zoom);
         if (isTileNearCamera(coord, tileSize)) {
             const coarse = getCoarseEdgeNeighbors(coord);
