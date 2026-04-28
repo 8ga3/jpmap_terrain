@@ -29,7 +29,13 @@ import {
 const ICON_TEXT_GAP_M = 4;
 const RENDERING_GROUP_ID = 1;
 const MAX_DT_SIZE = 1024;
-const TEXT_WORLD_PX_PER_M = 16;
+/**
+ * `fontSize` (ピクセル表記) を 1ピクセル = N ワールド m として描画プレーンのサイズを決定するための分母。
+ *
+ * デフォルト表示高度 2000m 付近でもテキストが判読可能なサイズになるよう 1 としている。
+ * より小さく見せたい場合は `MarkerOptions.text.fontSize` で調整する。
+ */
+const TEXT_WORLD_PX_PER_M = 1;
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);
 
