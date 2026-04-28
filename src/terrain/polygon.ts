@@ -423,18 +423,22 @@ export const createPolygonNode = (
             sphere.scaling.setAll(sphereDiameter * pointScale);
 
             // 垂線: top = wp.y, bottom = groundYs[i] ?? 0。
-            const dropMesh = dropEntries[i].mesh;
-            const groundY = groundYs[i] ?? 0;
-            const dropPath = [
-                new Vector3(wp.x, wp.y, wp.z),
-                new Vector3(wp.x, groundY, wp.z),
-            ];
-            // CreateTube に instance を渡すと in-place で更新される。
-            CreateTube(
-                `polygon-${id}-drop-${i}`,
-                { path: dropPath, instance: dropMesh },
-                scene,
-            );
+            // verticalsEnabled が false（非表示中）はメッシュ更新をスキップして
+            // フレーム負荷を下げる。次回 enable 時にこのループで再更新される。
+            if (verticalsEnabled) {
+                const dropMesh = dropEntries[i].mesh;
+                const groundY = groundYs[i] ?? 0;
+                const dropPath = [
+                    new Vector3(wp.x, wp.y, wp.z),
+                    new Vector3(wp.x, groundY, wp.z),
+                ];
+                // CreateTube に instance を渡すと in-place で更新される。
+                CreateTube(
+                    `polygon-${id}-drop-${i}`,
+                    { path: dropPath, instance: dropMesh },
+                    scene,
+                );
+            }
 
             // ラベル: 球の上にオフセット配置 + distScale 連動。
             // 中心位置 = 球中心 + 球半径 + ギャップ + ラベル平面の半分。
