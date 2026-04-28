@@ -427,6 +427,53 @@ interface PolygonOptions {
 - **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=地表 Y の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。`renderingGroupId=1` はポリライン・垂線・球・ラベルと同一。
 - **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
+##### 3.3.8.2 ポリゴン点編集 API（Issue #173）
+
+`addPolygon` 後のポリゴンに対し、頂点列を **動的に編集** する 4 API を提供する。`PolygonHandle` を都度返し、ハンドル経由で点列の現在値を確認できる。
+
+```typescript
+interface PolygonPointPartial {
+  lat?: number;
+  lon?: number;
+  altitude?: number;
+  /** 文字列: 当該 index にラベルを設定 / `null`: 当該 index のラベルを削除 / `undefined`: 現状維持 */
+  label?: string | null;
+}
+
+interface JpmapTerrain {
+  /** 指定 index に新しい頂点を挿入する。`index === points.length` で末尾追加。 */
+  insertPolygonPoint(id: string, index: number, point: PolygonPointOptions): PolygonHandle;
+  /** 指定 index の頂点を削除する。残り 2 点未満になる場合は throw。 */
+  removePolygonPoint(id: string, index: number): PolygonHandle;
+  /** 指定 index の頂点を部分更新する。partial 未指定フィールドは現状維持。 */
+  updatePolygonPoint(id: string, index: number, partial: PolygonPointPartial): PolygonHandle;
+  /** 全頂点を置き換える。`points.length < 2` は throw。 */
+  replacePolygonPoints(id: string, points: ReadonlyArray<PolygonPointOptions>): PolygonHandle;
+}
+```
+
+**バリデーション:**
+
+- 共通: dispose 後 / 未存在 id は throw。
+- `insertPolygonPoint`: `index` が `[0, points.length]` の範囲外なら `RangeError`。`lat/lon` が JAPAN_BOUNDS 外なら throw。`altitudeMode === "absolute"` で `altitude` 未指定なら throw。
+- `removePolygonPoint`: 削除後の点数が 2 点未満になる場合は throw（`RangeError`）。`index` が範囲外なら `RangeError`。
+- `updatePolygonPoint`: `index` が範囲外なら `RangeError`。`lat`/`lon` の partial が指定されたとき、現状値とのマージ結果に対し JAPAN_BOUNDS 検査を行う。`altitudeMode === "absolute"` のとき `altitude` を `undefined` にしても現状値は維持されるため throw しない（明示的に書き換える場合のみ partial に含める）。
+- `replacePolygonPoints`: `points.length < 2` は throw。各点の JAPAN_BOUNDS / `absolute` モードの altitude 必須は `addPolygon` と同じ規則で検査する。
+
+**差分更新の保証範囲:**
+
+- `updatePolygonPoint` は **点数を変えない** 編集なので、ポリライン (`CreateTube`) と壁 (`CreateRibbon`) は dispose せず instance を更新する。球 / 垂線 / ラベルは index 単位で in-place 更新する（label のみ追加/削除のとき該当 mesh を生成 / dispose）。
+- `insertPolygonPoint` / `removePolygonPoint` は **点数が変わる** ため、ポリライン・壁は dispose+再生成（Material は再 attach）して新しい頂点列を反映する。球・垂線・ラベルは差分のみ生成 / dispose する。
+- `replacePolygonPoints` は全点を入れ替えるため、球・垂線・ラベルは全 dispose+再生成、ポリライン・壁も dispose+再生成となる。
+- いずれの編集でも次フレームを待たずに位置が反映されるよう、`PolygonManager` は編集直後に `tickPolygon` を即時実行する。`lastWorldPoints` / `lastGroundYs` のキャッシュは点数が変わる編集ではクリアされる。
+
+**labels の sparse 同期:**
+
+- `PolygonHandle.labels` は **sparse 配列** として再構成される（`labels[i] === undefined` は当該 index にラベルなし）。
+- `updatePolygonPoint(index, { label: "..." })` で当該 index にラベルが追加され、`updatePolygonPoint(index, { label: null })` で当該 index のラベルが削除される。
+- `insertPolygonPoint` / `removePolygonPoint` は labels 配列の対応 index をシフトする（隣接ラベルとの整合を保つ）。
+- `replacePolygonPoints` は新しい点数に合わせ labels を全 undefined で再構成する（明示的にラベルを再付与するには `updatePolygonPoint` を呼び出す）。
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
@@ -457,6 +504,7 @@ import type {
   // ポリゴン (Issue #170)
   AltitudeMode,
   PolygonPointOptions,
+  PolygonPointPartial,
   PolygonStyleOptions,
   PolygonOptions,
   PolygonUpdate,
