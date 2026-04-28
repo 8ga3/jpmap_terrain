@@ -207,7 +207,7 @@ const createIconMesh = (
         icon.url,
         scene,
         true, // noMipmap
-        false, // invertY (SVG / data URL は上下反転しない)
+        true, // invertY (PNG/Canvas は UV と Y 軸が逆なので true)
         Texture.TRILINEAR_SAMPLINGMODE,
         undefined,
         (msg, ex) => {
