@@ -333,3 +333,113 @@ for (const engine of engines) {
         expect(testInfo.errors).toHaveLength(0);
     });
 }
+
+// ---------- ポリゴン点編集 API 視覚回帰 (Issue #173) ----------
+//
+// 4 種の点編集 API (insertPolygonPoint / removePolygonPoint /
+// updatePolygonPoint / replacePolygonPoints) を順に適用し、
+// 「初期」と「最終 (4 API 適用後)」の 2 枚のスクリーンショットを取得して
+// VR baseline とする。WebGL2 のみで実行し、時刻と autoSunPosition を固定する。
+
+const POLYGON_EDIT_TARGET_ID = "yomiuri-closed";
+
+async function waitForPolygonScene(
+    page: import("@playwright/test").Page,
+): Promise<void> {
+    const url = new URL("/polygon.html", "http://localhost");
+    url.searchParams.set("engine", "webgl");
+    applyDeterministicSunQuery(url);
+    await page.goto(`${url.pathname}${url.search}`, { timeout: 120000 });
+    await page.waitForFunction(
+        () =>
+            (window as unknown as { scene?: { isReady: () => boolean } }).scene
+                ?.isReady?.() ?? false,
+        { timeout: 15000 },
+    );
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
+    await page.waitForFunction(
+        () =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = (): void => {
+                    if (++count >= 15) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        { timeout: 10000 },
+    );
+}
+
+test("Polygon point edit (initial) with WebGL2", async ({
+    page,
+}, testInfo) => {
+    await waitForPolygonScene(page);
+    await expect(page).toHaveScreenshot({
+        timeout: 30000,
+        maxDiffPixelRatio: 0.02,
+    });
+    expect(testInfo.errors).toHaveLength(0);
+});
+
+test("Polygon point edit (after all edits) with WebGL2", async ({
+    page,
+}, testInfo) => {
+    await waitForPolygonScene(page);
+
+    await page.evaluate((id) => {
+        type ViewerLike = {
+            insertPolygonPoint: (
+                id: string,
+                index: number,
+                point: { lat: number; lon: number; altitude: number },
+            ) => unknown;
+            removePolygonPoint: (id: string, index: number) => unknown;
+            updatePolygonPoint: (
+                id: string,
+                index: number,
+                partial: { altitude?: number; label?: string | null },
+            ) => unknown;
+            replacePolygonPoints: (
+                id: string,
+                points: ReadonlyArray<{
+                    lat: number;
+                    lon: number;
+                    altitude: number;
+                }>,
+            ) => unknown;
+        };
+        const viewer = (window as unknown as { viewer: ViewerLike }).viewer;
+        viewer.insertPolygonPoint(id, 4, {
+            lat: 35.6244,
+            lon: 139.5208,
+            altitude: 600,
+        });
+        viewer.removePolygonPoint(id, 0);
+        viewer.updatePolygonPoint(id, 0, { altitude: 700 });
+        viewer.replacePolygonPoints(id, [
+            { lat: 35.6240, lon: 139.5198, altitude: 550 },
+            { lat: 35.6250, lon: 139.5198, altitude: 550 },
+            { lat: 35.6245, lon: 139.5215, altitude: 650 },
+        ]);
+    }, POLYGON_EDIT_TARGET_ID);
+
+    await page.waitForFunction(
+        () =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = (): void => {
+                    if (++count >= 15) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        { timeout: 10000 },
+    );
+
+    await expect(page).toHaveScreenshot({
+        timeout: 30000,
+        maxDiffPixelRatio: 0.02,
+    });
+    expect(testInfo.errors).toHaveLength(0);
+});
