@@ -169,9 +169,9 @@ const start = async (): Promise<void> => {
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。
     // アイコンは赤いピン形状の SVG をインラインの data URL で渡す。
     const PIN_ICON_URL =
-        "data:image/svg+xml;utf8," +
+        "data:image/svg+xml," +
         encodeURIComponent(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
                 '<path d="M32 2C20 2 10 12 10 24c0 14 22 38 22 38s22-24 22-38C54 12 44 2 32 2z" ' +
                 'fill="#e53935" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>' +
                 '<circle cx="32" cy="24" r="8" fill="#ffffff"/>' +
