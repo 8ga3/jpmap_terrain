@@ -267,7 +267,7 @@ const buildControls = (
         buildEditButton("点 replace", () => {
             // 2 種類の頂点列を交互に切り替える。
             // 初期ポリゴンと同じ東側シフト (lon +0.006° ≒ +540m) 位置で描画されるようずらして表示し、
-            // replace を押しても他ポリゴンと重なり位置に戻らないようにする (#180)。
+            // replace を押しても他ポリゴンと重なる位置に戻らないようにする (#180)。
             replaceToggle = !replaceToggle;
             const altitude = 500;
             const next = replaceToggle
