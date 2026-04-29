@@ -767,6 +767,55 @@ describe("createPolygonNode 点編集 API (#173)", () => {
         );
     });
 
+    it("insertPoint / removePoint 後に sphere/drop の name が連番で重複しない", () => {
+        const node = createPolygonNode(sceneStub, "pn", {
+            points: [...basePoints],
+            altitudeMode: "absolute",
+        });
+        node.insertPoint(1, { lat: 35.05, lon: 139.05, altitude: 150 });
+        const liveSphereNames = allMeshes
+            .filter(
+                (m) =>
+                    !m.disposed &&
+                    /^polygon-pn-point-\d+$/.test(m.name),
+            )
+            .map((m) => m.name)
+            .sort();
+        expect(liveSphereNames).toEqual([
+            "polygon-pn-point-0",
+            "polygon-pn-point-1",
+            "polygon-pn-point-2",
+            "polygon-pn-point-3",
+        ]);
+        node.removePoint(0);
+        const liveSphereNamesAfterRemove = allMeshes
+            .filter(
+                (m) =>
+                    !m.disposed &&
+                    /^polygon-pn-point-\d+$/.test(m.name),
+            )
+            .map((m) => m.name)
+            .sort();
+        expect(liveSphereNamesAfterRemove).toEqual([
+            "polygon-pn-point-0",
+            "polygon-pn-point-1",
+            "polygon-pn-point-2",
+        ]);
+        const liveDropNames = allMeshes
+            .filter(
+                (m) =>
+                    !m.disposed &&
+                    /^polygon-pn-drop-\d+$/.test(m.name),
+            )
+            .map((m) => m.name)
+            .sort();
+        expect(liveDropNames).toEqual([
+            "polygon-pn-drop-0",
+            "polygon-pn-drop-1",
+            "polygon-pn-drop-2",
+        ]);
+    });
+
     it("removePoint で末尾 sphere / drop が dispose され、line/wall が再生成される", () => {
         const node = createPolygonNode(sceneStub, "pr", {
             points: [...basePoints],
