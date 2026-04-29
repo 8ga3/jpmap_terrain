@@ -266,19 +266,21 @@ const buildControls = (
     container.appendChild(
         buildEditButton("点 replace", () => {
             // 2 種類の頂点列を交互に切り替える。
+            // 初期ポリゴン yomiuri-closed と同じ東側シフト (lon +0.006° ≒ +540m) 位置で
+            // 描画されるようずらして表示し、replace で他ポリゴンと重なる元位置に戻らないようにする (#180)。
             replaceToggle = !replaceToggle;
             const altitude = 500;
             const next = replaceToggle
                 ? [
-                      { lat: 35.6235, lon: 139.5135, altitude },
-                      { lat: 35.6260, lon: 139.5135, altitude },
-                      { lat: 35.6260, lon: 139.5170, altitude },
+                      { lat: 35.6235, lon: 139.5195, altitude },
+                      { lat: 35.6260, lon: 139.5195, altitude },
+                      { lat: 35.6260, lon: 139.5230, altitude },
                   ]
                 : [
-                      { lat: 35.6235, lon: 139.5135, altitude },
-                      { lat: 35.6253, lon: 139.5135, altitude },
-                      { lat: 35.6253, lon: 139.5161, altitude },
-                      { lat: 35.6235, lon: 139.5161, altitude },
+                      { lat: 35.6235, lon: 139.5195, altitude },
+                      { lat: 35.6253, lon: 139.5195, altitude },
+                      { lat: 35.6253, lon: 139.5221, altitude },
+                      { lat: 35.6235, lon: 139.5221, altitude },
                   ];
             viewer.replacePolygonPoints(editTargetId, next);
             // replacePolygonPoints は仕様上 labels を全 undefined にリセットするため
