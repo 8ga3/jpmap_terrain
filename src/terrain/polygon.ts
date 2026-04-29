@@ -556,6 +556,32 @@ export const createPolygonNode = (
         applyVisibility();
     };
 
+    /**
+     * 配列上の index と mesh / material / texture 名の整合を保つために
+     * sphere / drop / label の name を index に合わせて再採番する (#173)。
+     * insert/remove での部分編集では同名 mesh の共存と index ズレを招くため、
+     * splice 後に必ず呼び出して名前を再付与する。
+     */
+    const renumberEntries = (): void => {
+        for (let i = 0; i < sphereEntries.length; i++) {
+            const e = sphereEntries[i];
+            e.mesh.name = `polygon-${id}-point-${i}`;
+            e.material.name = `polygon-${id}-point-mat-${i}`;
+        }
+        for (let i = 0; i < dropEntries.length; i++) {
+            const e = dropEntries[i];
+            e.mesh.name = `polygon-${id}-drop-${i}`;
+            e.material.name = `polygon-${id}-drop-mat-${i}`;
+        }
+        for (let i = 0; i < labelEntries.length; i++) {
+            const e = labelEntries[i];
+            if (!e) continue;
+            e.mesh.name = `polygon-${id}-label-${i}`;
+            e.material.name = `polygon-${id}-label-mat-${i}`;
+            e.texture.name = `polygon-${id}-label-${i}`;
+        }
+    };
+
     /** 内部: lat/lon/altitude のバリデーション (#173)。 */
     const assertValidPoint = (p: PolygonPointOptions, prefix: string): void => {
         if (!Number.isFinite(p.lat) || p.lat < -90 || p.lat > 90) {
@@ -790,6 +816,7 @@ export const createPolygonNode = (
             dropEntries.splice(index, 0, drop);
             labels.splice(index, 0, undefined);
             labelEntries.splice(index, 0, null);
+            renumberEntries();
             onPointCountChanged();
         },
         removePoint(index: number): void {
@@ -818,6 +845,7 @@ export const createPolygonNode = (
                 lbl.material.dispose();
                 lbl.mesh.dispose();
             }
+            renumberEntries();
             onPointCountChanged();
         },
         updatePoint(index: number, partial: PolygonPointPartial): void {
