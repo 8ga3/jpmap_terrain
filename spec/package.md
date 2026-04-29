@@ -456,7 +456,7 @@ interface JpmapTerrain {
 
 - 共通: dispose 後 / 未存在 id は throw。
 - `insertPolygonPoint`: `index` が `[0, points.length]` の範囲外なら `RangeError`。`lat/lon` が JAPAN_BOUNDS 外なら throw。`altitudeMode === "absolute"` で `altitude` 未指定なら throw。
-- `removePolygonPoint`: 削除後の点数が 2 点未満になる場合は throw（`RangeError`）。`index` が範囲外なら `RangeError`。
+- `removePolygonPoint`: 削除後の点数が 2 点未満になる場合は throw。`index` が範囲外なら `RangeError`。
 - `updatePolygonPoint`: `index` が範囲外なら `RangeError`。`lat`/`lon` の partial が指定されたとき、現状値とのマージ結果に対し JAPAN_BOUNDS 検査を行う。`altitudeMode === "absolute"` のとき `altitude` を `undefined` にしても現状値は維持されるため throw しない（明示的に書き換える場合のみ partial に含める）。
 - `replacePolygonPoints`: `points.length < 2` は throw。各点の JAPAN_BOUNDS / `absolute` モードの altitude 必須は `addPolygon` と同じ規則で検査する。
 
