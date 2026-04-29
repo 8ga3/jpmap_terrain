@@ -31,7 +31,7 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "timelapse",
     },
     {
-        title: "ポリゴン (Issue #170)",
+        title: "ポリゴン",
         description:
             "PolygonManager 公開 API の動作確認デモ。terrain / absolute / closed の 3 種類のポリラインを表示し、enabled トグルで切替できます。",
         href: "polygon",
