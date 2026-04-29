@@ -886,6 +886,7 @@ export const createPolygonNode = (
             }
             labelEntries.length = 0;
             labels.length = 0;
+            hasLabels = false;
             points.length = 0;
             for (let i = 0; i < newPoints.length; i++) {
                 const p = newPoints[i];

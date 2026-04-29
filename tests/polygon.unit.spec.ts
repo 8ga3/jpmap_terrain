@@ -883,9 +883,8 @@ describe("createPolygonNode 点編集 API (#173)", () => {
         }
         const h = node.getHandle();
         expect(h.points.length).toBe(2);
-        // labels は全 undefined（hasLabels=true は維持）。
-        expect(h.labels).toBeDefined();
-        expect(h.labels?.[0]).toBeUndefined();
+        // replacePoints はラベルを再構成しないため hasLabels=false にリセットされる。
+        expect(h.labels).toBeUndefined();
     });
 
     it("replacePoints は 2 点未満で throw", () => {
