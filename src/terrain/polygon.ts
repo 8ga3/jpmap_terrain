@@ -844,6 +844,10 @@ export const createPolygonNode = (
                 } else {
                     setLabelAt(index, partial.label);
                 }
+                // 新規 label mesh は default で enabled=true なので、現行の表示
+                // フラグ (logicalEnabled / labelsEnabled / elevationResolved) と
+                // 整合させるため applyVisibility() で再評価する。
+                applyVisibility();
             }
             // 点数は不変なので line/wall は再生成しない。次回 applyTransform で位置反映。
             // terrain モードで lat/lon が変われば標高再解決が必要なため hide 復帰。
