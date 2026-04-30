@@ -219,6 +219,7 @@ const start = async (): Promise<void> => {
     const onStateChange = (): void => {
         rebuildPolygon(viewer, state);
         updateStatus(state, statusEl);
+        updateHoverCursor();
     };
 
     const toolbar = document.getElementById(TOOLBAR_ID);
@@ -226,10 +227,34 @@ const start = async (): Promise<void> => {
         buildToolbar(toolbar, state, onStateChange);
     }
 
-    // hover リスナーを 1 件登録することで、頂点 hover 時のカーソル変更を有効化する (#184)。
-    viewer.onPolygonPointHover(() => {
-        /* no-op: 既定のカーソル切替のみ利用 */
+    // hover リスナーを登録して頂点 hover 時のカーソルを編集モード固有のものに切り替える (#186)。
+    // - edit + hover                 -> "move"
+    // - edit + hover + Shift         -> "ns-resize"（高度編集を示唆）
+    // - その他のモード / hover 解除  -> ライブラリ既定 ("pointer" or "")
+    const scene = viewer.__debugScene;
+    const renderCanvas =
+        (scene?.getEngine().getRenderingCanvas() as HTMLCanvasElement | null) ??
+        null;
+    let pointHovering = false;
+    let shiftPressed = false;
+    const updateHoverCursor = (): void => {
+        if (!renderCanvas) return;
+        if (state.mode === "edit" && pointHovering) {
+            renderCanvas.style.cursor = shiftPressed ? "ns-resize" : "move";
+        }
+        // hover 解除時はライブラリ側で `""` に戻されるため、ここでは触らない。
+    };
+    viewer.onPolygonPointHover((e) => {
+        pointHovering = e !== null;
+        updateHoverCursor();
     });
+    const onShiftKey = (down: boolean) => (ev: KeyboardEvent): void => {
+        if (ev.key !== "Shift") return;
+        shiftPressed = down;
+        updateHoverCursor();
+    };
+    window.addEventListener("keydown", onShiftKey(true));
+    window.addEventListener("keyup", onShiftKey(false));
 
     // 追加: 地形クリック (#183) で末尾追加。`add` モード以外では無視する。
     viewer.onTerrainClick((e: TerrainClickEvent) => {
