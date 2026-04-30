@@ -411,7 +411,7 @@ interface PolygonOptions {
   edgeLabels?: ReadonlyArray<string | undefined>;
   style?: PolygonStyleOptions;
   enabled?: boolean;                          // default true
-  /** 各点から地表へ落とす垂線の表示 (#171 実装済み)。default true */
+  /** 各点から Y=0 まで伸びる垂線の表示 (#171 / #186 実装済み)。default true */
   verticalsEnabled?: boolean;
   /** ラベルの表示 (#171 実装済み)。default true */
   labelsEnabled?: boolean;
@@ -429,8 +429,8 @@ interface PolygonOptions {
 - JAPAN_BOUNDS 外の点・`points.length < 1`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。`points.length === 1` のときは辺（線 / 壁 / 辺ラベル）は存在せず、点・垂線・点ラベルのみ描画される。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
-- **#171 実装済み**: 各点から地表（タイル標高、未解決時は Y=0 フォールバック）へ落とす垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
-- **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=地表 Y の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。`renderingGroupId=1` はポリライン・垂線・球・ラベルと同一。
+- **#171 実装済み**: 各点から Y=0（グリッド原点面）まで伸びる垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画する。垂線は地表を貫通して下るため、高高度点の接地を常に可視化できる (#186)。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
+- **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる (#186)。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。`renderingGroupId=1` はポリライン・垂線・球・ラベルと同一。
 - **#185 実装済み（辺ラベル）**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
 - **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 

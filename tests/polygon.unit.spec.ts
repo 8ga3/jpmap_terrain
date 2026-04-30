@@ -550,7 +550,7 @@ describe("createPolygonNode applyTransform", () => {
         expect(path[1].y).toBe(200);
     });
 
-    it("垂線の終端 Y が groundYs に追従する（null は 0 フォールバック）", async () => {
+    it("垂線の終端 Y は常に 0。地表を貫通してグリッド面まで伸びる (#186)", async () => {
         const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
         const node = createPolygonNode(sceneStub, "pV", {
             points: [
@@ -571,9 +571,9 @@ describe("createPolygonNode applyTransform", () => {
         const drop0Path = drop0.options.path as Array<{ y: number }>;
         const drop1Path = drop1.options.path as Array<{ y: number }>;
         expect(drop0Path[0].y).toBe(100);
-        expect(drop0Path[1].y).toBe(25);
+        expect(drop0Path[1].y).toBe(0);
         expect(drop1Path[0].y).toBe(100);
-        expect(drop1Path[1].y).toBe(0); // null → 0 フォールバック
+        expect(drop1Path[1].y).toBe(0);
     });
 
     it("ラベル位置が球より上 (Y オフセット) に配置される", async () => {
@@ -731,9 +731,9 @@ describe("createPolygonNode 壁 (#172)", () => {
         // top: y は worldPoints[i].y がそのまま入る
         expect(update[0][0].y).toBe(100);
         expect(update[0][3].y).toBe(100);
-        // ground: y は groundYs[i]、末尾は先頭の groundY
-        expect(update[1][0].y).toBe(10);
-        expect(update[1][3].y).toBe(10);
+        // ground: y は常に 0 (#186)
+        expect(update[1][0].y).toBe(0);
+        expect(update[1][3].y).toBe(0);
     });
 
     it("applyTransform で壁 Ribbon が instance 指定で更新される", async () => {
