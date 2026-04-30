@@ -417,6 +417,9 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                 listener(event);
             }
         },
+        __resetTerrainClickListeners: (): void => {
+            terrainClickListeners.length = 0;
+        },
     };
 });
 
@@ -452,6 +455,7 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
         world: { x: number; y: number; z: number };
         pointerEvent: PointerEvent;
     }) => void;
+    __resetTerrainClickListeners: () => void;
 };
 
 describe("JpmapTerrain (skeleton)", () => {
@@ -474,6 +478,8 @@ describe("JpmapTerrain (skeleton)", () => {
                 /* dispose の副作用テストでは事前に呼ばれている可能性があり、無視 */
             }
         }
+        // テスト間でモック内のリスナー残留が副作用にならないよう毎回クリアする (Issue #183)。
+        sceneMockModule.__resetTerrainClickListeners();
     });
 
     describe("create", () => {
