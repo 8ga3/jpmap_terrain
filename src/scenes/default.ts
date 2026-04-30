@@ -813,8 +813,8 @@ export class DefaultScene implements CreateSceneClass {
                     const dx = e.clientX - polygonPointGesture.startClientX;
                     const dy = e.clientY - polygonPointGesture.startClientY;
                     if (
-                        Math.abs(dx) > POLYGON_POINT_DRAG_THRESHOLD_PX ||
-                        Math.abs(dy) > POLYGON_POINT_DRAG_THRESHOLD_PX
+                        Math.abs(dx) >= POLYGON_POINT_DRAG_THRESHOLD_PX ||
+                        Math.abs(dy) >= POLYGON_POINT_DRAG_THRESHOLD_PX
                     ) {
                         polygonPointGesture.dragging = true;
                         const ground = computeDragGroundHit(sx, sy);
