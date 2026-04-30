@@ -14,5 +14,7 @@ module.exports = {
         { from: /^\/timelapse\.html(?:\/?@.*)?\/?$/, to: '/timelapse.html' },
         { from: /^\/polygon(?:\/@.*)?\/?$/, to: '/polygon.html' },
         { from: /^\/polygon\.html(?:\/?@.*)?\/?$/, to: '/polygon.html' },
+        { from: /^\/distance(?:\/@.*)?\/?$/, to: '/distance.html' },
+        { from: /^\/distance\.html(?:\/?@.*)?\/?$/, to: '/distance.html' },
     ],
 };
