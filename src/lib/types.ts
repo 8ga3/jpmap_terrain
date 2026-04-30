@@ -171,8 +171,12 @@ export interface PolygonPointPointerEvent {
 /**
  * ポリゴン頂点ドラッグ中のペイロード。
  *
- * カーソル位置の地形メッシュとの交点に基づく lat/lon と地表標高を含む。
- * 地形にヒットしなかった場合は `lat`/`lon`/`groundAltitude` が `null`。
+ * - `lat` / `lon` / `groundAltitude` : カーソル位置の地形メッシュとの交点。
+ *   地形にヒットしなかった場合は `null`。
+ * - `planeLat` / `planeLon` : カーソルレイと「ドラッグ開始時の頂点高さ」
+ *   を保つ水平面との交点 (#186)。交点が得られないときは `null`。
+ *   `altitudeMode` によらず、頂点の現在の world Y を保ちながら
+ *   カーソルと同じ画面位置に頂点を追従させたいときに使用する。
  */
 export interface PolygonPointDragEvent extends PolygonPointPointerEvent {
     /** カーソル位置の地形メッシュ交点の緯度（ヒットなしのとき null） */
@@ -181,6 +185,16 @@ export interface PolygonPointDragEvent extends PolygonPointPointerEvent {
     readonly lon: number | null;
     /** カーソル位置の地表標高 (m, ヒットなしのとき null) */
     readonly groundAltitude: number | null;
+    /**
+     * ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の緯度。
+     * 交点が得られない（カメラが面と平行等）場合は `null`。
+     */
+    readonly planeLat: number | null;
+    /**
+     * ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の経度。
+     * 交点が得られない場合は `null`。
+     */
+    readonly planeLon: number | null;
 }
 
 /** `onPolygonPointHover` リスナー（hover 解除時は `null` で呼ばれる） */

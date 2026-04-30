@@ -540,6 +540,10 @@ interface PolygonPointDragEvent extends PolygonPointPointerEvent {
   readonly lon: number | null;
   /** ドラッグ中カーソル直下の地形交点の標高 m（地形未ヒット時 `null`） */
   readonly groundAltitude: number | null;
+  /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の緯度（交点なしで `null`） (#186) */
+  readonly planeLat: number | null;
+  /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の経度（交点なしで `null`） (#186) */
+  readonly planeLon: number | null;
 }
 
 type PolygonPointHoverListener = (

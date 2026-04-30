@@ -195,6 +195,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         readonly lat: number | null;
         readonly lon: number | null;
         readonly groundAltitude: number | null;
+        readonly planeLat: number | null;
+        readonly planeLon: number | null;
     };
     const polygonPointHoverListeners: Array<
         (e: PolygonPointPointerEventLike | null) => void
@@ -557,6 +559,8 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
         lat: number | null;
         lon: number | null;
         groundAltitude: number | null;
+        planeLat: number | null;
+        planeLon: number | null;
     }) => void;
     __triggerPolygonPointDrag: (event: {
         polygonId: string;
@@ -565,6 +569,8 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
         lat: number | null;
         lon: number | null;
         groundAltitude: number | null;
+        planeLat: number | null;
+        planeLon: number | null;
     }) => void;
     __triggerPolygonPointDragEnd: (event: {
         polygonId: string;
@@ -573,6 +579,8 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
         lat: number | null;
         lon: number | null;
         groundAltitude: number | null;
+        planeLat: number | null;
+        planeLon: number | null;
     }) => void;
     __resetPolygonPointListeners: () => void;
 };
@@ -1885,6 +1893,8 @@ describe("JpmapTerrain (skeleton)", () => {
                 lat: number | null;
                 lon: number | null;
                 groundAltitude: number | null;
+                planeLat: number | null;
+                planeLon: number | null;
             }>,
         ) => ({
             polygonId: "p1",
@@ -1893,6 +1903,8 @@ describe("JpmapTerrain (skeleton)", () => {
             lat: 35.5,
             lon: 139.5,
             groundAltitude: 100,
+            planeLat: 35.5,
+            planeLon: 139.5,
             ...overrides,
         });
 
