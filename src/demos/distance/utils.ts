@@ -33,7 +33,10 @@ export const haversineDistanceMeters = (
     const h =
         sinDLat * sinDLat +
         Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
-    const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+    // 浮動小数誤差で h が 1 を僅かに超えると Math.sqrt(1 - h) が NaN に
+    // なり得る（ほぼ対蹠点）。安定のため [0, 1] にクランプする。
+    const hClamped = Math.min(1, Math.max(0, h));
+    const c = 2 * Math.atan2(Math.sqrt(hClamped), Math.sqrt(1 - hClamped));
     return EARTH_RADIUS_M * c;
 };
 
