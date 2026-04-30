@@ -352,7 +352,7 @@ export interface PolygonStyleOptions {
  * ポリゴン追加オプション。
  */
 export interface PolygonOptions {
-    /** 頂点列。最低 2 点。 */
+    /** 頂点列。最低 1 点。1 点のみのときは点・垂線・点ラベルのみ描画され、線・壁・辺ラベルは存在しない。 */
     points: readonly PolygonPointOptions[];
     /**
      * `true` の場合、最後の頂点と最初の頂点を結ぶ線を 1 本追加する（#170）。

@@ -362,7 +362,12 @@ const buildWallPathArray = (
 };
 
 /**
- * `PolygonNode` を生成する。`points.length >= 2` 前提（`PolygonManager` 側で検証済み）。
+ * `PolygonNode` を生成する。`points.length >= 1` 前提（`PolygonManager` 側で検証済み）。
+ *
+ * `points.length === 1` のときは辺（線）・壁・辺ラベルは存在せず、点・垂線・点ラベルのみ
+ * 描画される。Babylon の `CreateTube` / `CreateRibbon` は path 長さを
+ * instance 更新で変えられないため、N<2 のときも長さ 2 の placeholder を
+ * 作って保持し、`setEnabled(false)` で隠す。
  */
 export const createPolygonNode = (
     scene: Scene,
@@ -404,10 +409,12 @@ export const createPolygonNode = (
         options.labels ? options.labels[i] : undefined,
     );
 
-    // 辺ラベル (#185)。長さは `closed ? N : N-1`。`edgeLabels[i]` は points[i]→points[i+1] の中点に表示する。
+    // 辺ラベル (#185)。長さは `closed && N>=2 ? N : Math.max(0, N-1)`。つまり N<2 のときは 0 。
     // closed=true のときの末尾要素 (i = N-1) は points[N-1]→points[0] のラベル。
     const expectedEdgeCount = (): number =>
-        closed ? points.length : Math.max(0, points.length - 1);
+        closed && points.length >= 2
+            ? points.length
+            : Math.max(0, points.length - 1);
     let hasEdgeLabels = options.edgeLabels !== undefined;
     const edgeLabels: (string | undefined)[] = Array.from(
         { length: expectedEdgeCount() },
@@ -451,7 +458,14 @@ export const createPolygonNode = (
 
     // 初期 path（仮）。applyTransform で必ず上書きされる前提だが、
     // 構築時にも有効な Tube が必要なので原点付近の placeholder を渡す。
-    const initialPath: Vector3[] = points.map((_, i) => new Vector3(i, 0, 0));
+    // N<2 のときも Babylon が path>=2 を要求するため、長さ 2 の placeholder で作り、
+    // applyVisibility で setEnabled(false) に隠す。
+    const minLineLen = 2;
+    const initialPathLen = Math.max(points.length, minLineLen);
+    const initialPath: Vector3[] = Array.from(
+        { length: initialPathLen },
+        (_, i) => new Vector3(i, 0, 0),
+    );
     const initialTubePath = buildLinePath(initialPath, closed);
     let lineMesh: Mesh = CreateTube(
         `polygon-${id}-line`,
@@ -475,7 +489,11 @@ export const createPolygonNode = (
 
     // 壁 Ribbon (#172): 上 row = 各頂点 world、下 row = 地表 Y。
     // 構築時は groundY を 0 とした placeholder を渡し、applyTransform で実値で更新する。
-    const initialGroundYs: (number | null)[] = points.map(() => null);
+    // N<2 のときも path>=2 が必要なため placeholder 長さをそろえる。
+    const initialGroundYs: (number | null)[] = Array.from(
+        { length: initialPathLen },
+        () => null,
+    );
     const initialWallPathArray = buildWallPathArray(
         initialPath,
         initialGroundYs,
@@ -508,6 +526,8 @@ export const createPolygonNode = (
 
     const applyVisibility = (): void => {
         const visible = logicalEnabled && elevationResolved;
+        // N<2 のときは線・壁が幾何的に存在しないため常に false。
+        const hasEdges = points.length >= 2;
         root.setEnabled(visible);
         // 子要素の個別 ON/OFF（垂線・ラベル・壁）。root が無効なら自動で隠れるので、
         // root が有効なときに verticals/labels/walls の個別設定を反映する。
@@ -523,7 +543,8 @@ export const createPolygonNode = (
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
         }
-        wallMesh.setEnabled(visible && wallsEnabled);
+        lineMesh.setEnabled(visible && hasEdges);
+        wallMesh.setEnabled(visible && wallsEnabled && hasEdges);
     };
     applyVisibility();
 
@@ -535,7 +556,12 @@ export const createPolygonNode = (
      */
     const rebuildLineMeshForCurrentPointCount = (): void => {
         lineMesh.dispose();
-        const placeholder: Vector3[] = points.map(
+        // N<2 のときも Babylon の Tube/Ribbon が path>=2 を必要とするため、
+        // 幾何的には存在しない場合でも長さ 2 の placeholder を保持する。
+        // 表示は applyVisibility 側で setEnabled(false) により抑制する。
+        const len = Math.max(points.length, 2);
+        const placeholder: Vector3[] = Array.from(
+            { length: len },
             (_, i) => new Vector3(i, 0, 0),
         );
         const path = buildLinePath(placeholder, closed);
@@ -556,10 +582,15 @@ export const createPolygonNode = (
     };
     const rebuildWallMeshForCurrentPointCount = (): void => {
         wallMesh.dispose();
-        const placeholder: Vector3[] = points.map(
+        const len = Math.max(points.length, 2);
+        const placeholder: Vector3[] = Array.from(
+            { length: len },
             (_, i) => new Vector3(i, 0, 0),
         );
-        const groundPlaceholder: (number | null)[] = points.map(() => null);
+        const groundPlaceholder: (number | null)[] = Array.from(
+            { length: len },
+            () => null,
+        );
         const pathArray = buildWallPathArray(
             placeholder,
             groundPlaceholder,
@@ -740,18 +771,22 @@ export const createPolygonNode = (
             entry.mesh.scaling.setAll(pointScale);
         }
         const tubePath = buildLinePath(worldPoints, closed);
-        lineMesh = CreateTube(
-            `polygon-${id}-line`,
-            { path: tubePath, instance: lineMesh },
-            scene,
-        );
+        // N<2 のときは線・壁が幾何的に存在しないので Tube/Ribbon は更新しない
+        // （placeholder のまま setEnabled(false) で隠す）。
+        if (worldPoints.length >= 2) {
+            lineMesh = CreateTube(
+                `polygon-${id}-line`,
+                { path: tubePath, instance: lineMesh },
+                scene,
+            );
+        }
 
         // 壁 Ribbon (#172) の更新。非表示中はスキップしてフレーム負荷を下げるが、
         // 上で lastWorldPoints / lastGroundYs の参照を保持しておき、setWallsEnabled(true)
         // 時に同一データで Ribbon を再適用して stale 表示を避ける。
         lastWorldPoints = worldPoints;
         lastGroundYs = groundYs;
-        if (wallsEnabled) {
+        if (wallsEnabled && worldPoints.length >= 2) {
             const wallPathArray = buildWallPathArray(
                 worldPoints,
                 groundYs,
@@ -900,9 +935,9 @@ export const createPolygonNode = (
                     `${prefix}: index out of range (got ${index}, length=${points.length})`,
                 );
             }
-            if (points.length <= 2) {
+            if (points.length <= 1) {
                 throw new Error(
-                    `${prefix}: cannot remove (must keep at least 2 points)`,
+                    `${prefix}: cannot remove (must keep at least 1 point)`,
                 );
             }
             points.splice(index, 1);
@@ -976,9 +1011,9 @@ export const createPolygonNode = (
         },
         replacePoints(newPoints: readonly PolygonPointOptions[]): void {
             const prefix = `polygon[${id}].replacePoints`;
-            if (!newPoints || newPoints.length < 2) {
+            if (!newPoints || newPoints.length < 1) {
                 throw new Error(
-                    `${prefix}: points must contain at least 2 entries (got ${
+                    `${prefix}: points must contain at least 1 entry (got ${
                         newPoints?.length ?? 0
                     })`,
                 );

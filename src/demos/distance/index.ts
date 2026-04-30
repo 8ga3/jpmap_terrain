@@ -31,7 +31,6 @@ import {
 import {
     DEFAULT_DISTANCE_DEMO_MODE,
     DistanceDemoMode,
-    formatAltitudeDelta,
     formatEdgeLabel,
     formatPointLabel,
 } from "./utils";
@@ -60,12 +59,6 @@ const ALTITUDE_PIXELS_PER_METER = 0.5;
 interface DemoState {
     mode: DistanceDemoMode;
     points: PolygonPointOptions[];
-    /**
-     * 各 `points[i]` に対応する地表標高 (m)。クリック追加時の `e.altitude` を起点とし、
-     * lat/lon 編集ドラッグで `e.groundAltitude` が利用可能なら追従更新する。
-     * 1 点目だけが存在するときの「垂線描画」と、編集時の地表クランプに使用する。
-     */
-    groundAltitudes: number[];
     /**
      * Shift+ドラッグ開始時のスナップショット。`pointermove` ごとに altitude を再計算するため、
      * dragStart の `altitude` と `clientY` を保持する。
@@ -112,45 +105,6 @@ const buildPolygonOptions = (
     };
 };
 
-/**
- * 1 点しかない場合に、その点と地表の間を結ぶ「垂線」を描画するための合成ポリゴンを構築する。
- * `addPolygon` は points.length >= 2 を要求するため、同一 lat/lon で altitude のみ異なる
- * 2 点（地表側・実点側）を生成し、辺ラベルとして高度オフセットを表示する。
- */
-const buildSinglePointPolygonOptions = (
-    p: PolygonPointOptions,
-    groundAltitude: number,
-): PolygonOptions => {
-    const top: PolygonPointOptions = { ...p };
-    const base: PolygonPointOptions = {
-        lat: p.lat,
-        lon: p.lon,
-        altitude: groundAltitude,
-    };
-    const delta = (p.altitude ?? 0) - groundAltitude;
-    return {
-        points: [base, top],
-        altitudeMode: "absolute",
-        closed: false,
-        // 上端のみラベル表示（下端は地表アンカーなので非表示にしたいが
-        // public 型上 `labels` は `string[]` のため、空文字でラベルを抑制せず
-        // `labelsEnabled` ではなく labels 配列を渡さない＝両端ラベルなし）。
-        // 代わりに辺ラベルで lat/lon と高度オフセットを示す。
-        edgeLabels: [`${formatPointLabel(top)}\n${formatAltitudeDelta(delta)}`],
-        style: {
-            pointColor: "#ff5252",
-            lineColor: "#ff5252",
-            pointDiameter: 16,
-            lineWidth: 2,
-            labelBackgroundColor: "rgba(255,255,255,0.85)",
-            labelColor: "#222",
-            labelFontSize: 12,
-            wallColor: "#ff5252",
-            wallOpacity: 0.2,
-        },
-    };
-};
-
 const rebuildPolygon = (viewer: JpmapTerrain, state: DemoState): void => {
     // 既存ポリゴンを毎回削除→再追加することで edgeLabels をフレッシュに保つ。
     // `replacePolygonPoints` は spec 上 edgeLabels を全 undefined にリセットするため、
@@ -158,15 +112,8 @@ const rebuildPolygon = (viewer: JpmapTerrain, state: DemoState): void => {
     const existing = viewer.getPolygon(POLYGON_ID);
     if (existing) viewer.removePolygon(POLYGON_ID);
     if (state.points.length === 0) return;
-    if (state.points.length === 1) {
-        // 1 点だけのときは合成 2 点ポリゴン（同一 lat/lon・地表↔実点）で垂線を描画する。
-        const ground = state.groundAltitudes[0] ?? 0;
-        viewer.addPolygon(
-            POLYGON_ID,
-            buildSinglePointPolygonOptions(state.points[0], ground),
-        );
-        return;
-    }
+    // 1 点でも `addPolygon` 可能になったため (#186 ライブラリ拡張)、
+    // そのまま 点 + 垂線 + 点ラベル を描画する。
     viewer.addPolygon(POLYGON_ID, buildPolygonOptions(state.points, false));
 };
 
@@ -232,7 +179,6 @@ const buildToolbar = (
     container.appendChild(clearBtn);
     clearBtn.addEventListener("click", () => {
         state.points.length = 0;
-        state.groundAltitudes.length = 0;
         onChange();
     });
 };
@@ -266,7 +212,6 @@ const start = async (): Promise<void> => {
     const state: DemoState = {
         mode: DEFAULT_DISTANCE_DEMO_MODE,
         points: [],
-        groundAltitudes: [],
         altitudeDragStart: null,
     };
 
@@ -294,25 +239,16 @@ const start = async (): Promise<void> => {
             lon: e.lon,
             altitude: e.altitude + ADD_POINT_ALTITUDE_OFFSET_M,
         });
-        state.groundAltitudes.push(e.altitude);
         onStateChange();
     });
-
-    // 1 点合成ポリゴンの頂点 index (0=地表, 1=実点) を、論理的な state.points のインデックスに正規化する。
-    const toLogicalIndex = (eventIndex: number): number => {
-        // points.length === 1 のときは合成ポリゴンの index 0/1 がどちらも論理点 0 を指す。
-        if (state.points.length === 1) return 0;
-        return eventIndex;
-    };
 
     // 削除: 頂点クリックで該当点を削除。
     viewer.onPolygonPointClick((e: PolygonPointPointerEvent) => {
         if (state.mode !== "remove") return;
         if (e.polygonId !== POLYGON_ID) return;
-        const i = toLogicalIndex(e.index);
+        const i = e.index;
         if (i < 0 || i >= state.points.length) return;
         state.points.splice(i, 1);
-        state.groundAltitudes.splice(i, 1);
         onStateChange();
     });
 
@@ -320,17 +256,15 @@ const start = async (): Promise<void> => {
     viewer.onPolygonPointDragStart((e: PolygonPointDragEvent) => {
         if (state.mode !== "edit") return;
         if (e.polygonId !== POLYGON_ID) return;
-        const i = toLogicalIndex(e.index);
-        const current = state.points[i];
+        const current = state.points[e.index];
         if (!current) return;
         if (e.pointerEvent.shiftKey) {
             // 高度モード: 開始 altitude / clientY / 地表標高を保持。
             state.altitudeDragStart = {
-                index: i,
+                index: e.index,
                 altitude: current.altitude ?? 0,
                 clientY: e.pointerEvent.clientY,
-                groundAltitude:
-                    e.groundAltitude ?? state.groundAltitudes[i] ?? 0,
+                groundAltitude: e.groundAltitude ?? 0,
             };
         } else {
             state.altitudeDragStart = null;
@@ -340,7 +274,7 @@ const start = async (): Promise<void> => {
     viewer.onPolygonPointDrag((e: PolygonPointDragEvent) => {
         if (state.mode !== "edit") return;
         if (e.polygonId !== POLYGON_ID) return;
-        const i = toLogicalIndex(e.index);
+        const i = e.index;
         const current = state.points[i];
         if (!current) return;
         const dragAlt = state.altitudeDragStart;
@@ -355,10 +289,6 @@ const start = async (): Promise<void> => {
             // 通常ドラッグ: lat/lon を更新（altitude は維持）。
             current.lat = e.lat;
             current.lon = e.lon;
-            // 新位置の地表標高が分かれば追従更新（垂線・クランプ用）。
-            if (e.groundAltitude !== null && e.groundAltitude !== undefined) {
-                state.groundAltitudes[i] = e.groundAltitude;
-            }
         }
         onStateChange();
     });
