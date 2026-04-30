@@ -61,7 +61,7 @@ export interface PolygonManager {
         index: number,
         partial: PolygonPointPartial,
     ): PolygonHandle;
-    /** 全頂点を置き換える (#173)。`points.length < 2` は throw。 */
+    /** 全頂点を置き換える (#173)。`points.length < 1` は throw。 */
     replacePoints(
         id: string,
         points: readonly PolygonPointOptions[],
@@ -71,9 +71,9 @@ export interface PolygonManager {
 }
 
 const validateOptions = (options: PolygonOptions): void => {
-    if (!options.points || options.points.length < 2) {
+    if (!options.points || options.points.length < 1) {
         throw new Error(
-            `${ERROR_PREFIX}: points must contain at least 2 entries (got ${
+            `${ERROR_PREFIX}: points must contain at least 1 entry (got ${
                 options.points?.length ?? 0
             })`,
         );
@@ -297,9 +297,9 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
                 throw new Error("PolygonManager has been disposed");
             }
             const node = requireNode(id);
-            if (!points || points.length < 2) {
+            if (!points || points.length < 1) {
                 throw new Error(
-                    `JpmapTerrain.replacePolygonPoints[${id}]: points must contain at least 2 entries (got ${
+                    `JpmapTerrain.replacePolygonPoints[${id}]: points must contain at least 1 entry (got ${
                         points?.length ?? 0
                     })`,
                 );

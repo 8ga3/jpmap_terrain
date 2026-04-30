@@ -485,6 +485,24 @@ describe("createPolygonNode 構築", () => {
         // replacePoints は hasEdgeLabels を false に戻す → handle.edgeLabels=undefined。
         expect(node.getHandle().edgeLabels).toBeUndefined();
     });
+
+    it("1 点ポリゴン: 球 1・垂線 1 のみで線・壁・辺ラベルは存在しない (#186 ライブラリ拡張)", () => {
+        const node = createPolygonNode(sceneStub, "p1pt", {
+            points: [{ lat: 35.0, lon: 139.0, altitude: 100 }],
+            altitudeMode: "absolute",
+            labels: ["origin"],
+            edgeLabels: ["should-be-ignored"],
+        });
+        expect(sphereCalls.length).toBe(1);
+        // 構築時: 垂線 Tube 1 本 + ポリライン Tube 1 本（placeholder, 非表示）= 2
+        expect(tubeCalls.length).toBe(2);
+        const handle = node.getHandle();
+        expect(handle.points.length).toBe(1);
+        // edgeLabels は配列が指定されたが N=1 (open) なので 0 件として保持される。
+        expect(handle.edgeLabels).toEqual([]);
+        // 点ラベルは保持。
+        expect(handle.labels?.[0]).toBe("origin");
+    });
 });
 
 describe("createPolygonNode applyTransform", () => {
@@ -978,15 +996,12 @@ describe("createPolygonNode 点編集 API (#173)", () => {
         expect(node.getHandle().points.length).toBe(2);
     });
 
-    it("removePoint は残り 2 点未満で throw", () => {
+    it("removePoint は残り 1 点未満で throw", () => {
         const node = createPolygonNode(sceneStub, "pr2", {
-            points: [
-                { lat: 35.0, lon: 139.0, altitude: 0 },
-                { lat: 35.1, lon: 139.1, altitude: 0 },
-            ],
+            points: [{ lat: 35.0, lon: 139.0, altitude: 0 }],
             altitudeMode: "absolute",
         });
-        expect(() => node.removePoint(0)).toThrow(/at least 2/);
+        expect(() => node.removePoint(0)).toThrow(/at least 1/);
     });
 
     it("updatePoint は点数同一なので line/wall を dispose しない", () => {
@@ -1076,14 +1091,12 @@ describe("createPolygonNode 点編集 API (#173)", () => {
         expect(h.labels).toBeUndefined();
     });
 
-    it("replacePoints は 2 点未満で throw", () => {
+    it("replacePoints は 1 点未満で throw", () => {
         const node = createPolygonNode(sceneStub, "prep2", {
             points: [...basePoints],
             altitudeMode: "absolute",
         });
-        expect(() =>
-            node.replacePoints([{ lat: 35, lon: 139, altitude: 0 }]),
-        ).toThrow(/at least 2/);
+        expect(() => node.replacePoints([])).toThrow(/at least 1/);
     });
 
     it("replacePoints は緯度経度範囲外で RangeError", () => {

@@ -397,7 +397,7 @@ interface PolygonStyleOptions {
 }
 
 interface PolygonOptions {
-  points: ReadonlyArray<PolygonPointOptions>; // 2 点以上
+  points: ReadonlyArray<PolygonPointOptions>; // 1 点以上。1 点のときは点・垂線・点ラベルのみ。
   altitudeMode?: AltitudeMode;                // default "terrain"
   /** `true` でポリラインの末尾と先頭を結んで閉じる。壁・垂線も同様に閉じられる (#172)。default false */
   closed?: boolean;
@@ -426,12 +426,12 @@ interface PolygonOptions {
 - `terrain` モードで 1 点でも標高未解決の間は **ポリゴン全体を hide** し、`onTerrainUpdated` 後に自動表示する（例外は投げない）。
 - 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、`renderingGroupId = 1`）。スケールはカメラ距離に応じて screen-stable に動的更新される。
 - 隣接点間を **CreateTube**（`updatable: true`、半径 `style.lineWidth`）で結ぶ。`closed = true` のとき末尾→先頭も結ぶ。
-- JAPAN_BOUNDS 外の点・`points.length < 2`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。
+- JAPAN_BOUNDS 外の点・`points.length < 1`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。`points.length === 1` のときは辺（線 / 壁 / 辺ラベル）は存在せず、点・垂線・点ラベルのみ描画される。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
 - **#171 実装済み**: 各点から地表（タイル標高、未解決時は Y=0 フォールバック）へ落とす垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
 - **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=地表 Y の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。`renderingGroupId=1` はポリライン・垂線・球・ラベルと同一。
-- **#185 実装済み（辺ラベル）**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、`closed === false` のとき配列長は `points.length - 1`。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
+- **#185 実装済み（辺ラベル）**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
 - **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
 ##### 3.3.8.2 ポリゴン点編集 API（Issue #173）
@@ -450,11 +450,11 @@ interface PolygonPointPartial {
 interface JpmapTerrain {
   /** 指定 index に新しい頂点を挿入する。`index === points.length` で末尾追加。 */
   insertPolygonPoint(id: string, index: number, point: PolygonPointOptions): PolygonHandle;
-  /** 指定 index の頂点を削除する。残り 2 点未満になる場合は throw。 */
+  /** 指定 index の頂点を削除する。残り 1 点未満になる場合は throw。 */
   removePolygonPoint(id: string, index: number): PolygonHandle;
   /** 指定 index の頂点を部分更新する。partial 未指定フィールドは現状維持。 */
   updatePolygonPoint(id: string, index: number, partial: PolygonPointPartial): PolygonHandle;
-  /** 全頂点を置き換える。`points.length < 2` は throw。 */
+  /** 全頂点を置き換える。`points.length < 1` は throw。 */
   replacePolygonPoints(id: string, points: ReadonlyArray<PolygonPointOptions>): PolygonHandle;
 }
 ```
@@ -463,9 +463,9 @@ interface JpmapTerrain {
 
 - 共通: dispose 後 / 未存在 id は throw。
 - `insertPolygonPoint`: `index` が `[0, points.length]` の範囲外なら `RangeError`。`lat/lon` が JAPAN_BOUNDS 外なら throw。`altitudeMode === "absolute"` で `altitude` 未指定なら throw。
-- `removePolygonPoint`: 削除後の点数が 2 点未満になる場合は throw。`index` が範囲外なら `RangeError`。
+- `removePolygonPoint`: 削除後の点数が 1 点未満になる場合は throw。`index` が範囲外なら `RangeError`。
 - `updatePolygonPoint`: `index` が範囲外なら `RangeError`。`lat`/`lon` の partial が指定されたとき、現状値とのマージ結果に対し JAPAN_BOUNDS 検査を行う。`altitudeMode === "absolute"` のとき `altitude` を `undefined` にしても現状値は維持されるため throw しない（明示的に書き換える場合のみ partial に含める）。
-- `replacePolygonPoints`: `points.length < 2` は throw。各点の JAPAN_BOUNDS / `absolute` モードの altitude 必須は `addPolygon` と同じ規則で検査する。
+- `replacePolygonPoints`: `points.length < 1` は throw。各点の JAPAN_BOUNDS / `absolute` モードの altitude 必須は `addPolygon` と同じ規則で検査する。
 
 **差分更新の保証範囲:**
 

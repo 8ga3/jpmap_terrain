@@ -284,14 +284,24 @@ describe("PolygonManager CRUD", () => {
 });
 
 describe("PolygonManager バリデーション", () => {
-    it("2 点未満で throw", () => {
+    it("0 点で throw", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        expect(() =>
+            mgr.add("a", {
+                points: [],
+            }),
+        ).toThrow(/at least 1/);
+    });
+
+    it("1 点でも追加可能（#186 距離計測デモより緩和）", () => {
         const { ctx } = buildCtx(0);
         const mgr = createPolygonManager(ctx);
         expect(() =>
             mgr.add("a", {
                 points: [{ lat: 35.681, lon: 139.767 }],
             }),
-        ).toThrow(/at least 2/);
+        ).not.toThrow();
     });
 
     it("JAPAN_BOUNDS 外で throw", () => {
@@ -544,13 +554,11 @@ describe("PolygonManager 点編集 API (#173)", () => {
         ).toThrow(/JAPAN_BOUNDS/);
     });
 
-    it("replacePoints は points.length<2 で throw", () => {
+    it("replacePoints は points.length<1 で throw", () => {
         const { ctx } = buildCtx(0);
         const mgr = createPolygonManager(ctx);
         mgr.add("a", { points: validPoints });
-        expect(() =>
-            mgr.replacePoints("a", [{ lat: 35.681, lon: 139.767 }]),
-        ).toThrow(/at least 2/);
+        expect(() => mgr.replacePoints("a", [])).toThrow(/at least 1/);
     });
 
     it("replacePoints が node.replacePoints へ委譲される", () => {

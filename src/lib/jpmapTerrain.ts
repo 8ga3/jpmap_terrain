@@ -926,7 +926,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 指定 index の頂点を削除する (#173)。残り 2 点未満になる場合は throw。
+     * 指定 index の頂点を削除する (#173)。残り 1 点未満になる場合は throw。
      */
     public removePolygonPoint(id: string, index: number): PolygonHandle {
         this._assertAlive();
@@ -947,7 +947,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 全頂点を置き換える (#173)。`points.length < 2` は throw。
+     * 全頂点を置き換える (#173)。`points.length < 1` は throw。
      */
     public replacePolygonPoints(
         id: string,
