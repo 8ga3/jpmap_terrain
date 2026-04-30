@@ -545,7 +545,7 @@ export class JpmapTerrain {
      *
      * - 主ボタン (`button === 0`) のみ対象。
      * - `pointerdown` から `pointerup` までの移動量が
-     *   {@link TERRAIN_CLICK_DRAG_THRESHOLD_PX} 以下のときのみ発火する
+     *   {@link import("./types").TERRAIN_CLICK_DRAG_THRESHOLD_PX} (= 4 CSS px) 以下のときのみ発火する
      *   （ドラッグやカメラ操作は発火しない）。
      * - `Ctrl` / `Cmd` 併用クリックはカメラ操作扱いのため発火しない。
      * - `tile-ground-*` メッシュへのヒットがない場合は発火しない。
