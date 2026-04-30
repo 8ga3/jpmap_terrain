@@ -24,8 +24,14 @@ import { createUiVisibilityController } from "../terrain/uiVisibility";
 import {
     SUN_FALLBACK_DATETIME_ISO,
     TERRAIN_CLICK_DRAG_THRESHOLD_PX,
+    POLYGON_POINT_DRAG_THRESHOLD_PX,
     type TerrainClickEvent,
     type TerrainClickListener,
+    type PolygonPointPointerEvent,
+    type PolygonPointDragEvent,
+    type PolygonPointHoverListener,
+    type PolygonPointClickListener,
+    type PolygonPointDragListener,
 } from "../lib/types";
 
 const TERRAIN_SUBDIVISIONS = 128;
@@ -199,6 +205,34 @@ export interface DefaultSceneController {
      * @returns 登録解除関数
      */
     subscribeTerrainClick(listener: TerrainClickListener): () => void;
+
+    /**
+     * ポリゴン頂点上の hover 通知を購読する (Issue #184)。
+     * リスナーは hover 開始/対象切替時にイベントを、hover 解除時に `null` を受け取る。
+     */
+    subscribePolygonPointHover(
+        listener: PolygonPointHoverListener,
+    ): () => void;
+    /**
+     * ポリゴン頂点上の click 通知を購読する (Issue #184)。
+     * `pointerdown` → `pointerup` の移動量が
+     * {@link POLYGON_POINT_DRAG_THRESHOLD_PX} 未満のときのみ発火する。
+     */
+    subscribePolygonPointClick(
+        listener: PolygonPointClickListener,
+    ): () => void;
+    /** 頂点ドラッグ開始 (Issue #184) */
+    subscribePolygonPointDragStart(
+        listener: PolygonPointDragListener,
+    ): () => void;
+    /** 頂点ドラッグ中（移動毎） (Issue #184) */
+    subscribePolygonPointDrag(
+        listener: PolygonPointDragListener,
+    ): () => void;
+    /** 頂点ドラッグ終了 (Issue #184) */
+    subscribePolygonPointDragEnd(
+        listener: PolygonPointDragListener,
+    ): () => void;
 }
 
 /**
@@ -559,6 +593,126 @@ export class DefaultScene implements CreateSceneClass {
         let dragAnchorLat = 0;
         let dragAnchorLon = 0;
 
+        // ---- ポリゴン頂点インタラクション (Issue #184) ----
+        const polygonPointHoverListeners: PolygonPointHoverListener[] = [];
+        const polygonPointClickListeners: PolygonPointClickListener[] = [];
+        const polygonPointDragStartListeners: PolygonPointDragListener[] = [];
+        const polygonPointDragListeners: PolygonPointDragListener[] = [];
+        const polygonPointDragEndListeners: PolygonPointDragListener[] = [];
+        const POLYGON_POINT_NAME_RE = /^polygon-(.+)-point-(\d+)$/;
+        const pickPolygonPoint = (
+            sx: number,
+            sy: number,
+        ): { polygonId: string; index: number } | null => {
+            const pick = scene.pick(
+                sx,
+                sy,
+                (m) => POLYGON_POINT_NAME_RE.test(m.name),
+            );
+            if (!pick?.hit || !pick.pickedMesh) return null;
+            const match = POLYGON_POINT_NAME_RE.exec(pick.pickedMesh.name);
+            if (!match) return null;
+            return { polygonId: match[1], index: parseInt(match[2], 10) };
+        };
+        /** 頂点ドラッグ中のカーソル位置から地形交点を解決する */
+        const computeDragGroundHit = (
+            sx: number,
+            sy: number,
+        ): {
+            lat: number | null;
+            lon: number | null;
+            groundAltitude: number | null;
+        } => {
+            const pick = scene.pick(sx, sy, (m) =>
+                m.name.startsWith("tile-ground-"),
+            );
+            if (!pick?.hit || !pick.pickedPoint) {
+                return { lat: null, lon: null, groundAltitude: null };
+            }
+            const { lat, lon } = worldToLatLon(
+                pick.pickedPoint.x,
+                pick.pickedPoint.z,
+            );
+            return { lat, lon, groundAltitude: pick.pickedPoint.y };
+        };
+        const hasPolygonPointGestureListeners = (): boolean =>
+            polygonPointClickListeners.length > 0 ||
+            polygonPointDragStartListeners.length > 0 ||
+            polygonPointDragListeners.length > 0 ||
+            polygonPointDragEndListeners.length > 0;
+        let polygonPointGesture:
+            | {
+                  pointerId: number;
+                  polygonId: string;
+                  index: number;
+                  startClientX: number;
+                  startClientY: number;
+                  dragging: boolean;
+              }
+            | null = null;
+        let polygonPointHoverState: { polygonId: string; index: number } | null =
+            null;
+        const dispatchHoverListeners = (
+            event: PolygonPointPointerEvent | null,
+        ): void => {
+            for (const l of polygonPointHoverListeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error(
+                        "[JpmapTerrain] onPolygonPointHover listener threw:",
+                        err,
+                    );
+                }
+            }
+        };
+        const dispatchPointEvent = (
+            listeners: PolygonPointClickListener[],
+            event: PolygonPointPointerEvent,
+            label: string,
+        ): void => {
+            for (const l of listeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error(
+                        `[JpmapTerrain] ${label} listener threw:`,
+                        err,
+                    );
+                }
+            }
+        };
+        const dispatchDragEvent = (
+            listeners: PolygonPointDragListener[],
+            event: PolygonPointDragEvent,
+            label: string,
+        ): void => {
+            for (const l of listeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error(
+                        `[JpmapTerrain] ${label} listener threw:`,
+                        err,
+                    );
+                }
+            }
+        };
+        /** 汎用 subscribe ヘルパ。配列に listener を追加し、解除関数を返す (#184) */
+        const subscribe = <T>(
+            listeners: T[],
+            listener: T,
+        ): (() => void) => {
+            listeners.push(listener);
+            let removed = false;
+            return (): void => {
+                if (removed) return;
+                removed = true;
+                const idx = listeners.indexOf(listener);
+                if (idx !== -1) listeners.splice(idx, 1);
+            };
+        };
+
         /** ワールド座標(wx, wz)を現在のgrid基準で緯度経度に変換 */
         const worldToLatLon = (wx: number, wz: number): { lat: number; lon: number } => {
             const metersPerDegreeLon = METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
@@ -571,6 +725,29 @@ export class DefaultScene implements CreateSceneClass {
 
         canvas.addEventListener("pointerdown", (e: PointerEvent) => {
             if (e.button !== 0) return;
+            // 頂点インタラクション (#184): 頂点 mesh 上の主ボタン pointerdown は
+            // ドラッグ/クリックジェスチャに切り替え、既存のカメラ操作には進めない。
+            if (
+                hasPolygonPointGestureListeners() &&
+                !(e.ctrlKey || e.metaKey)
+            ) {
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const hit = pickPolygonPoint(sx, sy);
+                if (hit) {
+                    polygonPointGesture = {
+                        pointerId: e.pointerId,
+                        polygonId: hit.polygonId,
+                        index: hit.index,
+                        startClientX: e.clientX,
+                        startClientY: e.clientY,
+                        dragging: false,
+                    };
+                    canvas.setPointerCapture(e.pointerId);
+                    return;
+                }
+            }
             pointerDown = true;
             lastPointerX = e.clientX;
             lastPointerY = e.clientY;
@@ -621,6 +798,80 @@ export class DefaultScene implements CreateSceneClass {
         });
 
         canvas.addEventListener("pointermove", (e: PointerEvent) => {
+            // 頂点インタラクション (#184) のジェスチャ進行中はカメラ操作に進めない
+            if (polygonPointGesture && polygonPointGesture.pointerId === e.pointerId) {
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                if (!polygonPointGesture.dragging) {
+                    const dx = e.clientX - polygonPointGesture.startClientX;
+                    const dy = e.clientY - polygonPointGesture.startClientY;
+                    if (
+                        Math.abs(dx) > POLYGON_POINT_DRAG_THRESHOLD_PX ||
+                        Math.abs(dy) > POLYGON_POINT_DRAG_THRESHOLD_PX
+                    ) {
+                        polygonPointGesture.dragging = true;
+                        const ground = computeDragGroundHit(sx, sy);
+                        const startEvent: PolygonPointDragEvent = {
+                            polygonId: polygonPointGesture.polygonId,
+                            index: polygonPointGesture.index,
+                            pointerEvent: e,
+                            ...ground,
+                        };
+                        dispatchDragEvent(
+                            polygonPointDragStartListeners,
+                            startEvent,
+                            "onPolygonPointDragStart",
+                        );
+                    }
+                }
+                if (polygonPointGesture.dragging) {
+                    const ground = computeDragGroundHit(sx, sy);
+                    const dragEvent: PolygonPointDragEvent = {
+                        polygonId: polygonPointGesture.polygonId,
+                        index: polygonPointGesture.index,
+                        pointerEvent: e,
+                        ...ground,
+                    };
+                    dispatchDragEvent(
+                        polygonPointDragListeners,
+                        dragEvent,
+                        "onPolygonPointDrag",
+                    );
+                }
+                return;
+            }
+
+            // hover 検出 (#184): pointer が押下されておらず、リスナーが存在するときのみ
+            if (
+                !pointerDown &&
+                polygonPointHoverListeners.length > 0
+            ) {
+                const rect = canvas.getBoundingClientRect();
+                const sx = e.clientX - rect.left;
+                const sy = e.clientY - rect.top;
+                const hit = pickPolygonPoint(sx, sy);
+                if (hit) {
+                    if (
+                        !polygonPointHoverState ||
+                        polygonPointHoverState.polygonId !== hit.polygonId ||
+                        polygonPointHoverState.index !== hit.index
+                    ) {
+                        polygonPointHoverState = hit;
+                        canvas.style.cursor = "pointer";
+                        dispatchHoverListeners({
+                            polygonId: hit.polygonId,
+                            index: hit.index,
+                            pointerEvent: e,
+                        });
+                    }
+                } else if (polygonPointHoverState !== null) {
+                    polygonPointHoverState = null;
+                    canvas.style.cursor = "";
+                    dispatchHoverListeners(null);
+                }
+            }
+
             if (!pointerDown || e.pointerId !== activePointerId) return;
 
             if (e.ctrlKey || e.metaKey) {
@@ -697,6 +948,44 @@ export class DefaultScene implements CreateSceneClass {
         });
 
         canvas.addEventListener("pointerup", (e: PointerEvent) => {
+            // 頂点インタラクション (#184): ジェスチャ進行中の up は click / dragEnd を発火する
+            if (
+                polygonPointGesture &&
+                polygonPointGesture.pointerId === e.pointerId
+            ) {
+                const gesture = polygonPointGesture;
+                polygonPointGesture = null;
+                canvas.releasePointerCapture(e.pointerId);
+                if (gesture.dragging) {
+                    const rect = canvas.getBoundingClientRect();
+                    const sx = e.clientX - rect.left;
+                    const sy = e.clientY - rect.top;
+                    const ground = computeDragGroundHit(sx, sy);
+                    const endEvent: PolygonPointDragEvent = {
+                        polygonId: gesture.polygonId,
+                        index: gesture.index,
+                        pointerEvent: e,
+                        ...ground,
+                    };
+                    dispatchDragEvent(
+                        polygonPointDragEndListeners,
+                        endEvent,
+                        "onPolygonPointDragEnd",
+                    );
+                } else {
+                    const clickEvent: PolygonPointPointerEvent = {
+                        polygonId: gesture.polygonId,
+                        index: gesture.index,
+                        pointerEvent: e,
+                    };
+                    dispatchPointEvent(
+                        polygonPointClickListeners,
+                        clickEvent,
+                        "onPolygonPointClick",
+                    );
+                }
+                return;
+            }
             if (e.pointerId !== activePointerId) return;
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
@@ -704,17 +993,41 @@ export class DefaultScene implements CreateSceneClass {
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         });
 
-        const resetPointerState = (): void => {
+        const resetPointerState = (e?: PointerEvent): void => {
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
             dragMeshMode = false;
+            // 頂点ジェスチャも併せて中断する (#184)
+            if (polygonPointGesture && (!e || polygonPointGesture.pointerId === e.pointerId)) {
+                const gesture = polygonPointGesture;
+                polygonPointGesture = null;
+                if (gesture.dragging && e) {
+                    const endEvent: PolygonPointDragEvent = {
+                        polygonId: gesture.polygonId,
+                        index: gesture.index,
+                        pointerEvent: e,
+                        lat: null,
+                        lon: null,
+                        groundAltitude: null,
+                    };
+                    dispatchDragEvent(
+                        polygonPointDragEndListeners,
+                        endEvent,
+                        "onPolygonPointDragEnd",
+                    );
+                }
+            }
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         };
 
-        canvas.addEventListener("pointercancel", resetPointerState);
-        canvas.addEventListener("lostpointercapture", resetPointerState);
+        canvas.addEventListener("pointercancel", (e: PointerEvent) =>
+            resetPointerState(e),
+        );
+        canvas.addEventListener("lostpointercapture", (e: PointerEvent) =>
+            resetPointerState(e),
+        );
 
         // ---- 地形クリック通知 (Issue #183) ----
         //
@@ -868,8 +1181,11 @@ export class DefaultScene implements CreateSceneClass {
             sx: number,
             sy: number
         ): { worldX: number; worldZ: number } | null => {
-            // scene.pick() は内部で DPR スケーリングを行うため CSS 座標をそのまま渡す
-            const pick = scene.pick(sx, sy);
+            // scene.pick() は内部で DPR スケーリングを行うため CSS 座標をそのまま渡す。
+            // 頂点メッシュ等が pickable な場合はノイズになるため、地形メッシュに限定する (#184)。
+            const pick = scene.pick(sx, sy, (m) =>
+                m.name.startsWith("tile-ground-"),
+            );
             if (pick?.hit && pick.pickedPoint) {
                 return {
                     worldX: pick.pickedPoint.x,
@@ -1419,6 +1735,12 @@ export class DefaultScene implements CreateSceneClass {
                 // 解除関数を呼ばないまま dispose されたケースで、クロージャに
                 // 残ったリスナー参照経由で外部オブジェクトが解放されないのを防ぐ。
                 terrainClickListeners.length = 0;
+                // 頂点インタラクションのリスナー (Issue #184) も同様にクリアする。
+                polygonPointHoverListeners.length = 0;
+                polygonPointClickListeners.length = 0;
+                polygonPointDragStartListeners.length = 0;
+                polygonPointDragListeners.length = 0;
+                polygonPointDragEndListeners.length = 0;
                 // controlPanel は document.body に各 UI を直接 append しているため、
                 // ここで親要素から取り除く (T7 / Issue #121)。
                 // - compass / mapToggle は単独要素
@@ -1475,6 +1797,16 @@ export class DefaultScene implements CreateSceneClass {
                     if (idx !== -1) terrainClickListeners.splice(idx, 1);
                 };
             },
+            subscribePolygonPointHover: (listener) =>
+                subscribe(polygonPointHoverListeners, listener),
+            subscribePolygonPointClick: (listener) =>
+                subscribe(polygonPointClickListeners, listener),
+            subscribePolygonPointDragStart: (listener) =>
+                subscribe(polygonPointDragStartListeners, listener),
+            subscribePolygonPointDrag: (listener) =>
+                subscribe(polygonPointDragListeners, listener),
+            subscribePolygonPointDragEnd: (listener) =>
+                subscribe(polygonPointDragEndListeners, listener),
         };
         options?.onReady?.(controller);
 

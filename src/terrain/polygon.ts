@@ -144,7 +144,10 @@ const createPointSphere = (
     material.alpha = style.pointOpacity;
     mesh.material = material;
     mesh.renderingGroupId = RENDERING_GROUP_ID;
-    mesh.isPickable = false;
+    // 頂点インタラクション API (#184) のため pickable にする。
+    // 名前 `polygon-${id}-point-${i}` を `JpmapTerrain.onPolygonPoint*` 側でパースして
+    // polygonId / index を解決する。
+    mesh.isPickable = true;
     mesh.parent = parent;
     return { mesh, material };
 };

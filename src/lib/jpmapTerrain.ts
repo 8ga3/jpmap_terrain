@@ -33,6 +33,9 @@ import {
     PolygonPointPartial,
     SUN_AUTO_UPDATE_INTERVAL_MS,
     TerrainClickListener,
+    PolygonPointHoverListener,
+    PolygonPointClickListener,
+    PolygonPointDragListener,
 } from "./types";
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
 import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
@@ -561,6 +564,81 @@ export class JpmapTerrain {
             };
         }
         return this._controller.subscribeTerrainClick(listener);
+    }
+
+    // ---- ポリゴン頂点インタラクション (Issue #184) ----
+
+    /**
+     * ポリゴン頂点上の hover を購読する。リスナーは頂点に入った/対象切替時に
+     * `{ polygonId, index, pointerEvent }` を、頂点から離れたときに `null` を受け取る。
+     * hover 中はカーソルが自動的に `pointer` に切り替わり、解除時に空文字へ戻る。
+     */
+    public onPolygonPointHover(
+        listener: PolygonPointHoverListener,
+    ): () => void {
+        if (this._disposed || !this._controller) {
+            return () => {
+                /* no-op */
+            };
+        }
+        return this._controller.subscribePolygonPointHover(listener);
+    }
+
+    /**
+     * ポリゴン頂点上のクリックを購読する。
+     * `pointerdown` から `pointerup` までの移動量が
+     * {@link import("./types").POLYGON_POINT_DRAG_THRESHOLD_PX} (= 3 CSS px) 未満のとき発火する。
+     * 修飾キー `Ctrl` / `Cmd` 併用時はカメラ操作のため発火しない。
+     */
+    public onPolygonPointClick(
+        listener: PolygonPointClickListener,
+    ): () => void {
+        if (this._disposed || !this._controller) {
+            return () => {
+                /* no-op */
+            };
+        }
+        return this._controller.subscribePolygonPointClick(listener);
+    }
+
+    /** ポリゴン頂点ドラッグ開始 (#184)。閾値は 3 CSS px。 */
+    public onPolygonPointDragStart(
+        listener: PolygonPointDragListener,
+    ): () => void {
+        if (this._disposed || !this._controller) {
+            return () => {
+                /* no-op */
+            };
+        }
+        return this._controller.subscribePolygonPointDragStart(listener);
+    }
+
+    /**
+     * ポリゴン頂点ドラッグ中（`pointermove` 毎） (#184)。
+     * カーソル位置の地形メッシュ交点を `lat` / `lon` / `groundAltitude` で通知する
+     * （地形にヒットしなかった場合は `null`）。
+     */
+    public onPolygonPointDrag(
+        listener: PolygonPointDragListener,
+    ): () => void {
+        if (this._disposed || !this._controller) {
+            return () => {
+                /* no-op */
+            };
+        }
+        return this._controller.subscribePolygonPointDrag(listener);
+    }
+
+    /** ポリゴン頂点ドラッグ終了 (#184)。`pointerup` または `pointercancel` で発火する。 */
+    public onPolygonPointDragEnd(
+        listener: PolygonPointDragListener,
+    ): () => void {
+        if (this._disposed || !this._controller) {
+            return () => {
+                /* no-op */
+            };
+        }
+        return this._controller.subscribePolygonPointDragEnd(listener);
     }
 
     // ---- 太陽位置 (spec §3.3.6 / Issue #35) ----

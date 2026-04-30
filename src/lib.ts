@@ -30,4 +30,9 @@ export type {
     PolygonHandle,
     TerrainClickEvent,
     TerrainClickListener,
+    PolygonPointPointerEvent,
+    PolygonPointDragEvent,
+    PolygonPointHoverListener,
+    PolygonPointClickListener,
+    PolygonPointDragListener,
 } from "./lib/types";

@@ -512,6 +512,55 @@ interface JpmapTerrain {
 - `dispose()` 後の `onTerrainClick` は no-op。返される解除関数も no-op で安全に呼べる。
 - 登録解除関数は二重呼び出ししても throw しない。
 
+#### 3.3.10 ポリゴン頂点インタラクション (Issue #184)
+
+ポリゴンの頂点（球体メッシュ）に対する hover / click / drag を購読するイベント API。距離計測などのデモ（#44）で頂点の編集 UI を構築するための基盤。
+
+```typescript
+interface PolygonPointPointerEvent {
+  /** 対象ポリゴンの ID */
+  readonly polygonId: string;
+  /** 頂点インデックス（0 起点） */
+  readonly index: number;
+  /** 元の `PointerEvent` */
+  readonly pointerEvent: PointerEvent;
+}
+
+interface PolygonPointDragEvent extends PolygonPointPointerEvent {
+  /** ドラッグ中カーソル直下の地形交点の緯度（地形未ヒット時 `null`） */
+  readonly lat: number | null;
+  /** ドラッグ中カーソル直下の地形交点の経度（地形未ヒット時 `null`） */
+  readonly lon: number | null;
+  /** ドラッグ中カーソル直下の地形交点の標高 m（地形未ヒット時 `null`） */
+  readonly groundAltitude: number | null;
+}
+
+type PolygonPointHoverListener = (
+  event: PolygonPointPointerEvent | null,
+) => void;
+type PolygonPointClickListener = (event: PolygonPointPointerEvent) => void;
+type PolygonPointDragListener = (event: PolygonPointDragEvent) => void;
+
+interface JpmapTerrain {
+  onPolygonPointHover(listener: PolygonPointHoverListener): () => void;
+  onPolygonPointClick(listener: PolygonPointClickListener): () => void;
+  onPolygonPointDragStart(listener: PolygonPointDragListener): () => void;
+  onPolygonPointDrag(listener: PolygonPointDragListener): () => void;
+  onPolygonPointDragEnd(listener: PolygonPointDragListener): () => void;
+}
+```
+
+**仕様:**
+
+- 対象は `polygon-${id}-point-${i}` メッシュ。`scene.pick` で hit したときのみ各イベントを発火する。
+- **hover**: 頂点に入った瞬間および対象切替時に `PolygonPointPointerEvent` を、頂点から離れた瞬間に `null` を通知する。hover 中はキャンバスのカーソルを `pointer` に切り替え、hover 解除時に空文字へ戻す。リスナーが 1 件も無いときは hover 検出を行わずカーソル変更も発生しない。
+- **click**: `pointerdown` した頂点上で `pointerup` し、かつ `pointerdown` から `pointerup` までの移動量が **3 CSS px 未満** のとき発火する。`Ctrl` / `Cmd` 併用時は従来どおりカメラ操作扱いのため発火しない。
+- **dragStart / drag / dragEnd**: 頂点 `pointerdown` 後に 3 CSS px 以上移動した時点で `dragStart` を発火し、以降の `pointermove` ごとに `drag` を発火、`pointerup` または `pointercancel` / `lostpointercapture` で `dragEnd` を発火する。`drag` / `dragStart` / `dragEnd` の `lat` / `lon` / `groundAltitude` には現在のカーソル直下の地形交点を採用し、地形未ヒット時は `null`。
+- 頂点ジェスチャ中は通常の地形クリック (#183) およびカメラ操作は抑制される。
+- リスナー未登録時は頂点メッシュの hit 判定 / カーソル変更コストも発生しない。
+- 各リスナーが throw しても他リスナーへ伝播せず `console.error` で握りつぶす。
+- `dispose()` 後の `onPolygonPoint*` は no-op。返される解除関数は二重呼び出ししても throw しない。
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
@@ -550,6 +599,12 @@ import type {
   // 地形クリック (Issue #183)
   TerrainClickEvent,
   TerrainClickListener,
+  // ポリゴン頂点インタラクション (Issue #184)
+  PolygonPointPointerEvent,
+  PolygonPointDragEvent,
+  PolygonPointHoverListener,
+  PolygonPointClickListener,
+  PolygonPointDragListener,
 } from "jpmap-terrain";
 ```
 

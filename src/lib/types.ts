@@ -150,6 +150,58 @@ export type TerrainClickListener = (event: TerrainClickEvent) => void;
  */
 export const TERRAIN_CLICK_DRAG_THRESHOLD_PX = 4;
 
+// ---- ポリゴン頂点インタラクション (Issue #184) ----
+
+/**
+ * ポリゴン頂点上のポインタイベント共通ペイロード。
+ *
+ * `JpmapTerrain.onPolygonPointHover` / `onPolygonPointClick` /
+ * `onPolygonPointDragStart` / `onPolygonPointDrag` / `onPolygonPointDragEnd`
+ * のリスナー引数として共通利用される。
+ */
+export interface PolygonPointPointerEvent {
+    /** 対象ポリゴンの id */
+    readonly polygonId: string;
+    /** 対象頂点の index（0-based） */
+    readonly index: number;
+    /** 元の `PointerEvent`（`shiftKey` / `ctrlKey` / `button` 判定等） */
+    readonly pointerEvent: PointerEvent;
+}
+
+/**
+ * ポリゴン頂点ドラッグ中のペイロード。
+ *
+ * カーソル位置の地形メッシュとの交点に基づく lat/lon と地表標高を含む。
+ * 地形にヒットしなかった場合は `lat`/`lon`/`groundAltitude` が `null`。
+ */
+export interface PolygonPointDragEvent extends PolygonPointPointerEvent {
+    /** カーソル位置の地形メッシュ交点の緯度（ヒットなしのとき null） */
+    readonly lat: number | null;
+    /** カーソル位置の地形メッシュ交点の経度（ヒットなしのとき null） */
+    readonly lon: number | null;
+    /** カーソル位置の地表標高 (m, ヒットなしのとき null) */
+    readonly groundAltitude: number | null;
+}
+
+/** `onPolygonPointHover` リスナー（hover 解除時は `null` で呼ばれる） */
+export type PolygonPointHoverListener = (
+    event: PolygonPointPointerEvent | null,
+) => void;
+
+/** `onPolygonPointClick` リスナー */
+export type PolygonPointClickListener = (
+    event: PolygonPointPointerEvent,
+) => void;
+
+/** `onPolygonPointDragStart` / `onPolygonPointDrag` / `onPolygonPointDragEnd` リスナー */
+export type PolygonPointDragListener = (event: PolygonPointDragEvent) => void;
+
+/**
+ * `pointerdown` から開始し、ドラッグ判定に必要な最小移動量 (CSS px)。
+ * これ未満の移動量で pointerup した場合は click 扱いとなる。
+ */
+export const POLYGON_POINT_DRAG_THRESHOLD_PX = 3;
+
 // ---- マーカー (Issue #167) ----
 
 export interface MarkerTextOptions {
