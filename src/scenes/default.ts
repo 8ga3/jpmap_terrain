@@ -21,7 +21,12 @@ import { computeSunPosition } from "../terrain/sunPosition";
 import { deriveSunState } from "../terrain/sunState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
 import { createUiVisibilityController } from "../terrain/uiVisibility";
-import { SUN_FALLBACK_DATETIME_ISO } from "../lib/types";
+import {
+    SUN_FALLBACK_DATETIME_ISO,
+    TERRAIN_CLICK_DRAG_THRESHOLD_PX,
+    type TerrainClickEvent,
+    type TerrainClickListener,
+} from "../lib/types";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = 18;
@@ -181,6 +186,19 @@ export interface DefaultSceneController {
 
     /** @internal MarkerManager 構築用コンテキスト (Issue #167) */
     getMarkerContext(): MarkerContext;
+
+    /**
+     * 地形タイルへのクリック通知を購読する (Issue #183)。
+     *
+     * - `pointerdown` から `pointerup` までの移動量が
+     *   {@link TERRAIN_CLICK_DRAG_THRESHOLD_PX} 以下の場合にのみ発火する。
+     * - 主ボタン (`button === 0`) のみが対象。
+     * - 修飾キー (`Ctrl`/`Cmd`) 押下時はカメラ操作のため発火しない。
+     * - クリック地点が `tile-ground-*` メッシュにヒットしなかった場合は発火しない。
+     *
+     * @returns 登録解除関数
+     */
+    subscribeTerrainClick(listener: TerrainClickListener): () => void;
 }
 
 /**
@@ -697,6 +715,80 @@ export class DefaultScene implements CreateSceneClass {
 
         canvas.addEventListener("pointercancel", resetPointerState);
         canvas.addEventListener("lostpointercapture", resetPointerState);
+
+        // ---- 地形クリック通知 (Issue #183) ----
+        //
+        // 既存の pan/rotate 用 pointer ハンドラと独立に、
+        // 「pointerdown→pointerup の間にほとんど動いていない」場合のみ
+        // 地形メッシュへの click とみなして購読リスナーへ通知する。
+        const terrainClickListeners: TerrainClickListener[] = [];
+        let terrainClickStart: {
+            pointerId: number;
+            x: number;
+            y: number;
+            modifier: boolean;
+        } | null = null;
+        canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+            if (e.button !== 0) return;
+            terrainClickStart = {
+                pointerId: e.pointerId,
+                x: e.clientX,
+                y: e.clientY,
+                modifier: e.ctrlKey || e.metaKey,
+            };
+        });
+        const cancelTerrainClick = (e: PointerEvent): void => {
+            if (terrainClickStart && terrainClickStart.pointerId === e.pointerId) {
+                terrainClickStart = null;
+            }
+        };
+        canvas.addEventListener("pointercancel", cancelTerrainClick);
+        canvas.addEventListener("lostpointercapture", cancelTerrainClick);
+        canvas.addEventListener("pointerup", (e: PointerEvent) => {
+            const start = terrainClickStart;
+            terrainClickStart = null;
+            if (!start || start.pointerId !== e.pointerId) return;
+            // Ctrl/Cmd 併用はカメラ操作（パン/チルト）扱いのためクリック通知しない。
+            if (start.modifier) return;
+            if (terrainClickListeners.length === 0) return;
+            const dx = e.clientX - start.x;
+            const dy = e.clientY - start.y;
+            if (
+                Math.abs(dx) > TERRAIN_CLICK_DRAG_THRESHOLD_PX ||
+                Math.abs(dy) > TERRAIN_CLICK_DRAG_THRESHOLD_PX
+            ) {
+                return;
+            }
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const pick = scene.pick(sx, sy, (m) =>
+                m.name.startsWith("tile-ground-"),
+            );
+            if (!pick?.hit || !pick.pickedPoint) return;
+            const wx = pick.pickedPoint.x;
+            const wy = pick.pickedPoint.y;
+            const wz = pick.pickedPoint.z;
+            const { lat, lon } = worldToLatLon(wx, wz);
+            const event: TerrainClickEvent = {
+                lat,
+                lon,
+                altitude: wy,
+                world: { x: wx, y: wy, z: wz },
+                pointerEvent: e,
+            };
+            // iterate 中の add/remove 安全のため slice
+            for (const listener of terrainClickListeners.slice()) {
+                try {
+                    listener(event);
+                } catch (err) {
+                    console.error(
+                        "[JpmapTerrain] onTerrainClick listener threw:",
+                        err,
+                    );
+                }
+            }
+        });
 
         // ホイール / ダブルクリック: ポインタ方向にズーム
 
@@ -1368,6 +1460,16 @@ export class DefaultScene implements CreateSceneClass {
                     beta: camera.beta,
                 }),
             }),
+            subscribeTerrainClick: (listener) => {
+                terrainClickListeners.push(listener);
+                let removed = false;
+                return (): void => {
+                    if (removed) return;
+                    removed = true;
+                    const idx = terrainClickListeners.indexOf(listener);
+                    if (idx !== -1) terrainClickListeners.splice(idx, 1);
+                };
+            },
         };
         options?.onReady?.(controller);
 

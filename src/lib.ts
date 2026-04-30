@@ -28,4 +28,6 @@ export type {
     PolygonOptions,
     PolygonUpdate,
     PolygonHandle,
+    TerrainClickEvent,
+    TerrainClickListener,
 } from "./lib/types";
