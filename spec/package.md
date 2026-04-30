@@ -641,9 +641,24 @@ const points = [
   { lat: 35.70, lon: 139.76, altitude: 120 },
 ];
 
+// 水平距離 (m) を haversine 法で算出（ライブラリには含まれないので自前実装）。
+const EARTH_RADIUS_M = 6_371_008.8;
+const toRad = (deg: number) => (deg * Math.PI) / 180;
+const haversineMeters = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const sLat = Math.sin(dLat / 2);
+  const sLon = Math.sin(dLon / 2);
+  const h = sLat * sLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sLon * sLon;
+  const hh = Math.min(1, Math.max(0, h)); // 対蹠点付近で NaN を避けるためクランプ
+  return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(hh), Math.sqrt(1 - hh));
+};
+
 const formatEdge = (a: typeof points[number], b: typeof points[number]) => {
+  const dist = haversineMeters(a, b);
+  const distStr = dist < 1000 ? `${Math.round(dist)} m` : `${(dist / 1000).toFixed(2)} km`;
   const dAlt = (b.altitude ?? 0) - (a.altitude ?? 0);
-  return `~ m\n${dAlt >= 0 ? "+" : ""}${dAlt.toFixed(0)} m`;
+  return `${distStr}\n${dAlt >= 0 ? "+" : ""}${dAlt.toFixed(0)} m`;
 };
 
 viewer.addPolygon("dist-line", {
