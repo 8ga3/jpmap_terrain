@@ -1415,6 +1415,10 @@ export class DefaultScene implements CreateSceneClass {
             dispose: () => {
                 // ShadowGenerator が残っていれば確実に解放する (Issue #39)。
                 disableSunShadows();
+                // 地形クリックリスナー (Issue #183) も dispose 時に解放する。
+                // 解除関数を呼ばないまま dispose されたケースで、クロージャに
+                // 残ったリスナー参照経由で外部オブジェクトが解放されないのを防ぐ。
+                terrainClickListeners.length = 0;
                 // controlPanel は document.body に各 UI を直接 append しているため、
                 // ここで親要素から取り除く (T7 / Issue #121)。
                 // - compass / mapToggle は単独要素
