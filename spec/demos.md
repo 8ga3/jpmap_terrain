@@ -48,7 +48,7 @@
 
 クリック / ドラッグでポリラインを編集し、頂点ごとの `lat / lon / altitude` と各辺の水平距離・高低差を実時間で表示する距離計測デモ（#186）。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認を兼ねる。
 
-**URL クエリ:** `engine` のみ（viewer / timelapse と同規則）。カメラ初期位置は viewer 共通の `?@lat,lon[,...]` パスを使用しない（デモ専用 UI のため）。
+**URL:** `engine` に加えて、viewer / timelapse と同様にカメラ初期位置の指定（`/@lat,lon[,...]` のパス形式、および `?lat=&lon=` 等のクエリ形式）と `?mapType=standard|photo` を受け付ける（実装上 `parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
 **操作モード（右上ツールバーで排他切替）:**
 
