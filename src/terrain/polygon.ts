@@ -722,6 +722,13 @@ export const createPolygonNode = (
         const sphereRadiusWorld = sphereDiameter * pointScale * 0.5;
         // 球トップとラベル下端の間隔。`LABEL_GAP_FONT_RATIO === 0` ならギャップなし。
         const labelGap = style.labelFontSize * pointScale * LABEL_GAP_FONT_RATIO;
+        // カメラから見た「画面上方向」を、各点で算出する。
+        // ラベル中心を `球中心 + screenUp * offsetY` に置くことで、
+        // ラベル平面の billboard 回転は事実上「球中心まわり」の回転として振る舞い、
+        // どのカメラ角度でもラベルが球を覆い隠さない (#186 PR レビュー指摘)。
+        const camera = scene.activeCamera;
+        const camPos = camera ? camera.globalPosition : null;
+        const camUp = camera ? camera.upVector : null;
         for (let i = 0; i < sphereEntries.length; i++) {
             const sphere = sphereEntries[i].mesh;
             const wp = worldPoints[i];
@@ -746,13 +753,48 @@ export const createPolygonNode = (
                 );
             }
 
-            // ラベル: 球の上にオフセット配置 + distScale 連動。
-            // 中心位置 = 球中心 + 球半径 + ギャップ + ラベル平面の半分。
+            // ラベル: 球中心からカメラ視点での「画面上方向」へオフセット配置 + distScale 連動。
+            // 中心位置 = 球中心 + screenUp(その点でのカメラ上方向) * (球半径 + ギャップ + ラベル半高)。
+            // billboardMode はラベル平面自身を画面に正対させる。両者の組み合わせで
+            // ラベルが常に球の「上」（画面上）に来て、球を覆い隠さない。
             const label = labelEntries[i];
             if (label) {
                 const labelHalfWorld = label.heightWorld * pointScale * 0.5;
-                const offsetY = sphereRadiusWorld + labelGap + labelHalfWorld;
-                label.mesh.position.set(wp.x, wp.y + offsetY, wp.z);
+                const offset = sphereRadiusWorld + labelGap + labelHalfWorld;
+                let ux = 0;
+                let uy = 1;
+                let uz = 0;
+                if (camPos && camUp) {
+                    // toCam = (camPos - wp) を normalize。
+                    const tx = camPos.x - wp.x;
+                    const ty = camPos.y - wp.y;
+                    const tz = camPos.z - wp.z;
+                    const tlen = Math.hypot(tx, ty, tz);
+                    if (tlen > 1e-6) {
+                        const fx = tx / tlen;
+                        const fy = ty / tlen;
+                        const fz = tz / tlen;
+                        // right = camUp × toCam
+                        const rx = camUp.y * fz - camUp.z * fy;
+                        const ry = camUp.z * fx - camUp.x * fz;
+                        const rz = camUp.x * fy - camUp.y * fx;
+                        // screenUp = toCam × right
+                        const sxv = fy * rz - fz * ry;
+                        const syv = fz * rx - fx * rz;
+                        const szv = fx * ry - fy * rx;
+                        const slen = Math.hypot(sxv, syv, szv);
+                        if (slen > 1e-6) {
+                            ux = sxv / slen;
+                            uy = syv / slen;
+                            uz = szv / slen;
+                        }
+                    }
+                }
+                label.mesh.position.set(
+                    wp.x + ux * offset,
+                    wp.y + uy * offset,
+                    wp.z + uz * offset,
+                );
                 label.mesh.scaling.setAll(pointScale);
             }
         }
