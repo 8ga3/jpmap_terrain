@@ -438,6 +438,12 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         // ---------- レイ-平面交差ユーティリティ ----------
+        // Unproject 用のスクラッチバッファ。pointermove のホットパスで毎フレーム
+        // `Matrix.Identity()` / `new Vector3` を確保すると GC 圧が増えるため、
+        // 使い回し可能なバッファに `UnprojectFloatsToRef` で書き込む (#191)。
+        const unprojectIdentity = Matrix.IdentityReadOnly;
+        const unprojectNear = new Vector3();
+        const unprojectFar = new Vector3();
         const intersectPlane = (
             screenX: number,
             screenY: number,
@@ -449,22 +455,23 @@ export class DefaultScene implements CreateSceneClass {
             const scaleY = renderH / canvas.clientHeight;
             const view = camera.getViewMatrix();
             const proj = camera.getProjectionMatrix();
-            const identity = Matrix.Identity();
-            const near = Vector3.Unproject(
-                new Vector3(screenX * scaleX, screenY * scaleY, 0),
-                renderW, renderH, identity, view, proj
+            Vector3.UnprojectFloatsToRef(
+                screenX * scaleX, screenY * scaleY, 0,
+                renderW, renderH, unprojectIdentity, view, proj,
+                unprojectNear,
             );
-            const far = Vector3.Unproject(
-                new Vector3(screenX * scaleX, screenY * scaleY, 1),
-                renderW, renderH, identity, view, proj
+            Vector3.UnprojectFloatsToRef(
+                screenX * scaleX, screenY * scaleY, 1,
+                renderW, renderH, unprojectIdentity, view, proj,
+                unprojectFar,
             );
-            const dirY = far.y - near.y;
+            const dirY = unprojectFar.y - unprojectNear.y;
             if (Math.abs(dirY) < 1e-6) return null;
-            const t = (planeY - near.y) / dirY;
+            const t = (planeY - unprojectNear.y) / dirY;
             if (t <= 0) return null;
             return {
-                x: near.x + (far.x - near.x) * t,
-                z: near.z + (far.z - near.z) * t,
+                x: unprojectNear.x + (unprojectFar.x - unprojectNear.x) * t,
+                z: unprojectNear.z + (unprojectFar.z - unprojectNear.z) * t,
             };
         };
 
@@ -679,18 +686,20 @@ export class DefaultScene implements CreateSceneClass {
             const scaleY = renderH / canvas.clientHeight;
             const view = camera.getViewMatrix();
             const proj = camera.getProjectionMatrix();
-            const identity = Matrix.Identity();
-            const near = Vector3.Unproject(
-                new Vector3(screenX * scaleX, screenY * scaleY, 0),
-                renderW, renderH, identity, view, proj,
+            // 共有スクラッチに書き込み、毎回の new を避ける (#191)。
+            Vector3.UnprojectFloatsToRef(
+                screenX * scaleX, screenY * scaleY, 0,
+                renderW, renderH, unprojectIdentity, view, proj,
+                unprojectNear,
             );
-            const far = Vector3.Unproject(
-                new Vector3(screenX * scaleX, screenY * scaleY, 1),
-                renderW, renderH, identity, view, proj,
+            Vector3.UnprojectFloatsToRef(
+                screenX * scaleX, screenY * scaleY, 1,
+                renderW, renderH, unprojectIdentity, view, proj,
+                unprojectFar,
             );
-            let dxr = far.x - near.x;
-            let dyr = far.y - near.y;
-            let dzr = far.z - near.z;
+            let dxr = unprojectFar.x - unprojectNear.x;
+            let dyr = unprojectFar.y - unprojectNear.y;
+            let dzr = unprojectFar.z - unprojectNear.z;
             const len = Math.hypot(dxr, dyr, dzr);
             if (len < 1e-9) return null;
             dxr /= len; dyr /= len; dzr /= len;
@@ -699,9 +708,9 @@ export class DefaultScene implements CreateSceneClass {
             const denom = 1 - dyr * dyr;
             if (Math.abs(denom) < 1e-6) return null;
             // w0 = (startX - near.x, 0 - near.y, startZ - near.z)
-            const wx = startX - near.x;
-            const wy = -near.y;
-            const wz = startZ - near.z;
+            const wx = startX - unprojectNear.x;
+            const wy = -unprojectNear.y;
+            const wz = startZ - unprojectNear.z;
             const d = wy; // d1 · w0
             const eDot = dxr * wx + dyr * wy + dzr * wz; // d2 · w0
             return (dyr * eDot - d) / denom;
