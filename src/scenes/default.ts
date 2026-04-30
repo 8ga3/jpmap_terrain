@@ -1026,13 +1026,18 @@ export class DefaultScene implements CreateSceneClass {
                 const gesture = polygonPointGesture;
                 polygonPointGesture = null;
                 if (gesture.dragging && e) {
+                    // spec/package.md §3.3.10: dragEnd も「現在カーソル直下の
+                    // 地形交点」を採用する。pointercancel / lostpointercapture
+                    // 経由でも実イベント座標を解決し直して通知する。
+                    const rect = canvas.getBoundingClientRect();
+                    const sx = e.clientX - rect.left;
+                    const sy = e.clientY - rect.top;
+                    const ground = computeDragGroundHit(sx, sy);
                     const endEvent: PolygonPointDragEvent = {
                         polygonId: gesture.polygonId,
                         index: gesture.index,
                         pointerEvent: e,
-                        lat: null,
-                        lon: null,
-                        groundAltitude: null,
+                        ...ground,
                     };
                     dispatchDragEvent(
                         polygonPointDragEndListeners,
