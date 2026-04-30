@@ -745,6 +745,12 @@ export class DefaultScene implements CreateSceneClass {
                         dragging: false,
                     };
                     canvas.setPointerCapture(e.pointerId);
+                    // 同じ canvas に登録されている後続 pointerdown リスナー
+                    // （地形クリック追跡 #183 など）まで伝播させると、頂点
+                    // ジェスチャと並行して onTerrainClick が発火しうる。仕様
+                    // どおり頂点ジェスチャ中はそれらを完全に抑制するため、
+                    // 同イベントの後続リスナーへの配送を止める。
+                    e.stopImmediatePropagation();
                     return;
                 }
             }
