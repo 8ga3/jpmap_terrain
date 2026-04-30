@@ -35,6 +35,13 @@ import {
 } from "../lib/types";
 
 const RENDERING_GROUP_ID = 1;
+/**
+ * 垂線 / 壁は地表メッシュ（既定グループ 0）と同グループで
+ * 描画し、地表の深度バッファで地中部分をオクルードさせる (#186)。
+ * 頂点球 / ポリライン / ラベルは引き続き `RENDERING_GROUP_ID` にて
+ * 地表より手前に描画される。
+ */
+const SUBTERRAIN_RENDERING_GROUP_ID = 0;
 const LABEL_MAX_DT_SIZE = 1024;
 // テキストにフィットさせるため MIN は小さくし、余白は innerPad のみで表現する。
 const LABEL_MIN_DT_SIZE = 32;
@@ -180,7 +187,9 @@ const createDropLine = (
     material.emissiveColor = Color3.FromHexString(style.dropLineColor);
     material.alpha = style.dropLineOpacity;
     mesh.material = material;
-    mesh.renderingGroupId = RENDERING_GROUP_ID;
+    // 地表と同グループで描画し、地表の深度バッファで
+    // 地表より下のセグメントをオクルードさせる (#186)。
+    mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
     mesh.isPickable = false;
     mesh.parent = parent;
     return { mesh, material };
@@ -520,7 +529,9 @@ export const createPolygonNode = (
         wallMaterial.needDepthPrePass = true;
     }
     wallMesh.material = wallMaterial;
-    wallMesh.renderingGroupId = RENDERING_GROUP_ID;
+    // 地表と同グループで描画し、地表の深度バッファで
+    // 地表より下のセグメントをオクルードさせる (#186)。
+    wallMesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
     wallMesh.isPickable = false;
     wallMesh.parent = root;
 
@@ -607,7 +618,7 @@ export const createPolygonNode = (
             scene,
         );
         wallMesh.material = wallMaterial;
-        wallMesh.renderingGroupId = RENDERING_GROUP_ID;
+        wallMesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
         wallMesh.isPickable = false;
         wallMesh.parent = root;
     };
