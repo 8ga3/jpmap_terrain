@@ -219,7 +219,6 @@ const start = async (): Promise<void> => {
     const onStateChange = (): void => {
         rebuildPolygon(viewer, state);
         updateStatus(state, statusEl);
-        updateHoverCursor();
     };
 
     const toolbar = document.getElementById(TOOLBAR_ID);
@@ -227,31 +226,58 @@ const start = async (): Promise<void> => {
         buildToolbar(toolbar, state, onStateChange);
     }
 
-    // hover リスナーを登録して頂点 hover 時のカーソルを編集モード固有のものに切り替える (#186)。
+    // 編集モードでの頂点 hover 時に専用カーソルを表示する (#186)。
+    //
     // - edit + hover                 -> "move"
     // - edit + hover + Shift         -> "ns-resize"（高度編集を示唆）
-    // - その他のモード / hover 解除  -> ライブラリ既定 ("pointer" or "")
+    // - その他のモード / hover 解除 -> "" （ライブラリ既定にフォールバック）
+    //
+    // ライブラリの hover dispatch（#184）は遷移時のみ cursor を更新するため、
+    // 連続 pointermove 中に scene.pick が一瞬外れて hover が解除されると
+    // cursor が `""` に戻ってしまう。そこで demo 側で pointermove ごとに
+    // 自前でピックし直し、ライブラリ後段で cursor を再適用する。
+    //
+    // hover リスナーは canvas cursor 切替を有効化するためだけに 1 件登録する。
+    viewer.onPolygonPointHover(() => {
+        /* no-op: cursor 制御は下記 pointermove 内で行う */
+    });
     const scene = viewer.__debugScene;
     const renderCanvas =
         (scene?.getEngine().getRenderingCanvas() as HTMLCanvasElement | null) ??
         null;
-    let pointHovering = false;
+    const POLYGON_POINT_NAME_RE = /^polygon-(.+)-point-(\d+)$/;
     let shiftPressed = false;
-    const updateHoverCursor = (): void => {
-        if (!renderCanvas) return;
-        if (state.mode === "edit" && pointHovering) {
-            renderCanvas.style.cursor = shiftPressed ? "ns-resize" : "move";
-        }
-        // hover 解除時はライブラリ側で `""` に戻されるため、ここでは触らない。
+    let lastPointerCanvasX: number | null = null;
+    let lastPointerCanvasY: number | null = null;
+    const isHoveringPoint = (sx: number, sy: number): boolean => {
+        if (!scene) return false;
+        const pick = scene.pick(sx, sy, (m) =>
+            POLYGON_POINT_NAME_RE.test(m.name),
+        );
+        return Boolean(pick?.hit && pick.pickedMesh);
     };
-    viewer.onPolygonPointHover((e) => {
-        pointHovering = e !== null;
-        updateHoverCursor();
-    });
+    const applyEditCursor = (sx: number, sy: number): void => {
+        if (!renderCanvas) return;
+        if (state.mode !== "edit") return;
+        if (!isHoveringPoint(sx, sy)) return;
+        renderCanvas.style.cursor = shiftPressed ? "ns-resize" : "move";
+    };
+    if (renderCanvas) {
+        renderCanvas.addEventListener("pointermove", (e: PointerEvent) => {
+            const rect = renderCanvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            lastPointerCanvasX = sx;
+            lastPointerCanvasY = sy;
+            applyEditCursor(sx, sy);
+        });
+    }
     const onShiftKey = (down: boolean) => (ev: KeyboardEvent): void => {
         if (ev.key !== "Shift") return;
         shiftPressed = down;
-        updateHoverCursor();
+        if (lastPointerCanvasX !== null && lastPointerCanvasY !== null) {
+            applyEditCursor(lastPointerCanvasX, lastPointerCanvasY);
+        }
     };
     window.addEventListener("keydown", onShiftKey(true));
     window.addEventListener("keyup", onShiftKey(false));
