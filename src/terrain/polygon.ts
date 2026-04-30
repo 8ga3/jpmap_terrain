@@ -145,8 +145,8 @@ const createPointSphere = (
     mesh.material = material;
     mesh.renderingGroupId = RENDERING_GROUP_ID;
     // 頂点インタラクション API (#184) のため pickable にする。
-    // 名前 `polygon-${id}-point-${i}` を `JpmapTerrain.onPolygonPoint*` 側でパースして
-    // polygonId / index を解決する。
+    // 名前 `polygon-${id}-point-${index}` は DefaultScene 側の
+    // `pickPolygonPoint` でパースされ、polygonId / index の解決に使われる。
     mesh.isPickable = true;
     mesh.parent = parent;
     return { mesh, material };
