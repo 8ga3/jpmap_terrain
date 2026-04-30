@@ -195,6 +195,13 @@ export interface PolygonPointDragEvent extends PolygonPointPointerEvent {
      * 交点が得られない場合は `null`。
      */
     readonly planeLon: number | null;
+    /**
+     * ドラッグ開始時の頂点 (x, z) を通る垂直線とカーソルレイの
+     * 最近接点の world Y。高度編集時にポイントをカーソル位置に
+     * 追従させるために使用する。交点が得られない（カメラがほぼ
+     * 真上 / 真下を向いている）場合は `null` (#186)。
+     */
+    readonly pointerAltitude: number | null;
 }
 
 /** `onPolygonPointHover` リスナー（hover 解除時は `null` で呼ばれる） */

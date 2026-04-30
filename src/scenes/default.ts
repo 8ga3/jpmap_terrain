@@ -603,7 +603,13 @@ export class DefaultScene implements CreateSceneClass {
         const pickPolygonPoint = (
             sx: number,
             sy: number,
-        ): { polygonId: string; index: number; worldY: number } | null => {
+        ): {
+            polygonId: string;
+            index: number;
+            worldX: number;
+            worldY: number;
+            worldZ: number;
+        } | null => {
             const pick = scene.pick(
                 sx,
                 sy,
@@ -612,10 +618,13 @@ export class DefaultScene implements CreateSceneClass {
             if (!pick?.hit || !pick.pickedMesh) return null;
             const match = POLYGON_POINT_NAME_RE.exec(pick.pickedMesh.name);
             if (!match) return null;
+            const pos = pick.pickedMesh.getAbsolutePosition();
             return {
                 polygonId: match[1],
                 index: parseInt(match[2], 10),
-                worldY: pick.pickedMesh.getAbsolutePosition().y,
+                worldX: pos.x,
+                worldY: pos.y,
+                worldZ: pos.z,
             };
         };
         /** 頂点ドラッグ中のカーソル位置から地形交点を解決する */
@@ -653,6 +662,50 @@ export class DefaultScene implements CreateSceneClass {
             const { lat, lon } = worldToLatLon(hit.x, hit.z);
             return { planeLat: lat, planeLon: lon };
         };
+        /**
+         * 頂点ドラッグ中、ドラッグ開始時の頂点 (x, z) を通る垂直線と
+         * カーソルレイの最近接点の world Y を返す (#186)。
+         * カメラがほぼ真上 / 真下を向いているときは null。
+         */
+        const computeDragVerticalHit = (
+            screenX: number,
+            screenY: number,
+            startX: number,
+            startZ: number,
+        ): number | null => {
+            const renderW = engine.getRenderWidth();
+            const renderH = engine.getRenderHeight();
+            const scaleX = renderW / canvas.clientWidth;
+            const scaleY = renderH / canvas.clientHeight;
+            const view = camera.getViewMatrix();
+            const proj = camera.getProjectionMatrix();
+            const identity = Matrix.Identity();
+            const near = Vector3.Unproject(
+                new Vector3(screenX * scaleX, screenY * scaleY, 0),
+                renderW, renderH, identity, view, proj,
+            );
+            const far = Vector3.Unproject(
+                new Vector3(screenX * scaleX, screenY * scaleY, 1),
+                renderW, renderH, identity, view, proj,
+            );
+            let dxr = far.x - near.x;
+            let dyr = far.y - near.y;
+            let dzr = far.z - near.z;
+            const len = Math.hypot(dxr, dyr, dzr);
+            if (len < 1e-9) return null;
+            dxr /= len; dyr /= len; dzr /= len;
+            // 二直線（垂直線 d1=(0,1,0)、レイ d2=(dxr,dyr,dzr)）の最近接点。
+            // sc = (b*e - c*d) / (a*c - b^2), a=1, c=1, b=dyr
+            const denom = 1 - dyr * dyr;
+            if (Math.abs(denom) < 1e-6) return null;
+            // w0 = (startX - near.x, 0 - near.y, startZ - near.z)
+            const wx = startX - near.x;
+            const wy = -near.y;
+            const wz = startZ - near.z;
+            const d = wy; // d1 · w0
+            const eDot = dxr * wx + dyr * wy + dzr * wz; // d2 · w0
+            return (dyr * eDot - d) / denom;
+        };
         const hasPolygonPointGestureListeners = (): boolean =>
             polygonPointClickListeners.length > 0 ||
             polygonPointDragStartListeners.length > 0 ||
@@ -666,8 +719,10 @@ export class DefaultScene implements CreateSceneClass {
                   startClientX: number;
                   startClientY: number;
                   dragging: boolean;
-                  /** ドラッグ開始時の頂点 world Y。水平面交点計算で使用 (#186) */
+                  /** ドラッグ開始時の頂点 world 座標。水平面/垂直線交点計算で使用 (#186) */
+                  startWorldX: number;
                   startWorldY: number;
+                  startWorldZ: number;
               }
             | null = null;
         let polygonPointHoverState: { polygonId: string; index: number } | null =
@@ -763,7 +818,9 @@ export class DefaultScene implements CreateSceneClass {
                         startClientX: e.clientX,
                         startClientY: e.clientY,
                         dragging: false,
+                        startWorldX: hit.worldX,
                         startWorldY: hit.worldY,
+                        startWorldZ: hit.worldZ,
                     };
                     canvas.setPointerCapture(e.pointerId);
                     // 同じ canvas に登録されている後続 pointerdown リスナー
@@ -844,12 +901,19 @@ export class DefaultScene implements CreateSceneClass {
                             sy,
                             polygonPointGesture.startWorldY,
                         );
+                        const pointerAltitude = computeDragVerticalHit(
+                            sx,
+                            sy,
+                            polygonPointGesture.startWorldX,
+                            polygonPointGesture.startWorldZ,
+                        );
                         const startEvent: PolygonPointDragEvent = {
                             polygonId: polygonPointGesture.polygonId,
                             index: polygonPointGesture.index,
                             pointerEvent: e,
                             ...ground,
                             ...plane,
+                            pointerAltitude,
                         };
                         dispatchDragEvent(
                             polygonPointDragStartListeners,
@@ -865,12 +929,19 @@ export class DefaultScene implements CreateSceneClass {
                         sy,
                         polygonPointGesture.startWorldY,
                     );
+                    const pointerAltitude = computeDragVerticalHit(
+                        sx,
+                        sy,
+                        polygonPointGesture.startWorldX,
+                        polygonPointGesture.startWorldZ,
+                    );
                     const dragEvent: PolygonPointDragEvent = {
                         polygonId: polygonPointGesture.polygonId,
                         index: polygonPointGesture.index,
                         pointerEvent: e,
                         ...ground,
                         ...plane,
+                        pointerAltitude,
                     };
                     dispatchDragEvent(
                         polygonPointDragListeners,
@@ -1005,12 +1076,19 @@ export class DefaultScene implements CreateSceneClass {
                         sy,
                         gesture.startWorldY,
                     );
+                    const pointerAltitude = computeDragVerticalHit(
+                        sx,
+                        sy,
+                        gesture.startWorldX,
+                        gesture.startWorldZ,
+                    );
                     const endEvent: PolygonPointDragEvent = {
                         polygonId: gesture.polygonId,
                         index: gesture.index,
                         pointerEvent: e,
                         ...ground,
                         ...plane,
+                        pointerAltitude,
                     };
                     dispatchDragEvent(
                         polygonPointDragEndListeners,
@@ -1077,12 +1155,19 @@ export class DefaultScene implements CreateSceneClass {
                         sy,
                         gesture.startWorldY,
                     );
+                    const pointerAltitude = computeDragVerticalHit(
+                        sx,
+                        sy,
+                        gesture.startWorldX,
+                        gesture.startWorldZ,
+                    );
                     const endEvent: PolygonPointDragEvent = {
                         polygonId: gesture.polygonId,
                         index: gesture.index,
                         pointerEvent: e,
                         ...ground,
                         ...plane,
+                        pointerAltitude,
                     };
                     dispatchDragEvent(
                         polygonPointDragEndListeners,

@@ -279,11 +279,18 @@ const start = async (): Promise<void> => {
         if (!current) return;
         const dragAlt = state.altitudeDragStart;
         if (dragAlt && dragAlt.index === i) {
-            // Shift+drag: altitude 移動。スクリーン上方向に動かすほど altitude が増える。
-            const dy = dragAlt.clientY - e.pointerEvent.clientY;
-            const next = dragAlt.altitude + dy / ALTITUDE_PIXELS_PER_METER;
-            // 地表より下に行かないようクランプ（地形未ヒット時は dragStart 時点の値で代替）。
+            // Shift+drag: altitude 移動。頂点の (lat, lon) を通る垂直線とカーソル
+            // レイの最近接点 Y (= pointerAltitude) を採用し、ポイントをカーソル
+            // 位置に追従させる。地表より下に行かないようクランプ（pointerAltitude
+            // が得られない場合は従来のピクセル換算へフォールバック） (#186)。
             const ground = e.groundAltitude ?? dragAlt.groundAltitude;
+            let next: number;
+            if (e.pointerAltitude !== null) {
+                next = e.pointerAltitude;
+            } else {
+                const dy = dragAlt.clientY - e.pointerEvent.clientY;
+                next = dragAlt.altitude + dy / ALTITUDE_PIXELS_PER_METER;
+            }
             current.altitude = Math.max(next, ground);
         } else if (e.planeLat !== null && e.planeLon !== null) {
             // 通常ドラッグ: 頂点の現在の altitude を保つ水平面とカーソルレイの
