@@ -96,8 +96,8 @@ const buildPolygonOptions = (
             lineColor: "#ff5252",
             pointDiameter: 16,
             lineWidth: 2,
-            labelBackgroundColor: "rgba(255,255,255,0.85)",
-            labelColor: "#222",
+            // ラベルは「白縁取り + 黒文字 + 透過矩形」（ライブラリ既定）に揃える。
+            // labelBackgroundColor / labelColor は POLYGON_DEFAULTS に委ねる。
             labelFontSize: 12,
             wallColor: "#ff5252",
             wallOpacity: 0.2,
