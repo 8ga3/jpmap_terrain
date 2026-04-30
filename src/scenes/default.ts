@@ -603,7 +603,7 @@ export class DefaultScene implements CreateSceneClass {
         const pickPolygonPoint = (
             sx: number,
             sy: number,
-        ): { polygonId: string; index: number } | null => {
+        ): { polygonId: string; index: number; worldY: number } | null => {
             const pick = scene.pick(
                 sx,
                 sy,
@@ -612,7 +612,11 @@ export class DefaultScene implements CreateSceneClass {
             if (!pick?.hit || !pick.pickedMesh) return null;
             const match = POLYGON_POINT_NAME_RE.exec(pick.pickedMesh.name);
             if (!match) return null;
-            return { polygonId: match[1], index: parseInt(match[2], 10) };
+            return {
+                polygonId: match[1],
+                index: parseInt(match[2], 10),
+                worldY: pick.pickedMesh.getAbsolutePosition().y,
+            };
         };
         /** 頂点ドラッグ中のカーソル位置から地形交点を解決する */
         const computeDragGroundHit = (
@@ -635,6 +639,20 @@ export class DefaultScene implements CreateSceneClass {
             );
             return { lat, lon, groundAltitude: pick.pickedPoint.y };
         };
+        /**
+         * 頂点ドラッグ中、ドラッグ開始時の頂点 world Y を保つ
+         * 水平面とカーソルレイの交点を緯度経度として返す (#186)。
+         */
+        const computeDragPlaneHit = (
+            sx: number,
+            sy: number,
+            planeY: number,
+        ): { planeLat: number | null; planeLon: number | null } => {
+            const hit = intersectPlane(sx, sy, planeY);
+            if (!hit) return { planeLat: null, planeLon: null };
+            const { lat, lon } = worldToLatLon(hit.x, hit.z);
+            return { planeLat: lat, planeLon: lon };
+        };
         const hasPolygonPointGestureListeners = (): boolean =>
             polygonPointClickListeners.length > 0 ||
             polygonPointDragStartListeners.length > 0 ||
@@ -648,6 +666,8 @@ export class DefaultScene implements CreateSceneClass {
                   startClientX: number;
                   startClientY: number;
                   dragging: boolean;
+                  /** ドラッグ開始時の頂点 world Y。水平面交点計算で使用 (#186) */
+                  startWorldY: number;
               }
             | null = null;
         let polygonPointHoverState: { polygonId: string; index: number } | null =
@@ -743,6 +763,7 @@ export class DefaultScene implements CreateSceneClass {
                         startClientX: e.clientX,
                         startClientY: e.clientY,
                         dragging: false,
+                        startWorldY: hit.worldY,
                     };
                     canvas.setPointerCapture(e.pointerId);
                     // 同じ canvas に登録されている後続 pointerdown リスナー
@@ -818,11 +839,17 @@ export class DefaultScene implements CreateSceneClass {
                     ) {
                         polygonPointGesture.dragging = true;
                         const ground = computeDragGroundHit(sx, sy);
+                        const plane = computeDragPlaneHit(
+                            sx,
+                            sy,
+                            polygonPointGesture.startWorldY,
+                        );
                         const startEvent: PolygonPointDragEvent = {
                             polygonId: polygonPointGesture.polygonId,
                             index: polygonPointGesture.index,
                             pointerEvent: e,
                             ...ground,
+                            ...plane,
                         };
                         dispatchDragEvent(
                             polygonPointDragStartListeners,
@@ -833,11 +860,17 @@ export class DefaultScene implements CreateSceneClass {
                 }
                 if (polygonPointGesture.dragging) {
                     const ground = computeDragGroundHit(sx, sy);
+                    const plane = computeDragPlaneHit(
+                        sx,
+                        sy,
+                        polygonPointGesture.startWorldY,
+                    );
                     const dragEvent: PolygonPointDragEvent = {
                         polygonId: polygonPointGesture.polygonId,
                         index: polygonPointGesture.index,
                         pointerEvent: e,
                         ...ground,
+                        ...plane,
                     };
                     dispatchDragEvent(
                         polygonPointDragListeners,
@@ -967,11 +1000,17 @@ export class DefaultScene implements CreateSceneClass {
                     const sx = e.clientX - rect.left;
                     const sy = e.clientY - rect.top;
                     const ground = computeDragGroundHit(sx, sy);
+                    const plane = computeDragPlaneHit(
+                        sx,
+                        sy,
+                        gesture.startWorldY,
+                    );
                     const endEvent: PolygonPointDragEvent = {
                         polygonId: gesture.polygonId,
                         index: gesture.index,
                         pointerEvent: e,
                         ...ground,
+                        ...plane,
                     };
                     dispatchDragEvent(
                         polygonPointDragEndListeners,
@@ -1033,11 +1072,17 @@ export class DefaultScene implements CreateSceneClass {
                     const sx = e.clientX - rect.left;
                     const sy = e.clientY - rect.top;
                     const ground = computeDragGroundHit(sx, sy);
+                    const plane = computeDragPlaneHit(
+                        sx,
+                        sy,
+                        gesture.startWorldY,
+                    );
                     const endEvent: PolygonPointDragEvent = {
                         polygonId: gesture.polygonId,
                         index: gesture.index,
                         pointerEvent: e,
                         ...ground,
+                        ...plane,
                     };
                     dispatchDragEvent(
                         polygonPointDragEndListeners,

@@ -285,8 +285,14 @@ const start = async (): Promise<void> => {
             // 地表より下に行かないようクランプ（地形未ヒット時は dragStart 時点の値で代替）。
             const ground = e.groundAltitude ?? dragAlt.groundAltitude;
             current.altitude = Math.max(next, ground);
+        } else if (e.planeLat !== null && e.planeLon !== null) {
+            // 通常ドラッグ: 頂点の現在の altitude を保つ水平面とカーソルレイの
+            // 交点 (planeLat/planeLon) を採用する。地形交点 (lat/lon) を使うと
+            // 頂点が垂線と地表の交点に張り付いてしまうため不可 (#186)。
+            current.lat = e.planeLat;
+            current.lon = e.planeLon;
         } else if (e.lat !== null && e.lon !== null) {
-            // 通常ドラッグ: lat/lon を更新（altitude は維持）。
+            // 水平面交点が得られない場合のフォールバック（カメラがほぼ水平な場合など）
             current.lat = e.lat;
             current.lon = e.lon;
         }
