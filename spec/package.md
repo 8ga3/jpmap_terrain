@@ -600,14 +600,14 @@ viewer.onPolygonPointHover((e) => {
   if (e) console.log(`hovering ${e.polygonId}#${e.index}`);
 });
 
-let altitudeDragStart: number | null = null;
+let altitudeDragWithShift = false;
 viewer.onPolygonPointDragStart((e) => {
-  // Shift+ドラッグなら開始時の altitude を保持
-  altitudeDragStart = e.pointerEvent.shiftKey ? (e.pointerAltitude ?? 0) : null;
+  // Shift+ドラッグかどうかを保持
+  altitudeDragWithShift = e.pointerEvent.shiftKey;
 });
 
 viewer.onPolygonPointDrag((e) => {
-  if (altitudeDragStart !== null && e.pointerAltitude !== null) {
+  if (altitudeDragWithShift && e.pointerAltitude !== null) {
     // 縦線とカーソルレイの最近接点 Y を採用（地表より下にはクランプ）
     viewer.updatePolygonPoint(e.polygonId, e.index, {
       altitude: Math.max(e.pointerAltitude, e.groundAltitude ?? 0),
@@ -621,7 +621,7 @@ viewer.onPolygonPointDrag((e) => {
 });
 
 viewer.onPolygonPointDragEnd(() => {
-  altitudeDragStart = null;
+  altitudeDragWithShift = false;
 });
 ```
 
