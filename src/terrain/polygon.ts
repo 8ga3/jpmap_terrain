@@ -800,6 +800,11 @@ export const createPolygonNode = (
         }
         // 辺ラベル (#185): edgeLabels[i] は worldPoints[i] と worldPoints[(i+1) % N]
         // の中点に配置する。closed=false の末尾辺は対象外（edgeLabelEntries の長さで吸収）。
+        // 中点そのままだと線と重なるため、線より上（画面上方向）にオフセットして
+        // 線を覆い隠さないようにする (#186)。点ラベルと同じく billboard と組み合わせて
+        // 「線中点まわりの公転」として振る舞わせる。
+        const lineRadiusWorld = Math.max(style.lineWidth, 0.001);
+        const edgeLabelGap = style.labelFontSize * pointScale * LABEL_GAP_FONT_RATIO;
         const N = worldPoints.length;
         for (let i = 0; i < edgeLabelEntries.length; i++) {
             const entry = edgeLabelEntries[i];
@@ -809,7 +814,39 @@ export const createPolygonNode = (
             const mx = (a.x + b.x) * 0.5;
             const my = (a.y + b.y) * 0.5;
             const mz = (a.z + b.z) * 0.5;
-            entry.mesh.position.set(mx, my, mz);
+            const labelHalfWorld = entry.heightWorld * pointScale * 0.5;
+            const offset = lineRadiusWorld + edgeLabelGap + labelHalfWorld;
+            let ux = 0;
+            let uy = 1;
+            let uz = 0;
+            if (camPos && camUp) {
+                const tx = camPos.x - mx;
+                const ty = camPos.y - my;
+                const tz = camPos.z - mz;
+                const tlen = Math.hypot(tx, ty, tz);
+                if (tlen > 1e-6) {
+                    const fx = tx / tlen;
+                    const fy = ty / tlen;
+                    const fz = tz / tlen;
+                    const rx = camUp.y * fz - camUp.z * fy;
+                    const ry = camUp.z * fx - camUp.x * fz;
+                    const rz = camUp.x * fy - camUp.y * fx;
+                    const sxv = fy * rz - fz * ry;
+                    const syv = fz * rx - fx * rz;
+                    const szv = fx * ry - fy * rx;
+                    const slen = Math.hypot(sxv, syv, szv);
+                    if (slen > 1e-6) {
+                        ux = sxv / slen;
+                        uy = syv / slen;
+                        uz = szv / slen;
+                    }
+                }
+            }
+            entry.mesh.position.set(
+                mx + ux * offset,
+                my + uy * offset,
+                mz + uz * offset,
+            );
             entry.mesh.scaling.setAll(pointScale);
         }
         const tubePath = buildLinePath(worldPoints, closed);
