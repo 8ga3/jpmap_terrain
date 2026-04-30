@@ -749,7 +749,8 @@ export class DefaultScene implements CreateSceneClass {
             terrainClickStart = null;
             if (!start || start.pointerId !== e.pointerId) return;
             // Ctrl/Cmd 併用はカメラ操作（パン/チルト）扱いのためクリック通知しない。
-            if (start.modifier) return;
+            // pointerdown 後に修飾キー状態が変わるケースもあるため、pointerup 時点も確認する。
+            if (start.modifier || e.ctrlKey || e.metaKey) return;
             if (terrainClickListeners.length === 0) return;
             const dx = e.clientX - start.x;
             const dy = e.clientY - start.y;
