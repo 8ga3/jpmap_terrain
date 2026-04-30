@@ -183,6 +183,37 @@ const buildToolbar = (
     });
 };
 
+/**
+ * 矢印 + 記号を組み合わせた SVG カスタムカーソルを data URL として返す (#186)。
+ *
+ * - 左上 (0, 0) を矢印先端（hot-spot）とする 24x24 SVG
+ * - 矢印部はブラウザ既定に近い黒塗り＋白縁
+ * - `sign === "+"` で右下に「+」、`sign === "-"` で右下に「-」記号を重ねる
+ */
+const buildArrowSignCursor = (sign: "+" | "-"): string => {
+    const plusPath =
+        // 中心 (17, 17)、長さ 4 の十字（縦）
+        `M17 13 V21 ` +
+        // 中心 (17, 17)、長さ 4 の十字（横）
+        `M13 17 H21`;
+    const minusPath = `M13 17 H21`;
+    const signPath = sign === "+" ? plusPath : minusPath;
+    const svg =
+        `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>` +
+        // 矢印（白縁）
+        `<path d='M1 1 L1 17 L5.5 13 L8.5 19.5 L11 18.3 L8 12 L14 12 Z' ` +
+        `fill='black' stroke='white' stroke-width='1.2' stroke-linejoin='round'/>` +
+        // 符号の白縁背景
+        `<circle cx='17' cy='17' r='5.5' fill='white' stroke='black' stroke-width='1'/>` +
+        `<path d='${signPath}' stroke='black' stroke-width='2' stroke-linecap='round' fill='none'/>` +
+        `</svg>`;
+    const encoded = encodeURIComponent(svg)
+        .replace(/'/g, "%27")
+        .replace(/"/g, "%22");
+    // hot-spot (0, 0) = 矢印の先端
+    return `url("data:image/svg+xml;utf8,${encoded}") 0 0, auto`;
+};
+
 const start = async (): Promise<void> => {
     const mount = document.getElementById(DEMO_MOUNT_ID);
     if (!mount) {
@@ -219,6 +250,13 @@ const start = async (): Promise<void> => {
     const onStateChange = (): void => {
         rebuildPolygon(viewer, state);
         updateStatus(state, statusEl);
+        // モード切替時はカーソルを既定に戻し、直近位置で再評価する。
+        if (renderCanvas) {
+            renderCanvas.style.cursor = "";
+            if (lastPointerCanvasX !== null && lastPointerCanvasY !== null) {
+                applyModeCursor(lastPointerCanvasX, lastPointerCanvasY);
+            }
+        }
     };
 
     const toolbar = document.getElementById(TOOLBAR_ID);
@@ -226,18 +264,22 @@ const start = async (): Promise<void> => {
         buildToolbar(toolbar, state, onStateChange);
     }
 
-    // 編集モードでの頂点 hover 時に専用カーソルを表示する (#186)。
+    // モード別のカーソル表示 (#186)。
     //
-    // - edit + hover                 -> "move"
-    // - edit + hover + Shift         -> "ns-resize"（高度編集を示唆）
-    // - その他のモード / hover 解除 -> "" （ライブラリ既定にフォールバック）
+    // - add    : 矢印 + 「+」記号（地形クリックで頂点追加できることを示す）
+    // - remove : 球体ホバー時のみ 矢印 + 「-」記号
+    // - edit   : 球体ホバー時のみ "move"（Shift 押下中は "ns-resize"）
+    // - 上記以外 / 球体外 : ライブラリ既定（"pointer" or ""）
     //
+    // SVG data URL によるカスタムカーソルを使用する。hot-spot は左上 (0, 0)。
+    // ブラウザ既定の矢印に近いシルエットの上に右下へ + / - を重ねている。
+    const ARROW_PLUS_CURSOR = buildArrowSignCursor("+");
+    const ARROW_MINUS_CURSOR = buildArrowSignCursor("-");
+
     // ライブラリの hover dispatch（#184）は遷移時のみ cursor を更新するため、
     // 連続 pointermove 中に scene.pick が一瞬外れて hover が解除されると
     // cursor が `""` に戻ってしまう。そこで demo 側で pointermove ごとに
     // 自前でピックし直し、ライブラリ後段で cursor を再適用する。
-    //
-    // hover リスナーは canvas cursor 切替を有効化するためだけに 1 件登録する。
     viewer.onPolygonPointHover(() => {
         /* no-op: cursor 制御は下記 pointermove 内で行う */
     });
@@ -256,11 +298,24 @@ const start = async (): Promise<void> => {
         );
         return Boolean(pick?.hit && pick.pickedMesh);
     };
-    const applyEditCursor = (sx: number, sy: number): void => {
+    const applyModeCursor = (sx: number, sy: number): void => {
         if (!renderCanvas) return;
-        if (state.mode !== "edit") return;
-        if (!isHoveringPoint(sx, sy)) return;
-        renderCanvas.style.cursor = shiftPressed ? "ns-resize" : "move";
+        const hovering = isHoveringPoint(sx, sy);
+        if (state.mode === "add") {
+            // add モードは canvas 全域で「+」カーソル。
+            renderCanvas.style.cursor = ARROW_PLUS_CURSOR;
+            return;
+        }
+        if (state.mode === "remove") {
+            if (hovering) {
+                renderCanvas.style.cursor = ARROW_MINUS_CURSOR;
+            }
+            // hover 解除はライブラリ側に任せる。
+            return;
+        }
+        if (state.mode === "edit" && hovering) {
+            renderCanvas.style.cursor = shiftPressed ? "ns-resize" : "move";
+        }
     };
     if (renderCanvas) {
         renderCanvas.addEventListener("pointermove", (e: PointerEvent) => {
@@ -269,14 +324,14 @@ const start = async (): Promise<void> => {
             const sy = e.clientY - rect.top;
             lastPointerCanvasX = sx;
             lastPointerCanvasY = sy;
-            applyEditCursor(sx, sy);
+            applyModeCursor(sx, sy);
         });
     }
     const onShiftKey = (down: boolean) => (ev: KeyboardEvent): void => {
         if (ev.key !== "Shift") return;
         shiftPressed = down;
         if (lastPointerCanvasX !== null && lastPointerCanvasY !== null) {
-            applyEditCursor(lastPointerCanvasX, lastPointerCanvasY);
+            applyModeCursor(lastPointerCanvasX, lastPointerCanvasY);
         }
     };
     window.addEventListener("keydown", onShiftKey(true));
