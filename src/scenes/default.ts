@@ -979,16 +979,33 @@ export class DefaultScene implements CreateSceneClass {
                         "onPolygonPointDragEnd",
                     );
                 } else {
-                    const clickEvent: PolygonPointPointerEvent = {
-                        polygonId: gesture.polygonId,
-                        index: gesture.index,
-                        pointerEvent: e,
-                    };
-                    dispatchPointEvent(
-                        polygonPointClickListeners,
-                        clickEvent,
-                        "onPolygonPointClick",
-                    );
+                    // pointerup 時点で修飾キーが押下されていればカメラ操作扱い
+                    // とし、click を発火しない（terrain click と同じポリシー）。
+                    // また、pointerup 位置が pointerdown と同じ頂点上にあることを
+                    // 再確認し、別頂点上や頂点外での click 誤発火を抑止する。
+                    if (e.ctrlKey || e.metaKey) {
+                        return;
+                    }
+                    const rect = canvas.getBoundingClientRect();
+                    const sx = e.clientX - rect.left;
+                    const sy = e.clientY - rect.top;
+                    const pickedPoint = pickPolygonPoint(sx, sy);
+                    if (
+                        pickedPoint &&
+                        pickedPoint.polygonId === gesture.polygonId &&
+                        pickedPoint.index === gesture.index
+                    ) {
+                        const clickEvent: PolygonPointPointerEvent = {
+                            polygonId: gesture.polygonId,
+                            index: gesture.index,
+                            pointerEvent: e,
+                        };
+                        dispatchPointEvent(
+                            polygonPointClickListeners,
+                            clickEvent,
+                            "onPolygonPointClick",
+                        );
+                    }
                 }
                 return;
             }
