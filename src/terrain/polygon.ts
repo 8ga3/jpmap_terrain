@@ -347,11 +347,11 @@ const buildWallPathArray = (
     groundYs: readonly (number | null)[],
     closed: boolean,
 ): [Vector3[], Vector3[]] => {
+    // 壁の下端は地表 Y ではなく Y=0 まで伸ばす (#186)。
+    // （地表を貫通させ、常にグリッド原点面で接地させる。）
+    void groundYs;
     const top: Vector3[] = worldPoints.map((p) => new Vector3(p.x, p.y, p.z));
-    const ground: Vector3[] = worldPoints.map((p, i) => {
-        const gy = groundYs[i];
-        return new Vector3(p.x, gy ?? 0, p.z);
-    });
+    const ground: Vector3[] = worldPoints.map((p) => new Vector3(p.x, 0, p.z));
     if (closed && top.length >= 2) {
         const ft = top[0];
         const fg = ground[0];
@@ -735,15 +735,14 @@ export const createPolygonNode = (
             sphere.position.set(wp.x, wp.y, wp.z);
             sphere.scaling.setAll(sphereDiameter * pointScale);
 
-            // 垂線: top = wp.y, bottom = groundYs[i] ?? 0。
+            // 垂線: top = wp.y, bottom = 0。地表を貫通して Y=0 まで伸ばす (#186)。
             // verticalsEnabled が false（非表示中）はメッシュ更新をスキップして
             // フレーム負荷を下げる。次回 enable 時にこのループで再更新される。
             if (verticalsEnabled) {
                 const dropMesh = dropEntries[i].mesh;
-                const groundY = groundYs[i] ?? 0;
                 const dropPath = [
                     new Vector3(wp.x, wp.y, wp.z),
-                    new Vector3(wp.x, groundY, wp.z),
+                    new Vector3(wp.x, 0, wp.z),
                 ];
                 // CreateTube に instance を渡すと in-place で更新される。
                 CreateTube(
