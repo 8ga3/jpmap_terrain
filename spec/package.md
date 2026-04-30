@@ -544,6 +544,8 @@ interface PolygonPointDragEvent extends PolygonPointPointerEvent {
   readonly planeLat: number | null;
   /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の経度（交点なしで `null`） (#186) */
   readonly planeLon: number | null;
+  /** ドラッグ開始時の頂点 (x, z) を通る垂直線とカーソルレイの最近接点の標高 m（交点なしで `null`） (#186) */
+  readonly pointerAltitude: number | null;
 }
 
 type PolygonPointHoverListener = (

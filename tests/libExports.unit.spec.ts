@@ -127,6 +127,7 @@ describe("package entry exports (T8)", () => {
             groundAltitude: null,
             planeLat: null,
             planeLon: null,
+            pointerAltitude: null,
         };
         const hover: PolygonPointHoverListener = () => {
             /* no-op */
