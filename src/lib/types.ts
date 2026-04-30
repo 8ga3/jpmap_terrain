@@ -120,6 +120,36 @@ export type CameraChangeListener = (event: CameraChangeEvent) => void;
  */
 export type MapTypeChangeListener = (mapType: MapType) => void;
 
+// ---- 地形クリック通知 (Issue #183) ----
+
+/**
+ * `JpmapTerrain.onTerrainClick` のリスナー引数。
+ *
+ * 地形タイル上でマウス/タッチによる「クリック」（ドラッグ閾値未満の pointerdown→pointerup）
+ * が発生したときに通知される。ドラッグ操作（カメラ操作含む）では発火しない。
+ */
+export interface TerrainClickEvent {
+    /** クリック地点の緯度（度） */
+    readonly lat: number;
+    /** クリック地点の経度（度） */
+    readonly lon: number;
+    /** クリック地点の標高 (m, 海抜) */
+    readonly altitude: number;
+    /** Babylon.js ワールド座標 */
+    readonly world: { readonly x: number; readonly y: number; readonly z: number };
+    /** 元の `PointerEvent`（修飾キー判定等のため） */
+    readonly pointerEvent: PointerEvent;
+}
+
+/** `JpmapTerrain.onTerrainClick` リスナー */
+export type TerrainClickListener = (event: TerrainClickEvent) => void;
+
+/**
+ * `pointerdown` から `pointerup` までの最大移動量 (CSS px)。
+ * これを超える移動はクリックではなくドラッグとみなし、`onTerrainClick` を発火しない。
+ */
+export const TERRAIN_CLICK_DRAG_THRESHOLD_PX = 4;
+
 // ---- マーカー (Issue #167) ----
 
 export interface MarkerTextOptions {

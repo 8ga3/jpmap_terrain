@@ -176,6 +176,15 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     const sunStateCalls: Array<{ dateTime: Date | null }> = [];
     // Issue #39: setSunShadows 呼び出し履歴を保持する。
     const sunShadowsCalls: boolean[] = [];
+    // Issue #183: subscribeTerrainClick の登録リスナー一覧（テストから __triggerTerrainClick で疑似発火）。
+    type TerrainClickEventLike = {
+        readonly lat: number;
+        readonly lon: number;
+        readonly altitude: number;
+        readonly world: { readonly x: number; readonly y: number; readonly z: number };
+        readonly pointerEvent: PointerEvent;
+    };
+    const terrainClickListeners: Array<(e: TerrainClickEventLike) => void> = [];
     // #136: scene.onBeforeRenderObservable のテスト用簡易実装。
     // jpmapTerrain.ts は `add(callback)` の戻り値を `Observer` として保持し、
     // dispose 時に `remove(observer)` する。テストからは `__triggerSceneRender` で
@@ -336,6 +345,18 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                             beta: Math.PI / 4,
                         }),
                     }),
+                    subscribeTerrainClick: (
+                        listener: (e: TerrainClickEventLike) => void,
+                    ) => {
+                        terrainClickListeners.push(listener);
+                        let removed = false;
+                        return (): void => {
+                            if (removed) return;
+                            removed = true;
+                            const idx = terrainClickListeners.indexOf(listener);
+                            if (idx !== -1) terrainClickListeners.splice(idx, 1);
+                        };
+                    },
                     dispose: () => {
                         controllerDisposeCount++;
                     },
@@ -390,6 +411,12 @@ jest.unstable_mockModule("../src/scenes/default", () => {
             sunShadowsCalls.length = 0;
         },
         __triggerSceneRender: (): void => triggerSceneRender(),
+        __getTerrainClickListenerCount: (): number => terrainClickListeners.length,
+        __triggerTerrainClick: (event: TerrainClickEventLike): void => {
+            for (const listener of terrainClickListeners.slice()) {
+                listener(event);
+            }
+        },
     };
 });
 
@@ -417,6 +444,14 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __getSunShadowsCalls: () => boolean[];
     __resetSunShadowsCalls: () => void;
     __triggerSceneRender: () => void;
+    __getTerrainClickListenerCount: () => number;
+    __triggerTerrainClick: (event: {
+        lat: number;
+        lon: number;
+        altitude: number;
+        world: { x: number; y: number; z: number };
+        pointerEvent: PointerEvent;
+    }) => void;
 };
 
 describe("JpmapTerrain (skeleton)", () => {
@@ -1639,6 +1674,68 @@ describe("JpmapTerrain (skeleton)", () => {
                     { lat: 35.682, lon: 139.768 },
                 ]),
             ).toThrow();
+        });
+    });
+
+    // Issue #183
+    describe("onTerrainClick", () => {
+        // jsdom には PointerEvent が無いため、必要な形だけスタブする。
+        const stubPointerEvent = (): PointerEvent =>
+            ({ shiftKey: false, ctrlKey: false } as unknown as PointerEvent);
+        const buildEvent = (overrides?: Partial<{
+            lat: number;
+            lon: number;
+            altitude: number;
+            world: { x: number; y: number; z: number };
+            pointerEvent: PointerEvent;
+        }>): {
+            lat: number;
+            lon: number;
+            altitude: number;
+            world: { x: number; y: number; z: number };
+            pointerEvent: PointerEvent;
+        } => ({
+            lat: 35.5,
+            lon: 139.5,
+            altitude: 123,
+            world: { x: 1, y: 123, z: -2 },
+            pointerEvent: stubPointerEvent(),
+            ...overrides,
+        });
+
+        it("登録したリスナーへクリック情報が通知される", async () => {
+            const viewer = await create(createMountElement());
+            const received: Array<{ lat: number; altitude: number }> = [];
+            viewer.onTerrainClick((e) => {
+                received.push({ lat: e.lat, altitude: e.altitude });
+            });
+            sceneMockModule.__triggerTerrainClick(buildEvent());
+            expect(received).toEqual([{ lat: 35.5, altitude: 123 }]);
+        });
+
+        it("unsubscribe 後はリスナーが呼ばれない", async () => {
+            const viewer = await create(createMountElement());
+            const calls: number[] = [];
+            const off = viewer.onTerrainClick(() => {
+                calls.push(1);
+            });
+            sceneMockModule.__triggerTerrainClick(buildEvent());
+            off();
+            sceneMockModule.__triggerTerrainClick(buildEvent());
+            expect(calls.length).toBe(1);
+            // 二重解除しても安全
+            expect(() => off()).not.toThrow();
+        });
+
+        it("dispose 後の onTerrainClick は no-op", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            const calls: number[] = [];
+            const off = viewer.onTerrainClick(() => calls.push(1));
+            sceneMockModule.__triggerTerrainClick(buildEvent());
+            expect(calls.length).toBe(0);
+            // 戻り値の解除関数も no-op で throw しない
+            expect(() => off()).not.toThrow();
         });
     });
 });

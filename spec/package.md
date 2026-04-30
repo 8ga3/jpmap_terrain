@@ -474,6 +474,44 @@ interface JpmapTerrain {
 - `insertPolygonPoint` / `removePolygonPoint` は labels 配列の対応 index をシフトする（隣接ラベルとの整合を保つ）。
 - `replacePolygonPoints` は新しい点数に合わせ labels を全 undefined で再構成する（明示的にラベルを再付与するには `updatePolygonPoint` を呼び出す）。
 
+#### 3.3.9 地形クリック通知 (Issue #183)
+
+地形タイル上でのマウス／タッチによるクリックを購読するイベント API。距離計測など「クリックで地点を確定する」系デモ（#44）の基盤。
+
+```typescript
+interface TerrainClickEvent {
+  /** クリック地点の緯度（度） */
+  readonly lat: number;
+  /** クリック地点の経度（度） */
+  readonly lon: number;
+  /** クリック地点の標高 (m, 海抜) */
+  readonly altitude: number;
+  /** Babylon.js ワールド座標 */
+  readonly world: { readonly x: number; readonly y: number; readonly z: number };
+  /** 元の `PointerEvent`（修飾キー判定等のため） */
+  readonly pointerEvent: PointerEvent;
+}
+
+type TerrainClickListener = (event: TerrainClickEvent) => void;
+
+interface JpmapTerrain {
+  /**
+   * 地形タイル上でのクリックを購読する。
+   * 戻り値は登録解除関数（複数回呼び出しても安全）。
+   */
+  onTerrainClick(listener: TerrainClickListener): () => void;
+}
+```
+
+**仕様:**
+
+- 主ボタン (`button === 0`) のクリックのみが対象。`Ctrl` / `Cmd` 併用クリックはカメラ操作（パン中心移動）扱いのため発火しない。
+- `pointerdown` から `pointerup` までの移動量が **4 CSS px 以下** の場合のみ「クリック」とみなす。これを超えるとドラッグ扱いで発火しない。
+- `tile-ground-*` メッシュへの `scene.pick` 結果が hit したときのみ発火する。`world` には picked point、`altitude` には picked point の Y 値を採用する。
+- 同一リスナーを複数回登録した場合は登録回数分発火する。リスナーが throw しても他リスナーへ伝播せず `console.error` で握りつぶす。
+- `dispose()` 後の `onTerrainClick` は no-op。返される解除関数も no-op で安全に呼べる。
+- 登録解除関数は二重呼び出ししても throw しない。
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。
@@ -509,6 +547,9 @@ import type {
   PolygonOptions,
   PolygonUpdate,
   PolygonHandle,
+  // 地形クリック (Issue #183)
+  TerrainClickEvent,
+  TerrainClickListener,
 } from "jpmap-terrain";
 ```
 

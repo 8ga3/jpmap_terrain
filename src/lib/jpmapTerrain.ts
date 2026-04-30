@@ -32,6 +32,7 @@ import {
     PolygonPointOptions,
     PolygonPointPartial,
     SUN_AUTO_UPDATE_INTERVAL_MS,
+    TerrainClickListener,
 } from "./types";
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
 import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
@@ -535,6 +536,31 @@ export class JpmapTerrain {
                 console.error("[JpmapTerrain] onMapTypeChange listener threw:", err);
             }
         }
+    }
+
+    // ---- 地形クリック通知 (Issue #183) ----
+
+    /**
+     * 地形タイル上での「クリック」を購読する。
+     *
+     * - 主ボタン (`button === 0`) のみ対象。
+     * - `pointerdown` から `pointerup` までの移動量が
+     *   {@link TERRAIN_CLICK_DRAG_THRESHOLD_PX} 以下のときのみ発火する
+     *   （ドラッグやカメラ操作は発火しない）。
+     * - `Ctrl` / `Cmd` 併用クリックはカメラ操作扱いのため発火しない。
+     * - `tile-ground-*` メッシュへのヒットがない場合は発火しない。
+     * - `dispose()` 後の登録は no-op、解除関数も no-op。
+     * - リスナー throw は他リスナーに伝播せず、`console.error` で握りつぶす。
+     *
+     * @returns 登録解除関数（複数回呼んでも安全）
+     */
+    public onTerrainClick(listener: TerrainClickListener): () => void {
+        if (this._disposed || !this._controller) {
+            return () => {
+                /* no-op: viewer is already disposed or not ready */
+            };
+        }
+        return this._controller.subscribeTerrainClick(listener);
     }
 
     // ---- 太陽位置 (spec §3.3.6 / Issue #35) ----
