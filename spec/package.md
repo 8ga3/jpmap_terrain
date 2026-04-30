@@ -519,6 +519,18 @@ interface JpmapTerrain {
 - `dispose()` 後の `onTerrainClick` は no-op。返される解除関数も no-op で安全に呼べる。
 - 登録解除関数は二重呼び出ししても throw しない。
 
+**利用例:**
+
+```typescript
+// 地形クリックで頂点を末尾追加するシンプルな例（distance デモ #186 と同等）
+const unsubscribe = viewer.onTerrainClick((e) => {
+  if (e.pointerEvent.shiftKey) return; // 修飾キーでアプリ独自挙動
+  console.log(`clicked: ${e.lat.toFixed(6)}, ${e.lon.toFixed(6)} (${e.altitude.toFixed(1)} m)`);
+});
+// 後で解除
+unsubscribe();
+```
+
 #### 3.3.10 ポリゴン頂点インタラクション (Issue #184)
 
 ポリゴンの頂点（球体メッシュ）に対する hover / click / drag を購読するイベント API。距離計測などのデモ（#44）で頂点の編集 UI を構築するための基盤。
@@ -573,6 +585,80 @@ interface JpmapTerrain {
 - リスナー未登録時は頂点メッシュの hit 判定 / カーソル変更コストも発生しない。
 - 各リスナーが throw しても他リスナーへ伝播せず `console.error` で握りつぶす。
 - `dispose()` 後の `onPolygonPoint*` は no-op。返される解除関数は二重呼び出ししても throw しない。
+
+**利用例:**
+
+```typescript
+// 編集デモ: 頂点ドラッグで lat/lon、Shift+ドラッグで高度を更新する (#186)
+viewer.addPolygon("line", {
+  points: [{ lat: 35.68, lon: 139.76, altitude: 100 }],
+  altitudeMode: "absolute",
+});
+
+viewer.onPolygonPointHover((e) => {
+  // hover 切替時のみ通知される。e === null で hover 解除。
+  if (e) console.log(`hovering ${e.polygonId}#${e.index}`);
+});
+
+let altitudeDragStart: number | null = null;
+viewer.onPolygonPointDragStart((e) => {
+  // Shift+ドラッグなら開始時の altitude を保持
+  altitudeDragStart = e.pointerEvent.shiftKey ? (e.pointerAltitude ?? 0) : null;
+});
+
+viewer.onPolygonPointDrag((e) => {
+  if (altitudeDragStart !== null && e.pointerAltitude !== null) {
+    // 縦線とカーソルレイの最近接点 Y を採用（地表より下にはクランプ）
+    viewer.updatePolygonPoint(e.polygonId, e.index, {
+      altitude: Math.max(e.pointerAltitude, e.groundAltitude ?? 0),
+    });
+  } else if (e.planeLat !== null && e.planeLon !== null) {
+    // 通常ドラッグ: 開始高さを保つ水平面とカーソルレイの交点を採用
+    viewer.updatePolygonPoint(e.polygonId, e.index, {
+      lat: e.planeLat, lon: e.planeLon,
+    });
+  }
+});
+
+viewer.onPolygonPointDragEnd(() => {
+  altitudeDragStart = null;
+});
+```
+
+#### 3.3.11 辺ラベル (Issue #185)
+
+`PolygonOptions.edgeLabels` で各辺の中点に文字列ラベルを表示する。距離計測デモ（#186）のように動的に距離・高低差を反映する用途に使う。
+
+**利用例:**
+
+```typescript
+import { JpmapTerrain } from "jpmap-terrain";
+
+// 各辺に "水平距離 / 高低差" を表示する
+const points = [
+  { lat: 35.68, lon: 139.76, altitude: 100 },
+  { lat: 35.69, lon: 139.77, altitude: 150 },
+  { lat: 35.70, lon: 139.76, altitude: 120 },
+];
+
+const formatEdge = (a: typeof points[number], b: typeof points[number]) => {
+  const dAlt = (b.altitude ?? 0) - (a.altitude ?? 0);
+  return `~ m\n${dAlt >= 0 ? "+" : ""}${dAlt.toFixed(0)} m`;
+};
+
+viewer.addPolygon("dist-line", {
+  points,
+  altitudeMode: "absolute",
+  // 配列長は open: points.length - 1 / closed: points.length
+  edgeLabels: [
+    formatEdge(points[0], points[1]),
+    formatEdge(points[1], points[2]),
+  ],
+});
+
+// 動的更新は edgeLabels をリセットする `replacePolygonPoints` ではなく、
+// `removePolygon` + `addPolygon` の rebuild が最も簡潔（distance デモも同方式）。
+```
 
 ### 3.4 型定義
 
