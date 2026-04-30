@@ -185,6 +185,42 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         readonly pointerEvent: PointerEvent;
     };
     const terrainClickListeners: Array<(e: TerrainClickEventLike) => void> = [];
+    // Issue #184: 頂点インタラクション API のリスナー一覧。
+    type PolygonPointPointerEventLike = {
+        readonly polygonId: string;
+        readonly index: number;
+        readonly pointerEvent: PointerEvent;
+    };
+    type PolygonPointDragEventLike = PolygonPointPointerEventLike & {
+        readonly lat: number | null;
+        readonly lon: number | null;
+        readonly groundAltitude: number | null;
+    };
+    const polygonPointHoverListeners: Array<
+        (e: PolygonPointPointerEventLike | null) => void
+    > = [];
+    const polygonPointClickListeners: Array<
+        (e: PolygonPointPointerEventLike) => void
+    > = [];
+    const polygonPointDragStartListeners: Array<
+        (e: PolygonPointDragEventLike) => void
+    > = [];
+    const polygonPointDragListeners: Array<
+        (e: PolygonPointDragEventLike) => void
+    > = [];
+    const polygonPointDragEndListeners: Array<
+        (e: PolygonPointDragEventLike) => void
+    > = [];
+    const subscribeStub = <T>(arr: T[], listener: T): (() => void) => {
+        arr.push(listener);
+        let removed = false;
+        return (): void => {
+            if (removed) return;
+            removed = true;
+            const idx = arr.indexOf(listener);
+            if (idx !== -1) arr.splice(idx, 1);
+        };
+    };
     // #136: scene.onBeforeRenderObservable のテスト用簡易実装。
     // jpmapTerrain.ts は `add(callback)` の戻り値を `Observer` として保持し、
     // dispose 時に `remove(observer)` する。テストからは `__triggerSceneRender` で
@@ -357,6 +393,21 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                             if (idx !== -1) terrainClickListeners.splice(idx, 1);
                         };
                     },
+                    subscribePolygonPointHover: (
+                        listener: (e: PolygonPointPointerEventLike | null) => void,
+                    ) => subscribeStub(polygonPointHoverListeners, listener),
+                    subscribePolygonPointClick: (
+                        listener: (e: PolygonPointPointerEventLike) => void,
+                    ) => subscribeStub(polygonPointClickListeners, listener),
+                    subscribePolygonPointDragStart: (
+                        listener: (e: PolygonPointDragEventLike) => void,
+                    ) => subscribeStub(polygonPointDragStartListeners, listener),
+                    subscribePolygonPointDrag: (
+                        listener: (e: PolygonPointDragEventLike) => void,
+                    ) => subscribeStub(polygonPointDragListeners, listener),
+                    subscribePolygonPointDragEnd: (
+                        listener: (e: PolygonPointDragEventLike) => void,
+                    ) => subscribeStub(polygonPointDragEndListeners, listener),
                     dispose: () => {
                         controllerDisposeCount++;
                     },
@@ -420,6 +471,39 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __resetTerrainClickListeners: (): void => {
             terrainClickListeners.length = 0;
         },
+        // Issue #184
+        __triggerPolygonPointHover: (
+            event: PolygonPointPointerEventLike | null,
+        ): void => {
+            for (const l of polygonPointHoverListeners.slice()) l(event);
+        },
+        __triggerPolygonPointClick: (
+            event: PolygonPointPointerEventLike,
+        ): void => {
+            for (const l of polygonPointClickListeners.slice()) l(event);
+        },
+        __triggerPolygonPointDragStart: (
+            event: PolygonPointDragEventLike,
+        ): void => {
+            for (const l of polygonPointDragStartListeners.slice()) l(event);
+        },
+        __triggerPolygonPointDrag: (
+            event: PolygonPointDragEventLike,
+        ): void => {
+            for (const l of polygonPointDragListeners.slice()) l(event);
+        },
+        __triggerPolygonPointDragEnd: (
+            event: PolygonPointDragEventLike,
+        ): void => {
+            for (const l of polygonPointDragEndListeners.slice()) l(event);
+        },
+        __resetPolygonPointListeners: (): void => {
+            polygonPointHoverListeners.length = 0;
+            polygonPointClickListeners.length = 0;
+            polygonPointDragStartListeners.length = 0;
+            polygonPointDragListeners.length = 0;
+            polygonPointDragEndListeners.length = 0;
+        },
     };
 });
 
@@ -456,6 +540,41 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
         pointerEvent: PointerEvent;
     }) => void;
     __resetTerrainClickListeners: () => void;
+    __triggerPolygonPointHover: (event: {
+        polygonId: string;
+        index: number;
+        pointerEvent: PointerEvent;
+    } | null) => void;
+    __triggerPolygonPointClick: (event: {
+        polygonId: string;
+        index: number;
+        pointerEvent: PointerEvent;
+    }) => void;
+    __triggerPolygonPointDragStart: (event: {
+        polygonId: string;
+        index: number;
+        pointerEvent: PointerEvent;
+        lat: number | null;
+        lon: number | null;
+        groundAltitude: number | null;
+    }) => void;
+    __triggerPolygonPointDrag: (event: {
+        polygonId: string;
+        index: number;
+        pointerEvent: PointerEvent;
+        lat: number | null;
+        lon: number | null;
+        groundAltitude: number | null;
+    }) => void;
+    __triggerPolygonPointDragEnd: (event: {
+        polygonId: string;
+        index: number;
+        pointerEvent: PointerEvent;
+        lat: number | null;
+        lon: number | null;
+        groundAltitude: number | null;
+    }) => void;
+    __resetPolygonPointListeners: () => void;
 };
 
 describe("JpmapTerrain (skeleton)", () => {
@@ -480,6 +599,8 @@ describe("JpmapTerrain (skeleton)", () => {
         }
         // テスト間でモック内のリスナー残留が副作用にならないよう毎回クリアする (Issue #183)。
         sceneMockModule.__resetTerrainClickListeners();
+        // Issue #184: 頂点インタラクションのリスナーも同様にクリアする。
+        sceneMockModule.__resetPolygonPointListeners();
     });
 
     describe("create", () => {
@@ -1742,6 +1863,110 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(calls.length).toBe(0);
             // 戻り値の解除関数も no-op で throw しない
             expect(() => off()).not.toThrow();
+        });
+    });
+
+    // Issue #184: ポリゴン頂点インタラクション API
+    describe("onPolygonPoint*", () => {
+        const stubPointerEvent = (): PointerEvent =>
+            ({ shiftKey: false, ctrlKey: false } as unknown as PointerEvent);
+        const buildPointer = (
+            overrides?: Partial<{ polygonId: string; index: number }>,
+        ) => ({
+            polygonId: "p1",
+            index: 0,
+            pointerEvent: stubPointerEvent(),
+            ...overrides,
+        });
+        const buildDrag = (
+            overrides?: Partial<{
+                polygonId: string;
+                index: number;
+                lat: number | null;
+                lon: number | null;
+                groundAltitude: number | null;
+            }>,
+        ) => ({
+            polygonId: "p1",
+            index: 0,
+            pointerEvent: stubPointerEvent(),
+            lat: 35.5,
+            lon: 139.5,
+            groundAltitude: 100,
+            ...overrides,
+        });
+
+        it("hover リスナーが頂点情報および null（離脱）を受け取る", async () => {
+            const viewer = await create(createMountElement());
+            const received: Array<string | null> = [];
+            viewer.onPolygonPointHover((e) => {
+                received.push(e ? `${e.polygonId}#${e.index}` : null);
+            });
+            sceneMockModule.__triggerPolygonPointHover(
+                buildPointer({ polygonId: "a", index: 2 }),
+            );
+            sceneMockModule.__triggerPolygonPointHover(null);
+            expect(received).toEqual(["a#2", null]);
+        });
+
+        it("click リスナーが頂点クリックを受け取る", async () => {
+            const viewer = await create(createMountElement());
+            const ids: string[] = [];
+            viewer.onPolygonPointClick((e) => {
+                ids.push(`${e.polygonId}#${e.index}`);
+            });
+            sceneMockModule.__triggerPolygonPointClick(
+                buildPointer({ polygonId: "p", index: 1 }),
+            );
+            expect(ids).toEqual(["p#1"]);
+        });
+
+        it("drag start/move/end のリスナーが順に呼ばれる", async () => {
+            const viewer = await create(createMountElement());
+            const log: string[] = [];
+            viewer.onPolygonPointDragStart(() => log.push("start"));
+            viewer.onPolygonPointDrag((e) =>
+                log.push(`drag:${e.lat ?? "null"}`),
+            );
+            viewer.onPolygonPointDragEnd(() => log.push("end"));
+            sceneMockModule.__triggerPolygonPointDragStart(buildDrag());
+            sceneMockModule.__triggerPolygonPointDrag(buildDrag({ lat: 36 }));
+            sceneMockModule.__triggerPolygonPointDrag(
+                buildDrag({ lat: null, lon: null, groundAltitude: null }),
+            );
+            sceneMockModule.__triggerPolygonPointDragEnd(buildDrag());
+            expect(log).toEqual(["start", "drag:36", "drag:null", "end"]);
+        });
+
+        it("unsubscribe 後はリスナーが呼ばれない", async () => {
+            const viewer = await create(createMountElement());
+            const calls: number[] = [];
+            const off = viewer.onPolygonPointHover(() => calls.push(1));
+            sceneMockModule.__triggerPolygonPointHover(buildPointer());
+            off();
+            sceneMockModule.__triggerPolygonPointHover(buildPointer());
+            expect(calls.length).toBe(1);
+            expect(() => off()).not.toThrow();
+        });
+
+        it("dispose 後の onPolygonPoint* は no-op", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            const calls: number[] = [];
+            const offs = [
+                viewer.onPolygonPointHover(() => calls.push(1)),
+                viewer.onPolygonPointClick(() => calls.push(1)),
+                viewer.onPolygonPointDragStart(() => calls.push(1)),
+                viewer.onPolygonPointDrag(() => calls.push(1)),
+                viewer.onPolygonPointDragEnd(() => calls.push(1)),
+            ];
+            sceneMockModule.__triggerPolygonPointHover(buildPointer());
+            sceneMockModule.__triggerPolygonPointClick(buildPointer());
+            sceneMockModule.__triggerPolygonPointDragStart(buildDrag());
+            sceneMockModule.__triggerPolygonPointDrag(buildDrag());
+            sceneMockModule.__triggerPolygonPointDragEnd(buildDrag());
+            expect(calls.length).toBe(0);
+            expect(() => offs.forEach((o) => o())).not.toThrow();
         });
     });
 });

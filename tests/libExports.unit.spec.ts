@@ -29,6 +29,15 @@ import type {
     PolygonUpdate,
     PolygonHandle,
 } from "../src/lib";
+import type {
+    TerrainClickEvent,
+    TerrainClickListener,
+    PolygonPointPointerEvent,
+    PolygonPointDragEvent,
+    PolygonPointHoverListener,
+    PolygonPointClickListener,
+    PolygonPointDragListener,
+} from "../src/lib";
 
 describe("package entry exports (T8)", () => {
     it("JpmapTerrain クラスがトップレベルから export されている", () => {
@@ -92,5 +101,47 @@ describe("package entry exports (T8)", () => {
         expect(update.enabled).toBe(false);
         expect(handleShape.id).toBe("p1");
         expect(style.pointColor).toBe("#ff0000");
+    });
+
+    // #183 / #184: クリック・頂点インタラクションの公開型がエントリから import 可能。
+    it("クリック・頂点インタラクション公開型 (#183/#184) がエントリから import できる（typecheck）", () => {
+        const click: TerrainClickEvent = {
+            lat: 0,
+            lon: 0,
+            altitude: 0,
+            world: { x: 0, y: 0, z: 0 },
+            pointerEvent: { shiftKey: false, ctrlKey: false } as unknown as PointerEvent,
+        };
+        const clickListener: TerrainClickListener = () => {
+            /* no-op */
+        };
+        const point: PolygonPointPointerEvent = {
+            polygonId: "p1",
+            index: 0,
+            pointerEvent: click.pointerEvent,
+        };
+        const drag: PolygonPointDragEvent = {
+            ...point,
+            lat: null,
+            lon: null,
+            groundAltitude: null,
+        };
+        const hover: PolygonPointHoverListener = () => {
+            /* no-op */
+        };
+        const onClick: PolygonPointClickListener = () => {
+            /* no-op */
+        };
+        const onDrag: PolygonPointDragListener = () => {
+            /* no-op */
+        };
+        clickListener(click);
+        hover(point);
+        hover(null);
+        onClick(point);
+        onDrag(drag);
+        expect(click.lat).toBe(0);
+        expect(point.polygonId).toBe("p1");
+        expect(drag.lat).toBeNull();
     });
 });
