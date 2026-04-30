@@ -522,7 +522,7 @@ interface JpmapTerrain {
 **利用例:**
 
 ```typescript
-// 地形クリックで頂点を末尾追加するシンプルな例（distance デモ #186 と同等）
+// 地形クリックイベントを購読するシンプルな例
 const unsubscribe = viewer.onTerrainClick((e) => {
   if (e.pointerEvent.shiftKey) return; // 修飾キーでアプリ独自挙動
   console.log(`clicked: ${e.lat.toFixed(6)}, ${e.lon.toFixed(6)} (${e.altitude.toFixed(1)} m)`);
