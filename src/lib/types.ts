@@ -366,6 +366,13 @@ export interface PolygonOptions {
      * 値が指定された点にのみラベル平面（ビルボード + DynamicTexture）を描画する。
      */
     labels?: ReadonlyArray<string>;
+    /**
+     * 辺ラベル（隣接頂点間ごと）。`edgeLabels[i]` は `points[i]` → `points[i+1]` の
+     * 中点に表示される。`closed === true` のときの末尾要素 `edgeLabels[points.length-1]`
+     * は `points[points.length-1]` → `points[0]` のラベルとして扱う。
+     * 値が `undefined` または `length` 範囲外の辺にはラベルを描画しない (#185)。
+     */
+    edgeLabels?: ReadonlyArray<string | undefined>;
     /** スタイル */
     style?: PolygonStyleOptions;
     /** default true */
@@ -403,6 +410,7 @@ export type PolygonUpdate = Partial<
         | "closed"
         | "altitudeMode"
         | "labels"
+        | "edgeLabels"
         | "style"
         | "enabled"
         | "verticalsEnabled"
@@ -420,6 +428,12 @@ export interface PolygonHandle {
     readonly closed: boolean;
     readonly altitudeMode: AltitudeMode;
     readonly labels: ReadonlyArray<string | undefined> | undefined;
+    /**
+     * 辺ラベル（#185）。一度でも `edgeLabels` を指定された場合は
+     * `points` と整合する長さ（`closed ? N : N-1`）の配列を返し、
+     * 未指定要素は `undefined`。一度も指定されていない場合は `undefined`。
+     */
+    readonly edgeLabels: ReadonlyArray<string | undefined> | undefined;
     readonly style: Readonly<Required<PolygonStyleOptions>>;
     readonly enabled: boolean;
     /** 垂線の表示状態 */

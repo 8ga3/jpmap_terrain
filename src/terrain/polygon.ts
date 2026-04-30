@@ -203,6 +203,11 @@ const createLabelMesh = (
     text: string,
     style: ResolvedStyle,
     parent: TransformNode,
+    /**
+     * mesh / material / texture 名のプレフィクス。`"label"`（点ラベル）または
+     * `"edge-label"`（#185 辺ラベル）。命名以外の挙動は共通。
+     */
+    namePrefix: "label" | "edge-label" = "label",
 ): LabelEntry => {
     const dpr =
         typeof globalThis !== "undefined" &&
@@ -222,7 +227,7 @@ const createLabelMesh = (
 
     // 文字幅を測るための probe テクスチャ。
     const probe = new DynamicTexture(
-        `polygon-${id}-label-probe-${index}`,
+        `polygon-${id}-${namePrefix}-probe-${index}`,
         { width: 16, height: 16 },
         scene,
         false,
@@ -250,7 +255,7 @@ const createLabelMesh = (
     );
 
     const texture = new DynamicTexture(
-        `polygon-${id}-label-${index}`,
+        `polygon-${id}-${namePrefix}-${index}`,
         { width: dtWidth, height: dtHeight },
         scene,
         false,
@@ -290,7 +295,7 @@ const createLabelMesh = (
     const heightWorld = dtHeight / dpr;
 
     const mesh = CreatePlane(
-        `polygon-${id}-label-${index}`,
+        `polygon-${id}-${namePrefix}-${index}`,
         { width: widthWorld, height: heightWorld },
         scene,
     );
@@ -300,7 +305,7 @@ const createLabelMesh = (
     mesh.parent = parent;
 
     const material = new StandardMaterial(
-        `polygon-${id}-label-mat-${index}`,
+        `polygon-${id}-${namePrefix}-mat-${index}`,
         scene,
     );
     material.disableLighting = true;
@@ -399,6 +404,16 @@ export const createPolygonNode = (
         options.labels ? options.labels[i] : undefined,
     );
 
+    // 辺ラベル (#185)。長さは `closed ? N : N-1`。`edgeLabels[i]` は points[i]→points[i+1] の中点に表示する。
+    // closed=true のときの末尾要素 (i = N-1) は points[N-1]→points[0] のラベル。
+    const expectedEdgeCount = (): number =>
+        closed ? points.length : Math.max(0, points.length - 1);
+    let hasEdgeLabels = options.edgeLabels !== undefined;
+    const edgeLabels: (string | undefined)[] = Array.from(
+        { length: expectedEdgeCount() },
+        (_, i) => (options.edgeLabels ? options.edgeLabels[i] : undefined),
+    );
+
     const root = new TransformNode(`polygon-${id}`, scene);
 
     // 各頂点に対応する球を 1 つだけ作る。スケールは applyTransform で更新する。
@@ -417,6 +432,22 @@ export const createPolygonNode = (
         if (text === undefined || text === null) return null;
         return createLabelMesh(scene, id, index, text, style, root);
     });
+
+    // edgeLabels[i] が指定された辺にのみ辺ラベルを作る (#185)。indexed by 辺 index。
+    const edgeLabelEntries: (LabelEntry | null)[] = edgeLabels.map(
+        (text, index) => {
+            if (text === undefined || text === null) return null;
+            return createLabelMesh(
+                scene,
+                id,
+                index,
+                text,
+                style,
+                root,
+                "edge-label",
+            );
+        },
+    );
 
     // 初期 path（仮）。applyTransform で必ず上書きされる前提だが、
     // 構築時にも有効な Tube が必要なので原点付近の placeholder を渡す。
@@ -484,6 +515,11 @@ export const createPolygonNode = (
             entry.mesh.setEnabled(visible && verticalsEnabled);
         }
         for (const entry of labelEntries) {
+            if (!entry) continue;
+            entry.mesh.setEnabled(visible && labelsEnabled);
+        }
+        // 辺ラベル (#185) も labelsEnabled を共用する。
+        for (const entry of edgeLabelEntries) {
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
         }
@@ -583,6 +619,14 @@ export const createPolygonNode = (
             e.material.name = `polygon-${id}-label-mat-${i}`;
             e.texture.name = `polygon-${id}-label-${i}`;
         }
+        // 辺ラベル (#185) も同様に index に合わせて再採番する。
+        for (let i = 0; i < edgeLabelEntries.length; i++) {
+            const e = edgeLabelEntries[i];
+            if (!e) continue;
+            e.mesh.name = `polygon-${id}-edge-label-${i}`;
+            e.material.name = `polygon-${id}-edge-label-mat-${i}`;
+            e.texture.name = `polygon-${id}-edge-label-${i}`;
+        }
     };
 
     /** 内部: lat/lon/altitude のバリデーション (#173)。 */
@@ -681,6 +725,20 @@ export const createPolygonNode = (
                 label.mesh.scaling.setAll(pointScale);
             }
         }
+        // 辺ラベル (#185): edgeLabels[i] は worldPoints[i] と worldPoints[(i+1) % N]
+        // の中点に配置する。closed=false の末尾辺は対象外（edgeLabelEntries の長さで吸収）。
+        const N = worldPoints.length;
+        for (let i = 0; i < edgeLabelEntries.length; i++) {
+            const entry = edgeLabelEntries[i];
+            if (!entry) continue;
+            const a = worldPoints[i];
+            const b = worldPoints[(i + 1) % N];
+            const mx = (a.x + b.x) * 0.5;
+            const my = (a.y + b.y) * 0.5;
+            const mz = (a.z + b.z) * 0.5;
+            entry.mesh.position.set(mx, my, mz);
+            entry.mesh.scaling.setAll(pointScale);
+        }
         const tubePath = buildLinePath(worldPoints, closed);
         lineMesh = CreateTube(
             `polygon-${id}-line`,
@@ -713,6 +771,7 @@ export const createPolygonNode = (
         closed,
         altitudeMode,
         labels: hasLabels ? Object.freeze([...labels]) : undefined,
+        edgeLabels: hasEdgeLabels ? Object.freeze([...edgeLabels]) : undefined,
         style: { ...style },
         enabled: logicalEnabled,
         verticalsEnabled,
@@ -739,6 +798,14 @@ export const createPolygonNode = (
             entry.mesh.dispose();
         }
         labelEntries.length = 0;
+        // 辺ラベル (#185) も dispose する。
+        for (const entry of edgeLabelEntries) {
+            if (!entry) continue;
+            entry.texture.dispose();
+            entry.material.dispose();
+            entry.mesh.dispose();
+        }
+        edgeLabelEntries.length = 0;
         lineMaterial.dispose();
         lineMesh.dispose();
         wallMaterial.dispose();
@@ -819,6 +886,10 @@ export const createPolygonNode = (
             dropEntries.splice(index, 0, drop);
             labels.splice(index, 0, undefined);
             labelEntries.splice(index, 0, null);
+            // 辺ラベル (#185): 点ラベルと同じ規則で同 index にシフト。
+            // expectedEdgeCount は points 増加で 1 増えるので 1 件挿入する。
+            edgeLabels.splice(index, 0, undefined);
+            edgeLabelEntries.splice(index, 0, null);
             renumberEntries();
             onPointCountChanged();
         },
@@ -847,6 +918,19 @@ export const createPolygonNode = (
                 lbl.texture.dispose();
                 lbl.material.dispose();
                 lbl.mesh.dispose();
+            }
+            // 辺ラベル (#185): 点ラベルと同じ規則で同 index を 1 件削除する。
+            // 開ポリゴンで末尾頂点を削除する場合、edgeLabels.length === points.length-1
+            // なので index を `length-1` にクランプして末尾の辺ラベルを削除する。
+            if (edgeLabels.length > 0) {
+                const ei = Math.min(index, edgeLabels.length - 1);
+                edgeLabels.splice(ei, 1);
+                const elbl = edgeLabelEntries.splice(ei, 1)[0];
+                if (elbl) {
+                    elbl.texture.dispose();
+                    elbl.material.dispose();
+                    elbl.mesh.dispose();
+                }
             }
             renumberEntries();
             onPointCountChanged();
@@ -922,6 +1006,16 @@ export const createPolygonNode = (
             labelEntries.length = 0;
             labels.length = 0;
             hasLabels = false;
+            // 辺ラベル (#185): replacePolygonPoints 後は全 undefined で再構成する。
+            for (const entry of edgeLabelEntries) {
+                if (!entry) continue;
+                entry.texture.dispose();
+                entry.material.dispose();
+                entry.mesh.dispose();
+            }
+            edgeLabelEntries.length = 0;
+            edgeLabels.length = 0;
+            hasEdgeLabels = false;
             points.length = 0;
             for (let i = 0; i < newPoints.length; i++) {
                 const p = newPoints[i];
@@ -936,6 +1030,12 @@ export const createPolygonNode = (
                 dropEntries.push(createDropLine(scene, id, i, style, root));
                 labels.push(undefined);
                 labelEntries.push(null);
+            }
+            // 辺ラベルは expectedEdgeCount に合わせて全 undefined で再生成。
+            const newEdgeCount = expectedEdgeCount();
+            for (let i = 0; i < newEdgeCount; i++) {
+                edgeLabels.push(undefined);
+                edgeLabelEntries.push(null);
             }
             onPointCountChanged();
         },

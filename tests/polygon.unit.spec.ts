@@ -345,6 +345,146 @@ describe("createPolygonNode 構築", () => {
         });
         expect(planeCalls.length).toBe(0);
     });
+
+    // 辺ラベル (#185)
+    it("edgeLabels[i] が指定された辺にのみ辺ラベル平面を生成する (open)", () => {
+        createPolygonNode(sceneStub, "pE1", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            // open: 辺数 = N-1 = 2。1 件目だけラベルを付ける。
+            edgeLabels: ["e0", undefined],
+        });
+        // 1 plane のみ生成され、edge-label プレフィクスを持つ。
+        const edgePlanes = planeCalls.filter((p) =>
+            p.name.includes("-edge-label-"),
+        );
+        expect(edgePlanes.length).toBe(1);
+        expect(edgePlanes[0].name).toBe("polygon-pE1-edge-label-0");
+    });
+
+    it("closed=true のとき edgeLabels の長さは N（最後は points[N-1]→points[0]）", () => {
+        createPolygonNode(sceneStub, "pE2", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            closed: true,
+            edgeLabels: ["e0", "e1", "e2-back-to-0"],
+        });
+        const edgePlanes = planeCalls.filter((p) =>
+            p.name.includes("-edge-label-"),
+        );
+        expect(edgePlanes.length).toBe(3);
+    });
+
+    it("edgeLabels 未指定なら handle.edgeLabels は undefined", () => {
+        const node = createPolygonNode(sceneStub, "pE3", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+        });
+        expect(node.getHandle().edgeLabels).toBeUndefined();
+    });
+
+    it("edgeLabels 指定時 handle.edgeLabels は points と整合する長さで返る", () => {
+        const node = createPolygonNode(sceneStub, "pE4", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            closed: false,
+            edgeLabels: ["e0"],
+        });
+        const handle = node.getHandle();
+        expect(handle.edgeLabels).toBeDefined();
+        // open N=3 → 辺数 2。未指定要素は undefined で埋める。
+        expect(handle.edgeLabels?.length).toBe(2);
+        expect(handle.edgeLabels?.[0]).toBe("e0");
+        expect(handle.edgeLabels?.[1]).toBeUndefined();
+    });
+
+    it("insertPoint で edgeLabels 配列も同 index にシフトされる", () => {
+        const node = createPolygonNode(sceneStub, "pE5", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            closed: true,
+            edgeLabels: ["A", "B", "C"],
+        });
+        node.insertPoint(2, { lat: 35.15, lon: 139.15, altitude: 0 });
+        const labels = node.getHandle().edgeLabels;
+        // closed N=3→4: 4 件、index=2 に undefined が挿入され "C" は index=3 に。
+        expect(labels?.length).toBe(4);
+        expect(labels?.[0]).toBe("A");
+        expect(labels?.[1]).toBe("B");
+        expect(labels?.[2]).toBeUndefined();
+        expect(labels?.[3]).toBe("C");
+    });
+
+    it("removePoint で edgeLabels 配列の同 index が削除される", () => {
+        const node = createPolygonNode(sceneStub, "pE6", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            closed: true,
+            edgeLabels: ["A", "B", "C"],
+        });
+        node.removePoint(1);
+        // closed N=3→2: 2 件、index=1 が削除される。
+        expect(node.getHandle().edgeLabels).toEqual(["A", "C"]);
+    });
+
+    it("open polygon の末尾頂点削除時は末尾辺ラベルが除去される", () => {
+        const node = createPolygonNode(sceneStub, "pE7", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+                { lat: 35.2, lon: 139.2, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            closed: false,
+            edgeLabels: ["e0", "e1"],
+        });
+        node.removePoint(2);
+        // open N=3→2: 1 件、末尾辺 (e1) が削除される。
+        expect(node.getHandle().edgeLabels).toEqual(["e0"]);
+    });
+
+    it("replacePoints 後 edgeLabels は全 undefined で再構成される", () => {
+        const node = createPolygonNode(sceneStub, "pE8", {
+            points: [
+                { lat: 35.0, lon: 139.0, altitude: 0 },
+                { lat: 35.1, lon: 139.1, altitude: 0 },
+            ],
+            altitudeMode: "absolute",
+            closed: true,
+            edgeLabels: ["x", "y"],
+        });
+        // 一度 edgeLabels を指定 → hasEdgeLabels は true → replacePoints で再構成。
+        node.replacePoints([
+            { lat: 36.0, lon: 140.0, altitude: 0 },
+            { lat: 36.1, lon: 140.1, altitude: 0 },
+            { lat: 36.2, lon: 140.2, altitude: 0 },
+        ]);
+        // replacePoints は hasEdgeLabels を false に戻す → handle.edgeLabels=undefined。
+        expect(node.getHandle().edgeLabels).toBeUndefined();
+    });
 });
 
 describe("createPolygonNode applyTransform", () => {
