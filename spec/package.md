@@ -403,6 +403,12 @@ interface PolygonOptions {
   closed?: boolean;
   /** ラベル（点ごと）。#171 で実装済み。`labels[i]` が文字列のときその点にラベルを描画する。 */
   labels?: ReadonlyArray<string>;
+  /**
+   * 辺ラベル（隣接点間ごと、#185）。`edgeLabels[i]` は `points[i]` → `points[i+1]` の中点に表示する。
+   * `closed === true` のとき末尾要素 `edgeLabels[points.length-1]` は `points[points.length-1]` → `points[0]` のラベル。
+   * `undefined` または範囲外の辺にはラベルを描画しない。
+   */
+  edgeLabels?: ReadonlyArray<string | undefined>;
   style?: PolygonStyleOptions;
   enabled?: boolean;                          // default true
   /** 各点から地表へ落とす垂線の表示 (#171 実装済み)。default true */
@@ -425,6 +431,7 @@ interface PolygonOptions {
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
 - **#171 実装済み**: 各点から地表（タイル標高、未解決時は Y=0 フォールバック）へ落とす垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
 - **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=地表 Y の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。`renderingGroupId=1` はポリライン・垂線・球・ラベルと同一。
+- **#185 実装済み（辺ラベル）**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、`closed === false` のとき配列長は `points.length - 1`。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
 - **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
 ##### 3.3.8.2 ポリゴン点編集 API（Issue #173）
