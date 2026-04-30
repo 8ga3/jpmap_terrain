@@ -1769,6 +1769,10 @@ export class DefaultScene implements CreateSceneClass {
                 polygonPointDragStartListeners.length = 0;
                 polygonPointDragListeners.length = 0;
                 polygonPointDragEndListeners.length = 0;
+                // hover カーソル/状態も元に戻す。dispose 時点で hover 中だった
+                // 場合に canvas.style.cursor = 'pointer' が残らないようにする。
+                polygonPointHoverState = null;
+                canvas.style.cursor = "";
                 // controlPanel は document.body に各 UI を直接 append しているため、
                 // ここで親要素から取り除く (T7 / Issue #121)。
                 // - compass / mapToggle は単独要素
@@ -1825,8 +1829,23 @@ export class DefaultScene implements CreateSceneClass {
                     if (idx !== -1) terrainClickListeners.splice(idx, 1);
                 };
             },
-            subscribePolygonPointHover: (listener) =>
-                subscribe(polygonPointHoverListeners, listener),
+            subscribePolygonPointHover: (listener) => {
+                polygonPointHoverListeners.push(listener);
+                let removed = false;
+                return (): void => {
+                    if (removed) return;
+                    removed = true;
+                    const idx = polygonPointHoverListeners.indexOf(listener);
+                    if (idx !== -1) polygonPointHoverListeners.splice(idx, 1);
+                    // 最後の hover リスナーが解除されたタイミングで、以後の
+                    // pointermove では hover 検出が走らずカーソルが pointer の
+                    // まま残り得る。明示的にクリアして元の状態へ戻す。
+                    if (polygonPointHoverListeners.length === 0) {
+                        polygonPointHoverState = null;
+                        canvas.style.cursor = "";
+                    }
+                };
+            },
             subscribePolygonPointClick: (listener) =>
                 subscribe(polygonPointClickListeners, listener),
             subscribePolygonPointDragStart: (listener) =>
