@@ -15,6 +15,8 @@ describe("buildPortalHtml", () => {
         expect(html).toContain('href="timelapse"');
         // ポリゴンデモ (Issue #170) もポータル一覧に並ぶ。
         expect(html).toContain('href="polygon"');
+        // 距離計測デモ (Issue #186) もポータル一覧に並ぶ。
+        expect(html).toContain('href="distance"');
         expect(html).toContain("<h1>");
     });
 
