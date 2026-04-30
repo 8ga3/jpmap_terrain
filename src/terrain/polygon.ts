@@ -345,20 +345,22 @@ const buildLinePath = (
 
 /**
  * 壁 Ribbon の pathArray を構築する。
- * 上側 row = 各頂点の世界座標、下側 row = 同じ XZ で Y を地表値に置き換えたもの。
+ * 上側 row = 各頂点の世界座標、下側 row = 同じ XZ で Y=0 に落とした座標 (#186)。
  * `closed=true` のときは先頭頂点を末尾にも追加して閉じる。
  *
  * Ribbon は updatable + instance 更新時に長さを変えられないため、
  * 構築時の長さ（`closed ? N+1 : N`）で固定される。
+ *
+ * 旧仕様では地表 Y を下端としていたため `groundYs` を引数に取っていたが、
+ * 現仕様では地表を貫通させて Y=0 まで伸ばす。引数名は呼び出し側と既存の
+ * 型を維持するため残しているが、未使用であることを示すため `_groundYs`
+ * とした。
  */
 const buildWallPathArray = (
     worldPoints: readonly Vector3[],
-    groundYs: readonly (number | null)[],
+    _groundYs: readonly (number | null)[],
     closed: boolean,
 ): [Vector3[], Vector3[]] => {
-    // 壁の下端は地表 Y ではなく Y=0 まで伸ばす (#186)。
-    // （地表を貫通させ、常にグリッド原点面で接地させる。）
-    void groundYs;
     const top: Vector3[] = worldPoints.map((p) => new Vector3(p.x, p.y, p.z));
     const ground: Vector3[] = worldPoints.map((p) => new Vector3(p.x, 0, p.z));
     if (closed && top.length >= 2) {
