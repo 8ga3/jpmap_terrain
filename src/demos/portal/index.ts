@@ -36,6 +36,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "PolygonManager 公開 API の動作確認デモ。terrain / absolute / closed の 3 種類のポリラインを表示し、enabled トグルで切替できます。",
         href: "polygon",
     },
+    {
+        title: "距離計測",
+        description:
+            "地形クリックで点を追加し、辺ごとの水平距離と高低差を表示するデモ。追加 / 削除 / 編集モードで頂点を動的に編集できます。",
+        href: "distance",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";

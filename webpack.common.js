@@ -42,6 +42,13 @@ const ENTRY_DEFINITIONS = [
         filename: "polygon.html",
         title: "jpmap_terrain – ポリゴンデモ",
     },
+    {
+        name: "distance",
+        entry: "src/demos/distance/index.ts",
+        template: "public/distance.html",
+        filename: "distance.html",
+        title: "jpmap_terrain – 距離計測デモ",
+    },
 ];
 
 const entry = Object.fromEntries(
