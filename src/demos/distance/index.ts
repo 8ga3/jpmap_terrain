@@ -259,6 +259,26 @@ const start = async (): Promise<void> => {
         }
     };
 
+    // ドラッグ中の pointermove ごとに `removePolygon` → `addPolygon` を実行すると
+    // 球体・線・壁・ラベルを毎フレーム破棄/再生成することになりコストが大きい。
+    // ドラッグハンドラからは `requestAnimationFrame` で 1 フレーム 1 回に
+    // まとめた版を呼び出す (#191)。
+    let pendingFrameHandle: number | null = null;
+    const onStateChangeScheduled = (): void => {
+        if (pendingFrameHandle !== null) return;
+        pendingFrameHandle = requestAnimationFrame(() => {
+            pendingFrameHandle = null;
+            onStateChange();
+        });
+    };
+    const flushScheduledStateChange = (): void => {
+        if (pendingFrameHandle !== null) {
+            cancelAnimationFrame(pendingFrameHandle);
+            pendingFrameHandle = null;
+        }
+        onStateChange();
+    };
+
     const toolbar = document.getElementById(TOOLBAR_ID);
     if (toolbar instanceof HTMLElement) {
         buildToolbar(toolbar, state, onStateChange);
@@ -409,11 +429,13 @@ const start = async (): Promise<void> => {
             current.lat = e.lat;
             current.lon = e.lon;
         }
-        onStateChange();
+        onStateChangeScheduled();
     });
 
     viewer.onPolygonPointDragEnd(() => {
         state.altitudeDragStart = null;
+        // ドラッグ中に rAF で保留されている再描画があれば必ず反映する。
+        flushScheduledStateChange();
     });
 
     onStateChange();
