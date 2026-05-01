@@ -647,7 +647,7 @@ interface CircleHandle {
 - 円周点列は world 座標で `P_i = center + (radius × cos θ_i, 0, radius × sin θ_i)` として `segments` 等分に生成する（Mercator 楕円化回避）。
 - `terrain` モードでは中心点の地表標高のみ解決し、その値 + `center.altitude` を全円周点に均一適用する（平面円）。標高未解決の間は全体を非表示にし、`onTerrainUpdated` 後に自動表示する。
 - `absolute` モードでは `center.altitude` をそのまま Y に採用する。
-- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベルは `1`（地表より手前）。壁 Ribbon は `0` + `needDepthPrePass=true`（半透明時の z-fight 緩和）。
+- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベルは `1`（地表より手前）。壁 Ribbon は `0`。`wallOpacity < 1`（半透明）の場合のみ `needDepthPrePass=true` で z-fight を緩和する。
 - `dispose()` で全 Circle リソース（Mesh / Material / TransformNode）を解放する。
 
 **差分更新の保証範囲（updateCircle）:**
