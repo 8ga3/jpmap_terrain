@@ -538,7 +538,7 @@ export const POLYGON_DEFAULTS = {
 // ---- 円 (Issue #201 / #202) ----
 
 /**
- * 円の中心点（spec/package.md §3.3.9）。
+ * 円の中心点（Issue #201 / #202）。
  *
  * - `lat` / `lon` (度) は JAPAN_BOUNDS 内の値である必要がある。
  * - `altitude` (m) は `altitudeMode === "absolute"` のとき必須（海抜高度）。
@@ -554,7 +554,7 @@ export interface CircleCenterOptions {
 }
 
 /**
- * 円のスタイル（spec/package.md §3.3.9.1）。
+ * 円のスタイル（Issue #201 / #202）。
  *
  * 中心点・円周・壁・中心ラベルの色 / 太さ / 不透明度 / フォントを指定する。
  * すべて任意指定で、未指定時は {@link CIRCLE_DEFAULTS} の値が適用される。
@@ -585,7 +585,7 @@ export interface CircleStyleOptions {
 }
 
 /**
- * 円追加オプション（spec/package.md §3.3.9）。
+ * 円追加オプション（Issue #201 / #202）。
  *
  * - `radius` は world m。`> 0` かつ {@link CIRCLE_RADIUS_MAX_M} 以下である必要がある。
  * - `segments` は円周分割数。`[CIRCLE_SEGMENTS_MIN, CIRCLE_SEGMENTS_MAX]` の範囲内である必要がある。
@@ -682,7 +682,7 @@ export const CIRCLE_SEGMENTS_MAX = 512;
 export const CIRCLE_RADIUS_MAX_M = 100_000;
 
 /**
- * 円の既定値（spec/package.md §3.3.9.1）。
+ * 円の既定値（Issue #201 / #202）。
  *
  * `style` は Polygon の既定値と同一の配色を採用する。
  */
