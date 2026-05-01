@@ -443,3 +443,83 @@ test("Polygon point edit (after all edits) with WebGL2", async ({
     });
     expect(testInfo.errors).toHaveLength(0);
 });
+
+// ---------- サークル API 視覚回帰 (Issue #201 / #207) ----------
+//
+// circle デモページ（terrain / absolute / custom-segments の 3 円）を
+// ロードし、標高解決後の初期描画スナップショットを VR baseline として取得する。
+// WebGL2 のみで実行し、時刻と autoSunPosition を固定する。
+
+async function waitForCircleScene(
+    page: import("@playwright/test").Page,
+): Promise<void> {
+    const url = new URL("/circle.html", "http://localhost");
+    url.searchParams.set("engine", "webgl");
+    applyDeterministicSunQuery(url);
+    await page.goto(`${url.pathname}${url.search}`, { timeout: 120000 });
+    await page.waitForFunction(
+        () =>
+            (window as unknown as { scene?: { isReady: () => boolean } }).scene
+                ?.isReady?.() ?? false,
+        { timeout: 15000 },
+    );
+    await page.waitForLoadState("networkidle", { timeout: 30000 });
+    await page.waitForFunction(
+        () =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = (): void => {
+                    if (++count >= 15) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        { timeout: 10000 },
+    );
+}
+
+test("Circle demo (initial) with WebGL2", async ({ page }, testInfo) => {
+    await waitForCircleScene(page);
+    await expect(page).toHaveScreenshot({
+        timeout: 30000,
+        maxDiffPixelRatio: 0.02,
+    });
+    expect(testInfo.errors).toHaveLength(0);
+});
+
+test("Circle demo (after updateCircle) with WebGL2", async ({
+    page,
+}, testInfo) => {
+    await waitForCircleScene(page);
+
+    // updateCircle で半径を変更し、再描画後のスナップショットを取得する
+    await page.evaluate(() => {
+        type ViewerLike = {
+            updateCircle: (
+                id: string,
+                opts: { radius?: number },
+            ) => unknown;
+        };
+        const viewer = (window as unknown as { viewer: ViewerLike }).viewer;
+        viewer.updateCircle("yomiuri-terrain", { radius: 600 });
+    });
+
+    await page.waitForFunction(
+        () =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = (): void => {
+                    if (++count >= 15) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        { timeout: 10000 },
+    );
+
+    await expect(page).toHaveScreenshot({
+        timeout: 30000,
+        maxDiffPixelRatio: 0.02,
+    });
+    expect(testInfo.errors).toHaveLength(0);
+});
