@@ -656,11 +656,11 @@ interface CircleHandle {
 |---|---|
 | `center` のみ | TransformNode 位置更新、メッシュ再生成なし |
 | `radius` のみ | 円周点列再計算、Tube / Ribbon の path 差分更新 |
-| `segments` 変更 | Tube / Ribbon を dispose + 再生成 |
-| `altitudeMode` 変更 | 標高解決リセット + 即時 tick |
-| `style`（空でない場合） | Material プロパティ更新 |
+| `segments` 変更 | CircleNode を dispose + 再生成（path 長が変わるため） |
+| `altitudeMode` 変更 | CircleNode を dispose + 再生成（標高解決リセット + 即時 tick） |
+| `style`（空でない場合） | CircleNode を dispose + 再生成（Material 再構築） |
 | `*Enabled` フラグ | `setEnabled` でメッシュ可視性切替 |
-| `label` | DynamicTexture 再描画 or Plane dispose / 再生成 |
+| `label` | CircleNode を dispose + 再生成（DynamicTexture 再構築） |
 
 **利用例:**
 
