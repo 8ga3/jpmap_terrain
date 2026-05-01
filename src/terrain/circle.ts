@@ -429,36 +429,32 @@ export const createCircleNode = (
         sphereMesh.scaling.setAll(sphereDiameter * pointScale);
 
         // 円周 Tube を閉ループとして更新（path 長 = segments + 1）。
-        if (lineEnabled) {
-            const tubePath: Vector3[] = ringWorld.map(
-                (p) => new Vector3(p.x, p.y, p.z),
-            );
-            tubePath.push(
-                new Vector3(tubePath[0].x, tubePath[0].y, tubePath[0].z),
-            );
-            lineMesh = CreateTube(
-                `circle-${id}-line`,
-                { path: tubePath, instance: lineMesh },
-                scene,
-            );
-        }
+        const tubePath: Vector3[] = ringWorld.map(
+            (p) => new Vector3(p.x, p.y, p.z),
+        );
+        tubePath.push(
+            new Vector3(tubePath[0].x, tubePath[0].y, tubePath[0].z),
+        );
+        lineMesh = CreateTube(
+            `circle-${id}-line`,
+            { path: tubePath, instance: lineMesh },
+            scene,
+        );
 
         // 壁 Ribbon: 上 row = 円周頂点位置、下 row = 同 XZ で Y=0。
-        if (wallEnabled) {
-            const top: Vector3[] = ringWorld.map(
-                (p) => new Vector3(p.x, p.y, p.z),
-            );
-            const bottom: Vector3[] = ringWorld.map(
-                (p) => new Vector3(p.x, 0, p.z),
-            );
-            top.push(new Vector3(top[0].x, top[0].y, top[0].z));
-            bottom.push(new Vector3(bottom[0].x, bottom[0].y, bottom[0].z));
-            wallMesh = CreateRibbon(
-                `circle-${id}-wall`,
-                { pathArray: [top, bottom], instance: wallMesh },
-                scene,
-            );
-        }
+        const top: Vector3[] = ringWorld.map(
+            (p) => new Vector3(p.x, p.y, p.z),
+        );
+        const bottom: Vector3[] = ringWorld.map(
+            (p) => new Vector3(p.x, 0, p.z),
+        );
+        top.push(new Vector3(top[0].x, top[0].y, top[0].z));
+        bottom.push(new Vector3(bottom[0].x, bottom[0].y, bottom[0].z));
+        wallMesh = CreateRibbon(
+            `circle-${id}-wall`,
+            { pathArray: [top, bottom], instance: wallMesh },
+            scene,
+        );
 
         // 中心ラベルの位置: 中心 + screenUp * (球半径 + ラベル半高)。
         if (labelEntry) {
