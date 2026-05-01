@@ -176,23 +176,40 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
     /**
      * フレームループ。
      *
-     * 標高解決はキャッシュ済みの値を使い、ラベルがカメラ方向を追従するために
-     * 毎フレーム `applyTransform` を呼ぶ（`pointScale` のみ更新）。
-     * 標高未解決の円はスキップする。
+     * Polygon と同様、毎フレーム中心の world XZ を `latLonToWorld` で再計算する。
+     * origin（地図中心）がドラッグで移動した場合にも正しい位置に追従するため。
+     * 標高未解決の円はスキップされる。
      */
     const tickFrame = (): void => {
         if (nodes.size === 0) return;
         for (const [id, node] of nodes) {
             const cache = caches.get(id);
-            if (!cache || cache.centerWorld === null || cache.ringWorld === null)
-                continue;
-            const scale = computeDistanceScale(
+            if (!cache) continue;
+
+            // 毎フレーム world XZ を再計算（origin 移動への追従）
+            const { wx: cwx, wz: cwz } = latLonToWorld(
                 ctx,
-                cache.cwx,
-                cache.centerWorld.y,
-                cache.cwz,
+                node.center.lat,
+                node.center.lon,
             );
-            node.applyTransform(cache.centerWorld, cache.ringWorld, scale);
+            const radius = node.radius;
+            const segments = node.segments;
+
+            // ringXZ を再計算
+            const step = (Math.PI * 2) / segments;
+            const ringXZ = cache.ringXZ;
+            for (let i = 0; i < segments; i++) {
+                const θ = i * step;
+                ringXZ[i] = {
+                    x: cwx + radius * Math.cos(θ),
+                    z: cwz + radius * Math.sin(θ),
+                };
+            }
+            cache.cwx = cwx;
+            cache.cwz = cwz;
+
+            // 標高解決
+            resolveElevations(node, cache);
         }
     };
 
