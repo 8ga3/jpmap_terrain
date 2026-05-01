@@ -11,6 +11,7 @@
 | 3D 地形ビューア | `/viewer.html` | `src/demos/viewer/index.ts` | 既存の 3D 地形可視化（`/@lat,lon` URL ・カメラ・地図種別連動） |
 | タイムラプス | `/timelapse.html` | `src/demos/timelapse/index.ts` | 24 時間を 1 分に圧縮した太陽位置・陰影アニメ＋アナログ時計オーバーレイ |
 | ポリゴン | `/polygon.html` | `src/demos/polygon/index.ts` | `JpmapTerrain` のポリゴン公開 API（terrain / absolute / closed の 3 種・点編集 API）の動作確認 |
+| サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 (#201 / #206) |
 | 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認デモ (#186) |
 
 ## 設計方針
@@ -43,6 +44,22 @@
 | `engine` / カメラ系 | viewer と同じ | — | `parseCameraStateFromUrl` を共用 |
 
 実装上、タイムラプス側では `autoSunPosition` を強制 OFF にし、`viewer.dateTime` を `requestAnimationFrame` ループで更新します（`UPDATE_INTERVAL_MS = 200ms` で setter 連打を抑制）。アナログ時計と時刻ラベルは画面下部中央に縦積みで配置し、表示は日本標準時（JST = UTC+9）を使用します。
+
+### circle (`/circle.html`)
+
+`JpmapTerrain` のサークル公開 API（§3.3.9）の動作確認デモ（#201 / #206）。
+
+**デモ構成（3 サークル）:**
+
+| id | altitudeMode | 概要 |
+|---|---|---|
+| `yomiuri-terrain` | `terrain` | 地表追従円（半径 500m、標準スタイル） |
+| `yomiuri-absolute` | `absolute` | 絶対標高円（半径 300m、altitude=200m、青色） |
+| `yomiuri-custom` | `terrain` | カスタムセグメント円（半径 400m、segments=16） |
+
+**コントロール:** 各サークルの enabled / point / line / wall / label トグルと、`updateCircle` による半径・中心・スタイル変更のデモ UI を右パネルに配置する。
+
+**URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式および `?lat=&lon=` クエリ形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
 ### distance (`/distance.html`)
 
