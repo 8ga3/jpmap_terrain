@@ -280,6 +280,18 @@ export class JpmapTerrain {
             }
         } catch (error) {
             // 部分的に確保済みのリソースを解放してから再 throw
+            if (this._circleManager) {
+                try { this._circleManager.dispose(); } catch { /* best-effort */ }
+                this._circleManager = null;
+            }
+            if (this._polygonManager) {
+                try { this._polygonManager.dispose(); } catch { /* best-effort */ }
+                this._polygonManager = null;
+            }
+            if (this._markerManager) {
+                try { this._markerManager.dispose(); } catch { /* best-effort */ }
+                this._markerManager = null;
+            }
             if (this._resizeObserver) {
                 this._resizeObserver.disconnect();
                 this._resizeObserver = null;
