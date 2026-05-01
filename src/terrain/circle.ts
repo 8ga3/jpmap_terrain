@@ -196,11 +196,12 @@ const createLabelMesh = (
 };
 
 /**
- * 中心 world 座標 + 半径 + segments から円周点列（閉ループ）を生成する。
+ * 中心 world 座標 + 半径 + segments から円周点列を生成する。
  *
- * 戻り値の `worldRing` は閉ループ（末尾に先頭を append 済み、長さ = segments + 1）。
- * 円周点の (X, Z) は world 平面の polar 展開で求められ、Y は中心 Y を使う。
- * terrain モード時の各点 Y は呼び出し側で標高解決して上書きする。
+ * 戻り値は未クローズの円周点列（長さ = segments）。必要な閉ループ化
+ * （末尾への先頭点の追加）は呼び出し側で行う。
+ * 円周点の (X, Z) は world 平面の polar 展開で求められる。
+ * terrain モード時の各点 Y は呼び出し側で標高解決して設定する。
  */
 const buildRingXZ = (
     cx: number,
