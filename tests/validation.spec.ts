@@ -13,6 +13,30 @@ const applyDeterministicSunQuery = (url: URL): void => {
     url.searchParams.set("autoSunPosition", FIXED_AUTO_SUN_POSITION);
 };
 
+/**
+ * 指定フレーム数だけ requestAnimationFrame を待つ。
+ * 描画安定を保証するための共通ヘルパー。
+ */
+async function waitForFrames(
+    page: import("@playwright/test").Page,
+    frameCount: number,
+    timeout = 10000,
+): Promise<void> {
+    await page.waitForFunction(
+        (n: number) =>
+            new Promise((resolve) => {
+                let count = 0;
+                const tick = (): void => {
+                    if (++count >= n) return resolve(true);
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+            }),
+        frameCount,
+        { timeout },
+    );
+}
+
 const scenes: {
     name: string;
     url: string;
@@ -45,18 +69,7 @@ for (const scene of scenes) {
             if (scene.waitForNetworkIdle) {
                 await page.waitForLoadState("networkidle", { timeout: 30000 });
                 // タイル読み込み後の描画安定待ち（数フレーム経過で確認）
-                await page.waitForFunction(
-                    () =>
-                        new Promise((resolve) => {
-                            let count = 0;
-                            const tick = () => {
-                                if (++count >= 10) return resolve(true);
-                                requestAnimationFrame(tick);
-                            };
-                            requestAnimationFrame(tick);
-                        }),
-                    { timeout: 10000 }
-                );
+                await waitForFrames(page, 10);
             }
             if (scene.renderCount) {
                 await page.evaluate(() => {
@@ -113,18 +126,7 @@ async function waitForScene(
     // タイル読み込み完了を待つ
     await page.waitForLoadState("networkidle", { timeout: 30000 });
     // 描画安定待ち（数フレーム経過で確認）
-    await page.waitForFunction(
-        () =>
-            new Promise((resolve) => {
-                let count = 0;
-                const tick = () => {
-                    if (++count >= 10) return resolve(true);
-                    requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
-        { timeout: 10000 }
-    );
+    await waitForFrames(page, 10);
 }
 
 for (const engine of engines) {
@@ -146,18 +148,7 @@ for (const engine of engines) {
         await page.waitForLoadState("networkidle", { timeout: 30000 });
 
         // 描画安定のため数フレーム待機
-        await page.waitForFunction(
-            () =>
-                new Promise((resolve) => {
-                    let count = 0;
-                    const tick = () => {
-                        if (++count >= 5) return resolve(true);
-                        requestAnimationFrame(tick);
-                    };
-                    requestAnimationFrame(tick);
-                }),
-            { timeout: 5000 }
-        );
+        await waitForFrames(page, 5, 5000);
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,
@@ -245,18 +236,7 @@ async function waitForSceneWithSkybox(
 
     // タイル再評価 + 描画安定待ち
     await page.waitForLoadState("networkidle", { timeout: 30000 });
-    await page.waitForFunction(
-        () =>
-            new Promise((resolve) => {
-                let count = 0;
-                const tick = () => {
-                    if (++count >= 15) return resolve(true);
-                    requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
-        { timeout: 10000 }
-    );
+    await waitForFrames(page, 15);
 }
 
 for (const engine of engines) {
@@ -313,18 +293,7 @@ for (const engine of engines) {
         );
 
         await page.waitForLoadState("networkidle", { timeout: 30000 });
-        await page.waitForFunction(
-            () =>
-                new Promise((resolve) => {
-                    let count = 0;
-                    const tick = () => {
-                        if (++count >= 15) return resolve(true);
-                        requestAnimationFrame(tick);
-                    };
-                    requestAnimationFrame(tick);
-                }),
-            { timeout: 10000 },
-        );
+        await waitForFrames(page, 15);
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,
@@ -357,18 +326,7 @@ async function waitForPolygonScene(
         { timeout: 15000 },
     );
     await page.waitForLoadState("networkidle", { timeout: 30000 });
-    await page.waitForFunction(
-        () =>
-            new Promise((resolve) => {
-                let count = 0;
-                const tick = (): void => {
-                    if (++count >= 15) return resolve(true);
-                    requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
-        { timeout: 10000 },
-    );
+    await waitForFrames(page, 15);
 }
 
 test("Polygon point edit (initial) with WebGL2", async ({
@@ -424,18 +382,7 @@ test("Polygon point edit (after all edits) with WebGL2", async ({
         ]);
     }, POLYGON_EDIT_TARGET_ID);
 
-    await page.waitForFunction(
-        () =>
-            new Promise((resolve) => {
-                let count = 0;
-                const tick = (): void => {
-                    if (++count >= 15) return resolve(true);
-                    requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
-        { timeout: 10000 },
-    );
+    await waitForFrames(page, 15);
 
     await expect(page).toHaveScreenshot({
         timeout: 30000,
@@ -464,18 +411,7 @@ async function waitForCircleScene(
         { timeout: 15000 },
     );
     await page.waitForLoadState("networkidle", { timeout: 30000 });
-    await page.waitForFunction(
-        () =>
-            new Promise((resolve) => {
-                let count = 0;
-                const tick = (): void => {
-                    if (++count >= 15) return resolve(true);
-                    requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
-        { timeout: 10000 },
-    );
+    await waitForFrames(page, 15);
 }
 
 test("Circle demo (initial) with WebGL2", async ({ page }, testInfo) => {
@@ -504,18 +440,7 @@ test("Circle demo (after updateCircle) with WebGL2", async ({
         viewer.updateCircle("yomiuri-terrain", { radius: 600 });
     });
 
-    await page.waitForFunction(
-        () =>
-            new Promise((resolve) => {
-                let count = 0;
-                const tick = (): void => {
-                    if (++count >= 15) return resolve(true);
-                    requestAnimationFrame(tick);
-                };
-                requestAnimationFrame(tick);
-            }),
-        { timeout: 10000 },
-    );
+    await waitForFrames(page, 15);
 
     await expect(page).toHaveScreenshot({
         timeout: 30000,
