@@ -20,6 +20,8 @@ import {
     createUrlUpdater,
     parseMapTypeFromUrl,
     updateMapTypeInUrl,
+    parseViewModeFromUrl,
+    updateViewModeInUrl,
     type CameraUrlState,
 } from "../../terrain/urlState";
 
@@ -138,6 +140,7 @@ const start = async (): Promise<void> => {
     const autoSunPosition = resolveAutoSunPosition(location.search);
     const showSunShadows = resolveShowSunShadows(location.search);
     const mapType = parseMapTypeFromUrl(location.href);
+    const viewMode = parseViewModeFromUrl(location.href);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
         ...(cameraState ?? {}),
@@ -145,6 +148,7 @@ const start = async (): Promise<void> => {
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
         ...(showSunShadows !== undefined ? { showSunShadows } : {}),
         ...(mapType !== null ? { mapType } : {}),
+        ...(viewMode !== null ? { viewMode } : {}),
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 
@@ -164,6 +168,10 @@ const start = async (): Promise<void> => {
     viewer.onMapTypeChange((next) => updateMapTypeInUrl(next));
     // 起動完了直後に一度書き込み、`?mapType=Photo` のような大小混在の値を小文字に揃える。
     updateMapTypeInUrl(viewer.mapType);
+
+    // URL 同期: viewMode 変化のたびに `?viewMode=` を反映する (Issue #193)。
+    viewer.onViewModeChange((next) => updateViewModeInUrl(next));
+    updateViewModeInUrl(viewer.viewMode);
 
     // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。

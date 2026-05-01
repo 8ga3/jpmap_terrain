@@ -36,6 +36,8 @@ import {
     PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
+    ViewMode,
+    ViewModeChangeListener,
 } from "./types";
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
 import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
@@ -54,11 +56,13 @@ export class JpmapTerrain {
     private _azimuth: number;
     private _tilt: number;
     private _mapType: MapType;
+    private _viewMode: ViewMode;
 
     private _showCompass = true;
     private _showZoomButtons = true;
     private _showScaleBar = true;
     private _showMapToggle = true;
+    private _showViewModeButton = true;
     private _showAttribution = true;
 
     /** 太陽位置計算用の保持日時。`null` の場合は内部フォールバックを使用する */
@@ -90,6 +94,8 @@ export class JpmapTerrain {
     private _lastCameraSnapshot: CameraChangeEvent | null = null;
     /** `onMapTypeChange` で登録されたリスナー一覧 (Issue #149) */
     private _mapTypeListeners: MapTypeChangeListener[] = [];
+    /** `onViewModeChange` で登録されたリスナー一覧 (Issue #193) */
+    private _viewModeListeners: ViewModeChangeListener[] = [];
 
     /** マーカー管理 (Issue #167)。`onReady` で初期化される */
     private _markerManager: MarkerManager | null = null;
@@ -105,6 +111,10 @@ export class JpmapTerrain {
         this._azimuth = options.azimuth ?? JPMAP_TERRAIN_DEFAULTS.azimuth;
         this._tilt = options.tilt ?? JPMAP_TERRAIN_DEFAULTS.tilt;
         this._mapType = options.mapType ?? JPMAP_TERRAIN_DEFAULTS.mapType;
+        this._viewMode = options.viewMode ?? JPMAP_TERRAIN_DEFAULTS.viewMode;
+        this._showViewModeButton =
+            options.showViewModeButton ??
+            JPMAP_TERRAIN_DEFAULTS.showViewModeButton;
         // 太陽位置 (Issue #35)。`Invalid Date` は `console.warn` のうえ null に倒す。
         this._dateTime = JpmapTerrain._sanitizeDateTimeOption(options.dateTime);
         this._autoSunPosition =
@@ -184,6 +194,8 @@ export class JpmapTerrain {
                 tilt: this._tilt,
                 mapType: this._mapType,
                 onMapTypeChange: (next) => this._handleMapTypeChange(next),
+                viewMode: this._viewMode,
+                onViewModeChange: (next) => this._handleViewModeChange(next),
                 onReady: (controller) => {
                     this._controller = controller;
                     // T6: 初期表示状態を controller に反映する
@@ -202,6 +214,10 @@ export class JpmapTerrain {
                     controller.setUiVisibility(
                         "mapToggle",
                         this._showMapToggle,
+                    );
+                    controller.setUiVisibility(
+                        "viewModeButton",
+                        this._showViewModeButton,
                     );
                     controller.setUiVisibility(
                         "attribution",
@@ -476,6 +492,14 @@ export class JpmapTerrain {
         this._controller?.setUiVisibility("mapToggle", value);
     }
 
+    public get showViewModeButton(): boolean {
+        return this._showViewModeButton;
+    }
+    public set showViewModeButton(value: boolean) {
+        this._showViewModeButton = value;
+        this._controller?.setUiVisibility("viewModeButton", value);
+    }
+
     public get showAttribution(): boolean {
         return this._showAttribution;
     }
@@ -490,6 +514,63 @@ export class JpmapTerrain {
     public set mapType(value: MapType) {
         this._mapType = value;
         this._controller?.setMapType(value);
+    }
+
+    /**
+     * 現在のカメラ視点モード (Issue #193)。
+     * `"3d"` (透視投影) / `"2d"` (平行投影、tilt=0 固定)。
+     */
+    public get viewMode(): ViewMode {
+        return this._controller?.getViewMode() ?? this._viewMode;
+    }
+    public set viewMode(value: ViewMode) {
+        this._viewMode = value;
+        this._controller?.setViewMode(value);
+    }
+
+    /**
+     * `viewMode` が変化した際に呼ばれるリスナーを登録する (Issue #193)。
+     *
+     * `onMapTypeChange` と対称な API。UI ボタン操作・`viewMode` setter のいずれの
+     * 経路でも、値が変化したフレームのみ通知する。同値再 set では通知しない。
+     * 戻り値の関数で登録解除（複数回呼んでも安全）。リスナーが throw しても他リスナー
+     * へ伝播し、`console.error` で握りつぶす。`dispose()` 後の呼び出しは何もせず、
+     * no-op の unsubscribe を返す。
+     */
+    public onViewModeChange(listener: ViewModeChangeListener): () => void {
+        if (this._disposed) {
+            return () => {
+                /* no-op: viewer is already disposed */
+            };
+        }
+        this._viewModeListeners.push(listener);
+        let removed = false;
+        return (): void => {
+            if (removed) return;
+            removed = true;
+            const idx = this._viewModeListeners.indexOf(listener);
+            if (idx !== -1) {
+                this._viewModeListeners.splice(idx, 1);
+            }
+        };
+    }
+
+    /**
+     * controller から伝播される `viewMode` 変化を受け取り、
+     * 内部状態の更新と登録リスナーへの通知を行う (Issue #193)。
+     * controller 側で同値再 set はフィルタ済みのため、ここでは無条件に通知する。
+     */
+    private _handleViewModeChange(next: ViewMode): void {
+        if (this._disposed) return;
+        this._viewMode = next;
+        const listeners = this._viewModeListeners.slice();
+        for (const listener of listeners) {
+            try {
+                listener(next);
+            } catch (err) {
+                console.error("[JpmapTerrain] onViewModeChange listener threw:", err);
+            }
+        }
     }
 
     /**
@@ -778,6 +859,7 @@ export class JpmapTerrain {
             altitude: this.altitude,
             azimuth: this.azimuth,
             tilt: this.tilt,
+            viewMode: this.viewMode,
         };
         const prev = this._lastCameraSnapshot;
         if (prev === null) {
@@ -790,7 +872,8 @@ export class JpmapTerrain {
             Math.abs(snapshot.lon - prev.lon) > eps ||
             Math.abs(snapshot.altitude - prev.altitude) > eps ||
             Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
-            Math.abs(snapshot.tilt - prev.tilt) > eps;
+            Math.abs(snapshot.tilt - prev.tilt) > eps ||
+            snapshot.viewMode !== prev.viewMode;
         if (!changed) return;
         this._lastCameraSnapshot = snapshot;
         // iterate 中の add/remove 安全のためスナップショットを取って iterate
@@ -986,6 +1069,7 @@ export class JpmapTerrain {
         this._cameraListeners = [];
         this._lastCameraSnapshot = null;
         this._mapTypeListeners = [];
+        this._viewModeListeners = [];
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;

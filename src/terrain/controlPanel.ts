@@ -13,6 +13,7 @@ export interface ControlPanelElements {
     zoomIn: HTMLButtonElement;
     zoomOut: HTMLButtonElement;
     mapToggle: HTMLButtonElement;
+    viewModeToggle: HTMLButtonElement;
     scaleBar: ScaleBarElement;
 }
 
@@ -260,6 +261,46 @@ const createMapToggleButton = (): HTMLButtonElement => {
     return btn;
 };
 
+/**
+ * 3D / 2D 視点モード切替ボタン (Issue #193)。
+ *
+ * コンパスボタン（top:12px right:12px の 40×40 円形）の直下に同幅・同色系で配置する。
+ * ラベルは「次に切り替える先」を表示する（3D 表示中は `2D`、2D 表示中は `3D`）。
+ */
+const createViewModeToggleButton = (): HTMLButtonElement => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "2D";
+    btn.tabIndex = 0;
+    btn.setAttribute("aria-label", "視点切替: 2D に変更");
+    btn.setAttribute("aria-pressed", "false");
+    css(btn, {
+        position: "absolute",
+        top: "60px",
+        right: "12px",
+        width: "40px",
+        height: "40px",
+        border: "none",
+        borderRadius: "50%",
+        background: "rgba(9,18,32,0.72)",
+        backdropFilter: "blur(6px)",
+        color: "#f2f7ff",
+        fontSize: "13px",
+        fontWeight: "bold",
+        lineHeight: "1",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        outline: "none",
+        padding: "0",
+        zIndex: "10",
+    });
+    btn.classList.add("cp-btn");
+    document.body.appendChild(btn);
+    return btn;
+};
+
 /** きれいな数値にスナップ */
 export const SCALE_STEPS = [
     1, 2, 5, 10, 20, 50, 100, 200, 500,
@@ -363,7 +404,10 @@ export const createControlPanel = (): ControlPanelElements => {
     // 地図切替ボタン（画面左下に配置）
     const mapToggle = createMapToggleButton();
 
+    // 視点モード切替ボタン（コンパス直下に配置） (Issue #193)
+    const viewModeToggle = createViewModeToggleButton();
+
     // スケールバー（ズームボタンコンテナ内に統合済み）
 
-    return { compass, locateMe, zoomIn, zoomOut, mapToggle, scaleBar };
+    return { compass, locateMe, zoomIn, zoomOut, mapToggle, viewModeToggle, scaleBar };
 };

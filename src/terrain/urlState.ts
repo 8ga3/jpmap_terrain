@@ -2,7 +2,7 @@
 
 import { clamp, JAPAN_BOUNDS } from "./gsiTile";
 import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
-import type { MapType } from "../lib/types";
+import type { MapType, ViewMode } from "../lib/types";
 
 export interface LatLon {
     lat: number;
@@ -280,5 +280,55 @@ export const updateMapTypeInUrl = (mapType: MapType): void => {
         return;
     }
     const next = withMapTypeInUrl(window.location.href, mapType);
+    window.history.replaceState(null, "", next);
+};
+
+// ---- viewMode クエリ (Issue #193) ----
+
+/** `?viewMode=` のクエリキー名 */
+export const VIEW_MODE_QUERY_KEY = "viewMode";
+
+const VIEW_MODE_VALUES: ReadonlyArray<ViewMode> = ["3d", "2d"];
+
+const isViewMode = (value: string): value is ViewMode =>
+    (VIEW_MODE_VALUES as ReadonlyArray<string>).includes(value);
+
+/**
+ * URL から `?viewMode=3d|2d` を読み取る (Issue #193)。
+ *
+ * - 大小文字無視（`3D`, `2D` も可）。書き出しは小文字。
+ * - 不正値・欠落・URL 解析失敗時は `null` を返す。
+ */
+export const parseViewModeFromUrl = (url: string): ViewMode | null => {
+    try {
+        const parsed = new URL(url, "http://localhost");
+        const raw = parsed.searchParams.get(VIEW_MODE_QUERY_KEY);
+        if (raw === null) return null;
+        const normalized = raw.toLowerCase();
+        return isViewMode(normalized) ? normalized : null;
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * 入力 URL のクエリ部に `viewMode=<value>` をマージして返す純粋関数 (Issue #193)。
+ * パス・他クエリ・ハッシュは保持する。既存の `viewMode` パラメータは上書きする。
+ */
+export const withViewModeInUrl = (url: string, viewMode: ViewMode): string => {
+    const parsed = new URL(url, "http://localhost");
+    parsed.searchParams.set(VIEW_MODE_QUERY_KEY, viewMode);
+    return parsed.pathname + parsed.search + parsed.hash;
+};
+
+/**
+ * `history.replaceState` で現在の URL に `?viewMode=<value>` を反映する (Issue #193)。
+ * `window` / `history` が未定義な環境では何もしない。
+ */
+export const updateViewModeInUrl = (viewMode: ViewMode): void => {
+    if (typeof window === "undefined" || typeof window.history === "undefined") {
+        return;
+    }
+    const next = withViewModeInUrl(window.location.href, viewMode);
     window.history.replaceState(null, "", next);
 };

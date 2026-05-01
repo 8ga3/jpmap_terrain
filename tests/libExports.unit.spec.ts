@@ -66,6 +66,7 @@ describe("package entry exports (T8)", () => {
             altitude: 2000,
             azimuth: 0,
             tilt: 45,
+            viewMode: "3d",
         };
         let received: CameraChangeEvent | null = null;
         const listener: CameraChangeListener = (e) => {
