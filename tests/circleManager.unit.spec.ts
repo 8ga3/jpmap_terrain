@@ -14,6 +14,7 @@ interface StubNode {
     center: { lat: number; lon: number; altitude?: number };
     radius: number;
     segments: number;
+    label: string | null | undefined;
     enabled: boolean;
     pointEnabled: boolean;
     lineEnabled: boolean;
@@ -47,6 +48,7 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
             center: { ...options.center },
             radius: options.radius,
             segments: options.segments ?? 64,
+            label: options.label,
             enabled: options.enabled ?? true,
             pointEnabled: options.pointEnabled ?? true,
             lineEnabled: options.lineEnabled ?? true,
@@ -124,7 +126,7 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
                 radius: node.radius,
                 segments: node.segments,
                 altitudeMode: node.altitudeMode,
-                label: null,
+                label: node.label ?? null,
                 style: {} as unknown as Record<string, unknown>,
                 enabled: node.enabled,
                 pointEnabled: node.pointEnabled,
@@ -398,6 +400,28 @@ describe("CircleManager update", () => {
         expect(created.length).toBe(1); // 再構築なし
         expect(created[0].setEnabledHistory).toEqual([false]);
         expect(created[0].setPointEnabledHistory).toEqual([false]);
+    });
+
+    it("label を文字列に変更すると node が再構築され getHandle に反映される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        expect(created.length).toBe(1);
+        const handle = mgr.update("a", { label: "テスト" });
+        expect(created[0].disposed).toBe(true);
+        expect(created.length).toBe(2);
+        expect(handle.label).toBe("テスト");
+    });
+
+    it("label を null に変更すると node が再構築される（非表示）", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100, label: "初期" });
+        expect(created.length).toBe(1);
+        const handle = mgr.update("a", { label: null });
+        expect(created[0].disposed).toBe(true);
+        expect(created.length).toBe(2);
+        expect(handle.label).toBeNull();
     });
 
     it("未存在 id の update は throw", () => {
