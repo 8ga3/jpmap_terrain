@@ -3,7 +3,7 @@
 `jpmap_terrain` の開発デモは複数のエントリポイントを持ち、`/`（ポータル）から各デモへ遷移できます。
 本ドキュメントはデモポータルの方針・URL 規約・新規デモの追加手順をまとめます。
 
-## デモ一覧（2026-04 時点）
+## デモ一覧（2026-05 時点）
 
 | デモ | URL | エントリ | 説明 |
 |---|---|---|---|
@@ -13,6 +13,7 @@
 | ポリゴン | `/polygon.html` | `src/demos/polygon/index.ts` | `JpmapTerrain` のポリゴン公開 API（terrain / absolute / closed の 3 種・点編集 API）の動作確認 |
 | サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 (#201 / #206) |
 | 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認デモ (#186) |
+| Plan Viewer | `/plan.html` | `src/demos/plan/index.ts` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア (#38)。ウェイポイント・ジオフェンス・ラリーポイントを描画 |
 
 ## 設計方針
 
@@ -86,6 +87,31 @@
 
 - 水平距離は `haversineDistanceMeters`（WGS84 平均半径）で算出。浮動小数誤差で `h` が 1 を僅かに超えるケース（対蹠点付近）に備え、`h` を `[0, 1]` にクランプしてから `Math.atan2` に渡す。
 - 編集モードのドラッグ時は `pointermove` ごとに `removePolygon` → `addPolygon` を行うと負荷が高いため、`requestAnimationFrame` で 1 フレーム 1 回に集約する。`dragEnd` で保留中の rAF を即時 flush し、最終位置が確実に反映されるようにする (#191)。
+
+### plan (`/plan.html`)
+
+QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ上に表示するビューア（#38）。編集機能は持たない。
+
+**ファイル入力:** デスクトップからのドラッグ&ドロップ。再ドロップ時は前回表示をクリアし新しい Plan のみ表示する。
+
+**ウェイポイント（Mission）:**
+
+- パスライン（`addPolygon`, `altitudeMode: "absolute"`, `closed: false`）で描画。
+- 各頂点ラベル: `#番号\n高度 m`（1 始まり、スキップ MAV_CMD は数えない）。
+- エッジラベル: `水平距離\n高度差`。
+- 対応 MAV_CMD: `NAV_WAYPOINT`(16) / `NAV_LAND`(21) / `NAV_TAKEOFF`(22)。その他はスキップ。
+- 高度はホームポジションからの相対高度として絶対高度に変換。
+
+**ジオフェンス:**
+
+- ポリゴン: `addPolygon`（`closed: true`, `altitudeMode: "terrain"`）。ラベルなし。
+- 円: `addCircle`（`altitudeMode: "terrain"`, `pointEnabled: false`, `label: null`）。壁付き。
+
+**ラリーポイント:**
+
+- 1 点ポリゴン（`addPolygon`）でマーカー表示。ラベルは `R番号`。
+
+**URL:** `engine` / カメラ系は他デモと共通（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
 ## 新規デモの追加手順
 

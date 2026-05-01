@@ -48,6 +48,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "CircleManager 公開 API の動作確認デモ。terrain / absolute / カスタムセグメントの 3 種類の円を表示し、enabled や半径・スタイルの動的更新ができます。",
         href: "circle",
     },
+    {
+        title: "Plan Viewer",
+        description:
+            "QGroundControl の Plan ファイル（.plan）をドラッグ&ドロップでマップ上に表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画します。",
+        href: "plan",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
