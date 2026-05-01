@@ -142,7 +142,10 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             return;
         }
 
-        // terrain モード
+        // terrain モード:
+        // 中心点の地表標高のみクエリし、リング全点を同一 Y（中心地表 + altitude）に揃える。
+        // 各リング点の位置で個別に標高クエリすると地形凹凸がリングに反映されて
+        // 別の地形の凹凸に見えるため、平面円として描画する。
         const elevCenter = ctx.tileManager.queryElevationAtWorld(cwx, cwz);
         if (elevCenter === null) {
             cache.centerWorld = null;
@@ -151,18 +154,8 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             return;
         }
         const cy = elevCenter + centerOffset;
-        const ringWorld: Vector3[] = [];
-        for (const { x, z } of ringXZ) {
-            const elev = ctx.tileManager.queryElevationAtWorld(x, z);
-            if (elev === null) {
-                cache.centerWorld = null;
-                cache.ringWorld = null;
-                node.setElevationResolved(false);
-                return;
-            }
-            ringWorld.push(new Vector3(x, elev + centerOffset, z));
-        }
         const centerWorld = new Vector3(cwx, cy, cwz);
+        const ringWorld = ringXZ.map(({ x, z }) => new Vector3(x, cy, z));
         cache.centerWorld = centerWorld;
         cache.ringWorld = ringWorld;
         node.setElevationResolved(true);
