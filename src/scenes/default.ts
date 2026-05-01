@@ -57,6 +57,14 @@ const CAMERA_UPPER_RADIUS = 75000;
 /** 遠クリッピング面（メートル） */
 const CAMERA_FAR_CLIP = 400000;
 
+/**
+ * 2D モード時の camera.beta 固定値（ラジアン）。
+ * beta=0 だとジンバルロックで alpha（方位）変化がカメラ位置に反映されず、
+ * かつ camera.lowerBetaLimit によるクランプで意図通りにならないため、
+ * 実質 0 の極小値を使用する。論理 tilt は 0 として扱う。
+ */
+const BETA_2D = 1e-7;
+
 /** Phase 2（垂直移動）に切り替えるカメラ高度の閾値（メートル） */
 const SKY_ZOOM_ALTITUDE_THRESHOLD = 1000;
 
@@ -155,7 +163,7 @@ export interface DefaultSceneController {
     getViewMode(): ViewMode;
     /**
      * 視点モードを切り替える。
-     * - `"2d"`: `camera.beta` を 0 に固定し、`Camera.ORTHOGRAPHIC_CAMERA` に切替。
+     * - `"2d"`: `camera.beta` を極小値（BETA_2D）に固定し、`Camera.ORTHOGRAPHIC_CAMERA` に切替。
      *   現在の `tilt` を保存し、3D 復帰時に復元する。
      * - `"3d"`: 透視投影に戻し、保存していた `tilt` を復元する。
      * - 同値再呼び出しは no-op。
@@ -331,11 +339,13 @@ export class DefaultScene implements CreateSceneClass {
         // tileManager / mapToggle 構築後に行う。
         let currentViewMode: ViewMode = options?.viewMode ?? "3d";
         let savedTiltDeg: number = tiltDeg;
+        // 2D モード中は lowerBetaLimit を 0 に変更するため、3D 復帰用に元の値を保持する。
+        const lowerBetaLimit3d = 0.1;
 
         // チルト制限（地面から15° = beta上限 5π/12）
         camera.upperBetaLimit = Math.PI / 2 - Math.PI / 12;
         // beta=0（真下視点）はArcRotateCameraのジンバルロック・数値不安定を招くため最小値を設定
-        camera.lowerBetaLimit = 0.1;
+        camera.lowerBetaLimit = lowerBetaLimit3d;
 
         // デフォルト入力をすべて無効化（カスタムハンドラで制御）
         camera.inputs.removeByType("ArcRotateCameraPointersInput");
@@ -1541,11 +1551,11 @@ export class DefaultScene implements CreateSceneClass {
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
-            // 2D モード時は tilt を変更しない（既に beta=0 固定） (Issue #193)。
+            // 2D モード時は tilt を変更しない（既に BETA_2D 固定） (Issue #193)。
             const targetBeta =
                 currentViewMode === "2d"
                     ? camera.beta
-                    : (camera.lowerBetaLimit ?? 0.1); // ほぼ真下
+                    : (camera.lowerBetaLimit ?? lowerBetaLimit3d); // ほぼ真下
             const duration = 400;             // ms
             const startAlpha = camera.alpha;
             const startBeta = camera.beta;
@@ -1688,16 +1698,22 @@ export class DefaultScene implements CreateSceneClass {
             if (next === "2d") {
                 // 現在の tilt を保存（3D 復帰時に復元するため）
                 savedTiltDeg = (camera.beta * 180) / Math.PI;
-                camera.beta = 0;
+                // ArcRotateCamera は beta=0 でジンバルロックが生じ alpha（方位）変化がカメラ位置に
+                // 反映されなくなる。また lowerBetaLimit=0.1 のままでは 0 付近にクランプされてしまう。
+                // そのため 2D 中は lowerBetaLimit を 0 に緩め、実質 0 の極小値（BETA_2D）で固定する。
+                // この値は論理 tilt=0 として扱い、getTilt() は常に 0 を返す。
+                camera.lowerBetaLimit = 0;
+                camera.beta = BETA_2D;
                 camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
                 applyOrthoFrustum();
             } else {
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
-                const lower = camera.lowerBetaLimit ?? 0.1;
+                // 3D 復帰時に元の lowerBetaLimit を戻してから beta を復元する。
+                camera.lowerBetaLimit = lowerBetaLimit3d;
                 const upper = camera.upperBetaLimit ?? Math.PI;
                 camera.beta = clamp(
                     (savedTiltDeg * Math.PI) / 180,
-                    lower,
+                    lowerBetaLimit3d,
                     upper,
                 );
             }
@@ -1803,7 +1819,7 @@ export class DefaultScene implements CreateSceneClass {
                 camera.alpha = alphaFromAzimuthDeg(values.azimuth);
             }
             if (values.tilt !== undefined && currentViewMode === "3d") {
-                const lower = camera.lowerBetaLimit ?? 0;
+                const lower = camera.lowerBetaLimit ?? lowerBetaLimit3d;
                 const upper = camera.upperBetaLimit ?? Math.PI;
                 camera.beta = clamp(
                     (values.tilt * Math.PI) / 180,
@@ -1814,8 +1830,7 @@ export class DefaultScene implements CreateSceneClass {
                 savedTiltDeg = (camera.beta * 180) / Math.PI;
             } else if (values.tilt !== undefined) {
                 // 2D 中は tilt を camera.beta に反映せず、復帰時の値だけ更新する (Issue #193)。
-                const lowerDeg =
-                    ((camera.lowerBetaLimit ?? 0) * 180) / Math.PI;
+                const lowerDeg = (lowerBetaLimit3d * 180) / Math.PI;
                 const upperDeg =
                     ((camera.upperBetaLimit ?? Math.PI) * 180) / Math.PI;
                 savedTiltDeg = clamp(values.tilt, lowerDeg, upperDeg);
