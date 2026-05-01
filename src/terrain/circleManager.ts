@@ -308,7 +308,11 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             validateOptions(options);
             const node = createCircleNode(ctx.scene, id, options);
             nodes.set(id, node);
-            storedOptions.set(id, { ...options, center: { ...options.center } });
+            storedOptions.set(id, {
+                ...options,
+                center: { ...options.center },
+                style: options.style ? { ...options.style } : undefined,
+            });
             buildCacheAndResolve(id, node);
             return node.getHandle();
         },
@@ -363,6 +367,7 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             storedOptions.set(id, {
                 ...merged,
                 center: { ...merged.center },
+                style: merged.style ? { ...merged.style } : undefined,
             });
 
             if (needsRebuild) {
