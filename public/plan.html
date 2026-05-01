@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – Plan Viewer</title>
+  <meta name="description" content="QGroundControl Plan ファイルをドラッグ&ドロップでマップ上に表示するデモ (#38)">
+  <meta name="author" content="8ga3">
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #plan-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    }
+
+    #plan-overlay .back-link {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      pointer-events: auto;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    #plan-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    #plan-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      pointer-events: auto;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 300px;
+    }
+
+    #plan-controls strong {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: #c8d2e6;
+    }
+
+    #plan-status {
+      font-size: 11px;
+      line-height: 1.4;
+      color: #e2e8f0;
+      white-space: pre-line;
+    }
+
+    /* ドラッグ&ドロップ オーバーレイ */
+    #plan-drop-zone {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 100;
+    }
+
+    #plan-drop-zone.active {
+      display: flex;
+      pointer-events: auto;
+    }
+
+    #plan-drop-zone .drop-label {
+      font-size: 20px;
+      color: #fff;
+      padding: 32px 48px;
+      border: 3px dashed rgba(255, 255, 255, 0.6);
+      border-radius: 16px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="plan-overlay">
+    <a class="back-link" href="/">← デモ一覧へ</a>
+    <div id="plan-controls">
+      <strong>Plan Viewer (#38)</strong>
+      <div id="plan-status">.plan ファイルをドラッグ&ドロップしてください</div>
+    </div>
+  </div>
+  <div id="plan-drop-zone">
+    <div class="drop-label">ここにドロップして Plan を読み込む</div>
+  </div>
+</body>
+</html>
