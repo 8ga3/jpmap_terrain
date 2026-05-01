@@ -28,12 +28,15 @@ import {
     CIRCLE_SEGMENTS_MIN,
     type CircleHandle,
     type CircleOptions,
+    type CircleUpdate,
 } from "../lib/types";
 
 const ERROR_PREFIX = "JpmapTerrain.addCircle";
+const UPDATE_ERROR_PREFIX = "JpmapTerrain.updateCircle";
 
 export interface CircleManager {
     add(id: string, options: CircleOptions): CircleHandle;
+    update(id: string, partial: CircleUpdate): CircleHandle;
     get(id: string): CircleHandle | null;
     remove(id: string): void;
     setEnabled(id: string, enabled: boolean): void;
@@ -92,6 +95,8 @@ const validateOptions = (options: CircleOptions): void => {
 
 export const createCircleManager = (ctx: OverlayContext): CircleManager => {
     const nodes = new Map<string, CircleNode>();
+    /** add 時に渡された完全な CircleOptions（update 時の差分マージ元）。 */
+    const storedOptions = new Map<string, CircleOptions>();
     let disposed = false;
 
     /**
@@ -210,6 +215,86 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
         return node;
     };
 
+    /**
+     * center / radius / segments から ring XZ キャッシュを構築し、標高解決を行う。
+     * `add` と `update`（ジオメトリ変化時）の共通処理。
+     */
+    const buildCacheAndResolve = (id: string, node: CircleNode): void => {
+        const { wx: cwx, wz: cwz } = latLonToWorld(
+            ctx,
+            node.center.lat,
+            node.center.lon,
+        );
+        const segments = node.segments;
+        const radius = node.radius;
+        const step = (Math.PI * 2) / segments;
+        const ringXZ: { x: number; z: number }[] = [];
+        for (let i = 0; i < segments; i++) {
+            const θ = i * step;
+            ringXZ.push({
+                x: cwx + radius * Math.cos(θ),
+                z: cwz + radius * Math.sin(θ),
+            });
+        }
+        const cache: CircleCache = {
+            cwx,
+            cwz,
+            ringXZ,
+            centerWorld: null,
+            ringWorld: null,
+        };
+        caches.set(id, cache);
+        resolveElevations(node, cache);
+    };
+
+    /**
+     * `CircleUpdate` で指定されたフィールドのバリデーション。
+     * `addCircle` と同一のルールを適用するが、未指定のフィールドはスキップする。
+     */
+    const validatePartial = (
+        partial: CircleUpdate,
+        currentNode: CircleNode,
+    ): void => {
+        if (partial.center !== undefined) {
+            assertLatLonInBounds(
+                partial.center.lat,
+                partial.center.lon,
+                UPDATE_ERROR_PREFIX,
+            );
+        }
+        if (partial.radius !== undefined) {
+            if (
+                !Number.isFinite(partial.radius) ||
+                partial.radius <= 0 ||
+                partial.radius > CIRCLE_RADIUS_MAX_M
+            ) {
+                throw new Error(
+                    `${UPDATE_ERROR_PREFIX}: radius must be in (0, ${CIRCLE_RADIUS_MAX_M}] m (got ${partial.radius})`,
+                );
+            }
+        }
+        if (partial.segments !== undefined) {
+            if (
+                !Number.isInteger(partial.segments) ||
+                partial.segments < CIRCLE_SEGMENTS_MIN ||
+                partial.segments > CIRCLE_SEGMENTS_MAX
+            ) {
+                throw new Error(
+                    `${UPDATE_ERROR_PREFIX}: segments must be an integer in [${CIRCLE_SEGMENTS_MIN}, ${CIRCLE_SEGMENTS_MAX}] (got ${partial.segments})`,
+                );
+            }
+        }
+        // altitudeMode → absolute 切替時に center.altitude が必要
+        const nextMode =
+            partial.altitudeMode ?? currentNode.altitudeMode;
+        const nextCenter = partial.center ?? currentNode.center;
+        if (nextMode === "absolute" && nextCenter.altitude === undefined) {
+            throw new Error(
+                `${UPDATE_ERROR_PREFIX}: altitudeMode="absolute" requires center.altitude`,
+            );
+        }
+    };
+
     return {
         add(id: string, options: CircleOptions): CircleHandle {
             if (disposed) {
@@ -223,34 +308,103 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             validateOptions(options);
             const node = createCircleNode(ctx.scene, id, options);
             nodes.set(id, node);
-
-            // ring XZ をここで 1 回だけ計算してキャッシュする。
-            const { wx: cwx, wz: cwz } = latLonToWorld(
-                ctx,
-                options.center.lat,
-                options.center.lon,
-            );
-            const segments = node.segments;
-            const radius = node.radius;
-            const step = (Math.PI * 2) / segments;
-            const ringXZ: { x: number; z: number }[] = [];
-            for (let i = 0; i < segments; i++) {
-                const θ = i * step;
-                ringXZ.push({
-                    x: cwx + radius * Math.cos(θ),
-                    z: cwz + radius * Math.sin(θ),
-                });
-            }
-            const cache: CircleCache = {
-                cwx,
-                cwz,
-                ringXZ,
-                centerWorld: null,
-                ringWorld: null,
-            };
-            caches.set(id, cache);
-            resolveElevations(node, cache);
+            storedOptions.set(id, { ...options, center: { ...options.center } });
+            buildCacheAndResolve(id, node);
             return node.getHandle();
+        },
+        update(id: string, partial: CircleUpdate): CircleHandle {
+            if (disposed) {
+                throw new Error("CircleManager has been disposed");
+            }
+            const oldNode = requireNode(id);
+            const prev = storedOptions.get(id);
+            if (!prev) {
+                throw new Error(
+                    `${UPDATE_ERROR_PREFIX}: stored options for "${id}" missing`,
+                );
+            }
+            validatePartial(partial, oldNode);
+
+            // segments / altitudeMode / style / label の変更は node 再構築が必要。
+            const needsRebuild =
+                (partial.segments !== undefined &&
+                    partial.segments !== oldNode.segments) ||
+                (partial.altitudeMode !== undefined &&
+                    partial.altitudeMode !== oldNode.altitudeMode) ||
+                partial.style !== undefined ||
+                partial.label !== undefined;
+
+            // マージ済み options を構築する。
+            const merged: CircleOptions = {
+                ...prev,
+                center: { ...prev.center },
+            };
+            if (partial.center !== undefined) {
+                merged.center = { ...partial.center };
+            }
+            if (partial.radius !== undefined) merged.radius = partial.radius;
+            if (partial.segments !== undefined)
+                merged.segments = partial.segments;
+            if (partial.altitudeMode !== undefined)
+                merged.altitudeMode = partial.altitudeMode;
+            if (partial.label !== undefined) merged.label = partial.label;
+            if (partial.style !== undefined)
+                merged.style = { ...prev.style, ...partial.style };
+            if (partial.enabled !== undefined) merged.enabled = partial.enabled;
+            if (partial.pointEnabled !== undefined)
+                merged.pointEnabled = partial.pointEnabled;
+            if (partial.lineEnabled !== undefined)
+                merged.lineEnabled = partial.lineEnabled;
+            if (partial.wallEnabled !== undefined)
+                merged.wallEnabled = partial.wallEnabled;
+            if (partial.labelEnabled !== undefined)
+                merged.labelEnabled = partial.labelEnabled;
+
+            storedOptions.set(id, {
+                ...merged,
+                center: { ...merged.center },
+            });
+
+            if (needsRebuild) {
+                // Tube/Ribbon の path 長やマテリアルが変わるため dispose → 再構築。
+                oldNode.dispose();
+                const newNode = createCircleNode(ctx.scene, id, merged);
+                nodes.set(id, newNode);
+                buildCacheAndResolve(id, newNode);
+                return newNode.getHandle();
+            }
+
+            // 再構築不要なケース: setter 経由で差分適用。
+            let geometryChanged = false;
+            if (partial.center !== undefined) {
+                oldNode.center = partial.center;
+                geometryChanged = true;
+            }
+            if (partial.radius !== undefined) {
+                oldNode.radius = partial.radius;
+                geometryChanged = true;
+            }
+            if (partial.enabled !== undefined) {
+                oldNode.setEnabledLogical(partial.enabled);
+            }
+            if (partial.pointEnabled !== undefined) {
+                oldNode.setPointEnabledLogical(partial.pointEnabled);
+            }
+            if (partial.lineEnabled !== undefined) {
+                oldNode.setLineEnabledLogical(partial.lineEnabled);
+            }
+            if (partial.wallEnabled !== undefined) {
+                oldNode.setWallEnabledLogical(partial.wallEnabled);
+            }
+            if (partial.labelEnabled !== undefined) {
+                oldNode.setLabelEnabledLogical(partial.labelEnabled);
+            }
+
+            // center / radius が変わった場合は ring XZ キャッシュを再構築する。
+            if (geometryChanged) {
+                buildCacheAndResolve(id, oldNode);
+            }
+            return oldNode.getHandle();
         },
         get(id: string): CircleHandle | null {
             const node = nodes.get(id);
@@ -267,6 +421,7 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             node.dispose();
             nodes.delete(id);
             caches.delete(id);
+            storedOptions.delete(id);
         },
         setEnabled(id: string, enabled: boolean): void {
             if (disposed) {
@@ -313,6 +468,7 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             }
             nodes.clear();
             caches.clear();
+            storedOptions.clear();
         },
     };
 };

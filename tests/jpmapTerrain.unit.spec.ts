@@ -174,19 +174,18 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
         let enabled = options.enabled ?? true;
         const altitudeMode = options.altitudeMode ?? "terrain";
         let elevationResolved = altitudeMode === "absolute";
-        const center = { ...options.center };
-        const radius = options.radius;
+        let _center = { ...options.center };
+        let _radius = options.radius;
         const segments = options.segments ?? 64;
         return {
             id,
             altitudeMode,
-            get center() { return center; },
+            get center() { return _center; },
             set center(v: { lat: number; lon: number; altitude?: number }) {
-                center.lat = v.lat;
-                center.lon = v.lon;
-                center.altitude = v.altitude;
+                _center = { ...v };
             },
-            get radius() { return radius; },
+            get radius() { return _radius; },
+            set radius(v: number) { _radius = v; },
             get segments() { return segments; },
             applyTransform: () => { /* no-op */ },
             setEnabledLogical: (v: boolean) => { enabled = v; },
@@ -197,8 +196,8 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
             setElevationResolved: (v: boolean) => { elevationResolved = v; },
             getHandle: () => ({
                 id,
-                center: { ...center },
-                radius,
+                center: { ..._center },
+                radius: _radius,
                 segments,
                 altitudeMode,
                 label: null,
@@ -2285,6 +2284,7 @@ describe("JpmapTerrain (skeleton)", () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
             expect(() => viewer.addCircle("c1", { center: validCenter, radius: 100 })).toThrow();
+            expect(() => viewer.updateCircle("c1", { radius: 200 })).toThrow();
             expect(viewer.getCircle("c1")).toBeNull();
             expect(viewer.listCircles()).toEqual([]);
             expect(() => viewer.removeCircle("c1")).not.toThrow();
@@ -2293,6 +2293,14 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setCircleLineEnabled("c1", false)).not.toThrow();
             expect(() => viewer.setCircleWallEnabled("c1", false)).not.toThrow();
             expect(() => viewer.setCircleLabelEnabled("c1", false)).not.toThrow();
+        });
+
+        it("updateCircle で既存円の radius を変更できる", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addCircle("c1", { center: validCenter, radius: 100 });
+            const updated = viewer.updateCircle("c1", { radius: 300 });
+            expect(updated.radius).toBe(300);
+            viewer.dispose();
         });
     });
 });
