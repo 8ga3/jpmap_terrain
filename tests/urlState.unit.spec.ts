@@ -14,6 +14,10 @@ import {
     parseMapTypeFromUrl,
     withMapTypeInUrl,
     updateMapTypeInUrl,
+    VIEW_MODE_QUERY_KEY,
+    parseViewModeFromUrl,
+    withViewModeInUrl,
+    updateViewModeInUrl,
 } from "../src/terrain/urlState";
 
 describe("urlState", () => {
@@ -622,6 +626,74 @@ describe("urlState", () => {
                 azimuth: 90,
                 tilt: 60,
             });
+        });
+    });
+
+    describe("parseViewModeFromUrl / withViewModeInUrl (Issue #193)", () => {
+        it("?viewMode=3d / 2d を解析できる", () => {
+            expect(parseViewModeFromUrl("http://localhost/?viewMode=3d")).toBe(
+                "3d",
+            );
+            expect(parseViewModeFromUrl("http://localhost/?viewMode=2d")).toBe(
+                "2d",
+            );
+        });
+
+        it("大小文字無視で受理する", () => {
+            expect(parseViewModeFromUrl("http://localhost/?viewMode=3D")).toBe(
+                "3d",
+            );
+            expect(parseViewModeFromUrl("http://localhost/?viewMode=2D")).toBe(
+                "2d",
+            );
+        });
+
+        it("欠落 / 不正値は null", () => {
+            expect(parseViewModeFromUrl("http://localhost/")).toBeNull();
+            expect(
+                parseViewModeFromUrl("http://localhost/?viewMode=foo"),
+            ).toBeNull();
+        });
+
+        it("withViewModeInUrl はパス・他クエリ・ハッシュを保持して上書きする", () => {
+            expect(
+                withViewModeInUrl(
+                    "http://localhost/path?engine=webgl2#section",
+                    "2d",
+                ),
+            ).toBe("/path?engine=webgl2&viewMode=2d#section");
+            expect(
+                withViewModeInUrl(
+                    "http://localhost/?viewMode=3d&engine=webgl2",
+                    "2d",
+                ),
+            ).toBe("/?viewMode=2d&engine=webgl2");
+        });
+
+        it("VIEW_MODE_QUERY_KEY === 'viewMode'", () => {
+            expect(VIEW_MODE_QUERY_KEY).toBe("viewMode");
+        });
+
+        it("updateViewModeInUrl は history.replaceState に渡す", () => {
+            const originalWindow = (globalThis as { window?: unknown }).window;
+            const replaceSpy = jest.fn();
+            (globalThis as { window?: unknown }).window = {
+                history: { replaceState: replaceSpy },
+                location: { href: "http://localhost/?engine=webgl" },
+            };
+            try {
+                updateViewModeInUrl("2d");
+                expect(replaceSpy).toHaveBeenCalledTimes(1);
+                expect(replaceSpy.mock.calls[0][2]).toBe(
+                    "/?engine=webgl&viewMode=2d",
+                );
+            } finally {
+                if (originalWindow === undefined) {
+                    delete (globalThis as { window?: unknown }).window;
+                } else {
+                    (globalThis as { window?: unknown }).window = originalWindow;
+                }
+            }
         });
     });
 });

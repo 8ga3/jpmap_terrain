@@ -194,6 +194,23 @@ const buildControls = (
         }),
     );
 
+    // 3D / 2D 視点モード切替 (Issue #193)
+    // ライブラリ内蔵ボタンは showViewModeButton:false で非表示にしているため、
+    // ここに同等機能のボタンを置いて API 経由で切替する。
+    {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        const refresh = (): void => {
+            btn.textContent = viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
+        };
+        btn.addEventListener("click", () => {
+            viewer.viewMode = viewer.viewMode === "3d" ? "2d" : "3d";
+        });
+        viewer.onViewModeChange(() => refresh());
+        refresh();
+        container.appendChild(btn);
+    }
+
     // 点編集 API デモ (Issue #173)。`yomiuri-closed` を編集対象とする。
     const editTargetId = "yomiuri-closed";
     let insertCounter = 0;
@@ -316,6 +333,8 @@ const start = async (): Promise<void> => {
         ...(engine ? { engine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
+        // ライブラリ内蔵の視点モード切替ボタンは非表示。デモ独自の UI を提供する (Issue #193)。
+        showViewModeButton: false,
     };
 
     const viewer = await JpmapTerrain.create(mount, opts);

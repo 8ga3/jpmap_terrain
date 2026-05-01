@@ -15,6 +15,8 @@ export type {
     JpmapTerrainOptions,
     MapType,
     MapTypeChangeListener,
+    ViewMode,
+    ViewModeChangeListener,
     MarkerHandle,
     MarkerIconOptions,
     MarkerLineOptions,

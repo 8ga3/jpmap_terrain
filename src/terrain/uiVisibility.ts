@@ -13,6 +13,7 @@ export type UiVisibilityTarget =
     | "zoomButtons"
     | "scaleBar"
     | "mapToggle"
+    | "viewModeButton"
     | "attribution";
 
 export interface UiVisibilityElements {
@@ -23,6 +24,7 @@ export interface UiVisibilityElements {
     scaleBarBar: HTMLElement;
     scaleBarLabel: HTMLElement;
     mapToggle: HTMLElement;
+    viewModeToggle: HTMLElement;
     attribution: HTMLElement;
 }
 
@@ -42,6 +44,7 @@ export const createUiVisibilityController = (
         scaleBarBar: captureDisplay(elements.scaleBarBar),
         scaleBarLabel: captureDisplay(elements.scaleBarLabel),
         mapToggle: captureDisplay(elements.mapToggle),
+        viewModeToggle: captureDisplay(elements.viewModeToggle),
         attribution: captureDisplay(elements.attribution),
     };
     const apply = (key: keyof UiVisibilityElements, visible: boolean): void => {
@@ -63,6 +66,9 @@ export const createUiVisibilityController = (
                 break;
             case "mapToggle":
                 apply("mapToggle", visible);
+                break;
+            case "viewModeButton":
+                apply("viewModeToggle", visible);
                 break;
             case "attribution":
                 apply("attribution", visible);

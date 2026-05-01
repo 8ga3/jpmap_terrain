@@ -11,6 +11,15 @@ export type EngineType = "webgpu" | "webgl2";
 export type MapType = "standard" | "photo";
 
 /**
+ * カメラ視点モード (Issue #193)。
+ *
+ * - `"3d"`: 透視投影（既定）。`tilt` が有効で、地形の起伏が立体的に見える。
+ * - `"2d"`: 平行投影。`tilt = 0`（真下視点）に固定され、tilt 操作は無効化される。
+ *   3D へ復帰した際は、2D 切替直前の `tilt` 値が復元される。
+ */
+export type ViewMode = "3d" | "2d";
+
+/**
  * `JpmapTerrain.create` 初期化オプション。
  * すべて任意指定で、未指定時は spec/package.md §3.2 のデフォルト値が適用される。
  */
@@ -29,6 +38,17 @@ export interface JpmapTerrainOptions {
     tilt?: number;
     /** 地図種類 */
     mapType?: MapType;
+    /**
+     * カメラ視点モード (Issue #193)。
+     * - `"3d"` (既定): 透視投影。`tilt` 有効。
+     * - `"2d"`: 平行投影。`tilt = 0` 固定で tilt 操作は無効。
+     */
+    viewMode?: ViewMode;
+    /**
+     * ライブラリ内蔵の 3D/2D 切替ボタンを表示するかどうか (Issue #193)。
+     * 既定 `true`。デモ側で独自の UI を用意する場合に `false` を指定する。
+     */
+    showViewModeButton?: boolean;
     /**
      * 太陽位置計算に使う日時（UTC として扱う）。
      * 未指定 / `null` の場合は内部の決定的フォールバック（{@link SUN_FALLBACK_DATETIME_ISO}）を使用する。
@@ -80,6 +100,8 @@ export const JPMAP_TERRAIN_DEFAULTS = {
     azimuth: 0,
     tilt: 45,
     mapType: "standard" as MapType,
+    viewMode: "3d" as ViewMode,
+    showViewModeButton: true as boolean,
     dateTime: null as Date | null,
     autoSunPosition: false as boolean,
     showSunShadows: false as boolean,
@@ -109,6 +131,11 @@ export interface CameraChangeEvent {
     readonly altitude: number;
     readonly azimuth: number;
     readonly tilt: number;
+    /**
+     * 現在のカメラ視点モード (Issue #193)。
+     * `"2d"` のとき `tilt` は常に `0` を返す。
+     */
+    readonly viewMode: ViewMode;
 }
 
 /** `JpmapTerrain.onCameraChange` リスナー */
@@ -119,6 +146,12 @@ export type CameraChangeListener = (event: CameraChangeEvent) => void;
  * `mapType` が実際に変化したタイミングのみ呼ばれる。
  */
 export type MapTypeChangeListener = (mapType: MapType) => void;
+
+/**
+ * `JpmapTerrain.onViewModeChange` リスナー (Issue #193)。
+ * `viewMode` が実際に変化したタイミングのみ呼ばれる。
+ */
+export type ViewModeChangeListener = (viewMode: ViewMode) => void;
 
 // ---- 地形クリック通知 (Issue #183) ----
 

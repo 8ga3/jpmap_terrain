@@ -1,5 +1,6 @@
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { Camera } from "@babylonjs/core/Cameras/camera";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
@@ -32,6 +33,7 @@ import {
     type PolygonPointHoverListener,
     type PolygonPointClickListener,
     type PolygonPointDragListener,
+    type ViewMode,
 } from "../lib/types";
 
 const TERRAIN_SUBDIVISIONS = 128;
@@ -146,6 +148,20 @@ export interface DefaultSceneController {
     getMapType(): "standard" | "photo";
     /** 地図種類を切り替える。ボタン表示も一緒に追従させる */
     setMapType(value: "standard" | "photo"): void;
+
+    // ---- 視点モード (Issue #193) ----
+
+    /** 現在のカメラ視点モードを返す */
+    getViewMode(): ViewMode;
+    /**
+     * 視点モードを切り替える。
+     * - `"2d"`: `camera.beta` を 0 に固定し、`Camera.ORTHOGRAPHIC_CAMERA` に切替。
+     *   現在の `tilt` を保存し、3D 復帰時に復元する。
+     * - `"3d"`: 透視投影に戻し、保存していた `tilt` を復元する。
+     * - 同値再呼び出しは no-op。
+     */
+    setViewMode(value: ViewMode): void;
+
     /**
      * コントロールパネル要素の表示・非表示を切り替える (spec §3.3.2)。
      */
@@ -155,6 +171,7 @@ export interface DefaultSceneController {
             | "zoomButtons"
             | "scaleBar"
             | "mapToggle"
+            | "viewModeButton"
             | "attribution",
         visible: boolean,
     ): void;
@@ -263,6 +280,16 @@ export interface DefaultSceneInitOptions {
      * - 同値再 set では発火しない。
      */
     onMapTypeChange?: (mapType: "standard" | "photo") => void;
+    /** 初期視点モード (Issue #193)。未指定時は `"3d"`。 */
+    viewMode?: ViewMode;
+    /**
+     * `viewMode` が実際に変化した際に呼ばれるコールバック (Issue #193)。
+     *
+     * - `controller.setViewMode` 経由・UI ボタンクリック経由のいずれの変化でも発火する。
+     * - 起動時の初期値設定では発火しない（呼び出し側との重複通知防止）。
+     * - 同値再 set では発火しない。
+     */
+    onViewModeChange?: (viewMode: ViewMode) => void;
     /**
      * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
@@ -296,6 +323,14 @@ export class DefaultScene implements CreateSceneClass {
         camera.upperRadiusLimit = CAMERA_UPPER_RADIUS;
         camera.minZ = 1;
         camera.maxZ = CAMERA_FAR_CLIP;
+
+        // ---- 視点モード切替 (Issue #193) ----
+        // 「カメラの本当の状態」は ArcRotateCamera.mode / beta、
+        // 「論理 viewMode」と「3D 復帰時に戻す tilt」は本クロージャに閉じる。
+        // 宣言だけ camera 直後に hoist し、操作ロジック（UI 連携・初期反映）は
+        // tileManager / mapToggle 構築後に行う。
+        let currentViewMode: ViewMode = options?.viewMode ?? "3d";
+        let savedTiltDeg: number = tiltDeg;
 
         // チルト制限（地面から15° = beta上限 5π/12）
         camera.upperBetaLimit = Math.PI / 2 - Math.PI / 12;
@@ -1000,6 +1035,11 @@ export class DefaultScene implements CreateSceneClass {
                 lastPointerX = e.clientX;
                 lastPointerY = e.clientY;
                 camera.alpha -= dx * 0.003;
+                // 2D モード時は tilt 操作を無効化する (Issue #193)。
+                // alpha（方位回転）は 2D でも有効。
+                if (currentViewMode === "2d") {
+                    return;
+                }
                 const prevBeta = camera.beta;
                 camera.beta -= dy * 0.003;
                 camera.beta = clamp(
@@ -1501,7 +1541,11 @@ export class DefaultScene implements CreateSceneClass {
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
-            const targetBeta = camera.lowerBetaLimit ?? 0.1; // ほぼ真下
+            // 2D モード時は tilt を変更しない（既に beta=0 固定） (Issue #193)。
+            const targetBeta =
+                currentViewMode === "2d"
+                    ? camera.beta
+                    : (camera.lowerBetaLimit ?? 0.1); // ほぼ真下
             const duration = 400;             // ms
             const startAlpha = camera.alpha;
             const startBeta = camera.beta;
@@ -1605,6 +1649,83 @@ export class DefaultScene implements CreateSceneClass {
             applyMapTypeChange(next);
         });
 
+        // ---- 視点モード切替 (Issue #193) ----
+        // 宣言は camera 初期化直後に hoist 済み。ここでは UI 連携・初期反映を行う。
+        const applyOrthoFrustum = (): void => {
+            const w = engine.getRenderWidth();
+            const h = engine.getRenderHeight();
+            if (w <= 0 || h <= 0) return;
+            const aspect = w / h;
+            // 画面に「カメラ高度 ≒ 1 画面分」が映るよう半径ベースで設定する。
+            const halfH = camera.radius;
+            const halfW = halfH * aspect;
+            camera.orthoTop = halfH;
+            camera.orthoBottom = -halfH;
+            camera.orthoLeft = -halfW;
+            camera.orthoRight = halfW;
+        };
+
+        const updateViewModeToggleLabel = (mode: ViewMode): void => {
+            // 「次に切り替える先」をラベルに表示する（3D 中は "2D"、2D 中は "3D"）。
+            ui.viewModeToggle.textContent = mode === "3d" ? "2D" : "3D";
+            ui.viewModeToggle.setAttribute(
+                "aria-label",
+                mode === "3d" ? "視点切替: 2D に変更" : "視点切替: 3D に変更",
+            );
+            ui.viewModeToggle.setAttribute(
+                "aria-pressed",
+                mode === "2d" ? "true" : "false",
+            );
+        };
+
+        const applyViewModeInternal = (
+            next: ViewMode,
+            opts?: { silent?: boolean },
+        ): void => {
+            if (next === currentViewMode) return;
+            if (next === "2d") {
+                // 現在の tilt を保存（3D 復帰時に復元するため）
+                savedTiltDeg = (camera.beta * 180) / Math.PI;
+                camera.beta = 0;
+                camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+                applyOrthoFrustum();
+            } else {
+                camera.mode = Camera.PERSPECTIVE_CAMERA;
+                const lower = camera.lowerBetaLimit ?? 0.1;
+                const upper = camera.upperBetaLimit ?? Math.PI;
+                camera.beta = clamp(
+                    (savedTiltDeg * Math.PI) / 180,
+                    lower,
+                    upper,
+                );
+            }
+            currentViewMode = next;
+            updateViewModeToggleLabel(next);
+            if (!opts?.silent) {
+                options?.onViewModeChange?.(next);
+            }
+        };
+
+        // 初期反映: ラベルは現在モードに合わせる。`silent: true` で初期 listener は発火させない。
+        updateViewModeToggleLabel(currentViewMode);
+        if (currentViewMode === "2d") {
+            // applyViewModeInternal は同値で no-op になるため一時的に "3d" に戻して再適用する。
+            currentViewMode = "3d";
+            applyViewModeInternal("2d", { silent: true });
+        }
+
+        // 2D の間は radius / リサイズで ortho frustum を追従させる必要がある。
+        // 毎フレーム更新は安価（4 つの数値設定）なので onBeforeRender で常時走らせる。
+        scene.onBeforeRenderObservable.add(() => {
+            if (currentViewMode === "2d") {
+                applyOrthoFrustum();
+            }
+        });
+
+        ui.viewModeToggle.addEventListener("click", () => {
+            applyViewModeInternal(currentViewMode === "3d" ? "2d" : "3d");
+        });
+
         // カメラ-地形衝突回避: 地面にめり込まないよう radius を補正してストップ
         const clampCameraAboveTerrain = (): void => {
             const minR = terrainMinRadius();
@@ -1680,7 +1801,7 @@ export class DefaultScene implements CreateSceneClass {
             if (values.azimuth !== undefined) {
                 camera.alpha = alphaFromAzimuthDeg(values.azimuth);
             }
-            if (values.tilt !== undefined) {
+            if (values.tilt !== undefined && currentViewMode === "3d") {
                 const lower = camera.lowerBetaLimit ?? 0;
                 const upper = camera.upperBetaLimit ?? Math.PI;
                 camera.beta = clamp(
@@ -1688,6 +1809,15 @@ export class DefaultScene implements CreateSceneClass {
                     lower,
                     upper,
                 );
+                // 3D 中の tilt 変更は、以後 2D に切り替えたときに復元される値となる。
+                savedTiltDeg = (camera.beta * 180) / Math.PI;
+            } else if (values.tilt !== undefined) {
+                // 2D 中は tilt を camera.beta に反映せず、復帰時の値だけ更新する (Issue #193)。
+                const lowerDeg =
+                    ((camera.lowerBetaLimit ?? 0) * 180) / Math.PI;
+                const upperDeg =
+                    ((camera.upperBetaLimit ?? Math.PI) * 180) / Math.PI;
+                savedTiltDeg = clamp(values.tilt, lowerDeg, upperDeg);
             }
             // 中心座標が変わったときのみ refresh する。
             // altitude/azimuth/tilt はタイル中心に影響しないため refresh 不要。
@@ -1853,7 +1983,10 @@ export class DefaultScene implements CreateSceneClass {
             getLon: () => currentLon,
             getAltitude: () => camera.radius,
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
-            getTilt: () => (camera.beta * 180) / Math.PI,
+            getTilt: () =>
+                currentViewMode === "2d"
+                    ? 0
+                    : (camera.beta * 180) / Math.PI,
             setLat: (value) => applyView({ lat: value }, true),
             setLon: (value) => applyView({ lon: value }, true),
             setAltitude: (value) => applyView({ altitude: value }, true),
@@ -1868,6 +2001,9 @@ export class DefaultScene implements CreateSceneClass {
                 const internal = value === "standard" ? "std" : "photo";
                 applyMapTypeChange(internal);
             },
+            // ---- 視点モード (Issue #193) ----
+            getViewMode: () => currentViewMode,
+            setViewMode: (value) => applyViewModeInternal(value),
             setUiVisibility: createUiVisibilityController({
                 compass: ui.compass,
                 locateMe: ui.locateMe,
@@ -1876,6 +2012,7 @@ export class DefaultScene implements CreateSceneClass {
                 scaleBarBar: ui.scaleBar.bar,
                 scaleBarLabel: ui.scaleBar.label,
                 mapToggle: ui.mapToggle,
+                viewModeToggle: ui.viewModeToggle,
                 attribution: ui.scaleBar.attribution,
             }),
             setSunState: (dateTime) => {
@@ -1923,6 +2060,7 @@ export class DefaultScene implements CreateSceneClass {
                 };
                 removeFromParent(ui.compass);
                 removeFromParent(ui.mapToggle);
+                removeFromParent(ui.viewModeToggle);
                 // ズームボタン等は同一の親 container にまとまっているため、
                 // 親をまとめて remove することで全要素を除去する。
                 const zoomContainer = ui.zoomIn.parentElement;

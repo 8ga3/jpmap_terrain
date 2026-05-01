@@ -170,6 +170,9 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     // T6: setMapType / setUiVisibility の記録もテストから検証できるよう保持する。
     let lastMapType: "standard" | "photo" = "standard";
     const setMapTypeCalls: Array<"standard" | "photo"> = [];
+    // Issue #193: viewMode の状態と setViewMode 呼び出し履歴。
+    let lastViewMode: "3d" | "2d" = "3d";
+    const setViewModeCalls: Array<"3d" | "2d"> = [];
     // T7: controller.dispose の呼び出し回数も検証する。
     let controllerDisposeCount = 0;
     // Issue #35: setSunState 呼び出し履歴を保持する。
@@ -269,12 +272,14 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         | "zoomButtons"
         | "scaleBar"
         | "mapToggle"
+        | "viewModeButton"
         | "attribution";
     const uiVisibility: Record<UiTarget, boolean> = {
         compass: true,
         zoomButtons: true,
         scaleBar: true,
         mapToggle: true,
+        viewModeButton: true,
         attribution: true,
     };
     type ViewValues = {
@@ -297,6 +302,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     tilt?: number;
                     mapType?: "standard" | "photo";
                     onMapTypeChange?: (mapType: "standard" | "photo") => void;
+                    viewMode?: "3d" | "2d";
+                    onViewModeChange?: (viewMode: "3d" | "2d") => void;
                     onReady?: (controller: unknown) => void;
                 },
             ) => {
@@ -307,6 +314,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                 let azimuth = opts?.azimuth ?? 0;
                 let tilt = opts?.tilt ?? 0;
                 if (opts?.mapType) lastMapType = opts.mapType;
+                if (opts?.viewMode) lastViewMode = opts.viewMode;
+                let savedTilt = tilt;
                 const refresh = (): void => {
                     refreshCallCount++;
                 };
@@ -325,7 +334,15 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     }
                     if (values.altitude !== undefined) altitude = values.altitude;
                     if (values.azimuth !== undefined) azimuth = values.azimuth;
-                    if (values.tilt !== undefined) tilt = values.tilt;
+                    if (values.tilt !== undefined) {
+                        // 2D 中は tilt を反映しない（復帰時の値だけ更新）
+                        if (lastViewMode === "3d") {
+                            tilt = values.tilt;
+                            savedTilt = values.tilt;
+                        } else {
+                            savedTilt = values.tilt;
+                        }
+                    }
                     if (shouldRefresh && centerChanged) refresh();
                 };
                 opts?.onReady?.({
@@ -333,7 +350,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     getLon: () => lon,
                     getAltitude: () => altitude,
                     getAzimuth: () => azimuth,
-                    getTilt: () => tilt,
+                    getTilt: () => (lastViewMode === "2d" ? 0 : tilt),
                     setLat: (v: number) => applyView({ lat: v }, true),
                     setLon: (v: number) => applyView({ lon: v }, true),
                     setAltitude: (v: number) => applyView({ altitude: v }, true),
@@ -352,10 +369,23 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                             opts?.onMapTypeChange?.(value);
                         }
                     },
+                    getViewMode: () => lastViewMode,
+                    setViewMode: (value: "3d" | "2d") => {
+                        const prev = lastViewMode;
+                        if (prev === value) return;
+                        if (value === "2d") {
+                            savedTilt = tilt;
+                            tilt = 0;
+                        } else {
+                            tilt = savedTilt;
+                        }
+                        lastViewMode = value;
+                        setViewModeCalls.push(value);
+                        opts?.onViewModeChange?.(value);
+                    },
                     setUiVisibility: (target: UiTarget, visible: boolean) => {
                         uiVisibility[target] = visible;
-                    },
-                    setSunState: (_dateTime: Date | null) => {
+                    },                    setSunState: (_dateTime: Date | null) => {
                         // テスト用: 受信を記録するだけで Babylon 描画は伴わない
                         sunStateCalls.push({ dateTime: _dateTime });
                     },
@@ -438,6 +468,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
             uiVisibility.zoomButtons = true;
             uiVisibility.scaleBar = true;
             uiVisibility.mapToggle = true;
+            uiVisibility.viewModeButton = true;
             uiVisibility.attribution = true;
         },
         __getSetMapTypeCalls: (): Array<"standard" | "photo"> => [
@@ -449,6 +480,16 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __getLastMapType: (): "standard" | "photo" => lastMapType,
         __setLastMapType: (v: "standard" | "photo"): void => {
             lastMapType = v;
+        },
+        __getSetViewModeCalls: (): Array<"3d" | "2d"> => [
+            ...setViewModeCalls,
+        ],
+        __resetSetViewModeCalls: (): void => {
+            setViewModeCalls.length = 0;
+        },
+        __getLastViewMode: (): "3d" | "2d" => lastViewMode,
+        __setLastViewMode: (v: "3d" | "2d"): void => {
+            lastViewMode = v;
         },
         __getControllerDisposeCount: (): number => controllerDisposeCount,
         __resetControllerDisposeCount: (): void => {
@@ -517,6 +558,7 @@ type UiTarget =
     | "zoomButtons"
     | "scaleBar"
     | "mapToggle"
+    | "viewModeButton"
     | "attribution";
 const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __getRefreshCount: () => number;
@@ -527,6 +569,10 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __resetSetMapTypeCalls: () => void;
     __getLastMapType: () => "standard" | "photo";
     __setLastMapType: (v: "standard" | "photo") => void;
+    __getSetViewModeCalls: () => Array<"3d" | "2d">;
+    __resetSetViewModeCalls: () => void;
+    __getLastViewMode: () => "3d" | "2d";
+    __setLastViewMode: (v: "3d" | "2d") => void;
     __getControllerDisposeCount: () => number;
     __resetControllerDisposeCount: () => void;
     __getSunStateCalls: () => Array<{ dateTime: Date | null }>;
@@ -955,6 +1001,7 @@ describe("JpmapTerrain (skeleton)", () => {
                 zoomButtons: true,
                 scaleBar: true,
                 mapToggle: true,
+                viewModeButton: true,
                 attribution: true,
             });
         });
@@ -966,6 +1013,7 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.showZoomButtons = false;
             viewer.showScaleBar = false;
             viewer.showMapToggle = false;
+            viewer.showViewModeButton = false;
             viewer.showAttribution = false;
 
             expect(sceneMockModule.__getUiVisibility()).toEqual({
@@ -973,6 +1021,7 @@ describe("JpmapTerrain (skeleton)", () => {
                 zoomButtons: false,
                 scaleBar: false,
                 mapToggle: false,
+                viewModeButton: false,
                 attribution: false,
             });
 
@@ -981,6 +1030,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(viewer.showZoomButtons).toBe(false);
             expect(viewer.showScaleBar).toBe(false);
             expect(viewer.showMapToggle).toBe(false);
+            expect(viewer.showViewModeButton).toBe(false);
             expect(viewer.showAttribution).toBe(false);
 
             viewer.showCompass = true;
@@ -1434,6 +1484,162 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.mapType = "standard";
             expect(listener).toHaveBeenCalledTimes(1);
             expect(listener).toHaveBeenCalledWith("standard");
+        });
+    });
+
+    describe("viewMode (Issue #193)", () => {
+        beforeEach(() => {
+            sceneMockModule.__resetSetViewModeCalls();
+            sceneMockModule.__setLastViewMode("3d");
+        });
+
+        it("デフォルト viewMode は '3d'", async () => {
+            const viewer = await create(createMountElement());
+            expect(viewer.viewMode).toBe("3d");
+        });
+
+        it("options.viewMode === '2d' を渡すと初期から '2d' になる", async () => {
+            const viewer = await create(createMountElement(), {
+                viewMode: "2d",
+            });
+            expect(viewer.viewMode).toBe("2d");
+        });
+
+        it("setter で '2d' に切替後 getter が '2d' を返す", async () => {
+            const viewer = await create(createMountElement());
+            viewer.viewMode = "2d";
+            expect(viewer.viewMode).toBe("2d");
+            viewer.viewMode = "3d";
+            expect(viewer.viewMode).toBe("3d");
+        });
+
+        it("2D 中の tilt getter は 0、3D 復帰時に元 tilt が復元される", async () => {
+            const viewer = await create(createMountElement(), { tilt: 45 });
+            expect(viewer.tilt).toBe(45);
+
+            viewer.viewMode = "2d";
+            expect(viewer.tilt).toBe(0);
+
+            viewer.viewMode = "3d";
+            expect(viewer.tilt).toBe(45);
+        });
+
+        it("2D 中の tilt setter / flyTo({tilt}) は反映されないが lat/lon/altitude/azimuth は適用される", async () => {
+            const viewer = await create(createMountElement(), { tilt: 45 });
+            viewer.viewMode = "2d";
+
+            viewer.tilt = 60;
+            expect(viewer.tilt).toBe(0); // 2D は常に 0
+
+            await viewer.flyTo({
+                lat: 36.0,
+                lon: 138.0,
+                altitude: 3000,
+                azimuth: 90,
+                tilt: 30,
+                duration: 0,
+            });
+            expect(viewer.lat).toBe(36.0);
+            expect(viewer.lon).toBe(138.0);
+            expect(viewer.altitude).toBe(3000);
+            expect(viewer.azimuth).toBe(90);
+            expect(viewer.tilt).toBe(0); // 2D 中は tilt は 0 のまま
+
+            // 3D 復帰時に flyTo で渡された tilt 30 が復元される
+            viewer.viewMode = "3d";
+            expect(viewer.tilt).toBe(30);
+        });
+
+        it("onViewModeChange は値変化時のみ発火、同値 set は no-op", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            viewer.onViewModeChange(listener);
+
+            viewer.viewMode = "3d"; // 同値
+            expect(listener).not.toHaveBeenCalled();
+
+            viewer.viewMode = "2d";
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener).toHaveBeenCalledWith("2d");
+
+            viewer.viewMode = "2d"; // 同値
+            expect(listener).toHaveBeenCalledTimes(1);
+
+            viewer.viewMode = "3d";
+            expect(listener).toHaveBeenCalledTimes(2);
+        });
+
+        it("onViewModeChange unsubscribe は冪等で、解除後は呼ばれない", async () => {
+            const viewer = await create(createMountElement());
+            const listener = jest.fn();
+            const unsubscribe = viewer.onViewModeChange(listener);
+            viewer.viewMode = "2d";
+            expect(listener).toHaveBeenCalledTimes(1);
+            unsubscribe();
+            unsubscribe(); // 多重呼び出しでも例外にならない
+            viewer.viewMode = "3d";
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it("リスナーが throw しても他リスナーへ伝播し console.error が記録される", async () => {
+            const viewer = await create(createMountElement());
+            const errorSpy = jest
+                .spyOn(console, "error")
+                .mockImplementation(() => {});
+            const failing = jest.fn(() => {
+                throw new Error("vm listener failure");
+            });
+            const ok = jest.fn();
+            viewer.onViewModeChange(failing);
+            viewer.onViewModeChange(ok);
+
+            viewer.viewMode = "2d";
+
+            expect(failing).toHaveBeenCalledTimes(1);
+            expect(ok).toHaveBeenCalledTimes(1);
+            expect(errorSpy).toHaveBeenCalled();
+            errorSpy.mockRestore();
+        });
+
+        it("dispose 後の onViewModeChange は no-op の unsubscribe を返す", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            const listener = jest.fn();
+            const unsubscribe = viewer.onViewModeChange(listener);
+            expect(typeof unsubscribe).toBe("function");
+            expect(() => unsubscribe()).not.toThrow();
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it("CameraChangeEvent.viewMode が含まれる", async () => {
+            const viewer = await create(createMountElement());
+            const events: Array<{ viewMode: "3d" | "2d" }> = [];
+            viewer.onCameraChange((e) => events.push({ viewMode: e.viewMode }));
+            // 初回スナップショット確立
+            sceneMockModule.__triggerSceneRender();
+            // 2D に切替 → 次フレームで camera change 通知（tilt 変化 + viewMode 変化）
+            viewer.viewMode = "2d";
+            sceneMockModule.__triggerSceneRender();
+
+            expect(events.length).toBeGreaterThan(0);
+            expect(events[events.length - 1].viewMode).toBe("2d");
+        });
+
+        it("showViewModeButton=false で UI が非表示になる", async () => {
+            await create(createMountElement(), {
+                showViewModeButton: false,
+            });
+            expect(
+                sceneMockModule.__getUiVisibility().viewModeButton,
+            ).toBe(false);
+        });
+
+        it("showViewModeButton 既定は true", async () => {
+            const viewer = await create(createMountElement());
+            expect(viewer.showViewModeButton).toBe(true);
+            expect(
+                sceneMockModule.__getUiVisibility().viewModeButton,
+            ).toBe(true);
         });
     });
 

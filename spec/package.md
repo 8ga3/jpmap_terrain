@@ -51,6 +51,8 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | `azimuth` | `number` | `0` | 方位角（度、Babylon.js camera alpha に対応） |
 | `tilt` | `number` | `45` | チルト角（度、Babylon.js camera beta に対応） |
 | `mapType` | `"standard" \| "photo"` | `"standard"` | 地図種類（標準地図 / 航空写真） |
+| `viewMode` | `"3d" \| "2d"` | `"3d"` | カメラ視点モード（Issue #193）。`"2d"` は平行投影で `tilt = 0` 固定、tilt 操作無効 |
+| `showViewModeButton` | `boolean` | `true` | ライブラリ内蔵の 3D/2D 切替ボタンを表示するか（Issue #193） |
 | `dateTime` | `Date \| null` | `null` | 太陽位置計算に使う日時。`null` の場合は内部の決定的なフォールバック時刻（夏至日本時間正午）を使用 |
 | `autoSunPosition` | `boolean` | `false` | `true` で実時刻に追従して内部更新（60 秒周期）、`false` で `dateTime` を固定値として使用 |
 | `showSunShadows` | `boolean` | `false` | 太陽 DirectionalLight による地形への影描画を有効化する。GPU 負荷が大きいため既定 OFF |
@@ -83,6 +85,16 @@ interface JpmapTerrain {
   /** カメラチルト角・度（get / set） */
   get tilt(): number;
   set tilt(value: number);
+
+  /**
+   * カメラ視点モード（Issue #193）。
+   * - `"3d"`: 透視投影（既定）。`tilt` 有効。
+   * - `"2d"`: 平行投影。`tilt = 0` 固定、tilt 操作（setter / `flyTo` / Ctrl+ドラッグ / コンパスボタン）は無効。
+   *   3D へ復帰すると、2D 切替直前の `tilt` が復元される。
+   * - 同値の再 set は no-op。
+   */
+  get viewMode(): ViewMode;
+  set viewMode(value: ViewMode);
 
   /**
    * 指定座標にカメラを移動する。
@@ -134,6 +146,10 @@ interface JpmapTerrain {
   /** 地図種類切替ボタンの表示・非表示（get / set） */
   get showMapToggle(): boolean;
   set showMapToggle(value: boolean);
+
+  /** 3D/2D 視点モード切替ボタンの表示・非表示（get / set, Issue #193） */
+  get showViewModeButton(): boolean;
+  set showViewModeButton(value: boolean);
 
   /** コピーライト（出典表記）の表示・非表示（get / set） */
   get showAttribution(): boolean;
@@ -231,6 +247,37 @@ const unsubscribe = viewer.onMapTypeChange((mapType) => {
 });
 unsubscribe();
 ```
+
+#### 3.3.5.1 viewMode 変化イベント (Issue #193)
+
+カメラ視点モード（`viewMode`）の変化を購読する。`onMapTypeChange` と対称な API。
+
+```typescript
+interface JpmapTerrain {
+  /**
+   * viewMode 変化リスナーを登録する。
+   *
+   * @param listener viewMode 変化を受け取るリスナー
+   * @returns 登録解除関数（unsubscribe）
+   */
+  onViewModeChange(listener: ViewModeChangeListener): () => void;
+}
+```
+
+**仕様:**
+
+- 戻り値は登録解除関数。呼び出すと当該リスナーのみが解除される。
+- **発火条件**: `viewMode` が実際に変化したタイミングのみ通知する（同値の再 set は通知しない）。UI の視点切替ボタン操作・プログラム経由の `viewer.viewMode = ...` の双方で発火する。
+- **初回登録時は即時発火しない**（変化があった次回以降のみ）。
+- リスナーが throw した場合でも、内部で例外を捕捉して `console.error` でログ出力し、他リスナーの処理は継続する。
+- `dispose()` 後に `onViewModeChange` を呼び出した場合は登録されず、no-op の unsubscribe 関数を返す。
+
+**2D モード時の制約:**
+
+- `tilt` getter は常に `0` を返す。
+- `tilt` setter / `flyTo({ tilt })` は `camera.beta` に反映されない（保存値だけ更新され、3D 復帰時に復元される）。
+- Ctrl/Cmd + ドラッグの tilt 操作、コンパスボタンによる tilt リセットは無効。
+- `lat` / `lon` / `altitude` / `azimuth` の操作は通常通り動作する。
 
 #### 3.3.6 太陽位置（時間による明るさ変化）
 
@@ -340,6 +387,13 @@ interface MarkerOptions {
 - 値は大小文字無視で受理する（例: `?mapType=Photo` も `"photo"` として解釈）。書き戻し時は小文字に正規化する。
 - 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.mapType`（= `"standard"`）にフォールバックする（例外は投げない）。
 - `viewer.mapType` の変化（UI 切替ボタン / プログラム set）は `onMapTypeChange` 経由でデモ層が `history.replaceState` により URL の `?mapType=` を更新する。パス（`/@lat,lon[,...]`）と他クエリ（`engine`, `dateTime` 等）・ハッシュは保持される。
+
+**`viewMode` URL クエリ仕様 (Issue #193):**
+
+- URL クエリ `?viewMode=3d|2d` で初期値を上書きできる（デモ層）。
+- 値は大小文字無視で受理する。書き戻し時は小文字に正規化する。
+- 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.viewMode`（= `"3d"`）にフォールバックする。
+- `viewer.viewMode` の変化は `onViewModeChange` 経由でデモ層が `history.replaceState` により URL の `?viewMode=` を更新する。パス・他クエリ・ハッシュは保持される。
 
 #### 3.3.8 ポリゴン (Issue #169)
 
@@ -687,6 +741,8 @@ interface CameraChangeEvent {
   readonly altitude: number;
   readonly azimuth: number;
   readonly tilt: number;
+  /** 現在の視点モード（Issue #193）。`"2d"` のとき `tilt` は常に `0`。 */
+  readonly viewMode: ViewMode;
 }
 
 /** `JpmapTerrain.onCameraChange` リスナー */
@@ -694,6 +750,12 @@ type CameraChangeListener = (event: CameraChangeEvent) => void;
 
 /** `JpmapTerrain.onMapTypeChange` リスナー (Issue #149) */
 type MapTypeChangeListener = (mapType: MapType) => void;
+
+/** カメラ視点モード (Issue #193) */
+type ViewMode = "3d" | "2d";
+
+/** `JpmapTerrain.onViewModeChange` リスナー (Issue #193) */
+type ViewModeChangeListener = (viewMode: ViewMode) => void;
 ```
 
 ```typescript
@@ -702,6 +764,8 @@ import type {
   CameraChangeListener,
   MapType,
   MapTypeChangeListener,
+  ViewMode,
+  ViewModeChangeListener,
   // ポリゴン (Issue #170)
   AltitudeMode,
   PolygonPointOptions,
@@ -758,8 +822,9 @@ import type {
 
 | パラメータ | 型 | 説明 |
 |---|---|---|
-| `projection` | `"perspective" \| "orthographic"` | 射影投影 / 平行投影の切り替え |
 | `fov` | `number` | 視野角（度） |
+
+> `projection` は §3.2 の `viewMode` (`"3d"` / `"2d"`) として実装済み (Issue #193)。
 
 ### 4.2 追加 API
 
