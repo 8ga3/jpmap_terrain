@@ -119,8 +119,9 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
     /**
      * 標高を解決して `cache` を更新し、解決済みなら `node.applyTransform` を呼ぶ。
      *
-     * - terrain モード: 中心 + 全円周点の標高を `queryElevationAtWorld` で取得。
-     *   1 点でも null なら `elevationResolved=false` にして処理を終了する。
+     * - terrain モード: 中心点の地表標高のみ `queryElevationAtWorld` で取得。
+     *   null なら `elevationResolved=false` にして処理を終了する。
+     *   円は平面円として描画するため、リング点は中心と同一 Y になる。
      * - absolute モード: 標高クエリ不要。`center.altitude` を Y として使う。
      */
     const resolveElevations = (node: CircleNode, cache: CircleCache): void => {

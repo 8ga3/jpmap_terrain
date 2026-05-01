@@ -668,7 +668,8 @@ export interface CircleHandle {
     readonly wallEnabled: boolean;
     readonly labelEnabled: boolean;
     /**
-     * `terrain` モード時、中心 + 全円周点の標高解決済みなら true。
+     * `terrain` モード時、中心点の地表標高が解決済みなら true。
+     * 円は平面円として描画されるため、中心の標高のみが必要。
      * `absolute` モード時は常に true。
      */
     readonly elevationResolved: boolean;
