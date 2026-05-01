@@ -278,6 +278,7 @@ interface JpmapTerrain {
 - `tilt` setter / `flyTo({ tilt })` は `camera.beta` に反映されない（保存値だけ更新され、3D 復帰時に復元される）。
 - Ctrl/Cmd + ドラッグの tilt 操作、コンパスボタンによる tilt リセットは無効。
 - `lat` / `lon` / `altitude` / `azimuth` の操作は通常通り動作する。
+- 3D → 2D 切替時は `camera.beta` が 0 にリセットされるため、`onCameraChange` は viewMode 変化単独でも `tilt` の差分により発火する。
 
 #### 3.3.6 太陽位置（時間による明るさ変化）
 
