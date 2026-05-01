@@ -1679,12 +1679,12 @@ export class DefaultScene implements CreateSceneClass {
 
         const updateViewModeToggleLabel = (mode: ViewMode): void => {
             // 「次に切り替える先」をラベルに表示する（3D 中は "2D"、2D 中は "3D"）。
-            ui.viewModeToggle.textContent = mode === "3d" ? "2D" : "3D";
-            ui.viewModeToggle.setAttribute(
+            ui.viewModeButton.textContent = mode === "3d" ? "2D" : "3D";
+            ui.viewModeButton.setAttribute(
                 "aria-label",
                 mode === "3d" ? "視点切替: 2D に変更" : "視点切替: 3D に変更",
             );
-            ui.viewModeToggle.setAttribute(
+            ui.viewModeButton.setAttribute(
                 "aria-pressed",
                 mode === "2d" ? "true" : "false",
             );
@@ -1739,7 +1739,7 @@ export class DefaultScene implements CreateSceneClass {
             }
         });
 
-        ui.viewModeToggle.addEventListener("click", () => {
+        ui.viewModeButton.addEventListener("click", () => {
             applyViewModeInternal(currentViewMode === "3d" ? "2d" : "3d");
         });
 
@@ -2028,7 +2028,7 @@ export class DefaultScene implements CreateSceneClass {
                 scaleBarBar: ui.scaleBar.bar,
                 scaleBarLabel: ui.scaleBar.label,
                 mapToggle: ui.mapToggle,
-                viewModeToggle: ui.viewModeToggle,
+                viewModeButton: ui.viewModeButton,
                 attribution: ui.scaleBar.attribution,
             }),
             setSunState: (dateTime) => {
@@ -2078,7 +2078,7 @@ export class DefaultScene implements CreateSceneClass {
                 };
                 removeFromParent(ui.compass);
                 removeFromParent(ui.mapToggle);
-                removeFromParent(ui.viewModeToggle);
+                removeFromParent(ui.viewModeButton);
                 // ズームボタン等は同一の親 container にまとまっているため、
                 // 親をまとめて remove することで全要素を除去する。
                 const zoomContainer = ui.zoomIn.parentElement;

@@ -31,7 +31,7 @@ describe("createUiVisibilityController (T6)", () => {
             scaleBarBar: make(""),
             scaleBarLabel: make(""),
             mapToggle: make("flex"),
-            viewModeToggle: make("flex"),
+            viewModeButton: make("flex"),
             attribution: make(""),
         };
     };
