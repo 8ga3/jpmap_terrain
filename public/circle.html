@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – サークルデモ</title>
+  <meta name="description" content="jpmap_terrain の Circle (CircleManager) 公開 API 動作確認デモ (Issue #201)">
+  <meta name="author" content="8ga3">
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* 操作 UI ルート。ポインターイベントは透過。 */
+    #circle-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    }
+
+    #circle-overlay .back-link {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      pointer-events: auto;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    #circle-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    #circle-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      pointer-events: auto;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 240px;
+    }
+
+    #circle-controls strong {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: #c8d2e6;
+    }
+
+    #circle-controls button {
+      pointer-events: auto;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #circle-controls button:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="circle-overlay">
+    <a class="back-link" href="/">← デモ一覧へ</a>
+    <div id="circle-controls">
+      <strong>サークルデモ (Issue #201)</strong>
+      <div id="circle-controls-buttons"></div>
+    </div>
+  </div>
+</body>
+</html>

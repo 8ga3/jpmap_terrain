@@ -49,6 +49,13 @@ const ENTRY_DEFINITIONS = [
         filename: "distance.html",
         title: "jpmap_terrain – 距離計測デモ",
     },
+    {
+        name: "circle",
+        entry: "src/demos/circle/index.ts",
+        template: "public/circle.html",
+        filename: "circle.html",
+        title: "jpmap_terrain – サークルデモ",
+    },
 ];
 
 const entry = Object.fromEntries(

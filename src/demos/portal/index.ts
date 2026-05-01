@@ -42,6 +42,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "地形クリックで点を追加し、辺ごとの水平距離と高低差を表示するデモ。追加 / 削除 / 編集モードで頂点を動的に編集できます。",
         href: "distance",
     },
+    {
+        title: "サークル",
+        description:
+            "CircleManager 公開 API の動作確認デモ。terrain / absolute / カスタムセグメントの 3 種類の円を表示し、enabled や半径・スタイルの動的更新ができます。",
+        href: "circle",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
