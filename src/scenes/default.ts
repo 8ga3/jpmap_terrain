@@ -629,9 +629,20 @@ export class DefaultScene implements CreateSceneClass {
                 return;
             }
 
-            // 先にカメラ位置を反映してから setTarget で alpha/beta/radius を再計算させる
-            camera.setPosition(new Vector3(camX, camY, camZ));
-            camera.setTarget(new Vector3(targetX, targetY, targetZ));
+            // 先にカメラ位置を反映してから setTarget で alpha/beta/radius を再計算させる。
+            // ただし 2D モードではカメラがターゲット直上（beta=BETA_2D で sin≈0）にあるため、
+            // setTarget の atan2 ベースの alpha 再計算が浮動小数点誤差で不安定になり、
+            // 画面が意図せず回転してしまう。2D 中はユーザーの alpha と固定値の beta を保護する。
+            if (currentViewMode === "2d") {
+                const prevAlpha = camera.alpha;
+                camera.setPosition(new Vector3(camX, camY, camZ));
+                camera.setTarget(new Vector3(targetX, targetY, targetZ));
+                camera.alpha = prevAlpha;
+                camera.beta = BETA_2D;
+            } else {
+                camera.setPosition(new Vector3(camX, camY, camZ));
+                camera.setTarget(new Vector3(targetX, targetY, targetZ));
+            }
         };
 
         // ---------- カスタムマウスハンドラ ----------
@@ -903,7 +914,15 @@ export class DefaultScene implements CreateSceneClass {
                     m.name.startsWith("tile-ground-")
                 );
                 if (centerPick?.hit && centerPick.pickedPoint) {
-                    camera.setTarget(centerPick.pickedPoint);
+                    if (currentViewMode === "2d") {
+                        // 2D 中の setTarget も alpha 再計算で不安定化するため alpha/beta を保護する。
+                        const prevAlpha = camera.alpha;
+                        camera.setTarget(centerPick.pickedPoint);
+                        camera.alpha = prevAlpha;
+                        camera.beta = BETA_2D;
+                    } else {
+                        camera.setTarget(centerPick.pickedPoint);
+                    }
                     // ターゲット差分を緯度経度へ折り込み、Marker/Polygon の位置基準
                     // (currentLat/Lon と gridResidualX/Z) を新ターゲットと整合させる。
                     // これを行わずに gridResidualX/Z だけ更新すると、currentLat/Lon
