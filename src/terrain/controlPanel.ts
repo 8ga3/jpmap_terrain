@@ -273,7 +273,6 @@ const createViewModeToggleButton = (): HTMLButtonElement => {
     btn.textContent = "2D";
     btn.tabIndex = 0;
     btn.setAttribute("aria-label", "視点切替: 2D に変更");
-    btn.setAttribute("aria-pressed", "false");
     css(btn, {
         position: "absolute",
         top: "60px",

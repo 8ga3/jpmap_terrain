@@ -1721,15 +1721,13 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         const updateViewModeToggleLabel = (mode: ViewMode): void => {
-            // 「次に切り替える先」をラベルに表示する（3D 中は "2D"、2D 中は "3D"）。
+            // 「次に切り替える先」を示すアクションボタンとしてラベルを表示する。
+            // textContent / aria-label を「次に切り替える先」で揃えるため、
+            // 「現在の状態」を意味する aria-pressed は付与しない（混在を避ける）。
             ui.viewModeButton.textContent = mode === "3d" ? "2D" : "3D";
             ui.viewModeButton.setAttribute(
                 "aria-label",
                 mode === "3d" ? "視点切替: 2D に変更" : "視点切替: 3D に変更",
-            );
-            ui.viewModeButton.setAttribute(
-                "aria-pressed",
-                mode === "2d" ? "true" : "false",
             );
         };
 
