@@ -16,5 +16,7 @@ module.exports = {
         { from: /^\/polygon\.html(?:\/?@.*)?\/?$/, to: '/polygon.html' },
         { from: /^\/distance(?:\/@.*)?\/?$/, to: '/distance.html' },
         { from: /^\/distance\.html(?:\/?@.*)?\/?$/, to: '/distance.html' },
+        { from: /^\/circle(?:\/@.*)?\/?$/, to: '/circle.html' },
+        { from: /^\/circle\.html(?:\/?@.*)?\/?$/, to: '/circle.html' },
     ],
 };
