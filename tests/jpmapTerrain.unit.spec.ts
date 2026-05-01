@@ -385,7 +385,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     },
                     setUiVisibility: (target: UiTarget, visible: boolean) => {
                         uiVisibility[target] = visible;
-                    },                    setSunState: (_dateTime: Date | null) => {
+                    },
+                    setSunState: (_dateTime: Date | null) => {
                         // テスト用: 受信を記録するだけで Babylon 描画は伴わない
                         sunStateCalls.push({ dateTime: _dateTime });
                     },

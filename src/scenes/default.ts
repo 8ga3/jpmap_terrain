@@ -1656,8 +1656,10 @@ export class DefaultScene implements CreateSceneClass {
             const h = engine.getRenderHeight();
             if (w <= 0 || h <= 0) return;
             const aspect = w / h;
-            // 画面に「カメラ高度 ≒ 1 画面分」が映るよう半径ベースで設定する。
-            const halfH = camera.radius;
+            // perspective でターゲット平面に映る範囲と一致させるため、
+            // 半画角 fov/2 と radius から halfH を導出する。
+            // 前提: camera.fovMode は既定の FOVMODE_VERTICAL_FIXED（fov は鉛直方向）。
+            const halfH = camera.radius * Math.tan(camera.fov / 2);
             const halfW = halfH * aspect;
             camera.orthoTop = halfH;
             camera.orthoBottom = -halfH;
@@ -1680,9 +1682,9 @@ export class DefaultScene implements CreateSceneClass {
 
         const applyViewModeInternal = (
             next: ViewMode,
-            opts?: { silent?: boolean },
+            opts?: { silent?: boolean; force?: boolean },
         ): void => {
-            if (next === currentViewMode) return;
+            if (next === currentViewMode && !opts?.force) return;
             if (next === "2d") {
                 // 現在の tilt を保存（3D 復帰時に復元するため）
                 savedTiltDeg = (camera.beta * 180) / Math.PI;
@@ -1709,14 +1711,13 @@ export class DefaultScene implements CreateSceneClass {
         // 初期反映: ラベルは現在モードに合わせる。`silent: true` で初期 listener は発火させない。
         updateViewModeToggleLabel(currentViewMode);
         if (currentViewMode === "2d") {
-            // applyViewModeInternal は同値で no-op になるため一時的に "3d" に戻して再適用する。
-            currentViewMode = "3d";
-            applyViewModeInternal("2d", { silent: true });
+            // 同値だが初期化のため force で適用する（camera.mode / ortho frustum を確定させる）。
+            applyViewModeInternal("2d", { silent: true, force: true });
         }
 
         // 2D の間は radius / リサイズで ortho frustum を追従させる必要がある。
         // 毎フレーム更新は安価（4 つの数値設定）なので onBeforeRender で常時走らせる。
-        scene.onBeforeRenderObservable.add(() => {
+        const orthoFrustumObserver = scene.onBeforeRenderObservable.add(() => {
             if (currentViewMode === "2d") {
                 applyOrthoFrustum();
             }
@@ -2035,6 +2036,8 @@ export class DefaultScene implements CreateSceneClass {
             dispose: () => {
                 // ShadowGenerator が残っていれば確実に解放する (Issue #39)。
                 disableSunShadows();
+                // 視点モード追従の onBeforeRender observer を解除 (Issue #193)。
+                scene.onBeforeRenderObservable.remove(orthoFrustumObserver);
                 // 地形クリックリスナー (Issue #183) も dispose 時に解放する。
                 // 解除関数を呼ばないまま dispose されたケースで、クロージャに
                 // 残ったリスナー参照経由で外部オブジェクトが解放されないのを防ぐ。
