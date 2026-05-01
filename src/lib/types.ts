@@ -534,3 +534,177 @@ export const POLYGON_DEFAULTS = {
         wallOpacity: 0.3,
     },
 } as const;
+
+// ---- 円 (Issue #201 / #202) ----
+
+/**
+ * 円の中心点（spec/package.md §3.3.9）。
+ *
+ * - `lat` / `lon` (度) は JAPAN_BOUNDS 内の値である必要がある。
+ * - `altitude` (m) は `altitudeMode === "absolute"` のとき必須（海抜高度）。
+ *   `altitudeMode === "terrain"` のときは任意で、地表標高への加算オフセット (m)。未指定時は 0。
+ */
+export interface CircleCenterOptions {
+    /** 緯度 (度) */
+    lat: number;
+    /** 経度 (度) */
+    lon: number;
+    /** 高度 (m)。absolute 時必須、terrain 時は任意（地表 + altitude） */
+    altitude?: number;
+}
+
+/**
+ * 円のスタイル（spec/package.md §3.3.9.1）。
+ *
+ * 中心点・円周・壁・中心ラベルの色 / 太さ / 不透明度 / フォントを指定する。
+ * すべて任意指定で、未指定時は {@link CIRCLE_DEFAULTS} の値が適用される。
+ */
+export interface CircleStyleOptions {
+    /** 中心点の色 CSS。default `#ff0000` */
+    pointColor?: string;
+    /** 中心点（球）の直径 (m, world、distScale 適用前)。default 20 */
+    pointDiameter?: number;
+    /** 中心点の不透明度 [0,1]。default 1 */
+    pointOpacity?: number;
+    /** 円周線の色 CSS。default `#ff0000` */
+    lineColor?: string;
+    /** 円周線の Tube 半径 (m, world)。default 2 */
+    lineWidth?: number;
+    /** 円周線の不透明度 [0,1]。default 1 */
+    lineOpacity?: number;
+    /** 壁の色 CSS。default `#ff0000` */
+    wallColor?: string;
+    /** 壁の不透明度 [0,1]。default 0.3 */
+    wallOpacity?: number;
+    /** 中心ラベルの文字色 CSS。default `#000000` */
+    labelColor?: string;
+    /** 中心ラベルの背景色 CSS。default `"transparent"` */
+    labelBackgroundColor?: string;
+    /** 中心ラベルの文字サイズ (px)。default 14 */
+    labelFontSize?: number;
+}
+
+/**
+ * 円追加オプション（spec/package.md §3.3.9）。
+ *
+ * - `radius` は world m。`> 0` かつ {@link CIRCLE_RADIUS_MAX_M} 以下である必要がある。
+ * - `segments` は円周分割数。`[CIRCLE_SEGMENTS_MIN, CIRCLE_SEGMENTS_MAX]` の範囲内である必要がある。
+ * - `label` は中心点に表示するラベル文言。未指定時は `lat / lon / altitude / radius` の 4 行を自動生成。
+ *   明示的に `null` を指定するとラベルを非表示にする。
+ */
+export interface CircleOptions {
+    /** 中心点 */
+    center: CircleCenterOptions;
+    /** 半径 (m, world)。> 0 かつ {@link CIRCLE_RADIUS_MAX_M} 以下 */
+    radius: number;
+    /** 円周分割数。default {@link CIRCLE_DEFAULTS.segments} */
+    segments?: number;
+    /** 高度モード。default `"terrain"` */
+    altitudeMode?: AltitudeMode;
+    /**
+     * 中心ラベル文言。
+     * - `undefined` (既定): `lat / lon / altitude / radius` の 4 行を自動生成。
+     * - `string`: 明示的にラベル文字列を指定（`\n` で改行）。
+     * - `null`: ラベルを非表示にする。
+     */
+    label?: string | null;
+    /** スタイル */
+    style?: CircleStyleOptions;
+    /** 円全体の表示 ON/OFF。default true */
+    enabled?: boolean;
+    /** 中心点の表示 ON/OFF。default true */
+    pointEnabled?: boolean;
+    /** 円周線の表示 ON/OFF。default true */
+    lineEnabled?: boolean;
+    /** 壁の表示 ON/OFF。default true */
+    wallEnabled?: boolean;
+    /** 中心ラベルの表示 ON/OFF。default true */
+    labelEnabled?: boolean;
+}
+
+/**
+ * `JpmapTerrain.updateCircle`（#205）の部分更新型。
+ *
+ * partial 未指定フィールドは現状維持される。
+ * `segments` 変更時のみ円周 Tube / 壁 Ribbon を dispose+再生成する。
+ */
+export type CircleUpdate = Partial<
+    Pick<
+        CircleOptions,
+        | "center"
+        | "radius"
+        | "segments"
+        | "altitudeMode"
+        | "label"
+        | "style"
+        | "enabled"
+        | "pointEnabled"
+        | "lineEnabled"
+        | "wallEnabled"
+        | "labelEnabled"
+    >
+>;
+
+/**
+ * `JpmapTerrain.addCircle` / `getCircle` / `updateCircle` の戻り値。
+ * read-only スナップショットで、ハンドル経由で現在状態を確認できる。
+ */
+export interface CircleHandle {
+    readonly id: string;
+    readonly center: Readonly<CircleCenterOptions>;
+    readonly radius: number;
+    readonly segments: number;
+    readonly altitudeMode: AltitudeMode;
+    /**
+     * 中心ラベルの現在値。
+     * - `null`: 非表示。
+     * - `string`: 表示中の文字列（自動生成 / カスタム指定 のいずれか）。
+     */
+    readonly label: string | null;
+    readonly style: Readonly<Required<CircleStyleOptions>>;
+    readonly enabled: boolean;
+    readonly pointEnabled: boolean;
+    readonly lineEnabled: boolean;
+    readonly wallEnabled: boolean;
+    readonly labelEnabled: boolean;
+    /**
+     * `terrain` モード時、中心 + 全円周点の標高解決済みなら true。
+     * `absolute` モード時は常に true。
+     */
+    readonly elevationResolved: boolean;
+}
+
+/** 円周分割数の下限 */
+export const CIRCLE_SEGMENTS_MIN = 8;
+/** 円周分割数の上限 */
+export const CIRCLE_SEGMENTS_MAX = 512;
+/** 円半径の上限 (m, world)。100 km */
+export const CIRCLE_RADIUS_MAX_M = 100_000;
+
+/**
+ * 円の既定値（spec/package.md §3.3.9.1）。
+ *
+ * `style` は Polygon の既定値と同一の配色を採用する。
+ */
+export const CIRCLE_DEFAULTS = {
+    segments: 64,
+    altitudeMode: "terrain" as AltitudeMode,
+    enabled: true,
+    pointEnabled: true,
+    lineEnabled: true,
+    wallEnabled: true,
+    labelEnabled: true,
+    style: {
+        pointColor: "#ff0000",
+        pointDiameter: 20,
+        pointOpacity: 1,
+        lineColor: "#ff0000",
+        lineWidth: 2,
+        lineOpacity: 1,
+        wallColor: "#ff0000",
+        wallOpacity: 0.3,
+        labelColor: "#000000",
+        labelBackgroundColor: "transparent",
+        labelFontSize: 14,
+    },
+} as const;
