@@ -95,72 +95,111 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
     let disposed = false;
 
     /**
-     * 1 円の 1 フレーム分更新。
+     * 円ごとのジオメトリキャッシュ。
      *
-     * - 中心を `latLonToWorld` で求め、terrain なら標高解決。
-     * - 円周点は world 平面で polar 展開（緯度補正は `latLonToWorld` の origin 補正で
-     *   中心点に対して既に反映済み。半径方向は world m なので追加の補正は不要）。
-     * - terrain で 1 点でも未解決なら円全体を非表示。
+     * - `cwx`/`cwz`/`ringXZ`: center / ring の world XZ。add 時に 1 回だけ計算し、
+     *   center・radius・segments が変わらない限り再計算不要。
+     * - `centerWorld`/`ringWorld`: 標高解決済みの world 座標。未解決なら null。
+     *   terrain タイル更新イベント時に再解決する。
      */
-    const tickCircle = (node: CircleNode): void => {
-        const { wx: cwx, wz: cwz } = latLonToWorld(
-            ctx,
-            node.center.lat,
-            node.center.lon,
-        );
+    interface CircleCache {
+        cwx: number;
+        cwz: number;
+        ringXZ: { x: number; z: number }[];
+        centerWorld: Vector3 | null;
+        ringWorld: readonly Vector3[] | null;
+    }
+    const caches = new Map<string, CircleCache>();
+
+    /**
+     * 標高を解決して `cache` を更新し、解決済みなら `node.applyTransform` を呼ぶ。
+     *
+     * - terrain モード: 中心 + 全円周点の標高を `queryElevationAtWorld` で取得。
+     *   1 点でも null なら `elevationResolved=false` にして処理を終了する。
+     * - absolute モード: 標高クエリ不要。`center.altitude` を Y として使う。
+     */
+    const resolveElevations = (node: CircleNode, cache: CircleCache): void => {
+        const { cwx, cwz, ringXZ } = cache;
         const centerOffset = node.center.altitude ?? 0;
-        let cy: number;
+
         if (node.altitudeMode === "absolute") {
-            cy = centerOffset;
-        } else {
-            const elev = ctx.tileManager.queryElevationAtWorld(cwx, cwz);
+            const cy = centerOffset;
+            const centerWorld = new Vector3(cwx, cy, cwz);
+            const ringWorld = ringXZ.map(({ x, z }) => new Vector3(x, cy, z));
+            cache.centerWorld = centerWorld;
+            cache.ringWorld = ringWorld;
+            node.setElevationResolved(true);
+            node.applyTransform(
+                centerWorld,
+                ringWorld,
+                computeDistanceScale(ctx, cwx, cy, cwz),
+            );
+            return;
+        }
+
+        // terrain モード
+        const elevCenter = ctx.tileManager.queryElevationAtWorld(cwx, cwz);
+        if (elevCenter === null) {
+            cache.centerWorld = null;
+            cache.ringWorld = null;
+            node.setElevationResolved(false);
+            return;
+        }
+        const cy = elevCenter + centerOffset;
+        const ringWorld: Vector3[] = [];
+        for (const { x, z } of ringXZ) {
+            const elev = ctx.tileManager.queryElevationAtWorld(x, z);
             if (elev === null) {
+                cache.centerWorld = null;
+                cache.ringWorld = null;
                 node.setElevationResolved(false);
                 return;
             }
-            cy = elev + centerOffset;
+            ringWorld.push(new Vector3(x, elev + centerOffset, z));
         }
-
-        // 円周点（world 平面で polar 展開）。
-        const segments = node.segments;
-        const radius = node.radius;
-        const step = (Math.PI * 2) / segments;
-        const ringWorld: Vector3[] = [];
-        for (let i = 0; i < segments; i++) {
-            const θ = i * step;
-            const px = cwx + radius * Math.cos(θ);
-            const pz = cwz + radius * Math.sin(θ);
-            let py: number;
-            if (node.altitudeMode === "absolute") {
-                py = centerOffset;
-            } else {
-                const elev = ctx.tileManager.queryElevationAtWorld(px, pz);
-                if (elev === null) {
-                    node.setElevationResolved(false);
-                    return;
-                }
-                py = elev + centerOffset;
-            }
-            ringWorld.push(new Vector3(px, py, pz));
-        }
-
-        const scale = computeDistanceScale(ctx, cwx, cy, cwz);
+        const centerWorld = new Vector3(cwx, cy, cwz);
+        cache.centerWorld = centerWorld;
+        cache.ringWorld = ringWorld;
         node.setElevationResolved(true);
-        node.applyTransform(new Vector3(cwx, cy, cwz), ringWorld, scale);
+        node.applyTransform(
+            centerWorld,
+            ringWorld,
+            computeDistanceScale(ctx, cwx, cy, cwz),
+        );
     };
 
+    /**
+     * フレームループ。
+     *
+     * 標高解決はキャッシュ済みの値を使い、ラベルがカメラ方向を追従するために
+     * 毎フレーム `applyTransform` を呼ぶ（`pointScale` のみ更新）。
+     * 標高未解決の円はスキップする。
+     */
     const tickFrame = (): void => {
         if (nodes.size === 0) return;
-        for (const node of nodes.values()) {
-            tickCircle(node);
+        for (const [id, node] of nodes) {
+            const cache = caches.get(id);
+            if (!cache || cache.centerWorld === null || cache.ringWorld === null)
+                continue;
+            const scale = computeDistanceScale(
+                ctx,
+                cache.cwx,
+                cache.centerWorld.y,
+                cache.cwz,
+            );
+            node.applyTransform(cache.centerWorld, cache.ringWorld, scale);
         }
     };
 
     const observer: Observer<Scene> | null =
         ctx.scene.onBeforeRenderObservable.add(tickFrame);
 
+    // タイル更新イベント時に全円の標高を再解決する。
     const unsubscribeTerrain = ctx.tileManager.subscribeTerrainUpdated(() => {
-        // tickFrame で次フレームに反映される。明示的な再評価は不要。
+        for (const [id, node] of nodes) {
+            const cache = caches.get(id);
+            if (cache) resolveElevations(node, cache);
+        }
     });
 
     const requireNode = (id: string): CircleNode => {
@@ -184,7 +223,33 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             validateOptions(options);
             const node = createCircleNode(ctx.scene, id, options);
             nodes.set(id, node);
-            tickCircle(node);
+
+            // ring XZ をここで 1 回だけ計算してキャッシュする。
+            const { wx: cwx, wz: cwz } = latLonToWorld(
+                ctx,
+                options.center.lat,
+                options.center.lon,
+            );
+            const segments = node.segments;
+            const radius = node.radius;
+            const step = (Math.PI * 2) / segments;
+            const ringXZ: { x: number; z: number }[] = [];
+            for (let i = 0; i < segments; i++) {
+                const θ = i * step;
+                ringXZ.push({
+                    x: cwx + radius * Math.cos(θ),
+                    z: cwz + radius * Math.sin(θ),
+                });
+            }
+            const cache: CircleCache = {
+                cwx,
+                cwz,
+                ringXZ,
+                centerWorld: null,
+                ringWorld: null,
+            };
+            caches.set(id, cache);
+            resolveElevations(node, cache);
             return node.getHandle();
         },
         get(id: string): CircleHandle | null {
@@ -201,6 +266,7 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
             }
             node.dispose();
             nodes.delete(id);
+            caches.delete(id);
         },
         setEnabled(id: string, enabled: boolean): void {
             if (disposed) {
@@ -246,6 +312,7 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
                 node.dispose();
             }
             nodes.clear();
+            caches.clear();
         },
     };
 };
