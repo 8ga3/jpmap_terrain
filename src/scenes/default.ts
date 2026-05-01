@@ -1061,14 +1061,38 @@ export class DefaultScene implements CreateSceneClass {
                 // Ctrl/Cmd + ドラッグ: 水平=パン(alpha)、垂直=チルト(beta)
                 const dx = e.clientX - lastPointerX;
                 const dy = e.clientY - lastPointerY;
+                if (currentViewMode === "2d") {
+                    // 2D 中の Ctrl+drag は「画面中心を軸とする twist 回転」。
+                    // カーソルが中心を見る角度（atan2）の差分を camera.alpha に加える。
+                    // 例: 中心の少し上から右へドラッグ → 角度が時計回りに増加 → 画面が右回り。
+                    const rect = canvas.getBoundingClientRect();
+                    const cx = rect.left + rect.width / 2;
+                    const cy = rect.top + rect.height / 2;
+                    const px0 = lastPointerX - cx;
+                    const py0 = lastPointerY - cy;
+                    const px1 = e.clientX - cx;
+                    const py1 = e.clientY - cy;
+                    // 中心近傍は角度が不安定なため一定距離未満では回転しない。
+                    const minR = 8; // px
+                    if (
+                        Math.hypot(px0, py0) >= minR &&
+                        Math.hypot(px1, py1) >= minR
+                    ) {
+                        const a0 = Math.atan2(py0, px0);
+                        const a1 = Math.atan2(py1, px1);
+                        let delta = a1 - a0;
+                        if (delta > Math.PI) delta -= 2 * Math.PI;
+                        else if (delta < -Math.PI) delta += 2 * Math.PI;
+                        camera.alpha += delta;
+                    }
+                    lastPointerX = e.clientX;
+                    lastPointerY = e.clientY;
+                    // 2D ではチルト操作は無効、衝突判定も不要
+                    return;
+                }
                 lastPointerX = e.clientX;
                 lastPointerY = e.clientY;
                 camera.alpha -= dx * 0.003;
-                // 2D モード時は tilt 操作を無効化する (Issue #193)。
-                // alpha（方位回転）は 2D でも有効。
-                if (currentViewMode === "2d") {
-                    return;
-                }
                 const prevBeta = camera.beta;
                 camera.beta -= dy * 0.003;
                 camera.beta = clamp(
