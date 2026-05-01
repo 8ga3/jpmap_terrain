@@ -13,7 +13,7 @@ export interface ControlPanelElements {
     zoomIn: HTMLButtonElement;
     zoomOut: HTMLButtonElement;
     mapToggle: HTMLButtonElement;
-    viewModeToggle: HTMLButtonElement;
+    viewModeButton: HTMLButtonElement;
     scaleBar: ScaleBarElement;
 }
 
@@ -405,9 +405,9 @@ export const createControlPanel = (): ControlPanelElements => {
     const mapToggle = createMapToggleButton();
 
     // 視点モード切替ボタン（コンパス直下に配置） (Issue #193)
-    const viewModeToggle = createViewModeToggleButton();
+    const viewModeButton = createViewModeToggleButton();
 
     // スケールバー（ズームボタンコンテナ内に統合済み）
 
-    return { compass, locateMe, zoomIn, zoomOut, mapToggle, viewModeToggle, scaleBar };
+    return { compass, locateMe, zoomIn, zoomOut, mapToggle, viewModeButton, scaleBar };
 };
