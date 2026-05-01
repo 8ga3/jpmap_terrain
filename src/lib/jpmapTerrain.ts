@@ -26,6 +26,7 @@ import {
     MapTypeChangeListener,
     CircleHandle,
     CircleOptions,
+    CircleUpdate,
     MarkerHandle,
     MarkerOptions,
     MarkerUpdate,
@@ -1079,6 +1080,11 @@ export class JpmapTerrain {
     public addCircle(id: string, options: CircleOptions): CircleHandle {
         this._assertAlive();
         return this._requireCircleManager().add(id, options);
+    }
+
+    public updateCircle(id: string, partial: CircleUpdate): CircleHandle {
+        this._assertAlive();
+        return this._requireCircleManager().update(id, partial);
     }
 
     public getCircle(id: string): CircleHandle | null {

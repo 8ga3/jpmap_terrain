@@ -66,6 +66,18 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
         };
         const wrapped = {
             ...node,
+            get center() {
+                return node.center;
+            },
+            set center(v: { lat: number; lon: number; altitude?: number }) {
+                node.center = { ...v };
+            },
+            get radius() {
+                return node.radius;
+            },
+            set radius(v: number) {
+                node.radius = v;
+            },
             applyTransform: (
                 centerWorld: { x: number; y: number; z: number },
                 ringWorld: ReadonlyArray<{ x: number; y: number; z: number }>,
@@ -324,6 +336,122 @@ describe("CircleManager バリデーション", () => {
                 altitudeMode: "absolute",
             }),
         ).toThrow(/altitude/);
+    });
+});
+
+describe("CircleManager update", () => {
+    it("center を変更すると getHandle に反映され、ring が再計算される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 500 });
+        const prevCenter = created[0].lastCenter;
+        const newCenter = { lat: 35.690, lon: 139.770 };
+        const handle = mgr.update("a", { center: newCenter });
+        expect(handle.center.lat).toBe(35.690);
+        expect(handle.center.lon).toBe(139.770);
+        // ring 再計算されたので applyTransform が追加で呼ばれている
+        expect(created[0].applyTransformCalls).toBeGreaterThan(1);
+        // center world 座標が変わっている
+        expect(created[0].lastCenter).not.toEqual(prevCenter);
+    });
+
+    it("radius を変更すると ring 各点の距離が新半径になる", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100, segments: 8 });
+        mgr.update("a", { radius: 300 });
+        const center = created[0].lastCenter!;
+        for (const p of created[0].lastRing) {
+            const dist = Math.hypot(p.x - center.x, p.z - center.z);
+            expect(dist).toBeCloseTo(300, 3);
+        }
+    });
+
+    it("segments を変更すると node が再構築される（created 配列に新 node 追加）", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100, segments: 16 });
+        expect(created.length).toBe(1);
+        expect(created[0].disposed).toBe(false);
+        mgr.update("a", { segments: 32 });
+        // 旧 node が dispose され、新 node が作られる
+        expect(created[0].disposed).toBe(true);
+        expect(created.length).toBe(2);
+        expect(created[1].lastRing.length).toBe(32);
+    });
+
+    it("style を変更すると node が再構築される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        expect(created.length).toBe(1);
+        mgr.update("a", { style: { lineColor: "#00ff00" } });
+        expect(created[0].disposed).toBe(true);
+        expect(created.length).toBe(2);
+    });
+
+    it("enabled フラグの変更は node 再構築なしで反映される", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        mgr.update("a", { enabled: false, pointEnabled: false });
+        expect(created.length).toBe(1); // 再構築なし
+        expect(created[0].setEnabledHistory).toEqual([false]);
+        expect(created[0].setPointEnabledHistory).toEqual([false]);
+    });
+
+    it("未存在 id の update は throw", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        expect(() => mgr.update("missing", { radius: 200 })).toThrow(
+            /not found/,
+        );
+    });
+
+    it("update 時も radius バリデーションが効く", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        expect(() => mgr.update("a", { radius: -1 })).toThrow(/radius/);
+        expect(() => mgr.update("a", { radius: 200_000 })).toThrow(/radius/);
+    });
+
+    it("update 時も segments バリデーションが効く", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        expect(() => mgr.update("a", { segments: 3 })).toThrow(/segments/);
+    });
+
+    it("update 時も JAPAN_BOUNDS バリデーションが効く", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        expect(() =>
+            mgr.update("a", { center: { lat: 0, lon: 0 } }),
+        ).toThrow(/JAPAN_BOUNDS/);
+    });
+
+    it("absolute 切替時に altitude 未指定なら throw", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        expect(() => mgr.update("a", { altitudeMode: "absolute" })).toThrow(
+            /altitude/,
+        );
+    });
+
+    it("altitudeMode 変更は node 再構築", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", {
+            center: { ...validCenter, altitude: 100 },
+            radius: 100,
+        });
+        expect(created.length).toBe(1);
+        mgr.update("a", { altitudeMode: "absolute" });
+        expect(created[0].disposed).toBe(true);
+        expect(created.length).toBe(2);
     });
 });
 
