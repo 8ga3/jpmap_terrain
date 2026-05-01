@@ -24,6 +24,8 @@ import {
     JpmapTerrainOptions,
     MapType,
     MapTypeChangeListener,
+    CircleHandle,
+    CircleOptions,
     MarkerHandle,
     MarkerOptions,
     MarkerUpdate,
@@ -41,6 +43,7 @@ import {
 } from "./types";
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
 import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
+import { createCircleManager, type CircleManager } from "../terrain/circleManager";
 
 /**
  * jpmap-terrain ビューア。
@@ -102,6 +105,9 @@ export class JpmapTerrain {
 
     /** ポリゴン管理 (Issue #170)。`onReady` で初期化される */
     private _polygonManager: PolygonManager | null = null;
+
+    /** 円管理 (Issue #201)。`onReady` で初期化される */
+    private _circleManager: CircleManager | null = null;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -241,6 +247,10 @@ export class JpmapTerrain {
                     );
                     // ポリゴン (Issue #170)。MarkerContext と同一のコンテキストを共有する。
                     this._polygonManager = createPolygonManager(
+                        controller.getMarkerContext(),
+                    );
+                    // 円 (Issue #201)。MarkerContext と同一のコンテキストを共有する。
+                    this._circleManager = createCircleManager(
                         controller.getMarkerContext(),
                     );
                 },
@@ -1040,6 +1050,65 @@ export class JpmapTerrain {
         return this._requirePolygonManager().replacePoints(id, points);
     }
 
+    // ---- 円 (Issue #201) ----
+
+    private _requireCircleManager(): CircleManager {
+        if (!this._circleManager) {
+            throw new Error("JpmapTerrain circle manager is not ready yet");
+        }
+        return this._circleManager;
+    }
+
+    /**
+     * dispose 後の円 API はマーカー・ポリゴンと同方針:
+     * - 戻り値が `CircleHandle`（非 null）の API（`addCircle`）は throw。
+     * - 戻り値が void / `CircleHandle | null` / `readonly string[]` の API は no-op として扱う。
+     */
+    public addCircle(id: string, options: CircleOptions): CircleHandle {
+        this._assertAlive();
+        return this._requireCircleManager().add(id, options);
+    }
+
+    public getCircle(id: string): CircleHandle | null {
+        if (this._disposed || !this._circleManager) return null;
+        return this._circleManager.get(id);
+    }
+
+    public removeCircle(id: string): void {
+        if (this._disposed || !this._circleManager) return;
+        this._circleManager.remove(id);
+    }
+
+    public setCircleEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._circleManager) return;
+        this._circleManager.setEnabled(id, enabled);
+    }
+
+    public setCirclePointEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._circleManager) return;
+        this._circleManager.setPointEnabled(id, enabled);
+    }
+
+    public setCircleLineEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._circleManager) return;
+        this._circleManager.setLineEnabled(id, enabled);
+    }
+
+    public setCircleWallEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._circleManager) return;
+        this._circleManager.setWallEnabled(id, enabled);
+    }
+
+    public setCircleLabelEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._circleManager) return;
+        this._circleManager.setLabelEnabled(id, enabled);
+    }
+
+    public listCircles(): readonly string[] {
+        if (this._disposed) return [];
+        return this._circleManager?.list() ?? [];
+    }
+
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
@@ -1095,6 +1164,15 @@ export class JpmapTerrain {
                 console.error("[JpmapTerrain] polygonManager.dispose threw:", err);
             }
             this._polygonManager = null;
+        }
+        // 円マネージャも Scene dispose 前に解放する (Issue #201)。
+        if (this._circleManager) {
+            try {
+                this._circleManager.dispose();
+            } catch (err) {
+                console.error("[JpmapTerrain] circleManager.dispose threw:", err);
+            }
+            this._circleManager = null;
         }
         // controlPanel が body に追加した UI 要素を Scene dispose 前に除去する。
         if (this._controller) {

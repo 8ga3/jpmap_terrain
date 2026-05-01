@@ -163,6 +163,58 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
     },
 }));
 
+// `circle.ts` は Babylon 実体に依存するため、Circle API テストでは
+// `createCircleNode` を軽量スタブに差し替える。
+jest.unstable_mockModule("../src/terrain/circle", () => ({
+    createCircleNode: (
+        _scene: unknown,
+        id: string,
+        options: { center: { lat: number; lon: number; altitude?: number }; radius: number; segments?: number; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; pointEnabled?: boolean; lineEnabled?: boolean; wallEnabled?: boolean; labelEnabled?: boolean },
+    ) => {
+        let enabled = options.enabled ?? true;
+        const altitudeMode = options.altitudeMode ?? "terrain";
+        let elevationResolved = altitudeMode === "absolute";
+        const center = { ...options.center };
+        const radius = options.radius;
+        const segments = options.segments ?? 64;
+        return {
+            id,
+            altitudeMode,
+            get center() { return center; },
+            set center(v: { lat: number; lon: number; altitude?: number }) {
+                center.lat = v.lat;
+                center.lon = v.lon;
+                center.altitude = v.altitude;
+            },
+            get radius() { return radius; },
+            get segments() { return segments; },
+            applyTransform: () => { /* no-op */ },
+            setEnabledLogical: (v: boolean) => { enabled = v; },
+            setPointEnabledLogical: () => { /* no-op */ },
+            setLineEnabledLogical: () => { /* no-op */ },
+            setWallEnabledLogical: () => { /* no-op */ },
+            setLabelEnabledLogical: () => { /* no-op */ },
+            setElevationResolved: (v: boolean) => { elevationResolved = v; },
+            getHandle: () => ({
+                id,
+                center: { ...center },
+                radius,
+                segments,
+                altitudeMode,
+                label: null,
+                style: {} as unknown as Record<string, unknown>,
+                enabled,
+                pointEnabled: options.pointEnabled ?? true,
+                lineEnabled: options.lineEnabled ?? true,
+                wallEnabled: options.wallEnabled ?? true,
+                labelEnabled: options.labelEnabled ?? true,
+                elevationResolved,
+            }),
+            dispose: () => { /* no-op */ },
+        };
+    },
+}));
+
 jest.unstable_mockModule("../src/scenes/default", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
     // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
@@ -2192,6 +2244,55 @@ describe("JpmapTerrain (skeleton)", () => {
             sceneMockModule.__triggerPolygonPointDragEnd(buildDrag());
             expect(calls.length).toBe(0);
             expect(() => offs.forEach((o) => o())).not.toThrow();
+        });
+    });
+
+    describe("Circle API (Issue #201)", () => {
+        const validCenter = { lat: 35.681, lon: 139.767 };
+
+        it("addCircle → getCircle / listCircles で参照できる", async () => {
+            const viewer = await create(createMountElement());
+            const handle = viewer.addCircle("c1", { center: validCenter, radius: 100 });
+            expect(handle.id).toBe("c1");
+            expect(viewer.getCircle("c1")?.id).toBe("c1");
+            expect(viewer.listCircles()).toEqual(["c1"]);
+        });
+
+        it("removeCircle で消える", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addCircle("c1", { center: validCenter, radius: 100 });
+            viewer.removeCircle("c1");
+            expect(viewer.getCircle("c1")).toBeNull();
+            expect(viewer.listCircles()).toEqual([]);
+        });
+
+        it("setCircleEnabled は登録済み id に対して throw しない", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addCircle("c1", { center: validCenter, radius: 100 });
+            expect(() => viewer.setCircleEnabled("c1", false)).not.toThrow();
+        });
+
+        it("setCircle{Point,Line,Wall,Label}Enabled は登録済み id に対して throw しない", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addCircle("c1", { center: validCenter, radius: 100 });
+            expect(() => viewer.setCirclePointEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCircleLineEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCircleWallEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCircleLabelEnabled("c1", false)).not.toThrow();
+        });
+
+        it("dispose 後の addCircle は throw、その他 API は no-op / null / [] を返す", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            expect(() => viewer.addCircle("c1", { center: validCenter, radius: 100 })).toThrow();
+            expect(viewer.getCircle("c1")).toBeNull();
+            expect(viewer.listCircles()).toEqual([]);
+            expect(() => viewer.removeCircle("c1")).not.toThrow();
+            expect(() => viewer.setCircleEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCirclePointEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCircleLineEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCircleWallEnabled("c1", false)).not.toThrow();
+            expect(() => viewer.setCircleLabelEnabled("c1", false)).not.toThrow();
         });
     });
 });
