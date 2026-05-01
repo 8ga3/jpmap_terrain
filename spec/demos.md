@@ -53,9 +53,9 @@
 
 | id | altitudeMode | 概要 |
 |---|---|---|
-| `yomiuri-terrain` | `terrain` | 地表追従円（半径 500m、標準スタイル） |
-| `yomiuri-absolute` | `absolute` | 絶対標高円（半径 300m、altitude=200m、青色） |
-| `yomiuri-custom` | `terrain` | カスタムセグメント円（半径 400m、segments=16） |
+| `yomiuri-terrain` | `terrain` | 地表追従円（半径 300m、altitude=50m、赤色） |
+| `yomiuri-absolute` | `absolute` | 絶対標高円（半径 200m、altitude=400m、青色） |
+| `yomiuri-custom` | `absolute` | カスタムセグメント円（半径 150m、altitude=300m、segments=16、黄色） |
 
 **コントロール:** 各サークルの enabled / point / line / wall / label トグルと、`updateCircle` による半径・中心・スタイル変更のデモ UI を右パネルに配置する。
 
