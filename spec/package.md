@@ -536,7 +536,153 @@ interface JpmapTerrain {
 - `insertPolygonPoint` / `removePolygonPoint` は labels 配列の対応 index をシフトする（隣接ラベルとの整合を保つ）。
 - `replacePolygonPoints` は新しい点数に合わせ labels を全 undefined で再構成する（明示的にラベルを再付与するには `updatePolygonPoint` を呼び出す）。
 
-#### 3.3.9 地形クリック通知 (Issue #183)
+#### 3.3.9 サークル (Issue #201)
+
+中心点（緯度・経度）と半径 (m) を指定して円を地形上に描画する API。中心球 / 円周 Tube / 壁 Ribbon / 中心ラベルを組み合わせて描画する。
+
+##### 3.3.9.1 公開 API（Issue #202〜#205）
+
+```typescript
+interface JpmapTerrain {
+  /** サークル追加。同 id 重複は throw、バリデーション失敗は throw */
+  addCircle(id: string, options: CircleOptions): CircleHandle;
+  /** 取得。未存在は null */
+  getCircle(id: string): CircleHandle | null;
+  /** 差分更新。未存在 id は throw */
+  updateCircle(id: string, partial: CircleUpdate): CircleHandle;
+  /** 削除。未存在は no-op + warn */
+  removeCircle(id: string): void;
+  /** enabled の薄いショートカット */
+  setCircleEnabled(id: string, enabled: boolean): void;
+  /** 中心球表示切替 */
+  setCirclePointEnabled(id: string, enabled: boolean): void;
+  /** 円周 Tube 表示切替 */
+  setCircleLineEnabled(id: string, enabled: boolean): void;
+  /** 壁 Ribbon 表示切替 */
+  setCircleWallEnabled(id: string, enabled: boolean): void;
+  /** 中心ラベル表示切替 */
+  setCircleLabelEnabled(id: string, enabled: boolean): void;
+  /** 全 id を生成順で返す */
+  listCircles(): readonly string[];
+}
+
+type AltitudeMode = "absolute" | "terrain";
+
+interface CircleCenterOptions {
+  lat: number;
+  lon: number;
+  /** `altitudeMode === "absolute"` のとき必須 (m)。`"terrain"` のときは地表からのオフセット (m)、未指定時は 0 */
+  altitude?: number;
+}
+
+interface CircleStyleOptions {
+  // 中心球
+  pointColor?: string;        // CSS color (default "#ff0000")
+  pointDiameter?: number;     // m (default 20, distScale 適用)
+  pointOpacity?: number;      // 0..1 (default 1)
+  // 円周 Tube
+  lineColor?: string;         // CSS color (default "#ff0000")
+  lineWidth?: number;         // m (Tube 半径, default 2)
+  lineOpacity?: number;       // 0..1 (default 1)
+  // 壁 Ribbon
+  wallColor?: string;         // CSS color (default "#ff0000")
+  wallOpacity?: number;       // 0..1 (default 0.3)
+  // 中心ラベル
+  labelColor?: string;            // CSS color (default "#000000")
+  labelBackgroundColor?: string;  // CSS color (default "transparent")
+  labelFontSize?: number;         // px (default 14)
+}
+
+interface CircleOptions {
+  center: CircleCenterOptions;
+  /** 半径 (m, world)。> 0 かつ 100000 以下 */
+  radius: number;
+  /** 円周分割数。既定 64。範囲 [8, 512] */
+  segments?: number;
+  altitudeMode?: AltitudeMode;    // default "terrain"
+  /**
+   * 中心ラベル文言。未指定時は「lat / lon / alt / radius」を自動生成。
+   * 明示 string で上書き、null で非表示
+   */
+  label?: string | null;
+  style?: CircleStyleOptions;
+  enabled?: boolean;              // default true
+  pointEnabled?: boolean;         // default true
+  lineEnabled?: boolean;          // default true
+  wallEnabled?: boolean;          // default true
+  labelEnabled?: boolean;         // default true
+}
+
+type CircleUpdate = Partial<Pick<CircleOptions,
+  | "center" | "radius" | "segments" | "altitudeMode"
+  | "label" | "style" | "enabled"
+  | "pointEnabled" | "lineEnabled" | "wallEnabled" | "labelEnabled">>;
+
+interface CircleHandle {
+  readonly id: string;
+  readonly center: Readonly<CircleCenterOptions>;
+  readonly radius: number;
+  readonly segments: number;
+  readonly altitudeMode: AltitudeMode;
+  readonly label: string | null;
+  readonly style: Readonly<Required<CircleStyleOptions>>;
+  readonly enabled: boolean;
+  readonly pointEnabled: boolean;
+  readonly lineEnabled: boolean;
+  readonly wallEnabled: boolean;
+  readonly labelEnabled: boolean;
+  /**
+   * `terrain` モード時、中心点の地表標高が解決済みなら true。
+   * 円は平面円として描画されるため、中心の標高のみが必要。
+   * `absolute` モード時は常に true。
+   */
+  readonly elevationResolved: boolean;
+}
+```
+
+**仕様:**
+
+- `center.lat/lon` が JAPAN_BOUNDS 外、`radius <= 0` または `radius > 100000`、`segments < 8` または `segments > 512`、`altitudeMode === "absolute"` で `center.altitude` 未指定の場合は throw。
+- 同 id の重複追加は throw。`removeCircle` の未存在 id は `console.warn` + no-op。`updateCircle` / `setCircle*Enabled` の未存在 id は throw。
+- 円周点列は world 座標で `P_i = center + (radius × cos θ_i, 0, radius × sin θ_i)` として `segments` 等分に生成する（Mercator 楕円化回避）。
+- `terrain` モードでは中心点の地表標高のみ解決し、その値 + `center.altitude` を全円周点に均一適用する（平面円）。標高未解決の間は全体を非表示にし、`onTerrainUpdated` 後に自動表示する。
+- `absolute` モードでは `center.altitude` をそのまま Y に採用する。
+- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベルは `1`（地表より手前）。壁 Ribbon は `0` + `needDepthPrePass=true`（半透明時の z-fight 緩和）。
+- `dispose()` で全 Circle リソース（Mesh / Material / TransformNode）を解放する。
+
+**差分更新の保証範囲（updateCircle）:**
+
+| 変更フィールド | 挙動 |
+|---|---|
+| `center` のみ | TransformNode 位置更新、メッシュ再生成なし |
+| `radius` のみ | 円周点列再計算、Tube / Ribbon の path 差分更新 |
+| `segments` 変更 | Tube / Ribbon を dispose + 再生成 |
+| `altitudeMode` 変更 | 標高解決リセット + 即時 tick |
+| `style`（空でない場合） | Material プロパティ更新 |
+| `*Enabled` フラグ | `setEnabled` でメッシュ可視性切替 |
+| `label` | DynamicTexture 再描画 or Plane dispose / 再生成 |
+
+**利用例:**
+
+```typescript
+import { JpmapTerrain } from "jpmap-terrain";
+
+const circle = viewer.addCircle("range-ring", {
+  center: { lat: 35.6895, lon: 139.6917 },
+  radius: 500,
+  altitudeMode: "terrain",
+  label: "500m 圏内",
+  style: { lineColor: "#0000ff", wallOpacity: 0.2 },
+});
+
+// 半径を動的に変更
+viewer.updateCircle("range-ring", { radius: 1000 });
+
+// 壁を非表示
+viewer.setCircleWallEnabled("range-ring", false);
+```
+
+#### 3.3.10 地形クリック通知 (Issue #183)
 
 地形タイル上でのマウス／タッチによるクリックを購読するイベント API。距離計測など「クリックで地点を確定する」系デモ（#44）の基盤。
 
@@ -586,7 +732,7 @@ const unsubscribe = viewer.onTerrainClick((e) => {
 unsubscribe();
 ```
 
-#### 3.3.10 ポリゴン頂点インタラクション (Issue #184)
+#### 3.3.11 ポリゴン頂点インタラクション (Issue #184)
 
 ポリゴンの頂点（球体メッシュ）に対する hover / click / drag を購読するイベント API。距離計測などのデモ（#44）で頂点の編集 UI を構築するための基盤。
 
@@ -680,7 +826,7 @@ viewer.onPolygonPointDragEnd(() => {
 });
 ```
 
-#### 3.3.11 辺ラベル (Issue #185)
+#### 3.3.12 辺ラベル (Issue #185)
 
 `PolygonOptions.edgeLabels` で各辺の中点に文字列ラベルを表示する。距離計測デモ（#186）のように動的に距離・高低差を反映する用途に使う。
 
