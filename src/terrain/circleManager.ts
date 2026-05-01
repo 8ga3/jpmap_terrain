@@ -335,7 +335,8 @@ export const createCircleManager = (ctx: OverlayContext): CircleManager => {
                     partial.segments !== oldNode.segments) ||
                 (partial.altitudeMode !== undefined &&
                     partial.altitudeMode !== oldNode.altitudeMode) ||
-                partial.style !== undefined ||
+                (partial.style !== undefined &&
+                    Object.keys(partial.style).length > 0) ||
                 partial.label !== undefined;
 
             // マージ済み options を構築する。

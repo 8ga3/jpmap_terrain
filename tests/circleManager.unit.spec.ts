@@ -392,6 +392,15 @@ describe("CircleManager update", () => {
         expect(created.length).toBe(2);
     });
 
+    it("空 style {} は再構築しない", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createCircleManager(ctx);
+        mgr.add("a", { center: validCenter, radius: 100 });
+        mgr.update("a", { style: {} });
+        expect(created.length).toBe(1); // 再構築なし
+        expect(created[0].disposed).toBe(false);
+    });
+
     it("enabled フラグの変更は node 再構築なしで反映される", () => {
         const { ctx } = buildCtx(0);
         const mgr = createCircleManager(ctx);
