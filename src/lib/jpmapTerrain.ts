@@ -1074,7 +1074,7 @@ export class JpmapTerrain {
 
     /**
      * dispose 後の円 API はマーカー・ポリゴンと同方針:
-     * - 戻り値が `CircleHandle`（非 null）の API（`addCircle`）は throw。
+     * - 戻り値が `CircleHandle`（非 null）の API（`addCircle` / `updateCircle`）は throw。
      * - 戻り値が void / `CircleHandle | null` / `readonly string[]` の API は no-op として扱う。
      */
     public addCircle(id: string, options: CircleOptions): CircleHandle {
