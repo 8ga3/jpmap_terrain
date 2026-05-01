@@ -227,12 +227,19 @@ const buildRingXZ = (
 export interface CircleNode {
     readonly id: string;
     readonly altitudeMode: AltitudeMode;
-    /** 中心点（lat / lon / altitude）のスナップショット。manager から更新される */
+    /**
+     * 中心点（lat / lon / altitude）のスナップショット。
+     * setter で内部値を更新しラベルを再生成する（C4 updateCircle 用）。
+     */
     center: CircleCenterOptions;
-    /** 半径 (m, world)。manager から更新される */
+    /** 半径 (m, world)。setter で内部値を更新しラベルを再生成する（C4 updateCircle 用）。 */
     radius: number;
-    /** 円周分割数。manager から更新される */
-    segments: number;
+    /**
+     * 円周分割数。
+     * segments 変更は Tube/Ribbon の path 長変化を伴うため dispose+rebuild が必要。
+     * この値を変更するには CircleManager 経由で circle を再作成すること。
+     */
+    readonly segments: number;
     /**
      * フレーム単位の幾何更新。
      * @param centerWorld 中心の world 座標（Y は標高反映済み）
@@ -552,6 +559,12 @@ export const createCircleNode = (
         altitudeMode,
         get center() {
             return center;
+        },
+        set center(value: CircleCenterOptions) {
+            center.lat = value.lat;
+            center.lon = value.lon;
+            center.altitude = value.altitude;
+            refreshAutoLabel();
         },
         get radius() {
             return radius;
