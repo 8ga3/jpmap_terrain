@@ -118,7 +118,7 @@ export const WAYPOINT_COMMANDS = new Set([
  * QGC v4+ は `coordinate` フィールド、v3 以前は `params[4..6]` にフォールバック。
  *
  * lat=0 かつ lon=0 はQGCにおける「ホームポジションで実行」を意味するため null を返す。
- * 呼び出し側でホームポジションへのフォールバックを行う。
+ * 呼び出し側は null の場合そのアイテムをスキップする。
  */
 const extractCoordinate = (
     item: QgcMissionItem,
