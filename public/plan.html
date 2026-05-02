@@ -78,6 +78,45 @@
       white-space: pre-line;
     }
 
+    /* レイヤー表示切替ボタン */
+    #plan-layer-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    #plan-layer-buttons button {
+      pointer-events: auto;
+      padding: 3px 9px;
+      font-size: 11px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #plan-layer-buttons button:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    /* 表示中: 色付きボーダーで強調、非表示時は薄暗く */
+    #plan-layer-buttons button[data-active="true"] {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.7);
+    }
+
+    #plan-layer-buttons button[data-active="false"] {
+      opacity: 0.45;
+    }
+
+    /* Plan 未読み込み時はボタンを無効化 */
+    #plan-layer-buttons button:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+
     /* ドラッグ&ドロップ オーバーレイ */
     #plan-drop-zone {
       position: absolute;
@@ -111,6 +150,11 @@
     <a class="back-link" href="/">← デモ一覧へ</a>
     <div id="plan-controls">
       <strong>Plan Viewer (#38)</strong>
+      <div id="plan-layer-buttons">
+        <button type="button" id="btn-waypoints" data-active="true" disabled>ウェイポイント</button>
+        <button type="button" id="btn-geofence" data-active="true" disabled>ジオフェンス</button>
+        <button type="button" id="btn-rally" data-active="true" disabled>ラリーポイント</button>
+      </div>
       <div id="plan-status">.plan ファイルをドラッグ&ドロップしてください</div>
     </div>
   </div>

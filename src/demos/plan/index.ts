@@ -30,12 +30,30 @@ import {
 const DEMO_MOUNT_ID = "root";
 const STATUS_ID = "plan-status";
 const DROP_ZONE_ID = "plan-drop-zone";
+const BTN_WAYPOINTS_ID = "btn-waypoints";
+const BTN_GEOFENCE_ID = "btn-geofence";
+const BTN_RALLY_ID = "btn-rally";
 
 // 描画 ID プレフィックス
 const ID_WAYPOINTS = "plan-waypoints";
 const ID_GEOFENCE_POLYGON_PREFIX = "plan-geofence-poly-";
 const ID_GEOFENCE_CIRCLE_PREFIX = "plan-geofence-circle-";
 const ID_RALLY_PREFIX = "plan-rally-";
+
+/** 種別ごとの描画 ID セット */
+interface PlanIds {
+    waypointIds: string[];
+    geofencePolyIds: string[];
+    geofenceCircleIds: string[];
+    rallyIds: string[];
+}
+
+const EMPTY_PLAN_IDS: PlanIds = {
+    waypointIds: [],
+    geofencePolyIds: [],
+    geofenceCircleIds: [],
+    rallyIds: [],
+};
 
 /**
  * `?engine=` クエリ文字列から描画エンジン種別を解決する。
@@ -48,20 +66,24 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
 };
 
 /** 既存の Plan 描画をすべて削除する */
-const clearPlanDisplay = (viewer: JpmapTerrain, ids: string[]): void => {
-    for (const id of ids) {
-        if (viewer.getPolygon(id)) {
-            viewer.removePolygon(id);
-        }
-        if (viewer.getCircle(id)) {
-            viewer.removeCircle(id);
-        }
+const clearPlanDisplay = (viewer: JpmapTerrain, ids: PlanIds): void => {
+    const allPolyIds = [...ids.waypointIds, ...ids.geofencePolyIds, ...ids.rallyIds];
+    for (const id of allPolyIds) {
+        if (viewer.getPolygon(id)) viewer.removePolygon(id);
+    }
+    for (const id of ids.geofenceCircleIds) {
+        if (viewer.getCircle(id)) viewer.removeCircle(id);
     }
 };
 
-/** Plan をマップに描画し、使用した ID リストを返す */
-const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): string[] => {
-    const usedIds: string[] = [];
+/** Plan をマップに描画し、種別ごとの ID を返す */
+const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
+    const result: PlanIds = {
+        waypointIds: [],
+        geofencePolyIds: [],
+        geofenceCircleIds: [],
+        rallyIds: [],
+    };
 
     // ウェイポイント（パスライン）
     if (plan.waypoints.length > 0) {
@@ -98,7 +120,7 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): string[] => {
             },
         };
         viewer.addPolygon(ID_WAYPOINTS, opts);
-        usedIds.push(ID_WAYPOINTS);
+        result.waypointIds.push(ID_WAYPOINTS);
     }
 
     // ジオフェンスポリゴン
@@ -122,7 +144,7 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): string[] => {
             },
         };
         viewer.addPolygon(id, opts);
-        usedIds.push(id);
+        result.geofencePolyIds.push(id);
     });
 
     // ジオフェンス円
@@ -144,7 +166,7 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): string[] => {
             },
         };
         viewer.addCircle(id, opts);
-        usedIds.push(id);
+        result.geofenceCircleIds.push(id);
     });
 
     // ラリーポイント
@@ -166,10 +188,10 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): string[] => {
             },
         };
         viewer.addPolygon(id, opts);
-        usedIds.push(id);
+        result.rallyIds.push(id);
     });
 
-    return usedIds;
+    return result;
 };
 
 const updateStatus = (
@@ -229,18 +251,83 @@ const start = async (): Promise<void> => {
     const statusEl = document.getElementById(STATUS_ID);
     const dropZone = document.getElementById(DROP_ZONE_ID);
 
-    let currentIds: string[] = [];
+    let currentIds: PlanIds = { ...EMPTY_PLAN_IDS };
+
+    // レイヤー表示状態
+    const layerVisible = { waypoints: true, geofence: true, rally: true };
+
+    // ボタン要素
+    const btnWaypoints = document.getElementById(BTN_WAYPOINTS_ID) as HTMLButtonElement | null;
+    const btnGeofence = document.getElementById(BTN_GEOFENCE_ID) as HTMLButtonElement | null;
+    const btnRally = document.getElementById(BTN_RALLY_ID) as HTMLButtonElement | null;
+
+    const refreshButtons = (hasPlan: boolean): void => {
+        if (btnWaypoints) {
+            btnWaypoints.disabled = !hasPlan;
+            btnWaypoints.dataset.active = String(layerVisible.waypoints);
+        }
+        if (btnGeofence) {
+            btnGeofence.disabled = !hasPlan;
+            btnGeofence.dataset.active = String(layerVisible.geofence);
+        }
+        if (btnRally) {
+            btnRally.disabled = !hasPlan;
+            btnRally.dataset.active = String(layerVisible.rally);
+        }
+    };
+
+    const applyLayerVisibility = (): void => {
+        for (const id of currentIds.waypointIds) {
+            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.waypoints);
+        }
+        for (const id of [...currentIds.geofencePolyIds]) {
+            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.geofence);
+        }
+        for (const id of currentIds.geofenceCircleIds) {
+            if (viewer.getCircle(id)) viewer.setCircleEnabled(id, layerVisible.geofence);
+        }
+        for (const id of currentIds.rallyIds) {
+            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.rally);
+        }
+    };
+
+    if (btnWaypoints) {
+        btnWaypoints.addEventListener("click", () => {
+            layerVisible.waypoints = !layerVisible.waypoints;
+            applyLayerVisibility();
+            refreshButtons(true);
+        });
+    }
+    if (btnGeofence) {
+        btnGeofence.addEventListener("click", () => {
+            layerVisible.geofence = !layerVisible.geofence;
+            applyLayerVisibility();
+            refreshButtons(true);
+        });
+    }
+    if (btnRally) {
+        btnRally.addEventListener("click", () => {
+            layerVisible.rally = !layerVisible.rally;
+            applyLayerVisibility();
+            refreshButtons(true);
+        });
+    }
 
     const loadPlan = (fileContent: string): void => {
         // 前回表示をクリア
         clearPlanDisplay(viewer, currentIds);
-        currentIds = [];
+        currentIds = { ...EMPTY_PLAN_IDS };
+        // 表示状態をリセット
+        layerVisible.waypoints = true;
+        layerVisible.geofence = true;
+        layerVisible.rally = true;
 
         try {
             const json = JSON.parse(fileContent) as unknown;
             const plan = parsePlan(json);
             currentIds = renderPlan(viewer, plan);
             updateStatus(statusEl, plan);
+            refreshButtons(true);
 
             // ウェイポイントがある場合、最初のウェイポイント位置にカメラを移動
             if (plan.waypoints.length > 0) {
@@ -253,6 +340,7 @@ const start = async (): Promise<void> => {
         } catch (e) {
             const msg = e instanceof Error ? e.message : "不明なエラー";
             updateStatus(statusEl, null, msg);
+            refreshButtons(false);
         }
     };
 
