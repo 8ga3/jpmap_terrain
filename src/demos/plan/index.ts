@@ -131,6 +131,7 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
             points: poly.points.map((p) => ({
                 lat: p.lat,
                 lon: p.lon,
+                altitude: 10,
             })),
             altitudeMode: "terrain",
             closed: true,
