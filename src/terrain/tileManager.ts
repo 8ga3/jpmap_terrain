@@ -602,8 +602,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
 
+        // wasAllNaN かつ既に unblocked なタイルは filled を再ステッチのベースに使い状態を保持
+        const cacheEntryPre = cache.get(toTileKey(coord));
+        const base = (cacheEntryPre?.wasAllNaN && cacheEntryPre.unblocked && cacheEntryPre.filled)
+            ? cacheEntryPre.filled
+            : elevation;
+
         // 標高データのコピーを作成（キャッシュの元データを保持するため）
-        const stitched = new Float32Array(elevation);
+        const stitched = new Float32Array(base);
 
         // 隣接タイルと辺を縫い合わせ（同 zoom）
         const neighbors = getNeighborElevations(coord);
@@ -620,12 +626,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
 
         // BFS シードが存在するか（縫い合わせ後に非 NaN が1つでもあるか）を判定。
-        // all-NaN だったタイルが unblocked になったかを後続の反復処理で判定するために使う。
+        // all-NaN だったタイルのみ判定が必要。シードは辺に入るため外周のみ走査。
         let hasSeed = false;
-        for (let i = 0; i < stitched.length; i++) {
-            if (!Number.isNaN(stitched[i])) {
-                hasSeed = true;
-                break;
+        if (cacheEntryPre?.wasAllNaN && !cacheEntryPre.unblocked) {
+            const last = TILE_SIZE - 1;
+            for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
+                // 上辺・下辺
+                if (!Number.isNaN(stitched[i])) { hasSeed = true; break; }
+                if (!Number.isNaN(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
+                // 左辺・右辺
+                if (!Number.isNaN(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
+                if (!Number.isNaN(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
             }
         }
 
@@ -641,11 +652,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         mesh.refreshBoundingInfo();
 
         // キャッシュに補間結果を記録（後続の反復補間で隣接データとして利用される）
-        const cacheEntry = cache.get(toTileKey(coord));
-        if (cacheEntry) {
-            cacheEntry.filled = stitched;
-            if (cacheEntry.wasAllNaN) {
-                cacheEntry.unblocked = hasSeed;
+        if (cacheEntryPre) {
+            if (cacheEntryPre.wasAllNaN) {
+                cacheEntryPre.filled = stitched;
+                cacheEntryPre.unblocked = cacheEntryPre.unblocked || hasSeed;
             }
         }
     };
@@ -750,11 +760,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const key = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
             const entry = cache.get(key);
             if (!entry) continue;
+            // まだ解決できていない all-NaN タイルはスキップ
+            if (entry.wasAllNaN && !entry.unblocked) continue;
+            const data = entry.filled ?? entry.elevation;
             const fx = tileXFloat - tileXInt;
             const fy = tileYFloat - tileYInt;
             const px = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fx * (TILE_SIZE - 1))));
             const py = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fy * (TILE_SIZE - 1))));
-            const val = entry.elevation[py * TILE_SIZE + px];
+            const val = data[py * TILE_SIZE + px];
             if (!Number.isNaN(val)) {
                 return (val + currentAltitudeOffset) * heightScale;
             }
@@ -768,7 +781,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     const nx = px + dx;
                     const ny = py + dy;
                     if (nx < 0 || nx >= TILE_SIZE || ny < 0 || ny >= TILE_SIZE) continue;
-                    const nv = entry.elevation[ny * TILE_SIZE + nx];
+                    const nv = data[ny * TILE_SIZE + nx];
                     if (!Number.isNaN(nv)) {
                         sum += nv;
                         count++;
