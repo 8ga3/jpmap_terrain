@@ -60,51 +60,77 @@ export const decodeGsiElevation = (
     return raw < 2 ** 23 ? raw * 0.01 : (raw - 2 ** 24) * 0.01;
 };
 
-/** 無効値(NaN)を周囲の有効ピクセルから完全に補間する */
+/** 無効値(NaN)を周囲の有効ピクセルからBFS(フロンティア)方式で補間する */
 export const fillInvalidPixels = (
     elev: Float32Array,
     width: number,
     height: number
 ): void => {
-    const offsets = [
+    const size = width * height;
+    const offsets: readonly [number, number][] = [
         [-1, -1], [0, -1], [1, -1],
         [-1,  0],          [1,  0],
         [-1,  1], [0,  1], [1,  1],
     ];
 
-    // 有効ピクセルから波状に伝搬して全 NaN を埋める。
-    // 理論上限はマンハッタン距離 (width + height) パスで十分。
-    const maxPass = width + height;
-    for (let pass = 0; pass < maxPass; pass++) {
-        let filled = 0;
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const idx = y * width + x;
-                if (!Number.isNaN(elev[idx])) continue;
+    // BFS: 有効ピクセルに隣接する NaN をキューに入れ、波状に埋める。
+    // 各ピクセルは高々1回キューに入るため O(width * height)。
 
-                let sum = 0;
-                let count = 0;
+    // フロンティア初期化: NaN で、かつ隣に有効値があるピクセルを収集
+    let frontier: number[] = [];
+    for (let i = 0; i < size; i++) {
+        if (!Number.isNaN(elev[i])) continue;
+        const x = i % width;
+        const y = (i - x) / width;
+        for (const [dx, dy] of offsets) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+            if (!Number.isNaN(elev[ny * width + nx])) {
+                frontier.push(i);
+                break;
+            }
+        }
+    }
+
+    // BFS ループ
+    while (frontier.length > 0) {
+        const next: number[] = [];
+        for (const idx of frontier) {
+            if (!Number.isNaN(elev[idx])) continue; // 既に埋まった
+            const x = idx % width;
+            const y = (idx - x) / width;
+            let sum = 0;
+            let count = 0;
+            for (const [dx, dy] of offsets) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                const v = elev[ny * width + nx];
+                if (!Number.isNaN(v)) {
+                    sum += v;
+                    count++;
+                }
+            }
+            if (count > 0) {
+                elev[idx] = sum / count;
+                // 新たに埋まったピクセルの隣の NaN を次のフロンティアに追加
                 for (const [dx, dy] of offsets) {
                     const nx = x + dx;
                     const ny = y + dy;
                     if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-                    const v = elev[ny * width + nx];
-                    if (!Number.isNaN(v)) {
-                        sum += v;
-                        count++;
+                    const ni = ny * width + nx;
+                    if (Number.isNaN(elev[ni])) {
+                        next.push(ni);
                     }
-                }
-                if (count > 0) {
-                    elev[idx] = sum / count;
-                    filled++;
                 }
             }
         }
-        if (filled === 0) break;
+        frontier = next;
     }
 
     // 全ピクセル無効等で残った NaN は 0 にフォールバック
-    for (let i = 0; i < elev.length; i++) {
+    for (let i = 0; i < size; i++) {
         if (Number.isNaN(elev[i])) elev[i] = 0;
     }
 };
