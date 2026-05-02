@@ -162,6 +162,123 @@ describe("parsePlan", () => {
         expect(result.homePosition).toBeNull();
         expect(result.waypoints[0].altitude).toBe(100); // homeAlt=0
     });
+
+    it("lat=0 かつ lon=0 の items はスキップする（QGC ホームポジション指定）", () => {
+        const plan = {
+            fileHeader: { version: 1 },
+            mission: {
+                plannedHomePosition: [35.0, 139.0, 100],
+                items: [
+                    // NAV_TAKEOFF at lat=0,lon=0 → ホームポジション指定のためスキップ
+                    { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50] },
+                    // 通常ウェイポイント
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.5, 139.5, 80] },
+                ],
+            },
+        };
+        const result = parsePlan(plan);
+        // NAV_TAKEOFF の lat=0,lon=0 がスキップされ、NAV_WAYPOINT だけ残る
+        expect(result.waypoints).toHaveLength(1);
+        expect(result.waypoints[0].number).toBe(1);
+        expect(result.waypoints[0].lat).toBe(35.5);
+        expect(result.waypoints[0].command).toBe(16);
+    });
+
+    it("okutama.plan 相当データをパースできる（lat=0,lon=0 のTAKEOFF がスキップされる）", () => {
+        // examples/okutama.plan の構造を模したテスト
+        const okutamaPlan = {
+            fileType: "Plan",
+            version: 1,
+            groundStation: "QGroundControl",
+            geoFence: {
+                circles: [
+                    {
+                        circle: { center: [35.79185330892785, 139.04875075067923], radius: 148.6696453391971 },
+                        inclusion: true,
+                        version: 1,
+                    },
+                ],
+                polygons: [
+                    {
+                        inclusion: true,
+                        polygon: [
+                            [35.78119118423945, 139.0155554596605],
+                            [35.780557345975986, 139.02034217849484],
+                            [35.78289290329043, 139.03542661940673],
+                            [35.78745799934225, 139.04538107075717],
+                            [35.78710147819815, 139.0474676808036],
+                            [35.78406082046976, 139.04540192053304],
+                            [35.78097161325014, 139.0364036553163],
+                            [35.77833207231516, 139.02070654713293],
+                            [35.779336739702785, 139.01491987915722],
+                        ],
+                        version: 1,
+                    },
+                ],
+                version: 2,
+            },
+            mission: {
+                cruiseSpeed: 1,
+                firmwareType: 3,
+                globalPlanAltitudeMode: 1,
+                hoverSpeed: 5,
+                items: [
+                    // NAV_TAKEOFF at lat=0,lon=0 → スキップされるべき
+                    { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.79196971850398, 139.04883949344594, 50], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78655862746033, 139.04593844937483, 75], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78479187671575, 139.043807961761, 90], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78177242, 139.03606576, 60], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.780898754866946, 139.03043500185498, 50], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.77935164, 139.02038159, 35], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.77948819, 139.01944443, 32], autoContinue: true, type: "SimpleItem" },
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78012772190709, 139.01597313549905, 20], autoContinue: true, type: "SimpleItem" },
+                    { command: 21, frame: 3, params: [0, 0, 0, null, 35.7801385, 139.01591839, 0], autoContinue: true, type: "SimpleItem" },
+                ],
+                plannedHomePosition: [35.79210805, 139.04890088, 522],
+                vehicleType: 2,
+                version: 2,
+            },
+            rallyPoints: {
+                points: [
+                    [35.78970727, 139.04329378, 0],
+                    [35.78421729, 139.04349786, 0],
+                    [35.78251902, 139.02834407, 0],
+                ],
+                version: 2,
+            },
+        };
+
+        const result = parsePlan(okutamaPlan);
+
+        // ホームポジション
+        expect(result.homePosition).toEqual({ lat: 35.79210805, lon: 139.04890088, altitude: 522 });
+
+        // NAV_TAKEOFF(lat=0,lon=0) がスキップされ、残り 9 点（NAV_WAYPOINT x8 + NAV_LAND x1）
+        expect(result.waypoints).toHaveLength(9);
+        expect(result.waypoints[0].number).toBe(1);
+        expect(result.waypoints[0].command).toBe(16); // NAV_WAYPOINT
+        expect(result.waypoints[0].lat).toBeCloseTo(35.79196971850398);
+        // 高度はホーム相対: 50 + 522
+        expect(result.waypoints[0].altitude).toBe(572);
+        // 最後は NAV_LAND
+        expect(result.waypoints[8].command).toBe(21);
+
+        // ジオフェンスポリゴン 1 件
+        expect(result.geoFencePolygons).toHaveLength(1);
+        expect(result.geoFencePolygons[0].points).toHaveLength(9);
+
+        // ジオフェンス円 1 件
+        expect(result.geoFenceCircles).toHaveLength(1);
+        expect(result.geoFenceCircles[0].center).toEqual({
+            lat: 35.79185330892785,
+            lon: 139.04875075067923,
+        });
+
+        // ラリーポイント 3 件（高度はホーム相対: 0 + 522）
+        expect(result.rallyPoints).toHaveLength(3);
+        expect(result.rallyPoints[0].altitude).toBe(522); // 0 + 522
+    });
 });
 
 describe("WAYPOINT_COMMANDS", () => {
