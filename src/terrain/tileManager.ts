@@ -23,6 +23,7 @@ import {
     textureUrl,
     MapType,
     fillInvalidPixels,
+    isAllNaN,
 } from "./gsiTile";
 import { stitchTileEdges, stitchTileEdgesCrossLevel } from "./tileStitching";
 import type { CoarseEdgeNeighbor } from "./tileStitching";
@@ -301,7 +302,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         );
                         if (rid !== requestId) return;
                         // 成功した標高データをキャッシュ
-                        cache.set(tryKey, { coord: tryCoord, elevation: elevData });
+                        cache.set(tryKey, {
+                            coord: tryCoord,
+                            elevation: elevData,
+                            wasAllNaN: isAllNaN(elevData),
+                        });
                         actualElevZoom = tryZoom;
                         break;
                     } catch {
@@ -311,8 +316,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 }
 
                 if (!elevData) {
-                    // 全zoomで失敗 → フラット標高で表示
+                    // 全zoomで失敗 → フラット標高で表示（all NaN とし、後続の反復補間で埋める）
                     elevData = new Float32Array(TILE_SIZE * TILE_SIZE);
+                    elevData.fill(NaN);
                     actualElevZoom = coord.zoom;
                 }
 
@@ -326,7 +332,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     elevation = elevData;
                 }
 
-                entry = { coord, elevation };
+                entry = { coord, elevation, wasAllNaN: isAllNaN(elevation) };
                 cache.set(key, entry);
             }
 
@@ -485,8 +491,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         bottomLeft?: Float32Array; bottomRight?: Float32Array;
     } => {
         const { zoom: z, x, y } = coord;
-        const get = (nx: number, ny: number): Float32Array | undefined =>
-            cache.get(toTileKey({ zoom: z, x: nx, y: ny }))?.elevation;
+        const get = (nx: number, ny: number): Float32Array | undefined => {
+            const e = cache.get(toTileKey({ zoom: z, x: nx, y: ny }));
+            if (!e) return undefined;
+            // 元データが all-NaN かつ未補間なら参照しない（誤った 0 を伝搬させない）
+            if (e.wasAllNaN && !e.unblocked) return undefined;
+            return e.filled ?? e.elevation;
+        };
         return {
             top: get(x, y - 1),
             bottom: get(x, y + 1),
@@ -565,8 +576,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 if (!activeTiles.has(nKey)) continue;
                 const entry = cache.get(nKey);
                 if (!entry) continue;
+                if (entry.wasAllNaN && !entry.unblocked) continue;
                 result.push({
-                    elevation: entry.elevation,
+                    elevation: entry.filled ?? entry.elevation,
                     direction: d.dir,
                     subX,
                     subY,
@@ -607,6 +619,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
+        // BFS シードが存在するか（縫い合わせ後に非 NaN が1つでもあるか）を判定。
+        // all-NaN だったタイルが unblocked になったかを後続の反復処理で判定するために使う。
+        let hasSeed = false;
+        for (let i = 0; i < stitched.length; i++) {
+            if (!Number.isNaN(stitched[i])) {
+                hasSeed = true;
+                break;
+            }
+        }
+
         // NaN を埋める
         fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
 
@@ -617,6 +639,15 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         VertexData.ComputeNormals(typed, idx, normals);
         mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
         mesh.refreshBoundingInfo();
+
+        // キャッシュに補間結果を記録（後続の反復補間で隣接データとして利用される）
+        const cacheEntry = cache.get(toTileKey(coord));
+        if (cacheEntry) {
+            cacheEntry.filled = stitched;
+            if (cacheEntry.wasAllNaN) {
+                cacheEntry.unblocked = hasSeed;
+            }
+        }
     };
 
     /** 蓄積された再ステッチ対象タイルを一括処理する */
@@ -670,6 +701,34 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         if (restitchRafId === null) {
             restitchRafId = requestAnimationFrame(flushRestitch);
+        }
+    };
+
+    /**
+     * 元データが all-NaN だったタイルを反復的に再ステッチして補間する。
+     * 1 回目で隣接が all-NaN でシードが得られなかったタイルでも、
+     * 隣接が他の有効値タイルから順次補間されることで段階的にエッジが埋まる。
+     * 進展が無くなるか上限回数に達するまで繰り返す。
+     */
+    const ALL_NAN_REFINE_MAX_ITER = 16;
+    const refineAllNaNTiles = (): void => {
+        let progressed = false;
+        for (let iter = 0; iter < ALL_NAN_REFINE_MAX_ITER; iter++) {
+            let progress = false;
+            for (const [key, tile] of activeTiles) {
+                const entry = cache.get(key);
+                if (!entry?.wasAllNaN) continue;
+                if (entry.unblocked) continue;
+                applyStitchedElevation(tile.mesh, entry.elevation, tile.coord);
+                if (entry.unblocked) {
+                    progress = true;
+                    progressed = true;
+                }
+            }
+            if (!progress) break;
+        }
+        if (progressed) {
+            terrainUpdatedCallback?.();
         }
     };
 
@@ -778,6 +837,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         if (toLoad.length > 0) {
             await loadTilesInQueue(toLoad, rid);
+        }
+
+        if (rid === requestId) {
+            // all-NaN だったタイルを反復補間で埋める（湖中央等）
+            refineAllNaNTiles();
         }
 
         emitStatus();
