@@ -590,26 +590,31 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         return result;
     };
 
+    /** 補間済み標高データをメッシュ頂点・法線に反映する */
+    const applyElevationDataToMesh = (mesh: Mesh, filled: Float32Array): void => {
+        const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
+        const idx = mesh.getIndices();
+        if (!pos || !idx) return;
+        const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
+        applyElevation(typed, filled, currentAltitudeOffset, heightScale, subdivisions);
+        mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
+        const normals = new Float32Array(typed.length);
+        VertexData.ComputeNormals(typed, idx, normals);
+        mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
+        mesh.refreshBoundingInfo();
+    };
+
     /** タイルの標高データをステッチ＋NaN埋めしてメッシュに適用 */
     const applyStitchedElevation = (
         mesh: Mesh,
         elevation: Float32Array,
         coord: TileCoord,
     ): void => {
-        const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
-        const idx = mesh.getIndices();
-        if (!pos || !idx) return;
-
-        const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
-
-        // wasAllNaN かつ既に unblocked なタイルは filled を再ステッチのベースに使い状態を保持
         const cacheEntryPre = cache.get(toTileKey(coord));
-        const base = (cacheEntryPre?.wasAllNaN && cacheEntryPre.unblocked && cacheEntryPre.filled)
-            ? cacheEntryPre.filled
-            : elevation;
 
-        // 標高データのコピーを作成（キャッシュの元データを保持するため）
-        const stitched = new Float32Array(base);
+        // 常に元データ(elevation)からコピー。
+        // 再ステッチ時に古い filled を引き継がないことで、隣接ズーム変更後も正しい値に収束する。
+        const stitched = new Float32Array(elevation);
 
         // 隣接タイルと辺を縫い合わせ（同 zoom）
         const neighbors = getNeighborElevations(coord);
@@ -627,10 +632,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
-        // BFS シードが存在するか（縫い合わせ後に非 NaN が1つでもあるか）を判定。
-        // all-NaN だったタイルのみ判定が必要。シードは辺に入るため外周のみ走査。
+        // wasAllNaN タイルのシード判定（ステッチ後、辺に非 NaN が 1 つでもあるか）
         let hasSeed = false;
-        if (cacheEntryPre?.wasAllNaN && !cacheEntryPre.unblocked) {
+        if (cacheEntryPre?.wasAllNaN) {
             const last = TILE_SIZE - 1;
             for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
                 // 上辺・下辺
@@ -642,23 +646,21 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
-        // NaN を埋める
+        // NaN を埋める（BFS）
         fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
 
-        // メッシュに適用
-        applyElevation(typed, stitched, currentAltitudeOffset, heightScale, subdivisions);
-        mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
-        const normals = new Float32Array(typed.length);
-        VertexData.ComputeNormals(typed, idx, normals);
-        mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
-        mesh.refreshBoundingInfo();
+        // メッシュに適用:
+        // - シードあり: 今回のステッチ結果を使用
+        // - シードなし（wasAllNaN）: 旧 filled があれば維持（Y=0 凹み防止）
+        const meshData = (cacheEntryPre?.wasAllNaN && !hasSeed && cacheEntryPre.filled)
+            ? cacheEntryPre.filled
+            : stitched;
+        applyElevationDataToMesh(mesh, meshData);
 
-        // キャッシュに補間結果を記録（後続の反復補間で隣接データとして利用される）
-        if (cacheEntryPre) {
-            if (cacheEntryPre.wasAllNaN) {
-                cacheEntryPre.filled = stitched;
-                cacheEntryPre.unblocked = cacheEntryPre.unblocked || hasSeed;
-            }
+        // キャッシュ更新: シードが得られた場合のみ filled/unblocked を更新
+        if (cacheEntryPre?.wasAllNaN && hasSeed) {
+            cacheEntryPre.filled = stitched;
+            cacheEntryPre.unblocked = true;
         }
     };
 
@@ -717,54 +719,96 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /**
-     * 元データが all-NaN だったタイルを反復的に再ステッチして補間する。
-     * 1 回目で隣接が all-NaN でシードが得られなかったタイルでも、
-     * 隣接が他の有効値タイルから順次補間されることで段階的にエッジが埋まる。
-     * 進展が無くなるか上限回数に達するまで繰り返す。
-     * 反復後も解決しないタイルは、活性タイルの代表標高で平坦に埋める（湖中央の凹み防止）。
+     * 元データが all-NaN だったタイルを反復的に補間する。
+     *
+     * アルゴリズム:
+     * 1. wasAllNaN タイルをリセット（filled/unblocked をクリア）
+     *    ※非 wasAllNaN タイルは loadTile/flushRestitch で filled 設定済み（NaN 埋め済み）
+     * 2. 反復: elevation ベース（all-NaN）でステッチ → 辺シード有りなら NaN 埋め
+     *    隣接に解決済みタイルが増えるたびに波状に補間が進む
+     * 3. 解決済みタイルのみメッシュ適用（反復中は適用しない）
+     * 4. 到達不能タイルはレスキューパス（代表標高で平坦化）
      */
-    const ALL_NAN_REFINE_MAX_ITER = 16;
+    const ALL_NAN_REFINE_MAX_ITER = 32;
     const refineAllNaNTiles = (): void => {
-        let progressed = false;
-        for (let iter = 0; iter < ALL_NAN_REFINE_MAX_ITER; iter++) {
-            let progress = false;
-            for (const [key, tile] of activeTiles) {
-                const entry = cache.get(key);
-                if (!entry?.wasAllNaN) continue;
-                if (entry.unblocked) continue;
-                applyStitchedElevation(tile.mesh, entry.elevation, tile.coord);
-                if (entry.unblocked) {
-                    progress = true;
-                    progressed = true;
-                }
-            }
-            if (!progress) break;
-        }
-
-        // レスキューパス: まだ解決できない all-NaN タイルがあれば、
-        // 活性タイルの代表標高（中央値近似: 平均）で平坦に埋めて Y=0 凹みを防ぐ。
-        const stillBlocked: Array<[string, ActiveTile]> = [];
+        // wasAllNaN タイルを収集
+        const allNanTiles: Array<[TileKey, ActiveTile]> = [];
         for (const [key, tile] of activeTiles) {
             const entry = cache.get(key);
-            if (entry?.wasAllNaN && !entry.unblocked) {
-                stillBlocked.push([key, tile]);
+            if (entry?.wasAllNaN) allNanTiles.push([key, tile]);
+        }
+        if (allNanTiles.length === 0) return;
+
+        // Step 1: wasAllNaN タイルをリセット（前回の rescue 値も含めて毎回やり直す）
+        for (const [key] of allNanTiles) {
+            const entry = cache.get(key);
+            if (entry) { entry.filled = undefined; entry.unblocked = false; }
+        }
+
+        // Step 2: 反復ステッチ + NaN 埋め
+        for (let iter = 0; iter < ALL_NAN_REFINE_MAX_ITER; iter++) {
+            let resolvedThisIter = 0;
+            let remainingCount = 0;
+
+            for (const [key, tile] of allNanTiles) {
+                const entry = cache.get(key);
+                if (!entry || entry.unblocked) continue; // 解決済みはスキップ
+
+                remainingCount++;
+
+                // elevation ベース（all-NaN）でステッチ
+                const stitched = new Float32Array(entry.elevation);
+                stitchTileEdges(stitched, getNeighborElevations(tile.coord), TILE_SIZE);
+                const coarse = getCoarseEdgeNeighbors(tile.coord);
+                if (coarse.length > 0) stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
+
+                // 辺シード判定
+                const last = TILE_SIZE - 1;
+                let hasSeed = false;
+                for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
+                    if (!Number.isNaN(stitched[i])) { hasSeed = true; break; }
+                    if (!Number.isNaN(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
+                    if (!Number.isNaN(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
+                    if (!Number.isNaN(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
+                }
+
+                if (hasSeed) {
+                    fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
+                    entry.filled = stitched;
+                    entry.unblocked = true;
+                    resolvedThisIter++;
+                    remainingCount--;
+                }
             }
+
+            if (remainingCount === 0 || resolvedThisIter === 0) break;
+        }
+
+        // Step 3: メッシュ適用（解決済みタイルのみ）
+        let progressed = false;
+        for (const [, tile] of allNanTiles) {
+            const entry = cache.get(toTileKey(tile.coord));
+            if (!entry?.filled) continue;
+            applyElevationDataToMesh(tile.mesh, entry.filled);
+            progressed = true;
+        }
+
+        // Step 4: レスキューパス（反復で到達できなかったタイルを代表標高で平坦化）
+        const stillBlocked: Array<[string, ActiveTile]> = [];
+        for (const [key, tile] of allNanTiles) {
+            const entry = cache.get(key);
+            if (entry?.wasAllNaN && !entry.unblocked) stillBlocked.push([key, tile]);
         }
         if (stillBlocked.length > 0) {
-            // 代表標高: 解決済みタイル（filled or elevation）からサンプリング
+            // 解決済みタイルの代表標高（中央値近似: 平均）
             let sum = 0;
             let count = 0;
             for (const [, tile] of activeTiles) {
                 const entry = cache.get(toTileKey(tile.coord));
-                if (!entry) continue;
-                if (entry.wasAllNaN && !entry.unblocked) continue;
+                if (!entry || entry.wasAllNaN) continue;
                 const data = entry.filled ?? entry.elevation;
-                // タイル中心1点をサンプリング（コスト抑制）
                 const v = data[(TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1)];
-                if (!Number.isNaN(v)) {
-                    sum += v;
-                    count++;
-                }
+                if (!Number.isNaN(v)) { sum += v; count++; }
             }
             if (count > 0) {
                 const fallbackElev = sum / count;
@@ -774,17 +818,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     const filled = new Float32Array(TILE_SIZE * TILE_SIZE).fill(fallbackElev);
                     entry.filled = filled;
                     entry.unblocked = true;
-                    // メッシュに直接適用
-                    const pos = tile.mesh.getVerticesData(VertexBuffer.PositionKind);
-                    const idx = tile.mesh.getIndices();
-                    if (!pos || !idx) continue;
-                    const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
-                    applyElevation(typed, filled, currentAltitudeOffset, heightScale, subdivisions);
-                    tile.mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
-                    const normals = new Float32Array(typed.length);
-                    VertexData.ComputeNormals(typed, idx, normals);
-                    tile.mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
-                    tile.mesh.refreshBoundingInfo();
+                    applyElevationDataToMesh(tile.mesh, filled);
                 }
                 progressed = true;
             }
