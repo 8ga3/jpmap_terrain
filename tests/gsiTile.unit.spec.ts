@@ -267,12 +267,12 @@ describe("fillInvalidPixels", () => {
         expect(Array.from(data)).toEqual([0, 0, 0, 0]);
     });
 
-    it("大きな NaN 領域を完全に埋める（16パス超）", () => {
-        // 32x32 で左端列のみ有効値 (100)、残りは NaN
+    it("大きな NaN 領域を完全に埋める（旧16パスでは届かない距離）", () => {
+        // 32x32 で右下角 (31,31) のみ有効値 → 左上 (0,0) まで距離31以上
         const W = 32, H = 32;
         const data = new Float32Array(W * H);
         data.fill(NaN);
-        for (let y = 0; y < H; y++) data[y * W] = 100;
+        data[(H - 1) * W + (W - 1)] = 100;
 
         fillInvalidPixels(data, W, H);
 
@@ -281,7 +281,7 @@ describe("fillInvalidPixels", () => {
             expect(Number.isNaN(data[i])).toBe(false);
         }
         // 元の有効値は 100 のまま
-        expect(data[0]).toBe(100);
+        expect(data[(H - 1) * W + (W - 1)]).toBe(100);
     });
 
     it("角にだけ有効値がある場合でも全 NaN を埋める", () => {
