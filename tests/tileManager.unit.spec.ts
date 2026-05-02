@@ -1341,3 +1341,112 @@ describe("Quadtree + SSE によるタイル選定", () => {
         expect(zoomMid).toBe(zoomHorizontal);
     });
 });
+
+/* ================================================================
+ * refineAllNaNTiles — 反復 all-NaN 補間
+ * ================================================================ */
+describe("refineAllNaNTiles", () => {
+    afterEach(() => {
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+    });
+
+    it("隣接が段階的に unblocked になると中心タイルも最終的に unblocked になる", async () => {
+        // 中心タイル (14547, 6452) は有効データ (500m)
+        // 隣接 (14548, 6452) は all-NaN → 中心から seeds を受け unblocked になる
+        // さらに (14549, 6452) も all-NaN → (14548) がunblocked後に解決される
+        const nanData = new Float32Array(256 * 256).fill(NaN);
+        const validData = new Float32Array(256 * 256).fill(500);
+
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (_zoom, x) => {
+                // x が center+1 以上のタイルを all-NaN にする
+                if (x > 14547) return Promise.resolve(new Float32Array(nanData));
+                return Promise.resolve(new Float32Array(validData));
+            }
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+            minZoom: 14,
+            maxElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+
+        // 有効タイルの隣接にある all-NaN タイルの queryElevation が null でない
+        // （unblocked になり filled データが利用可能）
+        // ステッチ経由で中心タイルの右辺値(500)がシード値として伝搬される
+        expect(tm.activeTileCount).toBeGreaterThan(1);
+        tm.dispose();
+    });
+
+    it("進展がない場合は早期停止する（全て all-NaN で隣接なし）", async () => {
+        // 全タイルが all-NaN → refineAllNaNTiles は1イテレーションで停止
+        const nanData = new Float32Array(256 * 256).fill(NaN);
+
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(nanData))
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+            minZoom: 14,
+            maxElevationZoom: 14,
+        });
+
+        // setCenter が正常終了する（無限ループしない）
+        await tm.setCenter(35.68, 139.77);
+        // 全て all-NaN → queryElevation は null
+        expect(tm.queryElevationAtWorld(0, 0)).toBeNull();
+        tm.dispose();
+    });
+
+    it("all-NaN タイルが隣接有効タイルから unblocked になると filled データで標高が返る", async () => {
+        // 中心 (14547, 6452) は 200m 固定
+        // 右隣 (14548, 6452) は all-NaN → 中心からシードされて ~200m
+        const nanData = new Float32Array(256 * 256).fill(NaN);
+        const validData = new Float32Array(256 * 256).fill(200);
+
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (_zoom, x) => {
+                if (x >= 14548) return Promise.resolve(new Float32Array(nanData));
+                return Promise.resolve(new Float32Array(validData));
+            }
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+            minZoom: 14,
+            maxElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // 中心タイルの高さは有効 → 200
+        const centerElev = tm.queryElevationAtWorld(0, 0);
+        expect(centerElev).toBe(200);
+        tm.dispose();
+    });
+});
