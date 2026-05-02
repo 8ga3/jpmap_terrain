@@ -73,7 +73,7 @@ export const fillInvalidPixels = (
     ];
 
     // 有効ピクセルから波状に伝搬して全 NaN を埋める。
-    // 理論上限は対角線長 (width + height) パスで十分。
+    // 理論上限はマンハッタン距離 (width + height) パスで十分。
     const maxPass = width + height;
     for (let pass = 0; pass < maxPass; pass++) {
         let filled = 0;
