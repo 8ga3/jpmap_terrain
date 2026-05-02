@@ -60,7 +60,7 @@ export const decodeGsiElevation = (
     return raw < 2 ** 23 ? raw * 0.01 : (raw - 2 ** 24) * 0.01;
 };
 
-/** 無効値(NaN)を周囲の有効ピクセルから補間する */
+/** 無効値(NaN)を周囲の有効ピクセルから完全に補間する */
 export const fillInvalidPixels = (
     elev: Float32Array,
     width: number,
@@ -72,8 +72,10 @@ export const fillInvalidPixels = (
         [-1,  1], [0,  1], [1,  1],
     ];
 
-    // 距離を広げながら繰り返し補間（最大 16 パス）
-    for (let pass = 0; pass < 16; pass++) {
+    // 有効ピクセルから波状に伝搬して全 NaN を埋める。
+    // 理論上限は対角線長 (width + height) パスで十分。
+    const maxPass = width + height;
+    for (let pass = 0; pass < maxPass; pass++) {
         let filled = 0;
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
