@@ -142,10 +142,12 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
     ),
     isAllNaN: jest.fn((data: Float32Array) => {
         for (let i = 0; i < data.length; i++) {
-            if (!Number.isNaN(data[i])) return false;
+            if (!Number.isNaN(data[i]) && data[i] !== -100) return false;
         }
         return true;
     }),
+    isInvalidElev: jest.fn((v: number) => Number.isNaN(v) || v === -100),
+    NO_DATA_SENTINEL: -100,
     stdTextureUrl: jest.fn(() => "https://example.com/tile.png"),
     photoTextureUrl: jest.fn(() => "https://example.com/photo.jpg"),
     textureUrl: jest.fn(() => "https://example.com/tile.png"),

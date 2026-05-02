@@ -261,10 +261,10 @@ describe("fillInvalidPixels", () => {
         expect(data[4]).toBe(10);
     });
 
-    it("全 NaN の場合は 0 にフォールバックする", () => {
+    it("全 NaN の場合は NO_DATA_SENTINEL (-100) にフォールバックする", () => {
         const data = new Float32Array([NaN, NaN, NaN, NaN]);
         fillInvalidPixels(data, 2, 2);
-        expect(Array.from(data)).toEqual([0, 0, 0, 0]);
+        expect(Array.from(data)).toEqual([-100, -100, -100, -100]);
     });
 
     it("大きな NaN 領域を完全に埋める（旧16パスでは届かない距離）", () => {
