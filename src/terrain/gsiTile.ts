@@ -198,11 +198,13 @@ export const loadElevationTile = async (
                     img.data[i + 2]
                 );
             }
-            // 全NaNのタイルはこのレイヤーでは使えない → 次のレイヤーへ
-            if (isAllNaN(elev)) {
-                lastErr = new Error(`All NaN tile: ${url}`);
-                continue;
-            }
+            // HTTP 成功 = このレイヤーが当該領域をカバーしているとみなす。
+            // 全 NaN（湖面など no-data 領域）でも次レイヤーへフォールバックしない。
+            // 下位レイヤー（dem5b など）は同じ場所に水面標高を返すことがあり、
+            // それを使うと湖面が押し上がる（issue #224）。
+            // all-NaN の場合は同レイヤー隣接タイルから後段（refineAllNaNTiles）の
+            // NaN 埋めで補間させる。
+            // フォールバックは HTTP 取得失敗（404 等：このレイヤー範囲外）でのみ発動。
             return elev;
         } catch (e) {
             lastErr = e;
