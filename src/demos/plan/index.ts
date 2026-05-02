@@ -85,119 +85,125 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
         rallyIds: [],
     };
 
-    // ウェイポイント（パスライン）
-    if (plan.waypoints.length > 0) {
-        const points = plan.waypoints.map((wp) => ({
-            lat: wp.lat,
-            lon: wp.lon,
-            altitude: wp.altitude,
-        }));
-        const labels = plan.waypoints.map((wp) => formatWaypointLabel(wp));
-        const edgeLabels: (string | undefined)[] = [];
-        for (let i = 0; i < plan.waypoints.length - 1; i++) {
-            edgeLabels.push(
-                formatWaypointEdgeLabel(
-                    plan.waypoints[i],
-                    plan.waypoints[i + 1],
-                ),
-            );
+    try {
+        // ウェイポイント（パスライン）
+        if (plan.waypoints.length > 0) {
+            const points = plan.waypoints.map((wp) => ({
+                lat: wp.lat,
+                lon: wp.lon,
+                altitude: wp.altitude,
+            }));
+            const labels = plan.waypoints.map((wp) => formatWaypointLabel(wp));
+            const edgeLabels: (string | undefined)[] = [];
+            for (let i = 0; i < plan.waypoints.length - 1; i++) {
+                edgeLabels.push(
+                    formatWaypointEdgeLabel(
+                        plan.waypoints[i],
+                        plan.waypoints[i + 1],
+                    ),
+                );
+            }
+
+            const opts: PolygonOptions = {
+                points,
+                altitudeMode: "absolute",
+                closed: false,
+                labels,
+                edgeLabels,
+                style: {
+                    pointColor: "#2196f3",
+                    lineColor: "#2196f3",
+                    pointDiameter: 14,
+                    lineWidth: 2,
+                    labelFontSize: 12,
+                    wallColor: "#2196f3",
+                    wallOpacity: 0.15,
+                },
+            };
+            viewer.addPolygon(ID_WAYPOINTS, opts);
+            result.waypointIds.push(ID_WAYPOINTS);
         }
 
-        const opts: PolygonOptions = {
-            points,
-            altitudeMode: "absolute",
-            closed: false,
-            labels,
-            edgeLabels,
-            style: {
-                pointColor: "#2196f3",
-                lineColor: "#2196f3",
-                pointDiameter: 14,
-                lineWidth: 2,
-                labelFontSize: 12,
-                wallColor: "#2196f3",
-                wallOpacity: 0.15,
-            },
-        };
-        viewer.addPolygon(ID_WAYPOINTS, opts);
-        result.waypointIds.push(ID_WAYPOINTS);
+        // ジオフェンスポリゴン
+        // absolute モードで描画する。terrain モードだと遠方頂点のタイル未ロード時に
+        // 描画されないため、ホーム高度を基準にした絶対高度で即時表示する。
+        const geofenceAlt = (plan.homePosition?.altitude ?? 0) + 10;
+        plan.geoFencePolygons.forEach((poly, i) => {
+            const id = `${ID_GEOFENCE_POLYGON_PREFIX}${i}`;
+            const color = poly.inclusion ? "#4caf50" : "#f44336";
+            const opts: PolygonOptions = {
+                points: poly.points.map((p) => ({
+                    lat: p.lat,
+                    lon: p.lon,
+                    altitude: geofenceAlt,
+                })),
+                altitudeMode: "absolute",
+                closed: true,
+                style: {
+                    pointColor: color,
+                    lineColor: color,
+                    pointDiameter: 0,
+                    lineWidth: 2,
+                    wallColor: color,
+                    wallOpacity: 0.2,
+                },
+            };
+            viewer.addPolygon(id, opts);
+            result.geofencePolyIds.push(id);
+        });
+
+        // ジオフェンス円
+        plan.geoFenceCircles.forEach((circ, i) => {
+            const id = `${ID_GEOFENCE_CIRCLE_PREFIX}${i}`;
+            const color = circ.inclusion ? "#4caf50" : "#f44336";
+            const radius = Math.min(circ.radius, CIRCLE_RADIUS_MAX_M);
+            const opts: CircleOptions = {
+                center: {
+                    lat: circ.center.lat,
+                    lon: circ.center.lon,
+                    altitude: geofenceAlt,
+                },
+                radius,
+                altitudeMode: "absolute",
+                label: null,
+                pointEnabled: false,
+                style: {
+                    lineColor: color,
+                    lineWidth: 2,
+                    wallColor: color,
+                    wallOpacity: 0.2,
+                },
+            };
+            viewer.addCircle(id, opts);
+            result.geofenceCircleIds.push(id);
+        });
+
+        // ラリーポイント
+        plan.rallyPoints.forEach((rp) => {
+            const id = `${ID_RALLY_PREFIX}${rp.number}`;
+            const opts: PolygonOptions = {
+                points: [{ lat: rp.lat, lon: rp.lon, altitude: rp.altitude }],
+                altitudeMode: "absolute",
+                closed: false,
+                labels: [formatRallyPointLabel(rp.number)],
+                style: {
+                    pointColor: "#ff9800",
+                    lineColor: "#ff9800",
+                    pointDiameter: 16,
+                    lineWidth: 2,
+                    labelFontSize: 12,
+                    wallColor: "#ff9800",
+                    wallOpacity: 0.15,
+                },
+            };
+            viewer.addPolygon(id, opts);
+            result.rallyIds.push(id);
+        });
+    } catch (err) {
+        // 描画途中で例外が発生した場合、追加済みオブジェクトをロールバック削除して再スロー
+        clearPlanDisplay(viewer, result);
+        throw err;
     }
-
-    // ジオフェンスポリゴン
-    // absolute モードで描画する。terrain モードだと遠方頂点のタイル未ロード時に
-    // 描画されないため、ホーム高度を基準にした絶対高度で即時表示する。
-    const geofenceAlt = (plan.homePosition?.altitude ?? 0) + 10;
-    plan.geoFencePolygons.forEach((poly, i) => {
-        const id = `${ID_GEOFENCE_POLYGON_PREFIX}${i}`;
-        const color = poly.inclusion ? "#4caf50" : "#f44336";
-        const opts: PolygonOptions = {
-            points: poly.points.map((p) => ({
-                lat: p.lat,
-                lon: p.lon,
-                altitude: geofenceAlt,
-            })),
-            altitudeMode: "absolute",
-            closed: true,
-            style: {
-                pointColor: color,
-                lineColor: color,
-                pointDiameter: 0,
-                lineWidth: 2,
-                wallColor: color,
-                wallOpacity: 0.2,
-            },
-        };
-        viewer.addPolygon(id, opts);
-        result.geofencePolyIds.push(id);
-    });
-
-    // ジオフェンス円
-    plan.geoFenceCircles.forEach((circ, i) => {
-        const id = `${ID_GEOFENCE_CIRCLE_PREFIX}${i}`;
-        const color = circ.inclusion ? "#4caf50" : "#f44336";
-        const radius = Math.min(circ.radius, CIRCLE_RADIUS_MAX_M);
-        const opts: CircleOptions = {
-            center: {
-                lat: circ.center.lat,
-                lon: circ.center.lon,
-                altitude: geofenceAlt,
-            },
-            radius,
-            altitudeMode: "absolute",
-            label: null,
-            pointEnabled: false,
-            style: {
-                lineColor: color,
-                lineWidth: 2,
-                wallColor: color,
-                wallOpacity: 0.2,
-            },
-        };
-        viewer.addCircle(id, opts);
-        result.geofenceCircleIds.push(id);
-    });
-
-    // ラリーポイント
-    plan.rallyPoints.forEach((rp) => {
-        const id = `${ID_RALLY_PREFIX}${rp.number}`;
-        const opts: PolygonOptions = {
-            points: [{ lat: rp.lat, lon: rp.lon, altitude: rp.altitude }],
-            altitudeMode: "absolute",
-            closed: false,
-            labels: [formatRallyPointLabel(rp.number)],
-            style: {
-                pointColor: "#ff9800",
-                lineColor: "#ff9800",
-                pointDiameter: 16,
-                lineWidth: 2,
-                labelFontSize: 12,
-                wallColor: "#ff9800",
-                wallOpacity: 0.15,
-            },
-        };
-        viewer.addPolygon(id, opts);
-        result.rallyIds.push(id);
-    });
 
     return result;
 };
