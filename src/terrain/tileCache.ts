@@ -5,6 +5,15 @@ import { TileKey, TileCoord } from "./tileTypes";
 export interface TileCacheEntry {
     coord: TileCoord;
     elevation: Float32Array;
+    /** 縫い合わせ＋NaN埋め適用後の標高データ。未適用なら undefined */
+    filled?: Float32Array;
+    /** 元データがすべて NaN だったか */
+    wasAllNaN?: boolean;
+    /**
+     * 縫い合わせ時にエッジで非 NaN シードを得て BFS 補間が動作した場合に true。
+     * wasAllNaN かつ unblocked=false なら隣接データとして利用しない。
+     */
+    unblocked?: boolean;
 }
 
 export interface TileCache {
