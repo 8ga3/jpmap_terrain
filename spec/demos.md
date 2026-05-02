@@ -104,8 +104,8 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 **ジオフェンス:**
 
-- ポリゴン: `addPolygon`（`closed: true`, `altitudeMode: "terrain"`）。ラベルなし。
-- 円: `addCircle`（`altitudeMode: "terrain"`, `pointEnabled: false`, `label: null`）。壁付き。
+- ポリゴン: `addPolygon`（`closed: true`, `altitudeMode: "absolute"`）。ホーム高度 +10m で描画（遠方タイル未ロード時も即時表示のため）。ラベルなし。
+- 円: `addCircle`（`altitudeMode: "absolute"`, `pointEnabled: false`, `label: null`）。ホーム高度 +10m で描画。壁付き。
 
 **ラリーポイント:**
 
