@@ -124,6 +124,9 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
     }
 
     // ジオフェンスポリゴン
+    // absolute モードで描画する。terrain モードだと遠方頂点のタイル未ロード時に
+    // 描画されないため、ホーム高度を基準にした絶対高度で即時表示する。
+    const geofenceAlt = (plan.homePosition?.altitude ?? 0) + 10;
     plan.geoFencePolygons.forEach((poly, i) => {
         const id = `${ID_GEOFENCE_POLYGON_PREFIX}${i}`;
         const color = poly.inclusion ? "#4caf50" : "#f44336";
@@ -131,9 +134,9 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
             points: poly.points.map((p) => ({
                 lat: p.lat,
                 lon: p.lon,
-                altitude: 10,
+                altitude: geofenceAlt,
             })),
-            altitudeMode: "terrain",
+            altitudeMode: "absolute",
             closed: true,
             style: {
                 pointColor: color,
@@ -154,9 +157,13 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
         const color = circ.inclusion ? "#4caf50" : "#f44336";
         const radius = Math.min(circ.radius, CIRCLE_RADIUS_MAX_M);
         const opts: CircleOptions = {
-            center: { lat: circ.center.lat, lon: circ.center.lon },
+            center: {
+                lat: circ.center.lat,
+                lon: circ.center.lon,
+                altitude: geofenceAlt,
+            },
             radius,
-            altitudeMode: "terrain",
+            altitudeMode: "absolute",
             label: null,
             pointEnabled: false,
             style: {
