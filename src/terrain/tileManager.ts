@@ -615,10 +615,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const neighbors = getNeighborElevations(coord);
         stitchTileEdges(stitched, neighbors, TILE_SIZE);
 
-        // 異 zoom 隣接（粗タイル）と縫い合わせ。カメラ近傍タイルのみ対象。
-        // 遠方タイルは隙間が視認しにくいため、タイル再適用時の計算コストを抑える目的で対象外にする。
+        // 異 zoom 隣接（粗タイル）と縫い合わせ。
+        // - 通常タイルはカメラ近傍のみ対象（再適用時の計算コスト抑制）
+        // - all-NaN タイルは同 zoom 近傍からシードが得られない場合があるため
+        //   カメラ距離に関わらず常に試行する
         const tileSize = tileSizeForZoom(coord.zoom);
-        if (isTileNearCamera(coord, tileSize)) {
+        if (cacheEntryPre?.wasAllNaN || isTileNearCamera(coord, tileSize)) {
             const coarse = getCoarseEdgeNeighbors(coord);
             if (coarse.length > 0) {
                 stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
@@ -719,6 +721,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * 1 回目で隣接が all-NaN でシードが得られなかったタイルでも、
      * 隣接が他の有効値タイルから順次補間されることで段階的にエッジが埋まる。
      * 進展が無くなるか上限回数に達するまで繰り返す。
+     * 反復後も解決しないタイルは、活性タイルの代表標高で平坦に埋める（湖中央の凹み防止）。
      */
     const ALL_NAN_REFINE_MAX_ITER = 16;
     const refineAllNaNTiles = (): void => {
@@ -737,6 +740,56 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
             if (!progress) break;
         }
+
+        // レスキューパス: まだ解決できない all-NaN タイルがあれば、
+        // 活性タイルの代表標高（中央値近似: 平均）で平坦に埋めて Y=0 凹みを防ぐ。
+        const stillBlocked: Array<[string, ActiveTile]> = [];
+        for (const [key, tile] of activeTiles) {
+            const entry = cache.get(key);
+            if (entry?.wasAllNaN && !entry.unblocked) {
+                stillBlocked.push([key, tile]);
+            }
+        }
+        if (stillBlocked.length > 0) {
+            // 代表標高: 解決済みタイル（filled or elevation）からサンプリング
+            let sum = 0;
+            let count = 0;
+            for (const [, tile] of activeTiles) {
+                const entry = cache.get(toTileKey(tile.coord));
+                if (!entry) continue;
+                if (entry.wasAllNaN && !entry.unblocked) continue;
+                const data = entry.filled ?? entry.elevation;
+                // タイル中心1点をサンプリング（コスト抑制）
+                const v = data[(TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1)];
+                if (!Number.isNaN(v)) {
+                    sum += v;
+                    count++;
+                }
+            }
+            if (count > 0) {
+                const fallbackElev = sum / count;
+                for (const [, tile] of stillBlocked) {
+                    const entry = cache.get(toTileKey(tile.coord));
+                    if (!entry) continue;
+                    const filled = new Float32Array(TILE_SIZE * TILE_SIZE).fill(fallbackElev);
+                    entry.filled = filled;
+                    entry.unblocked = true;
+                    // メッシュに直接適用
+                    const pos = tile.mesh.getVerticesData(VertexBuffer.PositionKind);
+                    const idx = tile.mesh.getIndices();
+                    if (!pos || !idx) continue;
+                    const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
+                    applyElevation(typed, filled, currentAltitudeOffset, heightScale, subdivisions);
+                    tile.mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
+                    const normals = new Float32Array(typed.length);
+                    VertexData.ComputeNormals(typed, idx, normals);
+                    tile.mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
+                    tile.mesh.refreshBoundingInfo();
+                }
+                progressed = true;
+            }
+        }
+
         if (progressed) {
             terrainUpdatedCallback?.();
         }
