@@ -116,27 +116,32 @@ export const WAYPOINT_COMMANDS = new Set([
 /**
  * Mission item から座標 (lat, lon, alt) を抽出する。
  * QGC v4+ は `coordinate` フィールド、v3 以前は `params[4..6]` にフォールバック。
+ *
+ * lat=0 かつ lon=0 はQGCにおける「ホームポジションで実行」を意味するため null を返す。
+ * 呼び出し側でホームポジションへのフォールバックを行う。
  */
 const extractCoordinate = (
     item: QgcMissionItem,
 ): { lat: number; lon: number; alt: number } | null => {
+    let lat: number | null = null;
+    let lon: number | null = null;
+    let alt: number | null = null;
+
     if (item.coordinate && item.coordinate.length >= 3) {
-        return {
-            lat: item.coordinate[0],
-            lon: item.coordinate[1],
-            alt: item.coordinate[2],
-        };
+        lat = item.coordinate[0];
+        lon = item.coordinate[1];
+        alt = item.coordinate[2];
+    } else if (item.params && item.params.length >= 7) {
+        // params fallback: [p1, p2, p3, p4, lat(x), lon(y), alt(z)]
+        lat = item.params[4];
+        lon = item.params[5];
+        alt = item.params[6];
     }
-    // params fallback: [p1, p2, p3, p4, lat(x), lon(y), alt(z)]
-    if (item.params && item.params.length >= 7) {
-        const lat = item.params[4];
-        const lon = item.params[5];
-        const alt = item.params[6];
-        if (lat !== null && lon !== null && alt !== null) {
-            return { lat, lon, alt };
-        }
-    }
-    return null;
+
+    if (lat === null || lon === null || alt === null) return null;
+    // lat=0 かつ lon=0 はホームポジション指定（QGC 仕様）
+    if (lat === 0 && lon === 0) return null;
+    return { lat, lon, alt };
 };
 
 /**
