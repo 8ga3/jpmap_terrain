@@ -338,4 +338,22 @@ describe("fillInvalidPixels", () => {
             expect(Number.isNaN(data[i])).toBe(false);
         }
     });
+
+    it("非正方形（width ≠ height）でも全 NaN を埋める", () => {
+        // 4x8: 左端列のみ有効値
+        const W = 4, H = 8;
+        const data = new Float32Array(W * H);
+        data.fill(NaN);
+        for (let y = 0; y < H; y++) data[y * W] = 30;
+
+        fillInvalidPixels(data, W, H);
+
+        for (let i = 0; i < data.length; i++) {
+            expect(Number.isNaN(data[i])).toBe(false);
+        }
+        // 左端列は元の値のまま
+        for (let y = 0; y < H; y++) {
+            expect(data[y * W]).toBe(30);
+        }
+    });
 });
