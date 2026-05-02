@@ -24,6 +24,7 @@ import {
     MapType,
     fillInvalidPixels,
     isAllNaN,
+    isInvalidElev,
 } from "./gsiTile";
 import { stitchTileEdges, stitchTileEdgesCrossLevel } from "./tileStitching";
 import type { CoarseEdgeNeighbor } from "./tileStitching";
@@ -632,17 +633,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
-        // wasAllNaN タイルのシード判定（ステッチ後、辺に非 NaN が 1 つでもあるか）
+        // wasAllNaN タイルのシード判定（ステッチ後、辺に有効値が 1 つでもあるか）
         let hasSeed = false;
         if (cacheEntryPre?.wasAllNaN) {
             const last = TILE_SIZE - 1;
             for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
                 // 上辺・下辺
-                if (!Number.isNaN(stitched[i])) { hasSeed = true; break; }
-                if (!Number.isNaN(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
+                if (!isInvalidElev(stitched[i])) { hasSeed = true; break; }
+                if (!isInvalidElev(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
                 // 左辺・右辺
-                if (!Number.isNaN(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
-                if (!Number.isNaN(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
+                if (!isInvalidElev(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
+                if (!isInvalidElev(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
             }
         }
 
@@ -766,10 +767,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 const last = TILE_SIZE - 1;
                 let hasSeed = false;
                 for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
-                    if (!Number.isNaN(stitched[i])) { hasSeed = true; break; }
-                    if (!Number.isNaN(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
-                    if (!Number.isNaN(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
-                    if (!Number.isNaN(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
+                    if (!isInvalidElev(stitched[i])) { hasSeed = true; break; }
+                    if (!isInvalidElev(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
+                    if (!isInvalidElev(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
+                    if (!isInvalidElev(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
                 }
 
                 if (hasSeed) {
@@ -808,7 +809,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 if (!entry || entry.wasAllNaN) continue;
                 const data = entry.filled ?? entry.elevation;
                 const v = data[(TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1)];
-                if (!Number.isNaN(v)) { sum += v; count++; }
+                if (!isInvalidElev(v)) { sum += v; count++; }
             }
             if (count > 0) {
                 const fallbackElev = sum / count;
@@ -855,10 +856,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const px = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fx * (TILE_SIZE - 1))));
             const py = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fy * (TILE_SIZE - 1))));
             const val = data[py * TILE_SIZE + px];
-            if (!Number.isNaN(val)) {
+            if (!isInvalidElev(val)) {
                 return (val + currentAltitudeOffset) * heightScale;
             }
-            // NaN の場合は近傍8ピクセルから補間（fillInvalidPixels と同等の方針）。
+            // 無効値の場合は近傍8ピクセルから補間（fillInvalidPixels と同等の方針）。
             // 近傍にも有効値がなければ低 zoom へフォールバックする。
             let sum = 0;
             let count = 0;
@@ -869,7 +870,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     const ny = py + dy;
                     if (nx < 0 || nx >= TILE_SIZE || ny < 0 || ny >= TILE_SIZE) continue;
                     const nv = data[ny * TILE_SIZE + nx];
-                    if (!Number.isNaN(nv)) {
+                    if (!isInvalidElev(nv)) {
                         sum += nv;
                         count++;
                     }

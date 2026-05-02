@@ -1,5 +1,7 @@
 /** 隣接タイルの標高データを辺・頂点で縫い合わせるユーティリティ */
 
+import { isInvalidElev } from "./gsiTile";
+
 /** 隣接タイルの標高データ（同一zoomレベルのみ） */
 export interface StitchNeighbors {
     top?: Float32Array;
@@ -12,12 +14,12 @@ export interface StitchNeighbors {
     bottomRight?: Float32Array;
 }
 
-/** NaN を除外した平均値を返す。すべて NaN なら NaN */
+/** 無効値(NaN/NO_DATA_SENTINEL)を除外した平均値を返す。すべて無効なら NaN */
 export const nanMean = (values: readonly number[]): number => {
     let sum = 0;
     let count = 0;
     for (const v of values) {
-        if (!Number.isNaN(v)) {
+        if (!isInvalidElev(v)) {
             sum += v;
             count++;
         }
@@ -206,8 +208,8 @@ export const stitchTileEdgesCrossLevel = (
             const a = n.elevation[coarseIdxLo];
             const b = n.elevation[coarseIdxHi];
             let v: number;
-            const aNaN = Number.isNaN(a);
-            const bNaN = Number.isNaN(b);
+            const aNaN = isInvalidElev(a);
+            const bNaN = isInvalidElev(b);
             if (aNaN && bNaN) continue;
             else if (aNaN) v = b;
             else if (bNaN) v = a;

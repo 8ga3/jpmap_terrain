@@ -41,10 +41,30 @@ export const tileEdgeMeters = (lat: number, zoom: number): number => {
     return metersPerPixel * TILE_SIZE;
 };
 
-/** 全ピクセルが NaN かどうか判定する */
+/**
+ * 標高データの「無効値」を表す番兵値。
+ *
+ * `fillInvalidPixels` が周囲に有効値を一切見つけられず BFS でも埋められなかった
+ * ピクセルに書き込まれる。実標高で -100m に達することは現実的にない（海岸線で
+ * 観測される負値はせいぜい -数 m 程度）ため、後段の処理で「埋め残し」を一意に
+ * 識別できる。
+ *
+ * このセンチネルが残ったタイルは：
+ * - メッシュに直接適用された場合、地表より十分下に沈む（視覚的な凹みではあるが
+ *   湖面が押し上げられるよりはマシ）
+ * - 隣接タイルのステッチ参照では NaN と同等に扱われ、平均から除外される
+ *   （`tileStitching` の `nanMean` 等を参照）
+ */
+export const NO_DATA_SENTINEL = -100;
+
+/** NaN または NO_DATA_SENTINEL を「無効」とみなす */
+export const isInvalidElev = (v: number): boolean =>
+    Number.isNaN(v) || v === NO_DATA_SENTINEL;
+
+/** 全ピクセルが無効値（NaN または NO_DATA_SENTINEL）かどうか判定する */
 export const isAllNaN = (data: Float32Array): boolean => {
     for (let i = 0; i < data.length; i++) {
-        if (!Number.isNaN(data[i])) return false;
+        if (!isInvalidElev(data[i])) return false;
     }
     return true;
 };
@@ -60,7 +80,7 @@ export const decodeGsiElevation = (
     return raw < 2 ** 23 ? raw * 0.01 : (raw - 2 ** 24) * 0.01;
 };
 
-/** 無効値(NaN)を周囲の有効ピクセルからBFS(フロンティア)方式で補間する */
+/** 無効値(NaN/NO_DATA_SENTINEL)を周囲の有効ピクセルからBFS(フロンティア)方式で補間する */
 export const fillInvalidPixels = (
     elev: Float32Array,
     width: number,
@@ -73,21 +93,21 @@ export const fillInvalidPixels = (
         [-1,  1], [0,  1], [1,  1],
     ];
 
-    // BFS: 有効ピクセルに隣接する NaN をキューに入れ、波状に埋める。
+    // BFS: 有効ピクセルに隣接する無効ピクセルをキューに入れ、波状に埋める。
     // 同一ピクセルが複数回キューに入る場合があるが、処理時に埋め済みならスキップする。
     // 各ピクセルの隣接は最大8なので総キュー操作は O(width * height)。
 
-    // フロンティア初期化: NaN で、かつ隣に有効値があるピクセルを収集
+    // フロンティア初期化: 無効値で、かつ隣に有効値があるピクセルを収集
     let frontier: number[] = [];
     for (let i = 0; i < size; i++) {
-        if (!Number.isNaN(elev[i])) continue;
+        if (!isInvalidElev(elev[i])) continue;
         const x = i % width;
         const y = (i - x) / width;
         for (const [dx, dy] of offsets) {
             const nx = x + dx;
             const ny = y + dy;
             if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-            if (!Number.isNaN(elev[ny * width + nx])) {
+            if (!isInvalidElev(elev[ny * width + nx])) {
                 frontier.push(i);
                 break;
             }
@@ -98,7 +118,7 @@ export const fillInvalidPixels = (
     while (frontier.length > 0) {
         const next: number[] = [];
         for (const idx of frontier) {
-            if (!Number.isNaN(elev[idx])) continue; // 既に埋まった
+            if (!isInvalidElev(elev[idx])) continue; // 既に埋まった
             const x = idx % width;
             const y = (idx - x) / width;
             let sum = 0;
@@ -108,20 +128,20 @@ export const fillInvalidPixels = (
                 const ny = y + dy;
                 if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
                 const v = elev[ny * width + nx];
-                if (!Number.isNaN(v)) {
+                if (!isInvalidElev(v)) {
                     sum += v;
                     count++;
                 }
             }
             if (count > 0) {
                 elev[idx] = sum / count;
-                // 新たに埋まったピクセルの隣の NaN を次のフロンティアに追加
+                // 新たに埋まったピクセルの隣の無効値を次のフロンティアに追加
                 for (const [dx, dy] of offsets) {
                     const nx = x + dx;
                     const ny = y + dy;
                     if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
                     const ni = ny * width + nx;
-                    if (Number.isNaN(elev[ni])) {
+                    if (isInvalidElev(elev[ni])) {
                         next.push(ni);
                     }
                 }
@@ -130,9 +150,12 @@ export const fillInvalidPixels = (
         frontier = next;
     }
 
-    // 全ピクセル無効等で残った NaN は 0 にフォールバック
+    // 全ピクセル無効等で残った無効値は NO_DATA_SENTINEL にフォールバック。
+    // 0 にすると後段の `isAllNaN` 判定で「有効」と誤認されてしまうため、
+    // 後で再ステッチ→再 fill が走った際に再度埋め直し対象にできるよう
+    // センチネル値で残しておく。
     for (let i = 0; i < size; i++) {
-        if (Number.isNaN(elev[i])) elev[i] = 0;
+        if (Number.isNaN(elev[i])) elev[i] = NO_DATA_SENTINEL;
     }
 };
 
