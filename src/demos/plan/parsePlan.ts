@@ -161,6 +161,9 @@ export const parsePlan = (json: unknown): ParsedPlan => {
     if (!plan.mission) {
         throw new Error("Invalid plan file: missing mission section");
     }
+    if (!Array.isArray(plan.mission.items)) {
+        throw new Error("Invalid plan file: mission.items is missing or not an array");
+    }
 
     // ホームポジション
     let homePosition: ParsedPlan["homePosition"] = null;

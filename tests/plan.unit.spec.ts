@@ -47,6 +47,8 @@ describe("parsePlan", () => {
         expect(() => parsePlan(null)).toThrow("not an object");
         expect(() => parsePlan("string")).toThrow("not an object");
         expect(() => parsePlan({})).toThrow("missing mission");
+        expect(() => parsePlan({ mission: {} })).toThrow("mission.items is missing or not an array");
+        expect(() => parsePlan({ mission: { items: "not-array" } })).toThrow("mission.items is missing or not an array");
     });
 
     it("NAV_WAYPOINT(16), NAV_TAKEOFF(22), NAV_LAND(21) をウェイポイントとして抽出する", () => {
