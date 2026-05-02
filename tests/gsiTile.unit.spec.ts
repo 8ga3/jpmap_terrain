@@ -6,6 +6,7 @@ import {
     tileEdgeMeters,
     decodeGsiElevation,
     isAllNaN,
+    fillInvalidPixels,
     stdTextureUrl,
     photoTextureUrl,
     textureUrl,
@@ -239,5 +240,102 @@ describe("textureUrl", () => {
         expect(textureUrl("photo", 14, 14547, 6452)).toBe(
             "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg"
         );
+    });
+});
+
+describe("fillInvalidPixels", () => {
+    it("NaN がなければ何も変更しない", () => {
+        const data = new Float32Array([1, 2, 3, 4]);
+        fillInvalidPixels(data, 2, 2);
+        expect(Array.from(data)).toEqual([1, 2, 3, 4]);
+    });
+
+    it("周囲の有効値から NaN を補間する", () => {
+        // 3x3: 中央だけ NaN
+        const data = new Float32Array([
+            10, 10, 10,
+            10, NaN, 10,
+            10, 10, 10,
+        ]);
+        fillInvalidPixels(data, 3, 3);
+        expect(data[4]).toBe(10);
+    });
+
+    it("全 NaN の場合は 0 にフォールバックする", () => {
+        const data = new Float32Array([NaN, NaN, NaN, NaN]);
+        fillInvalidPixels(data, 2, 2);
+        expect(Array.from(data)).toEqual([0, 0, 0, 0]);
+    });
+
+    it("大きな NaN 領域を完全に埋める（16パス超）", () => {
+        // 32x32 で左端列のみ有効値 (100)、残りは NaN
+        const W = 32, H = 32;
+        const data = new Float32Array(W * H);
+        data.fill(NaN);
+        for (let y = 0; y < H; y++) data[y * W] = 100;
+
+        fillInvalidPixels(data, W, H);
+
+        // 全ピクセルが埋まっていること
+        for (let i = 0; i < data.length; i++) {
+            expect(Number.isNaN(data[i])).toBe(false);
+        }
+        // 元の有効値は 100 のまま
+        expect(data[0]).toBe(100);
+    });
+
+    it("角にだけ有効値がある場合でも全 NaN を埋める", () => {
+        // 20x20 で (0,0) のみ有効値
+        const W = 20, H = 20;
+        const data = new Float32Array(W * H);
+        data.fill(NaN);
+        data[0] = 50;
+
+        fillInvalidPixels(data, W, H);
+
+        for (let i = 0; i < data.length; i++) {
+            expect(Number.isNaN(data[i])).toBe(false);
+        }
+        expect(data[0]).toBe(50);
+    });
+
+    it("エッジから内側に値が伝搬する（湖沼パターン）", () => {
+        // 8x8: 外周のみ有効値、内部は NaN
+        const W = 8, H = 8;
+        const data = new Float32Array(W * H);
+        data.fill(NaN);
+        for (let x = 0; x < W; x++) {
+            data[x] = 200;               // 上辺
+            data[(H - 1) * W + x] = 200; // 下辺
+        }
+        for (let y = 0; y < H; y++) {
+            data[y * W] = 200;           // 左辺
+            data[y * W + (W - 1)] = 200; // 右辺
+        }
+
+        fillInvalidPixels(data, W, H);
+
+        // 全ピクセルが埋まり NaN は残らない
+        for (let i = 0; i < data.length; i++) {
+            expect(Number.isNaN(data[i])).toBe(false);
+        }
+        // 外周は元の値のまま
+        expect(data[0]).toBe(200);
+        expect(data[W - 1]).toBe(200);
+    });
+
+    it("有効値と NaN が混在する場合、有効値は変更されない", () => {
+        const data = new Float32Array([
+            5, NaN, NaN,
+            NaN, NaN, NaN,
+            NaN, NaN, 15,
+        ]);
+        fillInvalidPixels(data, 3, 3);
+        expect(data[0]).toBe(5);
+        expect(data[8]).toBe(15);
+        // 全ピクセル埋まっている
+        for (let i = 0; i < data.length; i++) {
+            expect(Number.isNaN(data[i])).toBe(false);
+        }
     });
 });
