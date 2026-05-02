@@ -10,7 +10,10 @@
 
 /** Plan ファイルトップレベル */
 export interface QgcPlanFile {
-    fileHeader: { version: number };
+    /** QGC v4.x 形式ではトップレベルに存在。v3.x 以前は version がトップレベルに直接ある場合も。 */
+    fileHeader?: { version: number };
+    /** QGC v3.x の一部バージョンではトップレベルに version が直接ある */
+    version?: number;
     mission: QgcMission;
     geoFence?: QgcGeoFence;
     rallyPoints?: QgcRallyPoints;
