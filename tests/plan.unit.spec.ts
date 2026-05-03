@@ -212,6 +212,27 @@ describe("parsePlan", () => {
         expect(result.waypoints[0].command).toBe(16);
     });
 
+    it("coordinate 経路で lat=0, lon=0 がホーム座標に置換される（QGC v4+）", () => {
+        const plan = {
+            fileHeader: { version: 1 },
+            mission: {
+                plannedHomePosition: [35.0, 139.0, 100],
+                items: [
+                    // QGC v4+ 形式: coordinate フィールドで (0,0) を指定
+                    { command: 22, frame: 3, coordinate: [0, 0, 50] },
+                    { command: 16, frame: 3, coordinate: [35.5, 139.5, 80] },
+                ],
+            },
+        };
+        const result = parsePlan(plan);
+        expect(result.waypoints).toHaveLength(2);
+        expect(result.waypoints[0].lat).toBe(35.0);
+        expect(result.waypoints[0].lon).toBe(139.0);
+        expect(result.waypoints[0].altitude).toBe(150); // 50 + 100(home)
+        expect(result.waypoints[0].command).toBe(22);
+        expect(result.waypoints[1].lat).toBe(35.5);
+    });
+
     it("okutama.plan 相当データをパースできる（lat=0,lon=0 のTAKEOFF がホーム座標に置換される）", () => {
         // examples/okutama.plan の構造を模したテスト
         const okutamaPlan = {
