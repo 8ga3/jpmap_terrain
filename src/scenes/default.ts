@@ -1920,7 +1920,18 @@ export class DefaultScene implements CreateSceneClass {
             if (values.altitude !== undefined) {
                 const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-                camera.radius = clamp(values.altitude, lower, upper);
+                // URL/API の altitude はカメラ世界高度 (海抜 = camera.position.y) として扱う。
+                // ArcRotateCamera は radius を保持するため、
+                //   camY = target.y + radius * cos(beta)
+                // を解いて radius に変換する (#225)。
+                const cosB = Math.cos(camera.beta);
+                if (Math.abs(cosB) >= 1e-6) {
+                    const desiredRadius =
+                        (values.altitude - camera.target.y) / cosB;
+                    camera.radius = clamp(desiredRadius, lower, upper);
+                } else {
+                    camera.radius = clamp(values.altitude, lower, upper);
+                }
             }
             if (values.azimuth !== undefined) {
                 camera.alpha = alphaFromAzimuthDeg(values.azimuth);
@@ -2104,7 +2115,7 @@ export class DefaultScene implements CreateSceneClass {
         const controller: DefaultSceneController = {
             getLat: derivedLat,
             getLon: derivedLon,
-            getAltitude: () => camera.radius,
+            getAltitude: () => camera.position.y,
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
             getTilt: () =>
                 currentViewMode === "2d"
@@ -2264,18 +2275,30 @@ export class DefaultScene implements CreateSceneClass {
 
         // URL 復元時のカメラ高度ずれ修正 (Issue #225):
         // refreshTerrain 後にテレイン標高を camera.target.y へ反映する。
-        // target.y = 0 のままだと、標高のある地形で camera.radius（= altitude）が
-        // 同じでもカメラ世界座標が低くなり「ズームイン」して見える。
+        // target.y = 0 のままだと、標高のある地形で camera 世界座標が
+        // 想定より低く「ズームイン」して見える。
+        // さらに altitude (= URL/API の camera.position.y) を維持するため
+        // target.y 確定後に radius を再計算する。
         // 通常は refreshTerrain の await 完了後に中心タイルのキャッシュが利用可能だが、
         // タイルサーバ障害等で null が返った場合は onTerrainUpdated で遅延補正する。
         // canvas の表示はカメラ高度が確定した後の初回レンダリングまで遅延させる
         // ことで、リロード時のフラッシュを防ぐ (#225)。
+        const desiredCamY = altitude;
+        const adjustRadiusForCamY = (targetY: number): void => {
+            const cosB = Math.cos(camera.beta);
+            if (Math.abs(cosB) < 1e-6) return;
+            const r = (desiredCamY - targetY) / cosB;
+            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+            camera.radius = clamp(r, lower, upper);
+        };
         const initElev = tileManager.queryElevationAtWorld(
             gridResidualX,
             gridResidualZ,
         );
         if (initElev !== null) {
             camera.target.y = initElev;
+            adjustRadiusForCamY(initElev);
             scene.onAfterRenderObservable.addOnce(() => {
                 canvas.style.visibility = "";
             });
@@ -2287,6 +2310,7 @@ export class DefaultScene implements CreateSceneClass {
                 );
                 if (elev !== null) {
                     camera.target.y = elev;
+                    adjustRadiusForCamY(elev);
                     unsub();
                     scene.onAfterRenderObservable.addOnce(() => {
                         canvas.style.visibility = "";
