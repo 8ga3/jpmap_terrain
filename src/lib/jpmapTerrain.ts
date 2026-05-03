@@ -182,6 +182,9 @@ export class JpmapTerrain {
         canvas.style.display = "block";
         canvas.style.outline = "none";
         canvas.style.touchAction = "none";
+        // 初回レンダリングまでキャンバスを非表示にし、
+        // URL 復元時のカメラ高度ずれによるフラッシュを防ぐ (Issue #225)。
+        canvas.style.visibility = "hidden";
         this.mountElement.appendChild(canvas);
         this._canvas = canvas;
 
@@ -259,6 +262,13 @@ export class JpmapTerrain {
             this._scene = scene;
 
             engine.runRenderLoop(() => scene.render());
+
+            // 初回レンダリング完了後にキャンバスを表示する (Issue #225)。
+            // camera.target.y 反映済みの正しい画角で描画されてから
+            // 可視化することで、リロード時のズームフラッシュを防ぐ。
+            scene.onAfterRenderObservable.addOnce(() => {
+                canvas.style.visibility = "";
+            });
 
             // カメラ変化監視: 毎フレーム前に現在値スナップショットを取り、差分があればリスナー通知。
             this._cameraObserver = scene.onBeforeRenderObservable.add(() =>

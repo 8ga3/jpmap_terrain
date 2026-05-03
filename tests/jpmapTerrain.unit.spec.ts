@@ -290,6 +290,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     }> = [];
     const createSceneObservable = (): {
         add: (cb: () => void) => SceneObserver;
+        addOnce: (cb: () => void) => SceneObserver;
         remove: (obs: SceneObserver) => boolean;
     } => {
         const observers: SceneObserver[] = [];
@@ -297,6 +298,15 @@ jest.unstable_mockModule("../src/scenes/default", () => {
             observers,
             add: (cb: () => void): SceneObserver => {
                 const o: SceneObserver = { callback: cb };
+                observers.push(o);
+                return o;
+            },
+            addOnce: (cb: () => void): SceneObserver => {
+                const wrapper = (): void => {
+                    cb();
+                    obs.remove(o);
+                };
+                const o: SceneObserver = { callback: wrapper };
                 observers.push(o);
                 return o;
             },
@@ -501,6 +511,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     render: jest.fn(),
                     dispose: jest.fn(),
                     onBeforeRenderObservable: createSceneObservable(),
+                    onAfterRenderObservable: createSceneObservable(),
                 };
             },
         );

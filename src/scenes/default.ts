@@ -2214,6 +2214,31 @@ export class DefaultScene implements CreateSceneClass {
         // 初回ロード
         await refreshTerrain();
 
+        // URL 復元時のカメラ高度ずれ修正 (Issue #225):
+        // refreshTerrain 後にテレイン標高を camera.target.y へ反映する。
+        // target.y = 0 のままだと、標高のある地形で camera.radius（= altitude）が
+        // 同じでもカメラ世界座標が低くなり「ズームイン」して見える。
+        // 通常は refreshTerrain の await 完了後に中心タイルのキャッシュが利用可能だが、
+        // タイルサーバ障害等で null が返った場合は onTerrainUpdated で遅延補正する。
+        const initElev = tileManager.queryElevationAtWorld(
+            gridResidualX,
+            gridResidualZ,
+        );
+        if (initElev !== null) {
+            camera.target.y = initElev;
+        } else {
+            const unsub = subscribeTerrainUpdated(() => {
+                const elev = tileManager.queryElevationAtWorld(
+                    gridResidualX,
+                    gridResidualZ,
+                );
+                if (elev !== null) {
+                    camera.target.y = elev;
+                    unsub();
+                }
+            });
+        }
+
         return scene;
     };
 }
