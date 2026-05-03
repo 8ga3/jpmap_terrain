@@ -692,25 +692,6 @@ export class DefaultScene implements CreateSceneClass {
             }
         };
 
-        /**
-         * commitPanOffset 後にカメラ注視点の高さ (target.y) をタイルキャッシュの標高に
-         * 合わせる (#225 位置ずれ修正)。
-         *
-         * camera 世界座標 (camera.position) を保持したまま target.y のみ
-         * 標高に揃え、setPosition で radius/alpha/beta を再計算する。これにより
-         *   - camY = camera.position.y = URL altitude が変動しない
-         *   - camX/camZ も保たれ、ドラッグ離した瞬間の水平ずれが発生しない
-         * リロード時は initElev (= queryElevationAtWorld) と URL altitude から
-         * 同じ世界座標が再構成されるため、リロード前後で完全に一致する。
-         */
-        const syncTargetElevation = (): void => {
-            const elev = tileManager.queryElevationAtWorld(gridResidualX, gridResidualZ);
-            if (elev === null) return;
-            const savedCamPos = camera.position.clone();
-            camera.target.y = elev;
-            camera.setPosition(savedCamPos);
-        };
-
         // ---------- カスタムマウスハンドラ ----------
         let pointerDown = false;
         let lastPointerX = 0;
@@ -1298,7 +1279,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
-            syncTargetElevation();
+            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1345,7 +1326,7 @@ export class DefaultScene implements CreateSceneClass {
                 }
             }
             commitPanOffset();
-            syncTargetElevation();
+            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -1543,7 +1524,7 @@ export class DefaultScene implements CreateSceneClass {
                 if (hit && isPickNearTarget(hit)) {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
-                    syncTargetElevation();
+                    retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -1571,14 +1552,14 @@ export class DefaultScene implements CreateSceneClass {
                         // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
-                        syncTargetElevation();
+                        retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
                         if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
-                        syncTargetElevation();
+                        retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
                     }
                 }
             },
@@ -1656,7 +1637,7 @@ export class DefaultScene implements CreateSceneClass {
                 camera.target.x = centerHit.worldX;
                 camera.target.z = centerHit.worldZ;
                 commitPanOffset();
-                syncTargetElevation();
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
