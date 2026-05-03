@@ -1301,8 +1301,12 @@ export class DefaultScene implements CreateSceneClass {
                 // 3D: commitPanOffset が target.x/z = gridResidual にリセット済み。
                 // setTarget() を呼ぶと rebuildAnglesAndRadius() が走り beta/tilt が変わるため、
                 // 真下レイキャストで target.y のみ直接代入する (#225)。
+                // さらに、ドラッグ中の retargetAtCameraPosition が radius/beta を
+                // 再計算しているため、target.y 変更後に radius を調整して
+                // camera.position.y（ユーザーが見ている高度）を維持する。
+                const visibleAltitude = camera.target.y + camera.radius * Math.cos(camera.beta);
                 const rayDown = new Ray(
-                    new Vector3(camera.target.x, camera.position.y, camera.target.z),
+                    new Vector3(camera.target.x, visibleAltitude, camera.target.z),
                     new Vector3(0, -1, 0),
                     CAMERA_FAR_CLIP,
                 );
@@ -1312,6 +1316,16 @@ export class DefaultScene implements CreateSceneClass {
                 );
                 if (pick?.hit && pick.pickedPoint) {
                     camera.target.y = pick.pickedPoint.y;
+                    const cosB = Math.cos(camera.beta);
+                    if (Math.abs(cosB) >= 1e-6) {
+                        const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                        const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                        camera.radius = clamp(
+                            (visibleAltitude - pick.pickedPoint.y) / cosB,
+                            lower,
+                            upper,
+                        );
+                    }
                 }
             }
         });
