@@ -165,13 +165,13 @@ describe("parsePlan", () => {
         expect(result.waypoints[0].altitude).toBe(100); // homeAlt=0
     });
 
-    it("lat=0 かつ lon=0 の items はスキップする（QGC ホームポジション指定）", () => {
+    it("lat=0 かつ lon=0 の items は plannedHomePosition の座標に置換される", () => {
         const plan = {
             fileHeader: { version: 1 },
             mission: {
                 plannedHomePosition: [35.0, 139.0, 100],
                 items: [
-                    // NAV_TAKEOFF at lat=0,lon=0 → ホームポジション指定のためスキップ
+                    // NAV_TAKEOFF at lat=0,lon=0 → ホームポジション座標に置換
                     { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50] },
                     // 通常ウェイポイント
                     { command: 16, frame: 3, params: [0, 0, 0, null, 35.5, 139.5, 80] },
@@ -179,14 +179,39 @@ describe("parsePlan", () => {
             },
         };
         const result = parsePlan(plan);
-        // NAV_TAKEOFF の lat=0,lon=0 がスキップされ、NAV_WAYPOINT だけ残る
+        // NAV_TAKEOFF がホーム座標で表示され、合計2点
+        expect(result.waypoints).toHaveLength(2);
+        expect(result.waypoints[0].number).toBe(1);
+        expect(result.waypoints[0].lat).toBe(35.0);
+        expect(result.waypoints[0].lon).toBe(139.0);
+        expect(result.waypoints[0].altitude).toBe(150); // 50 + 100(home)
+        expect(result.waypoints[0].command).toBe(22);
+        expect(result.waypoints[1].number).toBe(2);
+        expect(result.waypoints[1].lat).toBe(35.5);
+        expect(result.waypoints[1].command).toBe(16);
+    });
+
+    it("lat=0 かつ lon=0 で homePosition 未定義の場合はスキップする", () => {
+        const plan = {
+            fileHeader: { version: 1 },
+            mission: {
+                items: [
+                    // NAV_TAKEOFF at lat=0,lon=0 → homePosition なしのためスキップ
+                    { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50] },
+                    // 通常ウェイポイント
+                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.5, 139.5, 80] },
+                ],
+            },
+        };
+        const result = parsePlan(plan);
+        expect(result.homePosition).toBeNull();
         expect(result.waypoints).toHaveLength(1);
         expect(result.waypoints[0].number).toBe(1);
         expect(result.waypoints[0].lat).toBe(35.5);
         expect(result.waypoints[0].command).toBe(16);
     });
 
-    it("okutama.plan 相当データをパースできる（lat=0,lon=0 のTAKEOFF がスキップされる）", () => {
+    it("okutama.plan 相当データをパースできる（lat=0,lon=0 のTAKEOFF がホーム座標に置換される）", () => {
         // examples/okutama.plan の構造を模したテスト
         const okutamaPlan = {
             fileType: "Plan",
@@ -225,7 +250,7 @@ describe("parsePlan", () => {
                 globalPlanAltitudeMode: 1,
                 hoverSpeed: 5,
                 items: [
-                    // NAV_TAKEOFF at lat=0,lon=0 → スキップされるべき
+                    // NAV_TAKEOFF at lat=0,lon=0 → ホーム座標に置換
                     { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50], autoContinue: true, type: "SimpleItem" },
                     { command: 16, frame: 3, params: [0, 0, 0, null, 35.79196971850398, 139.04883949344594, 50], autoContinue: true, type: "SimpleItem" },
                     { command: 16, frame: 3, params: [0, 0, 0, null, 35.78655862746033, 139.04593844937483, 75], autoContinue: true, type: "SimpleItem" },
@@ -256,15 +281,21 @@ describe("parsePlan", () => {
         // ホームポジション
         expect(result.homePosition).toEqual({ lat: 35.79210805, lon: 139.04890088, altitude: 522 });
 
-        // NAV_TAKEOFF(lat=0,lon=0) がスキップされ、残り 9 点（NAV_WAYPOINT x8 + NAV_LAND x1）
-        expect(result.waypoints).toHaveLength(9);
+        // NAV_TAKEOFF(lat=0,lon=0) がホーム座標に置換され、合計 10 点（NAV_TAKEOFF x1 + NAV_WAYPOINT x8 + NAV_LAND x1）
+        expect(result.waypoints).toHaveLength(10);
         expect(result.waypoints[0].number).toBe(1);
-        expect(result.waypoints[0].command).toBe(16); // NAV_WAYPOINT
-        expect(result.waypoints[0].lat).toBeCloseTo(35.79196971850398);
+        expect(result.waypoints[0].command).toBe(22); // NAV_TAKEOFF
+        expect(result.waypoints[0].lat).toBeCloseTo(35.79210805); // ホーム座標
+        expect(result.waypoints[0].lon).toBeCloseTo(139.04890088); // ホーム座標
         // 高度はホーム相対: 50 + 522
         expect(result.waypoints[0].altitude).toBe(572);
+        // 2番目は NAV_WAYPOINT
+        expect(result.waypoints[1].number).toBe(2);
+        expect(result.waypoints[1].command).toBe(16);
+        expect(result.waypoints[1].lat).toBeCloseTo(35.79196971850398);
+        expect(result.waypoints[1].altitude).toBe(572); // 50 + 522
         // 最後は NAV_LAND
-        expect(result.waypoints[8].command).toBe(21);
+        expect(result.waypoints[9].command).toBe(21);
 
         // ジオフェンスポリゴン 1 件
         expect(result.geoFencePolygons).toHaveLength(1);
