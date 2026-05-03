@@ -429,10 +429,11 @@ export class DefaultScene implements CreateSceneClass {
                 JAPAN_BOUNDS.minLon,
                 JAPAN_BOUNDS.maxLon
             );
-            await tileManager.setCenter(currentLat, currentLon, 0);
 
             // センタータイルの地理的中心と currentLat/currentLon のメートル差を
-            // gridResidual に反映し、オーバーレイ座標系とタイルメッシュ配置を一致させる
+            // gridResidual に反映し、オーバーレイ座標系とタイルメッシュ配置を一致させる。
+            // setCenter より前に更新することで、可視タイル計算が正しい camera.target を参照し、
+            // target 変更による二重リフレッシュを防ぐ。
             const centerTile = toTileXY(currentLat, currentLon, MAX_ZOOM);
             const { lat: tileCenterLat, lon: tileCenterLon } = tileCenterLatLon(
                 centerTile.x,
@@ -446,6 +447,8 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualZ = (currentLat - tileCenterLat) * METERS_PER_DEGREE_LAT;
             camera.target.x = gridResidualX;
             camera.target.z = gridResidualZ;
+
+            await tileManager.setCenter(currentLat, currentLon, 0);
         };
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
