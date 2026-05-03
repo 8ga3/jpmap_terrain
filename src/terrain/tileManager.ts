@@ -605,6 +605,34 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         mesh.refreshBoundingInfo();
     };
 
+    /**
+     * elevation をコピーしてステッチ（同zoom + cross-level）を適用し、
+     * 辺に有効値（シード）があるかを判定する共通ヘルパー。
+     */
+    const stitchAndCheckSeed = (
+        elevation: Float32Array,
+        coord: TileCoord,
+        crossLevel: boolean,
+    ): { stitched: Float32Array; hasSeed: boolean } => {
+        const stitched = new Float32Array(elevation);
+        stitchTileEdges(stitched, getNeighborElevations(coord), TILE_SIZE);
+        if (crossLevel) {
+            const coarse = getCoarseEdgeNeighbors(coord);
+            if (coarse.length > 0) stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
+        }
+
+        const last = TILE_SIZE - 1;
+        let hasSeed = false;
+        for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
+            if (!isInvalidElev(stitched[i])) { hasSeed = true; break; }
+            if (!isInvalidElev(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
+            if (!isInvalidElev(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
+            if (!isInvalidElev(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
+        }
+
+        return { stitched, hasSeed };
+    };
+
     /** タイルの標高データをステッチ＋NaN埋めしてメッシュに適用 */
     const applyStitchedElevation = (
         mesh: Mesh,
@@ -613,39 +641,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     ): void => {
         const cacheEntryPre = cache.get(toTileKey(coord));
 
-        // 常に元データ(elevation)からコピー。
-        // 再ステッチ時に古い filled を引き継がないことで、隣接ズーム変更後も正しい値に収束する。
-        const stitched = new Float32Array(elevation);
-
-        // 隣接タイルと辺を縫い合わせ（同 zoom）
-        const neighbors = getNeighborElevations(coord);
-        stitchTileEdges(stitched, neighbors, TILE_SIZE);
-
         // 異 zoom 隣接（粗タイル）と縫い合わせ。
         // - 通常タイルはカメラ近傍のみ対象（再適用時の計算コスト抑制）
         // - all-NaN タイルは同 zoom 近傍からシードが得られない場合があるため
         //   カメラ距離に関わらず常に試行する
         const tileSize = tileSizeForZoom(coord.zoom);
-        if (cacheEntryPre?.wasAllNaN || isTileNearCamera(coord, tileSize)) {
-            const coarse = getCoarseEdgeNeighbors(coord);
-            if (coarse.length > 0) {
-                stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
-            }
-        }
-
-        // wasAllNaN タイルのシード判定（ステッチ後、辺に有効値が 1 つでもあるか）
-        let hasSeed = false;
-        if (cacheEntryPre?.wasAllNaN) {
-            const last = TILE_SIZE - 1;
-            for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
-                // 上辺・下辺
-                if (!isInvalidElev(stitched[i])) { hasSeed = true; break; }
-                if (!isInvalidElev(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
-                // 左辺・右辺
-                if (!isInvalidElev(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
-                if (!isInvalidElev(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
-            }
-        }
+        const crossLevel = !!cacheEntryPre?.wasAllNaN || isTileNearCamera(coord, tileSize);
+        const { stitched, hasSeed } = stitchAndCheckSeed(elevation, coord, crossLevel);
 
         // NaN を埋める（BFS）
         fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
@@ -776,21 +778,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
                 remainingCount++;
 
-                // elevation ベース（all-NaN）でステッチ
-                const stitched = new Float32Array(entry.elevation);
-                stitchTileEdges(stitched, getNeighborElevations(tile.coord), TILE_SIZE);
-                const coarse = getCoarseEdgeNeighbors(tile.coord);
-                if (coarse.length > 0) stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
-
-                // 辺シード判定
-                const last = TILE_SIZE - 1;
-                let hasSeed = false;
-                for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
-                    if (!isInvalidElev(stitched[i])) { hasSeed = true; break; }
-                    if (!isInvalidElev(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
-                    if (!isInvalidElev(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
-                    if (!isInvalidElev(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
-                }
+                // wasAllNaN → 常に cross-level stitch を実行
+                const { stitched, hasSeed } = stitchAndCheckSeed(entry.elevation, tile.coord, true);
 
                 if (hasSeed) {
                     fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
