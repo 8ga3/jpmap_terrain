@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import {
     TILE_SIZE,
     JAPAN_BOUNDS,
@@ -11,6 +12,7 @@ import {
     photoTextureUrl,
     textureUrl,
     NO_DATA_SENTINEL,
+    loadElevationTile,
 } from "../src/terrain/gsiTile";
 
 describe("TILE_SIZE", () => {
@@ -357,5 +359,115 @@ describe("fillInvalidPixels", () => {
         for (let y = 0; y < H; y++) {
             expect(data[y * W]).toBe(30);
         }
+    });
+});
+
+// ---------- loadElevationTile ----------
+// loadImageData (module-private) が fetch → createImageBitmap → Canvas を使うため
+// ブラウザ API をモックして loadElevationTile のフォールバック挙動をテストする。
+
+/** 指定 RGBA を返す最小 ImageData 風オブジェクト (1×1) を作るヘルパー */
+const makeImageDataResult = (r: number, g: number, b: number): ImageData => ({
+    width: 1,
+    height: 1,
+    data: new Uint8ClampedArray([r, g, b, 255]),
+    colorSpace: "srgb",
+});
+
+/** loadImageData 内部で使われるブラウザ API をモックするセットアップ */
+const setupLoadImageMocks = (imageData: ImageData) => {
+    const mockCtx = {
+        drawImage: jest.fn(),
+        getImageData: jest.fn(() => imageData),
+    };
+    const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: jest.fn(() => mockCtx),
+    };
+    // node 環境では document が存在しない場合があるため globalThis にセット
+    (globalThis as Record<string, unknown>).document = {
+        createElement: jest.fn(() => mockCanvas),
+    };
+    (globalThis as Record<string, unknown>).createImageBitmap = jest.fn(() =>
+        Promise.resolve({ width: imageData.width, height: imageData.height, close: jest.fn() })
+    );
+};
+
+describe("loadElevationTile", () => {
+    const originalFetch = globalThis.fetch;
+    const originalCreateImageBitmap = (globalThis as Record<string, unknown>).createImageBitmap;
+    const originalDocument = (globalThis as Record<string, unknown>).document;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+        (globalThis as Record<string, unknown>).createImageBitmap = originalCreateImageBitmap;
+        (globalThis as Record<string, unknown>).document = originalDocument;
+        jest.restoreAllMocks();
+    });
+
+    it("HTTP 成功で all-NaN でも次レイヤーへフォールバックしない", async () => {
+        // dem5a が all-NaN (R=128,G=0,B=0) を返す → そのまま返すべき
+        const allNanImageData = makeImageDataResult(128, 0, 0);
+        setupLoadImageMocks(allNanImageData);
+
+        const fetchMock = jest.fn(() =>
+            Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
+        );
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a のみ呼ばれ、dem5b/dem には行かない
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
+
+        // 返却値は all-NaN
+        expect(elev).toBeInstanceOf(Float32Array);
+        expect(elev.length).toBe(1);
+        expect(Number.isNaN(elev[0])).toBe(true);
+    });
+
+    it("HTTP 失敗時のみ次レイヤーへフォールバックする", async () => {
+        // dem5a → 404, dem5b → 有効データ (R=0, G=100, B=0 → 25600*0.01 = 256.0)
+        const validImageData = makeImageDataResult(0, 100, 0);
+        setupLoadImageMocks(validImageData);
+
+        let callCount = 0;
+        const fetchMock = jest.fn(() => {
+            callCount++;
+            if (callCount === 1) {
+                // dem5a: HTTP 失敗
+                return Promise.resolve({ ok: false, status: 404 } as Response);
+            }
+            // dem5b: HTTP 成功
+            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+        });
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a → 失敗, dem5b → 成功 で 2 回呼ばれる
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
+        expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png");
+
+        // dem5b の有効値が返る
+        expect(elev).toBeInstanceOf(Float32Array);
+        expect(Number.isNaN(elev[0])).toBe(false);
+    });
+
+    it("全レイヤー HTTP 失敗時はエラーを投げる", async () => {
+        const fetchMock = jest.fn(() =>
+            Promise.resolve({ ok: false, status: 404 } as Response)
+        );
+        globalThis.fetch = fetchMock;
+
+        await expect(loadElevationTile(15, 100, 200)).rejects.toThrow(
+            /No elevation tile available/
+        );
+
+        // 3 レイヤー全て試行
+        expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 });
