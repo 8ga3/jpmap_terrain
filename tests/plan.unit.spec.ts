@@ -184,7 +184,7 @@ describe("parsePlan", () => {
         expect(result.waypoints[0].number).toBe(1);
         expect(result.waypoints[0].lat).toBe(35.0);
         expect(result.waypoints[0].lon).toBe(139.0);
-        expect(result.waypoints[0].altitude).toBe(150); // 50 + 100(home)
+        expect(result.waypoints[0].altitude).toBe(100); // 0 + 100(home) = 地表
         expect(result.waypoints[0].command).toBe(22);
         expect(result.waypoints[1].number).toBe(2);
         expect(result.waypoints[1].lat).toBe(35.5);
@@ -287,8 +287,8 @@ describe("parsePlan", () => {
         expect(result.waypoints[0].command).toBe(22); // NAV_TAKEOFF
         expect(result.waypoints[0].lat).toBeCloseTo(35.79210805); // ホーム座標
         expect(result.waypoints[0].lon).toBeCloseTo(139.04890088); // ホーム座標
-        // 高度はホーム相対: 50 + 522
-        expect(result.waypoints[0].altitude).toBe(572);
+        // 高度はホーム地表: 0 + 522
+        expect(result.waypoints[0].altitude).toBe(522);
         // 2番目は NAV_WAYPOINT
         expect(result.waypoints[1].number).toBe(2);
         expect(result.waypoints[1].command).toBe(16);

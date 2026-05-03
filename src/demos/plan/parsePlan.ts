@@ -121,7 +121,7 @@ export const WAYPOINT_COMMANDS = new Set([
  * QGC v4+ は `coordinate` フィールド、v3 以前は `params[4..6]` にフォールバック。
  *
  * lat=0 かつ lon=0 はQGCにおける「ホームポジションで実行」を意味する。
- * homePosition が指定されていればホーム座標に置換して返す。
+ * homePosition が指定されていればホーム座標・相対高度 0（地表）に置換して返す。
  * homePosition が null の場合は従来通り null を返しスキップする。
  */
 const extractCoordinate = (
@@ -147,7 +147,7 @@ const extractCoordinate = (
     // lat=0 かつ lon=0 はホームポジション指定（QGC 仕様）
     if (lat === 0 && lon === 0) {
         if (!homePosition) return null;
-        return { lat: homePosition.lat, lon: homePosition.lon, alt };
+        return { lat: homePosition.lat, lon: homePosition.lon, alt: 0 };
     }
     return { lat, lon, alt };
 };
