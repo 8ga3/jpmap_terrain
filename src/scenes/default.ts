@@ -1318,7 +1318,20 @@ export class DefaultScene implements CreateSceneClass {
                     (m) => m.name.startsWith("tile-ground-"),
                 );
                 if (pick?.hit && pick.pickedPoint) {
+                    // target.y の変化ぶん camera.position.y が上下するのを防ぐため、
+                    // 変更前の camera.position.y を維持するよう radius を補正する (#225)。
+                    const desiredCamY = camera.position.y;
                     camera.target.y = pick.pickedPoint.y;
+                    const cosB = Math.cos(camera.beta);
+                    if (Math.abs(cosB) >= 1e-6) {
+                        const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                        const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                        camera.radius = clamp(
+                            (desiredCamY - pick.pickedPoint.y) / cosB,
+                            lower,
+                            upper,
+                        );
+                    }
                 }
             }
             // #225: pointerup 後の最新状態で URL を更新するため、
