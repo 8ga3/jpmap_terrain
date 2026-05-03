@@ -10,6 +10,7 @@ import {
     stdTextureUrl,
     photoTextureUrl,
     textureUrl,
+    NO_DATA_SENTINEL,
 } from "../src/terrain/gsiTile";
 
 describe("TILE_SIZE", () => {
@@ -261,10 +262,11 @@ describe("fillInvalidPixels", () => {
         expect(data[4]).toBe(10);
     });
 
-    it("全 NaN の場合は NO_DATA_SENTINEL (-100) にフォールバックする", () => {
+    it("全 NaN の場合は NO_DATA_SENTINEL にフォールバックする", () => {
         const data = new Float32Array([NaN, NaN, NaN, NaN]);
         fillInvalidPixels(data, 2, 2);
-        expect(Array.from(data)).toEqual([-100, -100, -100, -100]);
+        const expected = Array.from({ length: 4 }, () => NO_DATA_SENTINEL);
+        expect(Array.from(data)).toEqual(expected);
     });
 
     it("大きな NaN 領域を完全に埋める（旧16パスでは届かない距離）", () => {
