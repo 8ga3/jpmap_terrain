@@ -658,10 +658,23 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             : stitched;
         applyElevationDataToMesh(mesh, meshData);
 
-        // キャッシュ更新: シードが得られた場合のみ filled/unblocked を更新
-        if (cacheEntryPre?.wasAllNaN && hasSeed) {
-            cacheEntryPre.filled = stitched;
-            cacheEntryPre.unblocked = true;
+        // キャッシュ更新:
+        // - wasAllNaN + シードあり: filled/unblocked を更新
+        // - 通常タイル: filled を常に更新。
+        //   NaN 埋め済みデータ（entry.filled）を保存しておくことで、
+        //   後から refineAllNaNTiles が隣接参照する際に岸タイルの
+        //   lake 側エッジ NaN が補間済みの値を返せるようになる。
+        //   これがないと getNeighborElevations が生 elevation（エッジ NaN あり）を
+        //   返し、all-NaN タイルへシードが伝搬せずレスキューパスが誤った高度を適用する。
+        if (cacheEntryPre) {
+            if (cacheEntryPre.wasAllNaN) {
+                if (hasSeed) {
+                    cacheEntryPre.filled = stitched;
+                    cacheEntryPre.unblocked = true;
+                }
+            } else {
+                cacheEntryPre.filled = stitched;
+            }
         }
     };
 
