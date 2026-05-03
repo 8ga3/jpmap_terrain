@@ -47,7 +47,7 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | `engine` | `"webgpu" \| "webgl2"` | `"webgpu"` | 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバック |
 | `lat` | `number` | `35.681236` | 緯度（Babylon.js Z 軸に対応） |
 | `lon` | `number` | `139.767125` | 経度（Babylon.js X 軸に対応） |
-| `altitude` | `number` | `2000` | 高度（メートル、Babylon.js Y 軸に対応） |
+| `altitude` | `number` | `2000` | カメラのワールド高度（メートル）。`camera.position.y = target.y + radius·cos(beta)` で算出される値であり、カメラの地表からの距離（radius）とは異なる。Babylon.js Y 軸に対応 |
 | `azimuth` | `number` | `0` | 方位角（度、Babylon.js camera alpha に対応） |
 | `tilt` | `number` | `45` | チルト角（度、Babylon.js camera beta に対応） |
 | `mapType` | `"standard" \| "photo"` | `"standard"` | 地図種類（標準地図 / 航空写真） |
@@ -74,7 +74,7 @@ interface JpmapTerrain {
   get lon(): number;
   set lon(value: number);
 
-  /** 現在の高度（get / set） */
+  /** 現在のカメラワールド高度 camera.position.y（get / set）。target.y + radius·cos(beta) */
   get altitude(): number;
   set altitude(value: number);
 
