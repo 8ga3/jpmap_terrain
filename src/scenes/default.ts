@@ -692,6 +692,25 @@ export class DefaultScene implements CreateSceneClass {
             }
         };
 
+        /**
+         * commitPanOffset 後にカメラ注視点の高さをタイルキャッシュの標高に合わせ、
+         * カメラ世界座標を savedCamPos に保持したまま camera.target.y / alpha / beta /
+         * radius を再計算する (#225 位置ずれ修正)。
+         *
+         * retargetAtCameraPosition（レイキャスト）の代わりに tileManager の標高
+         * クエリを使うことで、queryElevationAtWorld / initElev の双方が同一のデータ
+         * ソースから取得され、リロード前後の camera.target.y が一致する。
+         */
+        const syncTargetElevation = (savedCamPos: Vector3): void => {
+            const elev = tileManager.queryElevationAtWorld(gridResidualX, gridResidualZ);
+            if (elev !== null) {
+                camera.target.y = elev;
+                camera.setPosition(savedCamPos);
+            } else {
+                retargetAtCameraPosition(savedCamPos.x, savedCamPos.y, savedCamPos.z);
+            }
+        };
+
         // ---------- カスタムマウスハンドラ ----------
         let pointerDown = false;
         let lastPointerX = 0;
@@ -1279,7 +1298,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
-            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            syncTargetElevation(camera.position.clone());
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1326,7 +1345,7 @@ export class DefaultScene implements CreateSceneClass {
                 }
             }
             commitPanOffset();
-            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            syncTargetElevation(camera.position.clone());
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -1524,7 +1543,7 @@ export class DefaultScene implements CreateSceneClass {
                 if (hit && isPickNearTarget(hit)) {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
-                    retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+                    syncTargetElevation(camera.position.clone());
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -1552,14 +1571,14 @@ export class DefaultScene implements CreateSceneClass {
                         // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
-                        retargetAtCameraPosition(camX, newCamY, camZ);
+                        syncTargetElevation(new Vector3(camX, newCamY, camZ));
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
                         if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
-                        retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+                        syncTargetElevation(camera.position.clone());
                     }
                 }
             },
@@ -1637,7 +1656,7 @@ export class DefaultScene implements CreateSceneClass {
                 camera.target.x = centerHit.worldX;
                 camera.target.z = centerHit.worldZ;
                 commitPanOffset();
-                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+                syncTargetElevation(camera.position.clone());
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
@@ -2249,12 +2268,17 @@ export class DefaultScene implements CreateSceneClass {
         // 同じでもカメラ世界座標が低くなり「ズームイン」して見える。
         // 通常は refreshTerrain の await 完了後に中心タイルのキャッシュが利用可能だが、
         // タイルサーバ障害等で null が返った場合は onTerrainUpdated で遅延補正する。
+        // canvas の表示はカメラ高度が確定した後の初回レンダリングまで遅延させる
+        // ことで、リロード時のフラッシュを防ぐ (#225)。
         const initElev = tileManager.queryElevationAtWorld(
             gridResidualX,
             gridResidualZ,
         );
         if (initElev !== null) {
             camera.target.y = initElev;
+            scene.onAfterRenderObservable.addOnce(() => {
+                canvas.style.visibility = "";
+            });
         } else {
             const unsub = subscribeTerrainUpdated(() => {
                 const elev = tileManager.queryElevationAtWorld(
@@ -2264,6 +2288,9 @@ export class DefaultScene implements CreateSceneClass {
                 if (elev !== null) {
                     camera.target.y = elev;
                     unsub();
+                    scene.onAfterRenderObservable.addOnce(() => {
+                        canvas.style.visibility = "";
+                    });
                 }
             });
         }
