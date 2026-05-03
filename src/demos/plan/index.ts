@@ -323,6 +323,9 @@ const start = async (): Promise<void> => {
     };
 
     const applyLayerVisibility = (): void => {
+        if (currentIds.homeId) {
+            if (viewer.getPolygon(currentIds.homeId)) viewer.setPolygonEnabled(currentIds.homeId, layerVisible.waypoints);
+        }
         for (const id of currentIds.waypointIds) {
             if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.waypoints);
         }
