@@ -501,37 +501,6 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         /**
-         * commitPanOffset 後に target.y のみを queryElevationAtWorld 由来の値へ揃え、
-         * camera.position.y (altitude) を保つために radius を再計算する (#225)。
-         *
-         * pointerup での retargetAtCameraPosition (mesh raycast) は target.x/z を
-         * 視線先 (= gridResidual から前方) へ動かしてしまい、URL.lat/lon が
-         * カメラ注視点の地理座標になる。この値でリロードすると、
-         * 復元後の target.x/z は新タイルの gridResidual に置かれるため、
-         * mesh.y と queryElev の補間差で radius がわずかに変化し、
-         * カメラ世界位置がカメラ正面方向にずれる現象が発生していた。
-         *
-         * pointerup 後は target.x/z を gridResidual のままにし、
-         * target.y を初期化フローと同じ queryElev に揃えることで、
-         * リロード時の状態と完全に対称になる (camera.position が一致する)。
-         */
-        const syncTargetYAfterCommit = (): void => {
-            const elev = tileManager.queryElevationAtWorld(
-                gridResidualX,
-                gridResidualZ,
-            );
-            if (elev === null) return;
-            const camY = camera.position.y;
-            camera.target.y = elev;
-            const cosB = Math.cos(camera.beta);
-            if (Math.abs(cosB) < 1e-6) return;
-            const r = (camY - elev) / cosB;
-            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-            camera.radius = clamp(r, lower, upper);
-        };
-
-        /**
          * camera.target と gridResidual の差分を加味して「カメラが実際に
          * 見ている地理座標」を返すヘルパー。
          * retargetAtCameraPosition が camera.target を動かしても
@@ -1310,7 +1279,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
-            syncTargetYAfterCommit();
+            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1357,7 +1326,7 @@ export class DefaultScene implements CreateSceneClass {
                 }
             }
             commitPanOffset();
-            syncTargetYAfterCommit();
+            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -2301,27 +2270,49 @@ export class DefaultScene implements CreateSceneClass {
         // タイルサーバ障害等で null が返った場合は onTerrainUpdated で遅延補正する。
         // canvas の表示はカメラ高度が確定した後の初回レンダリングまで遅延させる
         // ことで、リロード時のフラッシュを防ぐ (#225)。
-        // target.y のソースは queryElevationAtWorld に統一する。
-        // pointerup 後の syncTargetYAfterCommit も同じソースを使うため、
-        // ドラッグ → リロードの間で radius / camera.position が一貫する (#225)。
+        const desiredCamY = altitude;
+        const adjustRadiusForCamY = (targetY: number): void => {
+            const cosB = Math.cos(camera.beta);
+            if (Math.abs(cosB) < 1e-6) return;
+            const r = (desiredCamY - targetY) / cosB;
+            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+            camera.radius = clamp(r, lower, upper);
+        };
         const initElev = tileManager.queryElevationAtWorld(
             gridResidualX,
             gridResidualZ,
         );
-        const applyInitTargetY = (elev: number): void => {
-            camera.target.y = elev;
+        // 初回レンダ後、target.y のみメッシュ高度に揃える (#225)。
+        // alpha/beta/target.x/z は維持して画面が動かないようにし、
+        // radius のみ調整して camera.position.y = altitude を保つ。
+        // ドラッグ時の retargetAtCameraPosition も target.y を mesh hit Y にするため、
+        // 両者でソースが一致し radius が揃う → リロード後の水平位置ズレを防ぐ。
+        const snapTargetYToMesh = (): void => {
+            const sinB = Math.sin(camera.beta);
             const cosB = Math.cos(camera.beta);
-            if (Math.abs(cosB) >= 1e-6) {
-                const r = (altitude - elev) / cosB;
-                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-                camera.radius = clamp(r, lower, upper);
+            const dirX = -sinB * Math.cos(camera.alpha);
+            const dirY = -cosB;
+            const dirZ = -sinB * Math.sin(camera.alpha);
+            const ray = new Ray(
+                new Vector3(camera.position.x, camera.position.y, camera.position.z),
+                new Vector3(dirX, dirY, dirZ),
+                CAMERA_FAR_CLIP,
+            );
+            const pick = scene.pickWithRay(ray, (m) =>
+                m.name.startsWith("tile-ground-"),
+            );
+            if (pick?.hit && pick.pickedPoint) {
+                camera.target.y = pick.pickedPoint.y;
+                adjustRadiusForCamY(pick.pickedPoint.y);
             }
         };
         if (initElev !== null) {
-            applyInitTargetY(initElev);
+            camera.target.y = initElev;
+            adjustRadiusForCamY(initElev);
             scene.onAfterRenderObservable.addOnce(() => {
                 canvas.style.visibility = "";
+                snapTargetYToMesh();
             });
         } else {
             const unsub = subscribeTerrainUpdated(() => {
@@ -2330,10 +2321,12 @@ export class DefaultScene implements CreateSceneClass {
                     gridResidualZ,
                 );
                 if (elev !== null) {
-                    applyInitTargetY(elev);
+                    camera.target.y = elev;
+                    adjustRadiusForCamY(elev);
                     unsub();
                     scene.onAfterRenderObservable.addOnce(() => {
                         canvas.style.visibility = "";
+                        snapTargetYToMesh();
                     });
                 }
             });
