@@ -500,6 +500,34 @@ export class DefaultScene implements CreateSceneClass {
             void refreshTerrain();
         };
 
+        /**
+         * retargetAtCameraPosition 後の camera.target 変位を
+         * currentLat/currentLon に反映する軽量同期。
+         * commitPanOffset と異なり refreshTerrain を呼ばず、
+         * camera.target.x/z も書き換えない (#225)。
+         */
+        const syncLatLonToTarget = (): void => {
+            const offsetX = camera.target.x - gridResidualX;
+            const offsetZ = camera.target.z - gridResidualZ;
+            if (Math.abs(offsetX) < 0.01 && Math.abs(offsetZ) < 0.01) return;
+
+            const metersPerDegreeLon =
+                METERS_PER_DEGREE_LAT *
+                Math.cos((currentLat * Math.PI) / 180);
+            currentLat = clamp(
+                currentLat + offsetZ / METERS_PER_DEGREE_LAT,
+                JAPAN_BOUNDS.minLat,
+                JAPAN_BOUNDS.maxLat,
+            );
+            currentLon = clamp(
+                currentLon + offsetX / metersPerDegreeLon,
+                JAPAN_BOUNDS.minLon,
+                JAPAN_BOUNDS.maxLon,
+            );
+            gridResidualX = camera.target.x;
+            gridResidualZ = camera.target.z;
+        };
+
         // ---------- レイ-平面交差ユーティリティ ----------
         // Unproject 用のスクラッチバッファ。pointermove のホットパスで毎フレーム
         // `Matrix.Identity()` / `new Vector3` を確保すると GC 圧が増えるため、
@@ -1251,6 +1279,7 @@ export class DefaultScene implements CreateSceneClass {
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            syncLatLonToTarget();
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1298,6 +1327,7 @@ export class DefaultScene implements CreateSceneClass {
             }
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            syncLatLonToTarget();
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -1496,6 +1526,7 @@ export class DefaultScene implements CreateSceneClass {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                     retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+                    syncLatLonToTarget();
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -1524,6 +1555,7 @@ export class DefaultScene implements CreateSceneClass {
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
                         retargetAtCameraPosition(camX, newCamY, camZ);
+                        syncLatLonToTarget();
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
@@ -1531,6 +1563,7 @@ export class DefaultScene implements CreateSceneClass {
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
                         retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+                        syncLatLonToTarget();
                     }
                 }
             },
@@ -1609,6 +1642,7 @@ export class DefaultScene implements CreateSceneClass {
                 camera.target.z = centerHit.worldZ;
                 commitPanOffset();
                 retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+                syncLatLonToTarget();
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
