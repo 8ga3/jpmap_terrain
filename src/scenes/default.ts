@@ -2322,17 +2322,13 @@ export class DefaultScene implements CreateSceneClass {
         // 初回レンダ後、target.y のみメッシュ高度に揃える (#225)。
         // alpha/beta/target.x/z は維持して画面が動かないようにし、
         // radius のみ調整して camera.position.y = altitude を保つ。
-        // ドラッグ時の retargetAtCameraPosition も target.y を mesh hit Y にするため、
-        // 両者でソースが一致し radius が揃う → リロード後の水平位置ズレを防ぐ。
+        // 真下方向にレイキャストすることで、tilt によらず target 直下の地形高度を
+        // 取得する。視線方向だと tilt が大きいほど前方地形を拾い、リロード時に
+        // 水平位置がずれる原因となる (#225)。
         const snapTargetYToMesh = (): void => {
-            const sinB = Math.sin(camera.beta);
-            const cosB = Math.cos(camera.beta);
-            const dirX = -sinB * Math.cos(camera.alpha);
-            const dirY = -cosB;
-            const dirZ = -sinB * Math.sin(camera.alpha);
             const ray = new Ray(
-                new Vector3(camera.position.x, camera.position.y, camera.position.z),
-                new Vector3(dirX, dirY, dirZ),
+                new Vector3(camera.target.x, camera.position.y, camera.target.z),
+                new Vector3(0, -1, 0),
                 CAMERA_FAR_CLIP,
             );
             const pick = scene.pickWithRay(ray, (m) =>
