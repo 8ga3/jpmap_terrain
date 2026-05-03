@@ -1218,27 +1218,7 @@ export class DefaultScene implements CreateSceneClass {
                         dragAnchor = intersectPlane(sx, sy, dragPlaneY);
                     }
                 }
-                if (currentViewMode === "2d") {
-                    retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                } else {
-                    // 3D: target.x/z はドラッグで更新済み。
-                    // setTarget() を呼ぶと rebuildAnglesAndRadius() で alpha/beta/radius が
-                    // 新 target 向けに再計算され、pointerup の commitPanOffset が target.x/z を
-                    // gridResidual にリセットしたとき不整合になる (#225)。
-                    // target.y のみ真下レイキャストで直接更新し、alpha/beta を保持する。
-                    const rayDown = new Ray(
-                        new Vector3(camera.target.x, camera.position.y, camera.target.z),
-                        new Vector3(0, -1, 0),
-                        CAMERA_FAR_CLIP,
-                    );
-                    const movePick3d = scene.pickWithRay(
-                        rayDown,
-                        (m) => m.name.startsWith("tile-ground-"),
-                    );
-                    if (movePick3d?.hit && movePick3d.pickedPoint) {
-                        camera.target.y = movePick3d.pickedPoint.y;
-                    }
-                }
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
             }
         });
 
