@@ -299,6 +299,13 @@ export interface DefaultSceneInitOptions {
      */
     onViewModeChange?: (viewMode: ViewMode) => void;
     /**
+     * カメラのドラッグ操作終了時に呼ばれるコールバック (#225)。
+     *
+     * pointerup の `commitPanOffset` 後に発火する。`_notifyIfChanged` が
+     * 「変化なし」と判定して URL 更新を取りこぼすケースを救済する。
+     */
+    onCameraInteractionEnd?: () => void;
+    /**
      * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
      */
@@ -1314,6 +1321,10 @@ export class DefaultScene implements CreateSceneClass {
                     camera.target.y = pick.pickedPoint.y;
                 }
             }
+            // #225: pointerup 後の最新状態で URL を更新するため、
+            // 外部に「インタラクション終了」を通知する。`_notifyIfChanged`
+            // が変化なしと判定するケースを救済する目的。
+            options?.onCameraInteractionEnd?.();
         });
 
         const resetPointerState = (e?: PointerEvent): void => {

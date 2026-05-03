@@ -153,7 +153,7 @@ const start = async (): Promise<void> => {
     const viewer = await JpmapTerrain.create(mount, opts);
 
     // URL 同期: カメラ変化のたびに `/@lat,lon,altitude,azimuth,tilt` 形式へ反映する（既存クエリは保持）。
-    const urlUpdater = createUrlUpdater(200);
+    const urlUpdater = createUrlUpdater(500);
     viewer.onCameraChange((event) =>
         urlUpdater({
             lat: event.lat,

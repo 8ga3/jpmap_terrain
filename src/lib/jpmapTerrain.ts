@@ -206,6 +206,11 @@ export class JpmapTerrain {
                 onMapTypeChange: (next) => this._handleMapTypeChange(next),
                 viewMode: this._viewMode,
                 onViewModeChange: (next) => this._handleViewModeChange(next),
+                onCameraInteractionEnd: () => {
+                    // #225: ドラッグリリース時に最新カメラ状態で URL 更新を保証する。
+                    // `_notifyIfChanged` の epsilon 比較で取りこぼさないよう force=true。
+                    this._notifyIfChanged(true);
+                },
                 onReady: (controller) => {
                     this._controller = controller;
                     // T6: 初期表示状態を controller に反映する
@@ -876,7 +881,7 @@ export class JpmapTerrain {
      * （次回登録時には `_lastCameraSnapshot === null` から再開するため、
      * 「登録直後に発火しない」仕様を引き続き満たす。）
      */
-    private _notifyIfChanged(): void {
+    private _notifyIfChanged(force: boolean = false): void {
         if (this._disposed) return;
         if (this._cameraListeners.length === 0) return;
         const snapshot: CameraChangeEvent = {
@@ -890,17 +895,18 @@ export class JpmapTerrain {
         const prev = this._lastCameraSnapshot;
         if (prev === null) {
             this._lastCameraSnapshot = snapshot;
-            return;
+            if (!force) return;
+        } else if (!force) {
+            const eps = 1e-9;
+            const changed =
+                Math.abs(snapshot.lat - prev.lat) > eps ||
+                Math.abs(snapshot.lon - prev.lon) > eps ||
+                Math.abs(snapshot.altitude - prev.altitude) > eps ||
+                Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
+                Math.abs(snapshot.tilt - prev.tilt) > eps ||
+                snapshot.viewMode !== prev.viewMode;
+            if (!changed) return;
         }
-        const eps = 1e-9;
-        const changed =
-            Math.abs(snapshot.lat - prev.lat) > eps ||
-            Math.abs(snapshot.lon - prev.lon) > eps ||
-            Math.abs(snapshot.altitude - prev.altitude) > eps ||
-            Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
-            Math.abs(snapshot.tilt - prev.tilt) > eps ||
-            snapshot.viewMode !== prev.viewMode;
-        if (!changed) return;
         this._lastCameraSnapshot = snapshot;
         // iterate 中の add/remove 安全のためスナップショットを取って iterate
         const listeners = this._cameraListeners.slice();

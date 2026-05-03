@@ -71,3 +71,24 @@ showToast("テストメッセージ")
 - 変更影響: 画面/API/ドキュメントの影響が明示されているか
 
 詳細は `AGENTS.md` を参照してください。
+
+## 既知の問題・ワークアラウンド
+
+### URL 更新 debounce 遅延 (Issue #225)
+
+**現象**: ドラッグ後にリロードするとカメラ位置がずれる。
+
+**原因（推定）**: Babylon.js の `ArcRotateCamera` はドラッグ終了直後（pointerup）の時点では
+内部状態の確定が完了していない可能性がある。`onBeforeRenderObservable` を通じて取得する
+`camera.position` / `camera.target` が、直後のフレームで古い値を返すケースが確認されている。
+
+**ワークアラウンド**:
+- `src/demos/viewer/index.ts` の `createUrlUpdater` の debounce を **500ms** に設定している。
+  400ms 以下では再現することが確認されている。
+- pointerup 時に `onCameraInteractionEnd` コールバックで `_notifyIfChanged(force=true)` を
+  呼び出すことで、epsilon 比較による取りこぼしを補完している（`jpmapTerrain.ts`）。
+
+**今後の対応**:
+- Babylon.js 側のバグである可能性がある。バージョンアップ後に 500ms 未満で動作するか検証を推奨する。
+- `timelapse` などの他のデモで同様の問題が発生した場合は debounce を揃えて調整する。
+
