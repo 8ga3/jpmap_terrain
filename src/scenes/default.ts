@@ -674,38 +674,28 @@ export class DefaultScene implements CreateSceneClass {
                 return;
             }
 
-            const sinB = Math.sin(camera.beta);
-            const cosB = Math.cos(camera.beta);
-            // カメラ → ターゲット方向（球面座標から導出した単位ベクトル）
-            const dirX = -sinB * Math.cos(camera.alpha);
-            const dirY = -cosB;
-            const dirZ = -sinB * Math.sin(camera.alpha);
-
-            const origin = new Vector3(camX, camY, camZ);
-            const direction = new Vector3(dirX, dirY, dirZ);
-            const ray = new Ray(origin, direction, CAMERA_FAR_CLIP);
-            const pick = scene.pickWithRay(ray, (m) => m.name.startsWith("tile-ground-"));
-
-            let targetX: number;
-            let targetY: number;
-            let targetZ: number;
-            if (pick?.hit && pick.pickedPoint) {
-                targetX = pick.pickedPoint.x;
-                targetY = pick.pickedPoint.y;
-                targetZ = pick.pickedPoint.z;
-            } else if (Math.abs(dirY) > 1e-6) {
-                // フォールバック: y=0 平面との交点
-                const t = (0 - camY) / dirY;
-                if (t <= 0) return;
-                targetX = camX + dirX * t;
-                targetY = 0;
-                targetZ = camZ + dirZ * t;
-            } else {
-                return;
-            }
+            // 3D モード: 2D と同様に target.x/z は commitPanOffset が設定した
+            // gridResidual 値を保持し、target.y（地形高度）のみ更新する。
+            // 視線方向のメッシュヒット点を target.x/z に使うと derivedLat/Lon が
+            // 傾き分だけ前方にずれ、リロード時に前進するバグが発生する (#225)。
+            const anchorX3d = camera.target.x;
+            const anchorZ3d = camera.target.z;
+            const rayDown3d = new Ray(
+                new Vector3(anchorX3d, camY, anchorZ3d),
+                new Vector3(0, -1, 0),
+                CAMERA_FAR_CLIP,
+            );
+            const pick3d = scene.pickWithRay(
+                rayDown3d,
+                (m) => m.name.startsWith("tile-ground-"),
+            );
+            const anchorY3d =
+                pick3d?.hit && pick3d.pickedPoint
+                    ? pick3d.pickedPoint.y
+                    : camera.target.y;
 
             camera.setPosition(new Vector3(camX, camY, camZ));
-            camera.setTarget(new Vector3(targetX, targetY, targetZ));
+            camera.setTarget(new Vector3(anchorX3d, anchorY3d, anchorZ3d));
         };
 
         // ---------- カスタムマウスハンドラ ----------
