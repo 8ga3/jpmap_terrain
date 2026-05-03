@@ -25,6 +25,7 @@ import {
     fillInvalidPixels,
     isAllNaN,
     isInvalidElev,
+    NO_DATA_SENTINEL,
 } from "./gsiTile";
 import { stitchTileEdges, stitchTileEdgesCrossLevel } from "./tileStitching";
 import type { CoarseEdgeNeighbor } from "./tileStitching";
@@ -650,7 +651,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const { stitched, hasSeed } = stitchAndCheckSeed(elevation, coord, crossLevel);
 
         // NaN を埋める（BFS）
-        fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
+        // wasAllNaN でシードなしの場合、フロンティアが空で BFS は進まず
+        // 全ピクセル走査だけが発生する（256×256 で無駄）。
+        // この場合は fillInvalidPixels をスキップし sentinel で直接埋める。
+        const isAllNanNoSeed = !!cacheEntryPre?.wasAllNaN && !hasSeed;
+        if (!isAllNanNoSeed) {
+            fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
+        } else {
+            for (let i = 0; i < stitched.length; i++) {
+                if (isInvalidElev(stitched[i])) stitched[i] = NO_DATA_SENTINEL;
+            }
+        }
 
         // メッシュに適用:
         // - シードあり: 今回のステッチ結果を使用
