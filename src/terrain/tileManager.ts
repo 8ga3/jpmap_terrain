@@ -753,13 +753,19 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
         if (allNanTiles.length === 0) return;
 
-        // Step 1: wasAllNaN タイルをリセット（前回の rescue 値も含めて毎回やり直す）
+        // Step 1: まだ解決していないタイル（未解決 or レスキュー経由）のみリセット。
+        // BFS 補間で解決済みのタイルはスキップし、再計算コストを抑える。
         for (const [key] of allNanTiles) {
             const entry = cache.get(key);
-            if (entry) { entry.filled = undefined; entry.unblocked = false; }
+            if (entry && (!entry.unblocked || entry.isRescue)) {
+                entry.filled = undefined;
+                entry.unblocked = false;
+                entry.isRescue = false;
+            }
         }
 
         // Step 2: 反復ステッチ + NaN 埋め
+        const resolvedInThisCall = new Set<TileKey>();
         for (let iter = 0; iter < ALL_NAN_REFINE_MAX_ITER; iter++) {
             let resolvedThisIter = 0;
             let remainingCount = 0;
@@ -792,16 +798,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     entry.unblocked = true;
                     resolvedThisIter++;
                     remainingCount--;
+                    resolvedInThisCall.add(key);
                 }
             }
 
             if (remainingCount === 0 || resolvedThisIter === 0) break;
         }
 
-        // Step 3: メッシュ適用（解決済みタイルのみ）
+        // Step 3: メッシュ適用（今回新たに解決したタイルのみ）
         let progressed = false;
-        for (const [, tile] of allNanTiles) {
-            const entry = cache.get(toTileKey(tile.coord));
+        for (const [key, tile] of allNanTiles) {
+            if (!resolvedInThisCall.has(key)) continue;
+            const entry = cache.get(key);
             if (!entry?.filled) continue;
             applyElevationDataToMesh(tile.mesh, entry.filled);
             progressed = true;
@@ -832,6 +840,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     const filled = new Float32Array(TILE_SIZE * TILE_SIZE).fill(fallbackElev);
                     entry.filled = filled;
                     entry.unblocked = true;
+                    entry.isRescue = true;
                     applyElevationDataToMesh(tile.mesh, filled);
                 }
                 progressed = true;

@@ -14,6 +14,11 @@ export interface TileCacheEntry {
      * wasAllNaN かつ unblocked=false なら隣接データとして利用しない。
      */
     unblocked?: boolean;
+    /**
+     * refineAllNaNTiles のレスキューパス（代表標高による平坦化）で filled を設定した場合に true。
+     * 次の refineAllNaNTiles 呼び出しで BFS 補間による上書きを試みるためリセット対象とする。
+     */
+    isRescue?: boolean;
 }
 
 export interface TileCache {
