@@ -646,6 +646,34 @@ export class DefaultScene implements CreateSceneClass {
             camY: number,
             camZ: number
         ): void => {
+            // 2D モード: カメラはターゲット直上 (beta ≈ 0)。
+            // stale な camera.position.x/z ではなく camera.target.x/z を基準にすることで、
+            // commitPanOffset 後に target.x/z が新しい gridResidual にリセットされた後でも
+            // x/z を上書きせず、リロード時の位置ずれを防ぐ (#225)。
+            if (currentViewMode === "2d") {
+                const anchorX = camera.target.x;
+                const anchorZ = camera.target.z;
+                const prevAlpha = camera.alpha;
+                const rayDown = new Ray(
+                    new Vector3(anchorX, camY, anchorZ),
+                    new Vector3(0, -1, 0),
+                    CAMERA_FAR_CLIP,
+                );
+                const pick2d = scene.pickWithRay(
+                    rayDown,
+                    (m) => m.name.startsWith("tile-ground-"),
+                );
+                const anchorY =
+                    pick2d?.hit && pick2d.pickedPoint
+                        ? pick2d.pickedPoint.y
+                        : camera.target.y;
+                camera.setPosition(new Vector3(anchorX, camY, anchorZ));
+                camera.setTarget(new Vector3(anchorX, anchorY, anchorZ));
+                camera.alpha = prevAlpha;
+                camera.beta = BETA_2D;
+                return;
+            }
+
             const sinB = Math.sin(camera.beta);
             const cosB = Math.cos(camera.beta);
             // カメラ → ターゲット方向（球面座標から導出した単位ベクトル）
@@ -676,20 +704,8 @@ export class DefaultScene implements CreateSceneClass {
                 return;
             }
 
-            // 先にカメラ位置を反映してから setTarget で alpha/beta/radius を再計算させる。
-            // ただし 2D モードではカメラがターゲット直上（beta=BETA_2D で sin≈0）にあるため、
-            // setTarget の atan2 ベースの alpha 再計算が浮動小数点誤差で不安定になり、
-            // 画面が意図せず回転してしまう。2D 中はユーザーの alpha と固定値の beta を保護する。
-            if (currentViewMode === "2d") {
-                const prevAlpha = camera.alpha;
-                camera.setPosition(new Vector3(camX, camY, camZ));
-                camera.setTarget(new Vector3(targetX, targetY, targetZ));
-                camera.alpha = prevAlpha;
-                camera.beta = BETA_2D;
-            } else {
-                camera.setPosition(new Vector3(camX, camY, camZ));
-                camera.setTarget(new Vector3(targetX, targetY, targetZ));
-            }
+            camera.setPosition(new Vector3(camX, camY, camZ));
+            camera.setTarget(new Vector3(targetX, targetY, targetZ));
         };
 
         // ---------- カスタムマウスハンドラ ----------
@@ -1757,9 +1773,11 @@ export class DefaultScene implements CreateSceneClass {
             if (w <= 0 || h <= 0) return;
             const aspect = w / h;
             // perspective でターゲット平面に映る範囲と一致させるため、
-            // 半画角 fov/2 と radius から halfH を導出する。
+            // 半画角 fov/2 と絶対高度（target.y + radius = camera.position.y）から halfH を導出する。
+            // radius だけを使うと地形高さが変わると radius が変動してズームが不安定になるため、
+            // 絶対高度を使うことでドラッグ中も安定したズームを保つ (#225)。
             // 前提: camera.fovMode は既定の FOVMODE_VERTICAL_FIXED（fov は鉛直方向）。
-            const halfH = camera.radius * Math.tan(camera.fov / 2);
+            const halfH = (camera.target.y + camera.radius) * Math.tan(camera.fov / 2);
             const halfW = halfH * aspect;
             camera.orthoTop = halfH;
             camera.orthoBottom = -halfH;
