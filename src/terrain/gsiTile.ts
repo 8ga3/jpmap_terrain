@@ -32,6 +32,20 @@ export const toTileXY = (
     return { x, y };
 };
 
+/** タイル中心の緯度経度を返す（Web メルカトル逆変換） */
+export const tileCenterLatLon = (
+    x: number,
+    y: number,
+    zoom: number
+): { lat: number; lon: number } => {
+    const n = 2 ** zoom;
+    const lon = ((x + 0.5) / n) * 360 - 180;
+    const lat =
+        (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 0.5)) / n))) * 180) /
+        Math.PI;
+    return { lat, lon };
+};
+
 /** タイル1辺の実距離[m] */
 export const tileEdgeMeters = (lat: number, zoom: number): number => {
     const latClamped = clamp(lat, -85.05112878, 85.05112878);
