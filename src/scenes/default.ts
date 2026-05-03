@@ -696,19 +696,25 @@ export class DefaultScene implements CreateSceneClass {
          * commitPanOffset 後にカメラ注視点の高さ (target.y) をタイルキャッシュの標高に
          * 合わせる (#225 位置ずれ修正)。
          *
-         * radius / alpha / beta / camera.position は変更しない。リロード時は
-         * URL 由来の radius と initElev (= queryElevationAtWorld) から target / camera
-         * を再構成するため、pre-reload 時にも target.y を同じクエリ結果に揃えて
-         * おけば camera 世界座標がリロード前後で一致する。
-         *
-         * 旧実装で setPosition を呼んでいたが、レイキャスト hit 高度との微小差で
-         * radius が再計算され altitude が累積的に増加する問題があったため除去。
+         * target.y 変更で camera.position.y (= URL altitude) がずれないよう
+         * radius を補正する。これにより
+         *   camY = target.y + radius * cos(beta)
+         * が一定に保たれ、ドラッグ・ホイール操作で altitude が動かない。
          */
         const syncTargetElevation = (): void => {
             const elev = tileManager.queryElevationAtWorld(gridResidualX, gridResidualZ);
-            if (elev !== null) {
+            if (elev === null) return;
+            const cosB = Math.cos(camera.beta);
+            if (Math.abs(cosB) < 1e-6) {
                 camera.target.y = elev;
+                return;
             }
+            const savedCamY = camera.target.y + camera.radius * cosB;
+            camera.target.y = elev;
+            const newRadius = (savedCamY - elev) / cosB;
+            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+            camera.radius = clamp(newRadius, lower, upper);
         };
 
         // ---------- カスタムマウスハンドラ ----------
