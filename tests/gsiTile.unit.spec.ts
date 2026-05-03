@@ -411,7 +411,7 @@ describe("loadElevationTile", () => {
         const allNanImageData = makeImageDataResult(128, 0, 0);
         setupLoadImageMocks(allNanImageData);
 
-        const fetchMock = jest.fn(() =>
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
             Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
         );
         globalThis.fetch = fetchMock;
@@ -434,7 +434,7 @@ describe("loadElevationTile", () => {
         setupLoadImageMocks(validImageData);
 
         let callCount = 0;
-        const fetchMock = jest.fn(() => {
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
             callCount++;
             if (callCount === 1) {
                 // dem5a: HTTP 失敗
