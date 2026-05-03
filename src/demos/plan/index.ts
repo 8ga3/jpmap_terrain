@@ -145,7 +145,7 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
                 style: {
                     pointColor: "#2196f3",
                     lineColor: "#2196f3",
-                    pointDiameter: 14,
+                    pointDiameter: 12,
                     lineWidth: 2,
                     labelFontSize: 12,
                     wallColor: "#2196f3",
