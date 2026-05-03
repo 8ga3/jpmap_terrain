@@ -663,14 +663,8 @@ export class DefaultScene implements CreateSceneClass {
             let targetZ: number;
             if (pick?.hit && pick.pickedPoint) {
                 targetX = pick.pickedPoint.x;
+                targetY = pick.pickedPoint.y;
                 targetZ = pick.pickedPoint.z;
-                // target.y は標高ピクセル補間 (queryElevationAtWorld) から取得する (#225)。
-                // リロード時の reconstruction も同じソースを使うため、両者の target.y が
-                // 一致し、radius_pre = radius_post となって水平位置がずれない。
-                // メッシュレイキャストヒット (pickedPoint.y) は表示用補間値で、標高ピクセル
-                // 補間とは数 cm〜数 m 差が出るため、ここで queryElevation 側に揃える。
-                const elev = tileManager.queryElevationAtWorld(targetX, targetZ);
-                targetY = elev !== null ? elev : pick.pickedPoint.y;
             } else if (Math.abs(dirY) > 1e-6) {
                 // フォールバック: y=0 平面との交点
                 const t = (0 - camY) / dirY;
@@ -2294,6 +2288,15 @@ export class DefaultScene implements CreateSceneClass {
             adjustRadiusForCamY(initElev);
             scene.onAfterRenderObservable.addOnce(() => {
                 canvas.style.visibility = "";
+                // メッシュレイキャストで target.y を確定する (#225)。
+                // queryElevationAtWorld (標高ピクセル) とメッシュ交点高度は
+                // 微差があるため、ドラッグ時と同じソース (メッシュ) に揃えて
+                // radius を一致させ、リロード後の水平位置ズレを防ぐ。
+                retargetAtCameraPosition(
+                    camera.position.x,
+                    camera.position.y,
+                    camera.position.z,
+                );
             });
         } else {
             const unsub = subscribeTerrainUpdated(() => {
@@ -2307,6 +2310,12 @@ export class DefaultScene implements CreateSceneClass {
                     unsub();
                     scene.onAfterRenderObservable.addOnce(() => {
                         canvas.style.visibility = "";
+                        // メッシュレイキャストで target.y を確定する (#225)
+                        retargetAtCameraPosition(
+                            camera.position.x,
+                            camera.position.y,
+                            camera.position.z,
+                        );
                     });
                 }
             });
