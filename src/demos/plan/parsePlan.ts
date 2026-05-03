@@ -120,11 +120,13 @@ export const WAYPOINT_COMMANDS = new Set([
  * Mission item から座標 (lat, lon, alt) を抽出する。
  * QGC v4+ は `coordinate` フィールド、v3 以前は `params[4..6]` にフォールバック。
  *
- * lat=0 かつ lon=0 はQGCにおける「ホームポジションで実行」を意味するため null を返す。
- * 呼び出し側は null の場合そのアイテムをスキップする。
+ * lat=0 かつ lon=0 はQGCにおける「ホームポジションで実行」を意味する。
+ * homePosition が指定されていればホーム座標に置換して返す。
+ * homePosition が null の場合は従来通り null を返しスキップする。
  */
 const extractCoordinate = (
     item: QgcMissionItem,
+    homePosition: ParsedPlan["homePosition"],
 ): { lat: number; lon: number; alt: number } | null => {
     let lat: number | null = null;
     let lon: number | null = null;
@@ -143,7 +145,10 @@ const extractCoordinate = (
 
     if (lat === null || lon === null || alt === null) return null;
     // lat=0 かつ lon=0 はホームポジション指定（QGC 仕様）
-    if (lat === 0 && lon === 0) return null;
+    if (lat === 0 && lon === 0) {
+        if (!homePosition) return null;
+        return { lat: homePosition.lat, lon: homePosition.lon, alt };
+    }
     return { lat, lon, alt };
 };
 
@@ -177,7 +182,7 @@ export const parsePlan = (json: unknown): ParsedPlan => {
     let waypointNumber = 0;
     for (const item of plan.mission.items) {
         if (!WAYPOINT_COMMANDS.has(item.command)) continue;
-        const coord = extractCoordinate(item);
+        const coord = extractCoordinate(item, homePosition);
         if (!coord) continue;
 
         waypointNumber++;
