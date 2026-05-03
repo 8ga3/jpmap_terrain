@@ -808,7 +808,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
 
         // Step 4: レスキューパス（反復で到達できなかったタイルを代表標高で平坦化）
-        const stillBlocked: Array<[string, ActiveTile]> = [];
+        const stillBlocked: Array<[TileKey, ActiveTile]> = [];
         for (const [key, tile] of allNanTiles) {
             const entry = cache.get(key);
             if (entry?.wasAllNaN && !entry.unblocked) stillBlocked.push([key, tile]);
