@@ -147,7 +147,7 @@ const extractCoordinate = (
     // lat=0 かつ lon=0 はホームポジション指定（QGC 仕様）
     if (lat === 0 && lon === 0) {
         if (!homePosition) return null;
-        return { lat: homePosition.lat, lon: homePosition.lon, alt: 0 };
+        return { lat: homePosition.lat, lon: homePosition.lon, alt };
     }
     return { lat, lon, alt };
 };

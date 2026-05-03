@@ -14,6 +14,7 @@ import {
     formatWaypointLabel,
     formatWaypointEdgeLabel,
     formatRallyPointLabel,
+    formatHomePositionLabel,
     haversineDistanceMeters,
     formatHorizontalDistance,
     formatAltitudeDelta,
@@ -184,7 +185,7 @@ describe("parsePlan", () => {
         expect(result.waypoints[0].number).toBe(1);
         expect(result.waypoints[0].lat).toBe(35.0);
         expect(result.waypoints[0].lon).toBe(139.0);
-        expect(result.waypoints[0].altitude).toBe(100); // 0 + 100(home) = 地表
+        expect(result.waypoints[0].altitude).toBe(150); // 50 + 100(home)
         expect(result.waypoints[0].command).toBe(22);
         expect(result.waypoints[1].number).toBe(2);
         expect(result.waypoints[1].lat).toBe(35.5);
@@ -287,8 +288,8 @@ describe("parsePlan", () => {
         expect(result.waypoints[0].command).toBe(22); // NAV_TAKEOFF
         expect(result.waypoints[0].lat).toBeCloseTo(35.79210805); // ホーム座標
         expect(result.waypoints[0].lon).toBeCloseTo(139.04890088); // ホーム座標
-        // 高度はホーム地表: 0 + 522
-        expect(result.waypoints[0].altitude).toBe(522);
+        // 高度は NAV_TAKEOFF の相対高度: 50 + 522
+        expect(result.waypoints[0].altitude).toBe(572);
         // 2番目は NAV_WAYPOINT
         expect(result.waypoints[1].number).toBe(2);
         expect(result.waypoints[1].command).toBe(16);
@@ -350,6 +351,14 @@ describe("formatRallyPointLabel", () => {
     it("R + 番号を返す", () => {
         expect(formatRallyPointLabel(1)).toBe("R1");
         expect(formatRallyPointLabel(5)).toBe("R5");
+    });
+});
+
+describe("formatHomePositionLabel", () => {
+    it("H + 高度を返す", () => {
+        expect(formatHomePositionLabel(522)).toBe("H\n522 m");
+        expect(formatHomePositionLabel(100.4)).toBe("H\n100 m");
+        expect(formatHomePositionLabel(0)).toBe("H\n0 m");
     });
 });
 

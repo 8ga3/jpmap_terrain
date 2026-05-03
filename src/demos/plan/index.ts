@@ -25,6 +25,7 @@ import {
     formatWaypointLabel,
     formatWaypointEdgeLabel,
     formatRallyPointLabel,
+    formatHomePositionLabel,
 } from "./utils";
 
 const DEMO_MOUNT_ID = "root";
@@ -36,12 +37,14 @@ const BTN_RALLY_ID = "btn-rally";
 
 // 描画 ID プレフィックス
 const ID_WAYPOINTS = "plan-waypoints";
+const ID_HOME = "plan-home";
 const ID_GEOFENCE_POLYGON_PREFIX = "plan-geofence-poly-";
 const ID_GEOFENCE_CIRCLE_PREFIX = "plan-geofence-circle-";
 const ID_RALLY_PREFIX = "plan-rally-";
 
 /** 種別ごとの描画 ID セット */
 interface PlanIds {
+    homeId: string | null;
     waypointIds: string[];
     geofencePolyIds: string[];
     geofenceCircleIds: string[];
@@ -49,6 +52,7 @@ interface PlanIds {
 }
 
 const EMPTY_PLAN_IDS: PlanIds = {
+    homeId: null,
     waypointIds: [],
     geofencePolyIds: [],
     geofenceCircleIds: [],
@@ -67,7 +71,12 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
 
 /** 既存の Plan 描画をすべて削除する */
 const clearPlanDisplay = (viewer: JpmapTerrain, ids: PlanIds): void => {
-    const allPolyIds = [...ids.waypointIds, ...ids.geofencePolyIds, ...ids.rallyIds];
+    const allPolyIds = [
+        ...(ids.homeId ? [ids.homeId] : []),
+        ...ids.waypointIds,
+        ...ids.geofencePolyIds,
+        ...ids.rallyIds,
+    ];
     for (const id of allPolyIds) {
         if (viewer.getPolygon(id)) viewer.removePolygon(id);
     }
@@ -79,6 +88,7 @@ const clearPlanDisplay = (viewer: JpmapTerrain, ids: PlanIds): void => {
 /** Plan をマップに描画し、種別ごとの ID を返す */
 const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
     const result: PlanIds = {
+        homeId: null,
         waypointIds: [],
         geofencePolyIds: [],
         geofenceCircleIds: [],
@@ -86,6 +96,28 @@ const renderPlan = (viewer: JpmapTerrain, plan: ParsedPlan): PlanIds => {
     };
 
     try {
+        // ホームポジション
+        if (plan.homePosition) {
+            const hp = plan.homePosition;
+            const opts: PolygonOptions = {
+                points: [{ lat: hp.lat, lon: hp.lon, altitude: hp.altitude }],
+                altitudeMode: "absolute",
+                closed: false,
+                labels: [formatHomePositionLabel(hp.altitude)],
+                style: {
+                    pointColor: "#4caf50",
+                    lineColor: "#4caf50",
+                    pointDiameter: 16,
+                    lineWidth: 2,
+                    labelFontSize: 12,
+                    wallColor: "#4caf50",
+                    wallOpacity: 0.15,
+                },
+            };
+            viewer.addPolygon(ID_HOME, opts);
+            result.homeId = ID_HOME;
+        }
+
         // ウェイポイント（パスライン）
         if (plan.waypoints.length > 0) {
             const points = plan.waypoints.map((wp) => ({
