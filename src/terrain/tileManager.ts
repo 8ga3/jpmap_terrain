@@ -819,7 +819,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             let count = 0;
             for (const [, tile] of activeTiles) {
                 const entry = cache.get(toTileKey(tile.coord));
-                if (!entry || entry.wasAllNaN) continue;
+                if (!entry || (entry.wasAllNaN && !entry.unblocked)) continue;
                 const data = entry.filled ?? entry.elevation;
                 const v = data[(TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1)];
                 if (!isInvalidElev(v)) { sum += v; count++; }
