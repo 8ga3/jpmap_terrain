@@ -693,21 +693,21 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         /**
-         * commitPanOffset 後にカメラ注視点の高さをタイルキャッシュの標高に合わせ、
-         * カメラ世界座標を savedCamPos に保持したまま camera.target.y / alpha / beta /
-         * radius を再計算する (#225 位置ずれ修正)。
+         * commitPanOffset 後にカメラ注視点の高さ (target.y) をタイルキャッシュの標高に
+         * 合わせる (#225 位置ずれ修正)。
          *
-         * retargetAtCameraPosition（レイキャスト）の代わりに tileManager の標高
-         * クエリを使うことで、queryElevationAtWorld / initElev の双方が同一のデータ
-         * ソースから取得され、リロード前後の camera.target.y が一致する。
+         * radius / alpha / beta / camera.position は変更しない。リロード時は
+         * URL 由来の radius と initElev (= queryElevationAtWorld) から target / camera
+         * を再構成するため、pre-reload 時にも target.y を同じクエリ結果に揃えて
+         * おけば camera 世界座標がリロード前後で一致する。
+         *
+         * 旧実装で setPosition を呼んでいたが、レイキャスト hit 高度との微小差で
+         * radius が再計算され altitude が累積的に増加する問題があったため除去。
          */
-        const syncTargetElevation = (savedCamPos: Vector3): void => {
+        const syncTargetElevation = (): void => {
             const elev = tileManager.queryElevationAtWorld(gridResidualX, gridResidualZ);
             if (elev !== null) {
                 camera.target.y = elev;
-                camera.setPosition(savedCamPos);
-            } else {
-                retargetAtCameraPosition(savedCamPos.x, savedCamPos.y, savedCamPos.z);
             }
         };
 
@@ -1298,7 +1298,7 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
-            syncTargetElevation(camera.position.clone());
+            syncTargetElevation();
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1345,7 +1345,7 @@ export class DefaultScene implements CreateSceneClass {
                 }
             }
             commitPanOffset();
-            syncTargetElevation(camera.position.clone());
+            syncTargetElevation();
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -1543,7 +1543,7 @@ export class DefaultScene implements CreateSceneClass {
                 if (hit && isPickNearTarget(hit)) {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
-                    syncTargetElevation(camera.position.clone());
+                    syncTargetElevation();
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -1571,14 +1571,14 @@ export class DefaultScene implements CreateSceneClass {
                         // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
-                        syncTargetElevation(new Vector3(camX, newCamY, camZ));
+                        syncTargetElevation();
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
                         if (zoomIn && camera.radius <= effectiveLower1) return;
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
-                        syncTargetElevation(camera.position.clone());
+                        syncTargetElevation();
                     }
                 }
             },
@@ -1656,7 +1656,7 @@ export class DefaultScene implements CreateSceneClass {
                 camera.target.x = centerHit.worldX;
                 camera.target.z = centerHit.worldZ;
                 commitPanOffset();
-                syncTargetElevation(camera.position.clone());
+                syncTargetElevation();
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
