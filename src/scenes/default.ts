@@ -663,8 +663,14 @@ export class DefaultScene implements CreateSceneClass {
             let targetZ: number;
             if (pick?.hit && pick.pickedPoint) {
                 targetX = pick.pickedPoint.x;
-                targetY = pick.pickedPoint.y;
                 targetZ = pick.pickedPoint.z;
+                // target.y は標高ピクセル補間 (queryElevationAtWorld) から取得する (#225)。
+                // リロード時の reconstruction も同じソースを使うため、両者の target.y が
+                // 一致し、radius_pre = radius_post となって水平位置がずれない。
+                // メッシュレイキャストヒット (pickedPoint.y) は表示用補間値で、標高ピクセル
+                // 補間とは数 cm〜数 m 差が出るため、ここで queryElevation 側に揃える。
+                const elev = tileManager.queryElevationAtWorld(targetX, targetZ);
+                targetY = elev !== null ? elev : pick.pickedPoint.y;
             } else if (Math.abs(dirY) > 1e-6) {
                 // フォールバック: y=0 平面との交点
                 const t = (0 - camY) / dirY;
@@ -2097,22 +2103,11 @@ export class DefaultScene implements CreateSceneClass {
             getLat: derivedLat,
             getLon: derivedLon,
             getAltitude: () => {
-                // URL に書く altitude をリロード時の reconstruction と一致させる (#225)。
-                // pointerup の retargetAtCameraPosition は target.y にメッシュレイキャスト
-                // ヒット高度をセットするが、リロード時の target.y は queryElevationAtWorld
-                // (標高ピクセル補間) を使う。両者は同一地点でも僅かに値が異なるため、
-                // camera.position.y をそのまま URL に書くと radius_pre ≠ radius_post となり
-                // 水平位置がずれる。
-                // 「リロード時に再構成される target.y (= queryElevation)」基準で altitude
-                // を計算しておけば、radius_pre = radius_post となり水平位置が完全に一致する。
-                const cosB = Math.cos(camera.beta);
-                if (Math.abs(cosB) < 1e-6) return camera.position.y;
-                const elev = tileManager.queryElevationAtWorld(
-                    camera.target.x,
-                    camera.target.z,
-                );
-                if (elev === null) return camera.position.y;
-                return elev + camera.radius * cosB;
+                // altitude は Y=0 からの絶対高度 (= camera.position.y) (#225)。
+                // ドラッグ移動でカメラ Y が変わらない限り URL の altitude も変動しない。
+                // リロード時の水平位置一致は retargetAtCameraPosition で target.y を
+                // queryElevationAtWorld 由来に揃えることで保証する。
+                return camera.position.y;
             },
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
             getTilt: () =>
