@@ -226,6 +226,8 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     const setViewModeCalls: Array<"3d" | "2d"> = [];
     // T7: controller.dispose の呼び出し回数も検証する。
     let controllerDisposeCount = 0;
+    // #225: onCameraInteractionEnd コールバック参照（テストから __triggerCameraInteractionEnd で疑似発火）。
+    let latestOnCameraInteractionEnd: (() => void) | null = null;
     // Issue #35: setSunState 呼び出し履歴を保持する。
     const sunStateCalls: Array<{ dateTime: Date | null }> = [];
     // Issue #39: setSunShadows 呼び出し履歴を保持する。
@@ -365,9 +367,12 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     onMapTypeChange?: (mapType: "standard" | "photo") => void;
                     viewMode?: "3d" | "2d";
                     onViewModeChange?: (viewMode: "3d" | "2d") => void;
+                    onCameraInteractionEnd?: () => void;
                     onReady?: (controller: unknown) => void;
                 },
             ) => {
+                // #225: pointerup 後のスナップショット無効化テスト用
+                latestOnCameraInteractionEnd = opts?.onCameraInteractionEnd ?? null;
                 // T5: コントローラのインメモリ実装をテスト用に提供する。
                 let lat = opts?.lat ?? 0;
                 let lon = opts?.lon ?? 0;
@@ -569,6 +574,9 @@ jest.unstable_mockModule("../src/scenes/default", () => {
             sunShadowsCalls.length = 0;
         },
         __triggerSceneRender: (): void => triggerSceneRender(),
+        __triggerCameraInteractionEnd: (): void => {
+            latestOnCameraInteractionEnd?.();
+        },
         __getTerrainClickListenerCount: (): number => terrainClickListeners.length,
         __triggerTerrainClick: (event: TerrainClickEventLike): void => {
             for (const listener of terrainClickListeners.slice()) {
@@ -643,6 +651,7 @@ const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
     __getSunShadowsCalls: () => boolean[];
     __resetSunShadowsCalls: () => void;
     __triggerSceneRender: () => void;
+    __triggerCameraInteractionEnd: () => void;
     __getTerrainClickListenerCount: () => number;
     __triggerTerrainClick: (event: {
         lat: number;
@@ -1427,6 +1436,55 @@ describe("JpmapTerrain (skeleton)", () => {
             viewer.dispose();
 
             // dispose 済みの scene observer は除去されているため発火しない
+            sceneMockModule.__triggerSceneRender();
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it("onCameraInteractionEnd 後、値が変化した次のフレームで発火する (#225)", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 35,
+                lon: 139,
+                altitude: 1000,
+            });
+            const listener = jest.fn();
+            viewer.onCameraChange(listener);
+            sceneMockModule.__triggerSceneRender(); // snapshot 初期化
+
+            // カメラ状態を変えてリスナーを 1 回発火させる
+            viewer.lat = 36;
+            sceneMockModule.__triggerSceneRender();
+            expect(listener).toHaveBeenCalledTimes(1);
+
+            // onCameraInteractionEnd → スナップショット無効化
+            sceneMockModule.__triggerCameraInteractionEnd();
+
+            // 無効化直後のフレームはベースライン記録のみ（発火しない）
+            sceneMockModule.__triggerSceneRender();
+            expect(listener).toHaveBeenCalledTimes(1);
+
+            // ベースライン記録後に値を変更 → 次フレームで発火
+            viewer.lon = 140;
+            sceneMockModule.__triggerSceneRender();
+            expect(listener).toHaveBeenCalledTimes(2);
+        });
+
+        it("onCameraInteractionEnd 後、値が不変なら発火しない (#225)", async () => {
+            const viewer = await create(createMountElement(), {
+                lat: 35,
+                lon: 139,
+                altitude: 1000,
+            });
+            const listener = jest.fn();
+            viewer.onCameraChange(listener);
+            sceneMockModule.__triggerSceneRender(); // snapshot 初期化
+
+            // onCameraInteractionEnd → スナップショット無効化
+            sceneMockModule.__triggerCameraInteractionEnd();
+
+            // 値が変わっていないので何フレーム回しても発火しない
+            sceneMockModule.__triggerSceneRender(); // ベースライン記録
+            sceneMockModule.__triggerSceneRender(); // 比較 → 不変
             sceneMockModule.__triggerSceneRender();
 
             expect(listener).not.toHaveBeenCalled();

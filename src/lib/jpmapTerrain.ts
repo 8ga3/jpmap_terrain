@@ -207,9 +207,11 @@ export class JpmapTerrain {
                 viewMode: this._viewMode,
                 onViewModeChange: (next) => this._handleViewModeChange(next),
                 onCameraInteractionEnd: () => {
-                    // #225: ドラッグリリース時に最新カメラ状態で URL 更新を保証する。
-                    // `_notifyIfChanged` の epsilon 比較で取りこぼさないよう force=true。
-                    this._notifyIfChanged(true);
+                    // #225: ドラッグリリース時にスナップショットを無効化し、
+                    // 次フレームで新しいベースラインを取得させる。
+                    // Babylon.js の内部状態確定後に差分が検知されれば
+                    // urlUpdater の debounce タイマーがリセットされる。
+                    this._invalidateCameraSnapshot();
                 },
                 onReady: (controller) => {
                     this._controller = controller;
@@ -881,7 +883,7 @@ export class JpmapTerrain {
      * （次回登録時には `_lastCameraSnapshot === null` から再開するため、
      * 「登録直後に発火しない」仕様を引き続き満たす。）
      */
-    private _notifyIfChanged(force: boolean = false): void {
+    private _notifyIfChanged(): void {
         if (this._disposed) return;
         if (this._cameraListeners.length === 0) return;
         const snapshot: CameraChangeEvent = {
@@ -895,18 +897,17 @@ export class JpmapTerrain {
         const prev = this._lastCameraSnapshot;
         if (prev === null) {
             this._lastCameraSnapshot = snapshot;
-            if (!force) return;
-        } else if (!force) {
-            const eps = 1e-9;
-            const changed =
-                Math.abs(snapshot.lat - prev.lat) > eps ||
-                Math.abs(snapshot.lon - prev.lon) > eps ||
-                Math.abs(snapshot.altitude - prev.altitude) > eps ||
-                Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
-                Math.abs(snapshot.tilt - prev.tilt) > eps ||
-                snapshot.viewMode !== prev.viewMode;
-            if (!changed) return;
+            return;
         }
+        const eps = 1e-9;
+        const changed =
+            Math.abs(snapshot.lat - prev.lat) > eps ||
+            Math.abs(snapshot.lon - prev.lon) > eps ||
+            Math.abs(snapshot.altitude - prev.altitude) > eps ||
+            Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
+            Math.abs(snapshot.tilt - prev.tilt) > eps ||
+            snapshot.viewMode !== prev.viewMode;
+        if (!changed) return;
         this._lastCameraSnapshot = snapshot;
         // iterate 中の add/remove 安全のためスナップショットを取って iterate
         const listeners = this._cameraListeners.slice();
@@ -917,6 +918,16 @@ export class JpmapTerrain {
                 console.error("[JpmapTerrain] onCameraChange listener threw:", err);
             }
         }
+    }
+
+    /**
+     * カメラスナップショットを無効化する (#225)。
+     * 次回の `_notifyIfChanged` で新しいベースラインが記録され、
+     * その次のフレームから通常の差分検知が再開される。
+     * `onCameraChange` の「値が変化したときだけ通知する」契約を破らない。
+     */
+    private _invalidateCameraSnapshot(): void {
+        this._lastCameraSnapshot = null;
     }
 
     // ---- マーカー (Issue #167) ----
