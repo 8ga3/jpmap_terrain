@@ -1328,6 +1328,11 @@ export class DefaultScene implements CreateSceneClass {
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
+            // pointerup ハンドラで既に pointerDown = false → commitPanOffset → retarget
+            // を完了している場合、releasePointerCapture から発火する lostpointercapture
+            // で重複実行しない。pointercancel 経由の場合は pointerDown が true なので
+            // retarget が必要 (#225)。
+            const needsRetarget = pointerDown;
             pointerDown = false;
             activePointerId = -1;
             dragAnchor = null;
@@ -1370,8 +1375,10 @@ export class DefaultScene implements CreateSceneClass {
                     );
                 }
             }
-            commitPanOffset();
-            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            if (needsRetarget) {
+                commitPanOffset();
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            }
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
