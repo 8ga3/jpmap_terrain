@@ -44,3 +44,11 @@ export const formatWaypointEdgeLabel = (
 export const formatRallyPointLabel = (number: number): string => {
     return `R${number}`;
 };
+
+/**
+ * ホームポジションラベル: "H" + 高度
+ */
+export const formatHomePositionLabel = (altitude: number): string => {
+    const alt = Math.round(altitude);
+    return `H\n${alt} m`;
+};
