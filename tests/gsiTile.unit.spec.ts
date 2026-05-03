@@ -4,6 +4,7 @@ import {
     JAPAN_BOUNDS,
     clamp,
     toTileXY,
+    tileCenterLatLon,
     tileEdgeMeters,
     decodeGsiElevation,
     isAllNaN,
@@ -469,5 +470,44 @@ describe("loadElevationTile", () => {
 
         // 3 レイヤー全て試行
         expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+});
+
+describe("tileCenterLatLon", () => {
+    it("zoom=0 の唯一のタイル中心は (0, 0) である", () => {
+        const { lat, lon } = tileCenterLatLon(0, 0, 0);
+        expect(lon).toBeCloseTo(0, 5);
+        expect(lat).toBeCloseTo(0, 1);
+    });
+
+    it("toTileXY で得たタイルの中心は元の座標に近い（zoom=18, 奥多摩）", () => {
+        const inputLat = 35.79210805;
+        const inputLon = 139.04890088;
+        const zoom = 18;
+        const { x, y } = toTileXY(inputLat, inputLon, zoom);
+        const { lat, lon } = tileCenterLatLon(x, y, zoom);
+
+        // タイル1辺 ≈ 124m → 中心と端の最大差 ≈ 62m ≈ 0.00056°
+        expect(Math.abs(lat - inputLat)).toBeLessThan(0.001);
+        expect(Math.abs(lon - inputLon)).toBeLessThan(0.001);
+    });
+
+    it("lon は (x+0.5)/2^zoom*360-180 の計算式と一致する", () => {
+        const zoom = 14;
+        const x = 14552;
+        const y = 6451;
+        const { lon } = tileCenterLatLon(x, y, zoom);
+        const expected = ((x + 0.5) / 2 ** zoom) * 360 - 180;
+        expect(lon).toBeCloseTo(expected, 10);
+    });
+
+    it("toTileXY との往復でタイル中心が同一タイルに属する", () => {
+        const zoom = 18;
+        const x = 232500;
+        const y = 103000;
+        const { lat, lon } = tileCenterLatLon(x, y, zoom);
+        const back = toTileXY(lat, lon, zoom);
+        expect(back.x).toBe(x);
+        expect(back.y).toBe(y);
     });
 });

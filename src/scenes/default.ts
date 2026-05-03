@@ -13,7 +13,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
-import { clamp, toTileXY, tileEdgeMeters, JAPAN_BOUNDS } from "../terrain/gsiTile";
+import { clamp, toTileXY, tileEdgeMeters, tileCenterLatLon, JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { attachResizeRefresh } from "../terrain/resizeRefresh";
 import { createTileManager } from "../terrain/tileManager";
@@ -430,13 +430,28 @@ export class DefaultScene implements CreateSceneClass {
                 JAPAN_BOUNDS.maxLon
             );
             await tileManager.setCenter(currentLat, currentLon, 0);
+
+            // センタータイルの地理的中心と currentLat/currentLon のメートル差を
+            // gridResidual に反映し、オーバーレイ座標系とタイルメッシュ配置を一致させる
+            const centerTile = toTileXY(currentLat, currentLon, MAX_ZOOM);
+            const { lat: tileCenterLat, lon: tileCenterLon } = tileCenterLatLon(
+                centerTile.x,
+                centerTile.y,
+                MAX_ZOOM
+            );
+            const metersPerDegLon =
+                METERS_PER_DEGREE_LAT *
+                Math.cos((currentLat * Math.PI) / 180);
+            gridResidualX = (currentLon - tileCenterLon) * metersPerDegLon;
+            gridResidualZ = (currentLat - tileCenterLat) * METERS_PER_DEGREE_LAT;
+            camera.target.x = gridResidualX;
+            camera.target.z = gridResidualZ;
         };
 
         // ---------- カメラターゲットオフセット → 緯度経度変換 ----------
         const commitPanOffset = (): void => {
             const tx = camera.target.x;
             const tz = camera.target.z;
-            if (tx === 0 && tz === 0) return;
 
             // 新規オフセット = 全体 - 既知のグリッド残差
             const newOffsetX = tx - gridResidualX;
