@@ -274,7 +274,6 @@ describe("parsePlan", () => {
                 items: [
                     // NAV_TAKEOFF at lat=0,lon=0 → ホーム座標に置換
                     { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.79196971850398, 139.04883949344594, 50], autoContinue: true, type: "SimpleItem" },
                     { command: 16, frame: 3, params: [0, 0, 0, null, 35.78655862746033, 139.04593844937483, 75], autoContinue: true, type: "SimpleItem" },
                     { command: 16, frame: 3, params: [0, 0, 0, null, 35.78479187671575, 139.043807961761, 90], autoContinue: true, type: "SimpleItem" },
                     { command: 16, frame: 3, params: [0, 0, 0, null, 35.78177242, 139.03606576, 60], autoContinue: true, type: "SimpleItem" },
@@ -303,8 +302,8 @@ describe("parsePlan", () => {
         // ホームポジション
         expect(result.homePosition).toEqual({ lat: 35.79210805, lon: 139.04890088, altitude: 522 });
 
-        // NAV_TAKEOFF(lat=0,lon=0) がホーム座標に置換され、合計 10 点（NAV_TAKEOFF x1 + NAV_WAYPOINT x8 + NAV_LAND x1）
-        expect(result.waypoints).toHaveLength(10);
+        // NAV_TAKEOFF(lat=0,lon=0) がホーム座標に置換され、合計 9 点（NAV_TAKEOFF x1 + NAV_WAYPOINT x7 + NAV_LAND x1）
+        expect(result.waypoints).toHaveLength(9);
         expect(result.waypoints[0].number).toBe(1);
         expect(result.waypoints[0].command).toBe(22); // NAV_TAKEOFF
         expect(result.waypoints[0].lat).toBeCloseTo(35.79210805); // ホーム座標
@@ -314,10 +313,10 @@ describe("parsePlan", () => {
         // 2番目は NAV_WAYPOINT
         expect(result.waypoints[1].number).toBe(2);
         expect(result.waypoints[1].command).toBe(16);
-        expect(result.waypoints[1].lat).toBeCloseTo(35.79196971850398);
-        expect(result.waypoints[1].altitude).toBe(572); // 50 + 522
+        expect(result.waypoints[1].lat).toBeCloseTo(35.78655862746033);
+        expect(result.waypoints[1].altitude).toBe(597); // 75 + 522
         // 最後は NAV_LAND
-        expect(result.waypoints[9].command).toBe(21);
+        expect(result.waypoints[8].command).toBe(21);
 
         // ジオフェンスポリゴン 1 件
         expect(result.geoFencePolygons).toHaveLength(1);
