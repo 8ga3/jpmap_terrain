@@ -501,36 +501,6 @@ export class DefaultScene implements CreateSceneClass {
         };
 
         /**
-         * camera.target.y を queryElevationAtWorld 由来の値に揃え、
-         * camera.position.y (世界高度) を維持するように radius を再計算する (#225)。
-         *
-         * pointerup 後の `retargetAtCameraPosition` は target.y を mesh raycast の
-         * pickedPoint.y にするが、reload 初期化時は queryElevationAtWorld を使うため、
-         * 両者間で target.y がわずかに食い違い、radius も差が出てカメラ世界位置が
-         * 視線方向にずれる現象が起きていた。
-         *
-         * 本ヘルパで pointerup 後と init 後の双方で target.y のソースを
-         * queryElevationAtWorld に統一することで、camera.position が完全に対称になる。
-         *
-         * @param desiredCamY 維持したい camera.position.y。省略時は現在値を維持。
-         */
-        const syncTargetYWithElev = (desiredCamY?: number): void => {
-            const elev = tileManager.queryElevationAtWorld(
-                camera.target.x,
-                camera.target.z,
-            );
-            if (elev === null) return;
-            const camY = desiredCamY ?? camera.position.y;
-            camera.target.y = elev;
-            const cosB = Math.cos(camera.beta);
-            if (Math.abs(cosB) < 1e-6) return;
-            const r = (camY - elev) / cosB;
-            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-            camera.radius = clamp(r, lower, upper);
-        };
-
-        /**
          * camera.target と gridResidual の差分を加味して「カメラが実際に
          * 見ている地理座標」を返すヘルパー。
          * retargetAtCameraPosition が camera.target を動かしても
@@ -1310,10 +1280,6 @@ export class DefaultScene implements CreateSceneClass {
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-            // target.y のソースを reload 初期化と同じ queryElevationAtWorld に
-            // 揃えて radius を補正する。これにより camera.position が
-            // ドラッグ完了時と reload 後で対称になり、リロード時のずれが解消する (#225)。
-            syncTargetYWithElev();
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1361,7 +1327,6 @@ export class DefaultScene implements CreateSceneClass {
             }
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-            syncTargetYWithElev();
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -2305,7 +2270,6 @@ export class DefaultScene implements CreateSceneClass {
         // タイルサーバ障害等で null が返った場合は onTerrainUpdated で遅延補正する。
         // canvas の表示はカメラ高度が確定した後の初回レンダリングまで遅延させる
         // ことで、リロード時のフラッシュを防ぐ (#225)。
-        // target.y のソースは queryElevationAtWorld に統一する (pointerup 後と同じ)。
         const desiredCamY = altitude;
         const adjustRadiusForCamY = (targetY: number): void => {
             const cosB = Math.cos(camera.beta);
@@ -2319,11 +2283,36 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualX,
             gridResidualZ,
         );
+        // 初回レンダ後、target.y のみメッシュ高度に揃える (#225)。
+        // alpha/beta/target.x/z は維持して画面が動かないようにし、
+        // radius のみ調整して camera.position.y = altitude を保つ。
+        // ドラッグ時の retargetAtCameraPosition も target.y を mesh hit Y にするため、
+        // 両者でソースが一致し radius が揃う → リロード後の水平位置ズレを防ぐ。
+        const snapTargetYToMesh = (): void => {
+            const sinB = Math.sin(camera.beta);
+            const cosB = Math.cos(camera.beta);
+            const dirX = -sinB * Math.cos(camera.alpha);
+            const dirY = -cosB;
+            const dirZ = -sinB * Math.sin(camera.alpha);
+            const ray = new Ray(
+                new Vector3(camera.position.x, camera.position.y, camera.position.z),
+                new Vector3(dirX, dirY, dirZ),
+                CAMERA_FAR_CLIP,
+            );
+            const pick = scene.pickWithRay(ray, (m) =>
+                m.name.startsWith("tile-ground-"),
+            );
+            if (pick?.hit && pick.pickedPoint) {
+                camera.target.y = pick.pickedPoint.y;
+                adjustRadiusForCamY(pick.pickedPoint.y);
+            }
+        };
         if (initElev !== null) {
             camera.target.y = initElev;
             adjustRadiusForCamY(initElev);
             scene.onAfterRenderObservable.addOnce(() => {
                 canvas.style.visibility = "";
+                snapTargetYToMesh();
             });
         } else {
             const unsub = subscribeTerrainUpdated(() => {
@@ -2337,6 +2326,7 @@ export class DefaultScene implements CreateSceneClass {
                     unsub();
                     scene.onAfterRenderObservable.addOnce(() => {
                         canvas.style.visibility = "";
+                        snapTargetYToMesh();
                     });
                 }
             });
