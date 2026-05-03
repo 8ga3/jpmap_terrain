@@ -83,8 +83,8 @@ showToast("テストメッセージ")
 `camera.position` / `camera.target` が、直後のフレームで古い値を返すケースが確認されている。
 
 **ワークアラウンド**:
-- `src/demos/viewer/index.ts` の `createUrlUpdater` の debounce を **500ms** に設定している。
-  400ms 以下では再現することが確認されている。
+- `src/demos/viewer/index.ts` の `createUrlUpdater` の debounce を **1000ms** に設定している。
+  500ms 以下では地図の場所によって再現することが確認されている。
 - pointerup 時に `onCameraInteractionEnd` コールバックで `_notifyIfChanged(force=true)` を
   呼び出すことで、epsilon 比較による取りこぼしを補完している（`jpmapTerrain.ts`）。
 

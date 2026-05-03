@@ -2358,12 +2358,25 @@ export class DefaultScene implements CreateSceneClass {
                 snapTargetYToMesh();
             });
         } else {
+            // タイムアウト付きフォールバック: タイルサーバー障害等で標高が取得できない場合、
+            // canvas が永久に非表示にならないよう 5 秒でフォールバック表示する (#225)。
+            const ELEV_TIMEOUT_MS = 5000;
+            let elevResolved = false;
+            const fallbackTimer = window.setTimeout(() => {
+                if (!elevResolved) {
+                    elevResolved = true;
+                    unsub();
+                    canvas.style.visibility = "";
+                }
+            }, ELEV_TIMEOUT_MS);
             const unsub = subscribeTerrainUpdated(() => {
                 const elev = tileManager.queryElevationAtWorld(
                     gridResidualX,
                     gridResidualZ,
                 );
                 if (elev !== null) {
+                    elevResolved = true;
+                    clearTimeout(fallbackTimer);
                     camera.target.y = elev;
                     adjustRadiusForCamY(elev);
                     unsub();
