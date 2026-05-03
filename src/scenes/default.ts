@@ -1251,8 +1251,6 @@ export class DefaultScene implements CreateSceneClass {
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-            // retarget 後のターゲット変位を lat/lon に反映し、URL 座標のずれを防ぐ (#225)
-            commitPanOffset();
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
@@ -1300,7 +1298,6 @@ export class DefaultScene implements CreateSceneClass {
             }
             commitPanOffset();
             retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-            commitPanOffset();
         };
 
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
@@ -1499,7 +1496,6 @@ export class DefaultScene implements CreateSceneClass {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                     retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                    commitPanOffset();
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -1528,7 +1524,6 @@ export class DefaultScene implements CreateSceneClass {
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
                         retargetAtCameraPosition(camX, newCamY, camZ);
-                        commitPanOffset();
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
@@ -1536,7 +1531,6 @@ export class DefaultScene implements CreateSceneClass {
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
                         retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                        commitPanOffset();
                     }
                 }
             },
@@ -1615,7 +1609,6 @@ export class DefaultScene implements CreateSceneClass {
                 camera.target.z = centerHit.worldZ;
                 commitPanOffset();
                 retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                commitPanOffset();
             }
 
             const targetAlpha = -Math.PI / 2; // 北向き
