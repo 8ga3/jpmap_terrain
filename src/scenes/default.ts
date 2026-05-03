@@ -2096,7 +2096,24 @@ export class DefaultScene implements CreateSceneClass {
         const controller: DefaultSceneController = {
             getLat: derivedLat,
             getLon: derivedLon,
-            getAltitude: () => camera.position.y,
+            getAltitude: () => {
+                // URL に書く altitude をリロード時の reconstruction と一致させる (#225)。
+                // pointerup の retargetAtCameraPosition は target.y にメッシュレイキャスト
+                // ヒット高度をセットするが、リロード時の target.y は queryElevationAtWorld
+                // (標高ピクセル補間) を使う。両者は同一地点でも僅かに値が異なるため、
+                // camera.position.y をそのまま URL に書くと radius_pre ≠ radius_post となり
+                // 水平位置がずれる。
+                // 「リロード時に再構成される target.y (= queryElevation)」基準で altitude
+                // を計算しておけば、radius_pre = radius_post となり水平位置が完全に一致する。
+                const cosB = Math.cos(camera.beta);
+                if (Math.abs(cosB) < 1e-6) return camera.position.y;
+                const elev = tileManager.queryElevationAtWorld(
+                    camera.target.x,
+                    camera.target.z,
+                );
+                if (elev === null) return camera.position.y;
+                return elev + camera.radius * cosB;
+            },
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
             getTilt: () =>
                 currentViewMode === "2d"
