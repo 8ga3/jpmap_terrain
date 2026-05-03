@@ -2283,20 +2283,36 @@ export class DefaultScene implements CreateSceneClass {
             gridResidualX,
             gridResidualZ,
         );
+        // 初回レンダ後、target.y のみメッシュ高度に揃える (#225)。
+        // alpha/beta/target.x/z は維持して画面が動かないようにし、
+        // radius のみ調整して camera.position.y = altitude を保つ。
+        // ドラッグ時の retargetAtCameraPosition も target.y を mesh hit Y にするため、
+        // 両者でソースが一致し radius が揃う → リロード後の水平位置ズレを防ぐ。
+        const snapTargetYToMesh = (): void => {
+            const sinB = Math.sin(camera.beta);
+            const cosB = Math.cos(camera.beta);
+            const dirX = -sinB * Math.cos(camera.alpha);
+            const dirY = -cosB;
+            const dirZ = -sinB * Math.sin(camera.alpha);
+            const ray = new Ray(
+                new Vector3(camera.position.x, camera.position.y, camera.position.z),
+                new Vector3(dirX, dirY, dirZ),
+                CAMERA_FAR_CLIP,
+            );
+            const pick = scene.pickWithRay(ray, (m) =>
+                m.name.startsWith("tile-ground-"),
+            );
+            if (pick?.hit && pick.pickedPoint) {
+                camera.target.y = pick.pickedPoint.y;
+                adjustRadiusForCamY(pick.pickedPoint.y);
+            }
+        };
         if (initElev !== null) {
             camera.target.y = initElev;
             adjustRadiusForCamY(initElev);
             scene.onAfterRenderObservable.addOnce(() => {
                 canvas.style.visibility = "";
-                // メッシュレイキャストで target.y を確定する (#225)。
-                // queryElevationAtWorld (標高ピクセル) とメッシュ交点高度は
-                // 微差があるため、ドラッグ時と同じソース (メッシュ) に揃えて
-                // radius を一致させ、リロード後の水平位置ズレを防ぐ。
-                retargetAtCameraPosition(
-                    camera.position.x,
-                    camera.position.y,
-                    camera.position.z,
-                );
+                snapTargetYToMesh();
             });
         } else {
             const unsub = subscribeTerrainUpdated(() => {
@@ -2310,12 +2326,7 @@ export class DefaultScene implements CreateSceneClass {
                     unsub();
                     scene.onAfterRenderObservable.addOnce(() => {
                         canvas.style.visibility = "";
-                        // メッシュレイキャストで target.y を確定する (#225)
-                        retargetAtCameraPosition(
-                            camera.position.x,
-                            camera.position.y,
-                            camera.position.z,
-                        );
+                        snapTargetYToMesh();
                     });
                 }
             });
