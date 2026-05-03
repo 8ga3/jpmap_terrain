@@ -1295,7 +1295,25 @@ export class DefaultScene implements CreateSceneClass {
             pointerDown = false;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
-            retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            if (currentViewMode === "2d") {
+                retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
+            } else {
+                // 3D: commitPanOffset が target.x/z = gridResidual にリセット済み。
+                // setTarget() を呼ぶと rebuildAnglesAndRadius() が走り beta/tilt が変わるため、
+                // 真下レイキャストで target.y のみ直接代入する (#225)。
+                const rayDown = new Ray(
+                    new Vector3(camera.target.x, camera.position.y, camera.target.z),
+                    new Vector3(0, -1, 0),
+                    CAMERA_FAR_CLIP,
+                );
+                const pick = scene.pickWithRay(
+                    rayDown,
+                    (m) => m.name.startsWith("tile-ground-"),
+                );
+                if (pick?.hit && pick.pickedPoint) {
+                    camera.target.y = pick.pickedPoint.y;
+                }
+            }
         });
 
         const resetPointerState = (e?: PointerEvent): void => {
