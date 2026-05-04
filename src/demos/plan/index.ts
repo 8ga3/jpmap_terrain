@@ -34,6 +34,7 @@ const DROP_ZONE_ID = "plan-drop-zone";
 const BTN_WAYPOINTS_ID = "btn-waypoints";
 const BTN_GEOFENCE_ID = "btn-geofence";
 const BTN_RALLY_ID = "btn-rally";
+const BTN_VIEW_MODE_ID = "btn-view-mode";
 
 // 描画 ID プレフィックス
 const ID_WAYPOINTS = "plan-waypoints";
@@ -303,9 +304,24 @@ const start = async (): Promise<void> => {
     const layerVisible = { waypoints: true, geofence: true, rally: true };
 
     // ボタン要素
+    const btnViewMode = document.getElementById(BTN_VIEW_MODE_ID) as HTMLButtonElement | null;
     const btnWaypoints = document.getElementById(BTN_WAYPOINTS_ID) as HTMLButtonElement | null;
     const btnGeofence = document.getElementById(BTN_GEOFENCE_ID) as HTMLButtonElement | null;
     const btnRally = document.getElementById(BTN_RALLY_ID) as HTMLButtonElement | null;
+
+    // 2D/3D 視点モード切替
+    const refreshViewModeBtn = (): void => {
+        if (btnViewMode) {
+            btnViewMode.textContent = viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
+        }
+    };
+    if (btnViewMode) {
+        btnViewMode.addEventListener("click", () => {
+            viewer.viewMode = viewer.viewMode === "3d" ? "2d" : "3d";
+        });
+    }
+    viewer.onViewModeChange(() => refreshViewModeBtn());
+    refreshViewModeBtn();
 
     const refreshButtons = (hasPlan: boolean): void => {
         if (btnWaypoints) {
