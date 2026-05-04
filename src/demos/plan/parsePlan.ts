@@ -1,5 +1,5 @@
 /**
- * QGroundControl Plan ファイルパーサ (#38)
+ * QGroundControl Plan ファイルパーサ
  *
  * `.plan` JSON を受け取り、描画に必要な Mission / GeoFence / RallyPoint 情報を抽出する。
  * MAV_CMD のうち NAV_WAYPOINT(16) / NAV_LAND(21) / NAV_TAKEOFF(22) のみをウェイポイントとして扱い、
