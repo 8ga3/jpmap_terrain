@@ -312,13 +312,16 @@ const start = async (): Promise<void> => {
     // 2D/3D 視点モード切替
     const refreshViewModeBtn = (): void => {
         if (btnViewMode) {
-            btnViewMode.textContent = viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
+            const label = viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
+            btnViewMode.textContent = label;
+            btnViewMode.setAttribute("aria-label", label);
         }
     };
     if (btnViewMode) {
         btnViewMode.addEventListener("click", () => {
             viewer.viewMode = viewer.viewMode === "3d" ? "2d" : "3d";
         });
+        btnViewMode.disabled = false;
     }
     viewer.onViewModeChange(() => refreshViewModeBtn());
     refreshViewModeBtn();
