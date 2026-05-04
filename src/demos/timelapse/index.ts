@@ -46,6 +46,54 @@ const TIMELAPSE_CAMERA_DEFAULTS = {
     tilt: 75,
 } as const;
 
+/**
+ * `@lat,lon[,altitude[,azimuth[,tilt]]]` パターン。
+ * azimuth(4番目)・tilt(5番目)トークンが省略されているかを判定するために使う。
+ */
+const AT_PATTERN =
+    /@(-?\d+\.?\d*),(-?\d+\.?\d*)(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?/;
+
+/**
+ * URL からカメラ初期値を解決し、タイムラプス固有デフォルトと合成する。
+ *
+ * - URL にカメラ指定が無い → 空オブジェクトを返す（呼び出し側で TIMELAPSE_CAMERA_DEFAULTS が使われる）
+ * - `@lat,lon` / `@lat,lon,altitude` など azimuth・tilt が省略されたURL → lat/lon/altitude のみ返す
+ * - `@lat,lon,altitude,azimuth,tilt` など azimuth・tilt まで明示されたURL → 全フィールドを返す
+ * - `?lat=&lon=` クエリ形式 → lat/lon/altitude のみ返す（azimuth/tilt は省略扱い）
+ *
+ * @testable 純粋関数として export しユニットテストで動作を固定する。
+ */
+export const resolveCameraInit = (
+    href: string,
+): Partial<JpmapTerrainOptions> => {
+    const cameraState = parseCameraStateFromUrl(href);
+    if (!cameraState) return {};
+
+    try {
+        const parsed = new URL(href, "http://localhost");
+        const target = parsed.pathname + parsed.hash;
+        const atMatch = target.match(AT_PATTERN);
+        if (atMatch) {
+            // azimuth・tilt が明示されている場合のみ URL 値を採用する。
+            return {
+                lat: cameraState.lat,
+                lon: cameraState.lon,
+                altitude: cameraState.altitude,
+                ...(atMatch[4] !== undefined ? { azimuth: cameraState.azimuth } : {}),
+                ...(atMatch[5] !== undefined ? { tilt: cameraState.tilt } : {}),
+            };
+        }
+        // ?lat=&lon= 形式: azimuth/tilt は常にタイムラプスデフォルトに委ねる。
+        return {
+            lat: cameraState.lat,
+            lon: cameraState.lon,
+            altitude: cameraState.altitude,
+        };
+    } catch {
+        return {};
+    }
+};
+
 /** `?engine=` 解決（viewer 側と同じ規則） */
 export const resolveEngine = (search: string): EngineType | undefined => {
     const value = new URLSearchParams(search).get("engine");
@@ -67,16 +115,16 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
-    const cameraState = parseCameraStateFromUrl(location.href) ?? undefined;
+    const cameraInit = resolveCameraInit(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
     const showSunShadows = resolveShowSunShadows(location.search);
     const timelapse = parseTimelapseQuery(location.search);
 
     const opts: JpmapTerrainOptions = {
-        // タイムラプス固有のカメラデフォルト（URL指定があれば上書きされる）。
+        // タイムラプス固有のカメラデフォルト（URLで明示指定された値のみ上書きされる）。
         ...TIMELAPSE_CAMERA_DEFAULTS,
         ...(engine ? { engine } : {}),
-        ...(cameraState ?? {}),
+        ...cameraInit,
         ...(mapType !== null ? { mapType } : {}),
         // タイムラプスでは autoSunPosition は必ず OFF（dateTime を毎フレーム駆動するため）。
         autoSunPosition: false,
