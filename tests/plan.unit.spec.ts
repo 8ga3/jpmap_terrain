@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * Plan Viewer デモの純粋関数ユニットテスト (#38)。
+ * Plan Viewer デモの純粋関数ユニットテスト。
  *
  * - parsePlan: QGC plan JSON のパースとフィルタリング
  * - formatWaypointLabel / formatWaypointEdgeLabel / formatRallyPointLabel
