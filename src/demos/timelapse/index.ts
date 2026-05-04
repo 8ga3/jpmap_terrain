@@ -37,7 +37,10 @@ const CLOCK_LABEL_ID = "timelapse-clock-label";
 /** `dateTime` setter 連打を抑えるためのフレーム間隔（ms） */
 const UPDATE_INTERVAL_MS = 200;
 
-/** タイムラプスデモ固有のカメラ初期値（日の入りが見えるよう真西・最大チルト）。 */
+/** タイムラプスデモ固有のカメラ初期値（日の出が見えるよう真東・最大チルト）。
+ *  Arc Rotate Cameraのalphaは反時計回りでターゲットに対し真北を0度としている。
+ *  APIのパラメータに対して-Math.PI / 2 = -180度だけずらしてcamera.alphaに代入される
+ */
 const TIMELAPSE_CAMERA_DEFAULTS = {
     azimuth: 270,
     tilt: 75,
