@@ -10,11 +10,10 @@
  * - 純粋関数（角度計算）と DOM 副作用を分離して unit test しやすくする。
  */
 
-/** 時針・分針・秒針の回転角度（度、12 時を 0° として時計回り正） */
+/** 時針・分針の回転角度（度、12 時を 0° として時計回り正） */
 export interface ClockAngles {
     hourDeg: number;
     minuteDeg: number;
-    secondDeg: number;
 }
 
 /** JST (UTC+9) のオフセット (ms) */
@@ -23,9 +22,8 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 /**
  * `Date` から各針の角度を算出する純粋関数。
  *
- * - 時針は分・秒に応じて連続的に回転する（12 時間で 360°）。
+ * - 時針は分に応じて連続的に回転する（12 時間で 360°）。
  * - 分針は秒に応じて連続的に回転する（60 分で 360°）。
- * - 秒針はミリ秒に応じて連続的に回転する（60 秒で 360°）。
  *
  * 表示は日本標準時 (JST = UTC+9) 基準。シミュレーション時刻は UTC で保持されるため、
  * ここで +9h オフセットを加えてから UTC ゲッタで分解する。
@@ -34,7 +32,7 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
  */
 export const computeClockAngles = (date: Date): ClockAngles => {
     if (Number.isNaN(date.getTime())) {
-        return { hourDeg: 0, minuteDeg: 0, secondDeg: 0 };
+        return { hourDeg: 0, minuteDeg: 0 };
     }
     const jst = new Date(date.getTime() + JST_OFFSET_MS);
     const ms = jst.getUTCMilliseconds();
@@ -44,7 +42,6 @@ export const computeClockAngles = (date: Date): ClockAngles => {
     return {
         hourDeg: h * 30, // 360 / 12
         minuteDeg: m * 6, // 360 / 60
-        secondDeg: s * 6, // 360 / 60
     };
 };
 
@@ -62,7 +59,6 @@ export const formatClockLabel = (date: Date): string => {
 const SVG_NS = "http://www.w3.org/2000/svg";
 const HAND_HOUR_ID = "tl-clock-hand-hour";
 const HAND_MINUTE_ID = "tl-clock-hand-minute";
-const HAND_SECOND_ID = "tl-clock-hand-second";
 
 /**
  * 時計盤のテンプレート（目盛り・中心円・固定文字）。
@@ -99,7 +95,6 @@ export const renderClockSvg = (angles: ClockAngles): string =>
         buildDialMarkup(),
         `<line id="${HAND_HOUR_ID}" x1="50" y1="50" x2="50" y2="22" stroke="#ffffff" stroke-width="3" stroke-linecap="round" transform="rotate(${angles.hourDeg} 50 50)" />`,
         `<line id="${HAND_MINUTE_ID}" x1="50" y1="50" x2="50" y2="14" stroke="#ffffff" stroke-width="2" stroke-linecap="round" transform="rotate(${angles.minuteDeg} 50 50)" />`,
-        `<line id="${HAND_SECOND_ID}" x1="50" y1="50" x2="50" y2="10" stroke="#ff6464" stroke-width="1" stroke-linecap="round" transform="rotate(${angles.secondDeg} 50 50)" />`,
         '<circle cx="50" cy="50" r="2.4" fill="#ffffff" />',
         "</svg>",
     ].join("");
@@ -151,7 +146,6 @@ export const mountClock = (
 
     const hourHand = createHand(HAND_HOUR_ID, 22, "#ffffff", 3);
     const minuteHand = createHand(HAND_MINUTE_ID, 14, "#ffffff", 2);
-    const secondHand = createHand(HAND_SECOND_ID, 10, "#ff6464", 1);
 
     const center = document.createElementNS(SVG_NS, "circle");
     center.setAttribute("cx", "50");
@@ -170,10 +164,6 @@ export const mountClock = (
             minuteHand.setAttribute(
                 "transform",
                 `rotate(${angles.minuteDeg} 50 50)`,
-            );
-            secondHand.setAttribute(
-                "transform",
-                `rotate(${angles.secondDeg} 50 50)`,
             );
             if (labelEl) labelEl.textContent = formatClockLabel(date);
         },

@@ -37,6 +37,12 @@ const CLOCK_LABEL_ID = "timelapse-clock-label";
 /** `dateTime` setter 連打を抑えるためのフレーム間隔（ms） */
 const UPDATE_INTERVAL_MS = 200;
 
+/** タイムラプスデモ固有のカメラ初期値（日の入りが見えるよう真西・最大チルト）。 */
+const TIMELAPSE_CAMERA_DEFAULTS = {
+    azimuth: 270,
+    tilt: 75,
+} as const;
+
 /** `?engine=` 解決（viewer 側と同じ規則） */
 export const resolveEngine = (search: string): EngineType | undefined => {
     const value = new URLSearchParams(search).get("engine");
@@ -64,6 +70,8 @@ const start = async (): Promise<void> => {
     const timelapse = parseTimelapseQuery(location.search);
 
     const opts: JpmapTerrainOptions = {
+        // タイムラプス固有のカメラデフォルト（URL指定があれば上書きされる）。
+        ...TIMELAPSE_CAMERA_DEFAULTS,
         ...(engine ? { engine } : {}),
         ...(cameraState ?? {}),
         ...(mapType !== null ? { mapType } : {}),

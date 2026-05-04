@@ -18,7 +18,6 @@ describe("computeClockAngles", () => {
         const a = computeClockAngles(new Date("2025-01-01T15:00:00Z"));
         expect(a.hourDeg).toBe(0);
         expect(a.minuteDeg).toBe(0);
-        expect(a.secondDeg).toBe(0);
     });
 
     it("21:00:00 UTC (= 06:00 JST) で時針 180°", () => {
@@ -31,12 +30,11 @@ describe("computeClockAngles", () => {
         // JST 12:30:15 → 時針: (0 + 30/60 + 15/3600) * 30 ≈ 15.125°
         expect(a.hourDeg).toBeCloseTo(15.125, 3);
         expect(a.minuteDeg).toBeCloseTo(30 * 6 + (15 / 60) * 6, 3);
-        expect(a.secondDeg).toBeCloseTo(15 * 6, 3);
     });
 
     it("Invalid Date は全角度 0", () => {
         const a = computeClockAngles(new Date("invalid"));
-        expect(a).toEqual({ hourDeg: 0, minuteDeg: 0, secondDeg: 0 });
+        expect(a).toEqual({ hourDeg: 0, minuteDeg: 0 });
     });
 });
 
@@ -63,12 +61,10 @@ describe("renderClockSvg", () => {
         const svg = renderClockSvg({
             hourDeg: 90,
             minuteDeg: 30,
-            secondDeg: 6,
         });
         expect(svg).toMatch(/<svg /);
         expect(svg).toContain("rotate(90 50 50)");
         expect(svg).toContain("rotate(30 50 50)");
-        expect(svg).toContain("rotate(6 50 50)");
     });
 });
 
