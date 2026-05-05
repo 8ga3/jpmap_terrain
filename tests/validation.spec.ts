@@ -265,7 +265,7 @@ for (const engine of engines) {
     test(`Sunrise sun mesh visible with ${engine.name}`, async ({
         page,
     }, testInfo) => {
-        // 東京の夜明け（JST 04:45）に東向きでカメラを構え、太陽メッシュが画面内に映ることを検証する。
+        // 東京の夜明け（2025-04-25 JST 05:13）に東向きでカメラを構え、太陽メッシュが画面内に映ることを検証する。
         // パス `/@lat,lon` ではなく `?lat=&lon=` クエリ形式を採用（dev-server の historyApiFallback 互換）。
         const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
         sceneUrl.searchParams.set("engine", engine.param);
