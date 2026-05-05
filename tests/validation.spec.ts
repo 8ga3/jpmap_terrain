@@ -199,11 +199,11 @@ for (const engine of engines) {
 // 別ケース同士の自動比較は行わず、開発者が両 PNG を目視で比較して差異を確認する運用とする。
 
 const SKYBOX_TILT_DEG = 75;
-const DAY_DATETIME = "2025-06-21T03:00:00Z"; // JST 12:00（東京で太陽高度 ~75°）
-const NIGHT_DATETIME = "2025-06-21T13:00:00Z"; // JST 22:00（東京で太陽高度 ~ -25°）
-const SUNRISE_DATETIME = "2025-06-21T19:45:00Z"; // JST 04:45（東京で東の空に日の出）
+const DAY_DATETIME = "2025-06-21T12:00:00+09:00"; // JST 12:00（東京で太陽高度 ~75°）
+const NIGHT_DATETIME = "2025-06-21T22:00:00+09:00"; // JST 22:00（東京で太陽高度 ~ -25°）
+const SUNRISE_DATETIME = "2025-04-25T05:13:00+09:00"; // JST 05:13（東京で東の空に日の出）
 /** 夜明け視点：東を向き地平線付近にカメラを向けて太陽メッシュを画面内に映す */
-const SUNRISE_AZIMUTH_DEG = 90; // 東向き
+const SUNRISE_AZIMUTH_DEG = 270; // 東向き
 const SUNRISE_LAT = 35.690206;
 const SUNRISE_LON = 139.766166;
 
