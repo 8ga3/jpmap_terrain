@@ -1460,8 +1460,8 @@ describe("refineAllNaNTiles", () => {
         // useFilled=false だと A.elevation（右辺 NaN）を参照し B は解決不能
 
         // fillInvalidPixels を 1パス 4近傍補間に差し替え
-        (gsiTileMock.fillInvalidPixels as jest.Mock).mockImplementation(
-            (data: Float32Array, width: number, height: number) => {
+        (gsiTileMock.fillInvalidPixels as jest.Mock<(data: Float32Array, width: number, height: number) => void>).mockImplementation(
+            (data, width, height) => {
                 for (let y = 0; y < height; y++) {
                     for (let x = 0; x < width; x++) {
                         const i = y * width + x;
