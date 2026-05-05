@@ -485,8 +485,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
-    /** 同じzoomの隣接タイル標高をキャッシュから取得 */
-    const getNeighborElevations = (coord: TileCoord): {
+    /**
+     * 同じzoomの隣接タイル標高をキャッシュから取得。
+     * @param useFilled true なら filled（ステッチ＋NaN埋め済み）を優先して返す。
+     *                  false なら raw elevation を返し、辺平均の対称性を保証する。
+     */
+    const getNeighborElevations = (coord: TileCoord, useFilled = false): {
         top?: Float32Array; bottom?: Float32Array;
         left?: Float32Array; right?: Float32Array;
         topLeft?: Float32Array; topRight?: Float32Array;
@@ -498,7 +502,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (!e) return undefined;
             // 元データが all-NaN かつ未補間なら参照しない（誤った 0 を伝搬させない）
             if (e.wasAllNaN && !e.unblocked) return undefined;
-            return e.filled ?? e.elevation;
+            return useFilled ? (e.filled ?? e.elevation) : e.elevation;
         };
         return {
             top: get(x, y - 1),
@@ -609,14 +613,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /**
      * elevation をコピーしてステッチ（同zoom + cross-level）を適用し、
      * 辺に有効値（シード）があるかを判定する共通ヘルパー。
+     * @param useFilled true なら同 zoom ステッチで filled データを参照する
+     *                  （refineAllNaNTiles 用）。false なら raw 同士で対称平均。
      */
     const stitchAndCheckSeed = (
         elevation: Float32Array,
         coord: TileCoord,
         crossLevel: boolean,
+        useFilled = false,
     ): { stitched: Float32Array; hasSeed: boolean } => {
         const stitched = new Float32Array(elevation);
-        stitchTileEdges(stitched, getNeighborElevations(coord), TILE_SIZE);
+        stitchTileEdges(stitched, getNeighborElevations(coord, useFilled), TILE_SIZE);
         if (crossLevel) {
             const coarse = getCoarseEdgeNeighbors(coord);
             if (coarse.length > 0) stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
@@ -675,10 +682,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // - wasAllNaN + シードあり: filled/unblocked を更新
         // - 通常タイル: filled を常に更新。
         //   NaN 埋め済みデータ（entry.filled）を保存しておくことで、
-        //   後から refineAllNaNTiles が隣接参照する際に岸タイルの
-        //   lake 側エッジ NaN が補間済みの値を返せるようになる。
-        //   これがないと getNeighborElevations が生 elevation（エッジ NaN あり）を
-        //   返し、all-NaN タイルへシードが伝搬せずレスキューパスが誤った高度を適用する。
+        //   後から refineAllNaNTiles（useFilled=true）が隣接参照する際に
+        //   岸タイルの lake 側エッジ NaN が補間済みの値を返せるようになる。
+        //   通常のステッチ（useFilled=false）では raw elevation を参照するため
+        //   filled を保存しても辺平均の対称性には影響しない。
         if (cacheEntryPre) {
             if (cacheEntryPre.wasAllNaN) {
                 if (hasSeed) {
@@ -790,7 +797,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 remainingCount++;
 
                 // wasAllNaN → 常に cross-level stitch を実行
-                const { stitched, hasSeed } = stitchAndCheckSeed(entry.elevation, tile.coord, true);
+                // useFilled=true: 隣接 filled データからシードを取得しNaN領域を補間する
+                const { stitched, hasSeed } = stitchAndCheckSeed(entry.elevation, tile.coord, true, true);
 
                 if (hasSeed) {
                     fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);

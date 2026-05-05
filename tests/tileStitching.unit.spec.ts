@@ -234,6 +234,47 @@ describe("stitchTileEdges", () => {
         // 内部は変わらない
         expect(target[1 * SIZE + 254]).toBe(100);
     });
+
+    it("raw 同士でステッチすると辺が対称になる（隙間なし）", () => {
+        // タイルA (値10) と タイルB (値20) を raw データでステッチ
+        const rawA = fill(S, 10);
+        const rawB = fill(S, 20);
+
+        const a = new Float32Array(rawA);
+        const b = new Float32Array(rawB);
+
+        // A の右辺 ↔ B の左辺
+        stitchTileEdges(a, { right: rawB }, S);
+        stitchTileEdges(b, { left: rawA }, S);
+
+        // 辺ピクセル（角を除く）で A.right === B.left
+        for (let row = 1; row < S - 1; row++) {
+            expect(a[row * S + (S - 1)]).toBe(b[row * S]);
+            expect(a[row * S + (S - 1)]).toBe(15); // avg(10,20)
+        }
+    });
+
+    it("filled でステッチすると辺が非対称になる（バグ再現確認）", () => {
+        // タイルA (値10) を先にステッチ→filled化 した後
+        // タイルB (値20) のステッチで A.filled を参照すると非対称になることを確認
+        const rawA = fill(S, 10);
+        const rawB = fill(S, 20);
+
+        // A を先にステッチ（right=rawB）
+        const filledA = new Float32Array(rawA);
+        stitchTileEdges(filledA, { right: rawB }, S);
+        // filledA の右辺 = avg(10,20) = 15
+
+        // B を A.filled でステッチ（left=filledA）→ 非対称
+        const filledB = new Float32Array(rawB);
+        stitchTileEdges(filledB, { left: filledA }, S);
+        // filledB の左辺 = avg(20, 15) = 17.5 ≠ 15
+
+        for (let row = 1; row < S - 1; row++) {
+            // 非対称: A の右辺(15) ≠ B の左辺(17.5) → 隙間の原因
+            expect(filledA[row * S + (S - 1)]).not.toBe(filledB[row * S]);
+        }
+    });
 });
 
 // --- stitchTileEdgesCrossLevel ---
