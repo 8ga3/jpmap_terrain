@@ -1451,6 +1451,75 @@ describe("refineAllNaNTiles", () => {
         expect(centerElev).toBe(200);
         tm.dispose();
     });
+
+    it("useFilled=true により岸タイルの NaN 補間済みデータからシードが伝搬する（回帰テスト）", async () => {
+        // 岸タイル A(14547): 300m だが右辺(col=255)だけ NaN（湖岸の欠測）
+        // 湖タイル B(14548+): 全 NaN
+        // fillInvalidPixels が A の右辺 NaN を隣接 300m で補間 → A.filled の右辺が有効値
+        // refineAllNaNTiles の useFilled=true が A.filled を参照 → B にシード伝搬
+        // useFilled=false だと A.elevation（右辺 NaN）を参照し B は解決不能
+
+        // fillInvalidPixels を 1パス 4近傍補間に差し替え
+        (gsiTileMock.fillInvalidPixels as jest.Mock).mockImplementation(
+            (data: Float32Array, width: number, height: number) => {
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = y * width + x;
+                        if (!Number.isNaN(data[i]) && data[i] !== -100) continue;
+                        const neighbors: number[] = [];
+                        if (x > 0 && !Number.isNaN(data[i - 1]) && data[i - 1] !== -100) neighbors.push(data[i - 1]);
+                        if (x < width - 1 && !Number.isNaN(data[i + 1]) && data[i + 1] !== -100) neighbors.push(data[i + 1]);
+                        if (y > 0 && !Number.isNaN(data[i - width]) && data[i - width] !== -100) neighbors.push(data[i - width]);
+                        if (y < height - 1 && !Number.isNaN(data[i + width]) && data[i + width] !== -100) neighbors.push(data[i + width]);
+                        if (neighbors.length > 0) {
+                            data[i] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length;
+                        } else {
+                            data[i] = -100;
+                        }
+                    }
+                }
+            }
+        );
+
+        // 岸タイル: 右辺(col=255)だけ NaN
+        const shoreData = new Float32Array(256 * 256).fill(300);
+        for (let y = 0; y < 256; y++) shoreData[y * 256 + 255] = NaN;
+
+        // 湖タイル: 全 NaN
+        const lakeData = new Float32Array(256 * 256).fill(NaN);
+
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (_zoom, x) => {
+                if (x <= 14547) return Promise.resolve(new Float32Array(shoreData));
+                return Promise.resolve(new Float32Array(lakeData));
+            }
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+            minZoom: 14,
+            maxElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+
+        // 湖タイル B(14548) が unblocked されて filled データで標高が返る
+        // wx=1000 → tile 14548, col=0（B の左辺）
+        const lakeBorderElev = tm.queryElevationAtWorld(1000, -4);
+        expect(lakeBorderElev).not.toBeNull();
+        // 岸タイルの filled 右辺（≈300）からシードされるため 300 に近い値
+        expect(lakeBorderElev).toBeCloseTo(300, 0);
+
+        tm.dispose();
+        // fillInvalidPixels を no-op に戻す
+        (gsiTileMock.fillInvalidPixels as jest.Mock).mockImplementation(() => {});
+    });
 });
 
 describe("同zoom タイル間ステッチの対称性", () => {
