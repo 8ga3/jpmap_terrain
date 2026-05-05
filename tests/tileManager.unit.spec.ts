@@ -1355,6 +1355,7 @@ describe("refineAllNaNTiles", () => {
         (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
             (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
+        (gsiTileMock.fillInvalidPixels as jest.Mock).mockImplementation(() => {});
     });
 
     it("隣接が段階的に unblocked になると中心タイルも最終的に unblocked になる", async () => {
@@ -1517,8 +1518,6 @@ describe("refineAllNaNTiles", () => {
         expect(lakeBorderElev).toBeCloseTo(300, 0);
 
         tm.dispose();
-        // fillInvalidPixels を no-op に戻す
-        (gsiTileMock.fillInvalidPixels as jest.Mock).mockImplementation(() => {});
     });
 });
 
