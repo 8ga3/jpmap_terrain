@@ -1452,3 +1452,75 @@ describe("refineAllNaNTiles", () => {
         tm.dispose();
     });
 });
+
+describe("同zoom タイル間ステッチの対称性", () => {
+    // flushRestitch は requestAnimationFrame 経由で実行されるが、
+    // Node.js テスト環境では rAF が未定義のため、コールバックをキューし
+    // 手動フラッシュする方式でポリフィルする
+    let origRAF: typeof globalThis.requestAnimationFrame;
+    let origCAF: typeof globalThis.cancelAnimationFrame;
+    let rafQueue: FrameRequestCallback[];
+    const flushRAF = () => {
+        let safety = 20;
+        while (rafQueue.length > 0 && safety-- > 0) {
+            const batch = rafQueue.splice(0);
+            for (const cb of batch) cb(0);
+        }
+    };
+    beforeEach(() => {
+        origRAF = globalThis.requestAnimationFrame;
+        origCAF = globalThis.cancelAnimationFrame;
+        rafQueue = [];
+        let nextId = 1;
+        globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { rafQueue.push(cb); return nextId++; }) as typeof requestAnimationFrame;
+        globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
+    });
+    afterEach(() => {
+        globalThis.requestAnimationFrame = origRAF;
+        globalThis.cancelAnimationFrame = origCAF;
+        (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
+            () => Promise.resolve(new Float32Array(256 * 256))
+        );
+    });
+
+    it("隣接タイルの共有辺が raw 同士の平均で一致する（回帰テスト）", async () => {
+        // Tile A (x<=14547) = 100m, Tile B (x>14547) = 200m
+        // raw ステッチ後、共有辺は avg(100, 200) = 150 で両側一致すること
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (_zoom, x) => {
+                const val = x <= 14547 ? 100 : 200;
+                return Promise.resolve(new Float32Array(256 * 256).fill(val));
+            }
+        );
+
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+            minZoom: 14,
+            maxElevationZoom: 14,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        // タイルロード後に蓄積された再ステッチを実行
+        flushRAF();
+
+        // A の右辺 (col=255) と B の左辺 (col=0) を queryElevationAtWorld で取得
+        // wx=999 → tile A col=255, wx=1000 → tile B col=0, wz=-4 → row=1（辺、非角）
+        const aRightEdge = tm.queryElevationAtWorld(999, -4);
+        const bLeftEdge = tm.queryElevationAtWorld(1000, -4);
+
+        expect(aRightEdge).not.toBeNull();
+        expect(bLeftEdge).not.toBeNull();
+        // 共有辺が対称（同一値）であること
+        expect(aRightEdge).toBe(bLeftEdge);
+        // raw 平均 avg(100, 200) = 150 であること
+        expect(aRightEdge).toBe(150);
+
+        tm.dispose();
+    });
+});
