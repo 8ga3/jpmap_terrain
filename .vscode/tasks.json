@@ -16,7 +16,7 @@
 			},
 			"isBackground": true,
 			"problemMatcher": {
-				"owner": "ardupilot-sim",
+				"owner": "custom",
 				"pattern": {
 					"regexp": ".*"
 				},
