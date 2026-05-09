@@ -54,6 +54,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "QGroundControl の Plan ファイル（.plan）をドラッグ&ドロップでマップ上に表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画します。",
         href: "plan",
     },
+    {
+        title: "3Dモデル",
+        description:
+            "地面クリックで 3D モデル（human.glb）を配置・移動するデモ。方位変更やモデル位置へのカメラ移動が可能です。",
+        href: "model",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";

@@ -42,10 +42,15 @@ export type {
     CircleOptions,
     CircleUpdate,
     CircleHandle,
+    ModelVector3,
+    ModelOptions,
+    ModelUpdate,
+    ModelHandle,
 } from "./lib/types";
 export {
     CIRCLE_DEFAULTS,
     CIRCLE_SEGMENTS_MIN,
     CIRCLE_SEGMENTS_MAX,
     CIRCLE_RADIUS_MAX_M,
+    MODEL_DEFAULTS,
 } from "./lib/types";
