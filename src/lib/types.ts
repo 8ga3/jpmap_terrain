@@ -709,3 +709,118 @@ export const CIRCLE_DEFAULTS = {
         labelFontSize: 14,
     },
 } as const;
+
+// ---- 3Dモデル (Issue #243) ----
+
+/**
+ * 3Dモデルの3軸値（回転・スケール共通）。
+ * 未指定軸はデフォルト値が適用される。
+ */
+export interface ModelVector3 {
+    /** X 軸値 */
+    x?: number;
+    /** Y 軸値 */
+    y?: number;
+    /** Z 軸値 */
+    z?: number;
+}
+
+/**
+ * `JpmapTerrain.addModel` のオプション (Issue #243)。
+ *
+ * Babylon.js がサポートする 3D モデルファイル (glb / gltf / obj 等) を
+ * 地形上にロードして配置する。
+ */
+export interface ModelOptions {
+    /** モデルファイルの URL（相対 / 絶対いずれも可） */
+    url: string;
+    /** 緯度 (度) */
+    lat: number;
+    /** 経度 (度) */
+    lon: number;
+    /**
+     * 高度 (m)。
+     * - `altitudeMode === "absolute"`: 海抜高度。必須。
+     * - `altitudeMode === "terrain"`: 地表からのオフセット (m)。default 0。
+     */
+    altitude?: number;
+    /** 高度モード。default `"terrain"` */
+    altitudeMode?: AltitudeMode;
+    /**
+     * 回転 (度)。各軸は Euler 回転として適用される。
+     * default `{ x: 0, y: 0, z: 0 }`
+     */
+    rotation?: ModelVector3;
+    /**
+     * スケール倍率。default `{ x: 1, y: 1, z: 1 }`
+     */
+    scaling?: ModelVector3;
+    /** 表示 / 非表示。default true */
+    enabled?: boolean;
+    /**
+     * 地表追従（重力）。default true。
+     * `true` のとき毎フレーム地表標高を取得して Y 座標を追従させる。
+     * `altitudeMode === "terrain"` のときのみ有効（`absolute` 時は無視）。
+     */
+    gravity?: boolean;
+}
+
+/**
+ * `JpmapTerrain.updateModel` の部分更新型 (Issue #243)。
+ *
+ * 未指定フィールドは現状維持される。`url` は変更不可（モデル差替えは remove → add）。
+ */
+export type ModelUpdate = Partial<
+    Pick<
+        ModelOptions,
+        | "lat"
+        | "lon"
+        | "altitude"
+        | "altitudeMode"
+        | "rotation"
+        | "scaling"
+        | "enabled"
+        | "gravity"
+    >
+>;
+
+/**
+ * `JpmapTerrain.addModel` / `getModel` / `updateModel` の戻り値 (Issue #243)。
+ * read-only スナップショット。
+ */
+export interface ModelHandle {
+    readonly id: string;
+    readonly url: string;
+    readonly lat: number;
+    readonly lon: number;
+    readonly altitude: number;
+    readonly altitudeMode: AltitudeMode;
+    readonly rotation: Readonly<Required<ModelVector3>>;
+    readonly scaling: Readonly<Required<ModelVector3>>;
+    readonly enabled: boolean;
+    readonly gravity: boolean;
+    /**
+     * モデルのロードが完了しているなら true。
+     * ロード中（非同期 SceneLoader 処理中）は false。
+     */
+    readonly loaded: boolean;
+    /**
+     * `terrain` モード時、地表標高が解決済みなら true。
+     * `absolute` モード時は常に true。
+     */
+    readonly elevationResolved: boolean;
+    /** モデルが持つアニメーション名の一覧。ロード前は空配列 */
+    readonly animationNames: readonly string[];
+}
+
+/**
+ * 3Dモデルの既定値 (Issue #243)。
+ */
+export const MODEL_DEFAULTS = {
+    altitude: 0,
+    altitudeMode: "terrain" as AltitudeMode,
+    rotation: { x: 0, y: 0, z: 0 },
+    scaling: { x: 1, y: 1, z: 1 },
+    enabled: true,
+    gravity: true,
+} as const;

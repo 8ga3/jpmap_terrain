@@ -63,6 +63,13 @@ const ENTRY_DEFINITIONS = [
         filename: "plan.html",
         title: "jpmap_terrain – Plan Viewer",
     },
+    {
+        name: "model",
+        entry: "src/demos/model/index.ts",
+        template: "public/model.html",
+        filename: "model.html",
+        title: "jpmap_terrain – 3Dモデルデモ",
+    },
 ];
 
 const entry = Object.fromEntries(

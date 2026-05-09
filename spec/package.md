@@ -876,6 +876,87 @@ viewer.addPolygon("dist-line", {
 // `removePolygon` + `addPolygon` の rebuild が最も簡潔（distance デモも同方式）。
 ```
 
+#### 3.3.13 3Dモデル (Issue #243)
+
+Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj 等）を地形上にロードして配置・操作する API。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
+
+##### 3.3.13.1 公開 API
+
+| メソッド | 戻り値 | 説明 |
+|---|---|---|
+| `addModel(id, options)` | `ModelHandle` | 3D モデルをロードして配置する。`id` 重複時は throw |
+| `getModel(id)` | `ModelHandle \| null` | 指定 id のモデル情報を取得。存在しなければ `null` |
+| `updateModel(id, partial)` | `ModelHandle` | 位置・回転・スケール等を部分更新 |
+| `removeModel(id)` | `void` | モデルを削除。存在しなければ `console.warn` で no-op |
+| `setModelEnabled(id, enabled)` | `void` | 表示 / 非表示を切替 |
+| `listModels()` | `readonly string[]` | 登録済みモデルの id 一覧 |
+| `playModelAnimation(id, name?)` | `void` | アニメーション再生。`name` 省略時は全アニメーション |
+| `stopModelAnimation(id, name?)` | `void` | アニメーション停止 |
+
+##### 3.3.13.2 ModelOptions
+
+| パラメータ | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `url` | `string` | (必須) | モデルファイルの URL |
+| `lat` | `number` | (必須) | 緯度 (度) |
+| `lon` | `number` | (必須) | 経度 (度) |
+| `altitude` | `number` | `0` | 高度 (m)。terrain 時は地表オフセット、absolute 時は海抜高度 |
+| `altitudeMode` | `AltitudeMode` | `"terrain"` | `"terrain"`: 地表追従 / `"absolute"`: 絶対高度 |
+| `rotation` | `ModelVector3` | `{x:0, y:0, z:0}` | 回転 (度)。Euler 角 |
+| `scaling` | `ModelVector3` | `{x:1, y:1, z:1}` | スケール倍率 |
+| `enabled` | `boolean` | `true` | 表示 / 非表示 |
+| `gravity` | `boolean` | `true` | 地表追従。terrain モード時のみ有効 |
+
+##### 3.3.13.3 ModelHandle
+
+| プロパティ | 型 | 説明 |
+|---|---|---|
+| `id` | `string` | モデル ID |
+| `url` | `string` | モデルファイル URL |
+| `lat` / `lon` | `number` | 緯度・経度 |
+| `altitude` | `number` | 高度 |
+| `altitudeMode` | `AltitudeMode` | 高度モード |
+| `rotation` | `Required<ModelVector3>` | 回転 (度) |
+| `scaling` | `Required<ModelVector3>` | スケール倍率 |
+| `enabled` | `boolean` | 表示状態 |
+| `gravity` | `boolean` | 地表追従状態 |
+| `loaded` | `boolean` | モデルロード完了フラグ |
+| `elevationResolved` | `boolean` | 地表標高解決済みフラグ |
+| `animationNames` | `readonly string[]` | モデルが持つアニメーション名一覧 |
+
+##### 3.3.13.4 ModelUpdate
+
+`url` を除く `ModelOptions` の全フィールドを `Partial` で受け付ける。未指定フィールドは現状維持。モデルファイルの差替えは `removeModel` → `addModel` で行う。
+
+##### 3.3.13.5 利用例
+
+```typescript
+import { JpmapTerrain } from "jpmap-terrain";
+
+const viewer = await JpmapTerrain.create(mount, { lat: 35.68, lon: 139.77 });
+
+// 3D モデルを東京駅に配置
+const handle = viewer.addModel("human", {
+  url: "assets/human.glb",
+  lat: 35.681236,
+  lon: 139.767125,
+  altitudeMode: "terrain",
+  rotation: { y: 90 },
+});
+
+// 位置を更新
+viewer.updateModel("human", { lat: 35.69, lon: 139.77 });
+
+// アニメーション再生
+viewer.playModelAnimation("human");
+
+// 向きを変える
+viewer.updateModel("human", { rotation: { y: 180 } });
+
+// 削除
+viewer.removeModel("human");
+```
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。

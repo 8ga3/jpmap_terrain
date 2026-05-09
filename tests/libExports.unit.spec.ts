@@ -37,6 +37,10 @@ import type {
     PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
+    ModelVector3,
+    ModelOptions,
+    ModelUpdate,
+    ModelHandle,
 } from "../src/lib";
 
 describe("package entry exports (T8)", () => {
@@ -147,5 +151,29 @@ describe("package entry exports (T8)", () => {
         expect(click.lat).toBe(0);
         expect(point.polygonId).toBe("p1");
         expect(drag.lat).toBeNull();
+    });
+
+    // #243: 3Dモデル公開型がエントリから import 可能。
+    it("3Dモデル公開型 (#243) がパッケージエントリから import できる（typecheck）", () => {
+        const vec: ModelVector3 = { x: 1, y: 2, z: 3 };
+        const opts: ModelOptions = {
+            url: "model.glb",
+            lat: 35.68,
+            lon: 139.77,
+            rotation: vec,
+            scaling: { x: 2 },
+        };
+        const update: ModelUpdate = { lat: 35.69, rotation: { y: 90 } };
+        const handleShape: Pick<ModelHandle, "id" | "url" | "loaded"> = {
+            id: "m1",
+            url: "model.glb",
+            loaded: false,
+        };
+
+        expect(opts.url).toBe("model.glb");
+        expect(update.lat).toBe(35.69);
+        expect(handleShape.id).toBe("m1");
+        expect(pkg.MODEL_DEFAULTS).toBeDefined();
+        expect(pkg.MODEL_DEFAULTS.gravity).toBe(true);
     });
 });

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – 3Dモデルデモ</title>
+  <meta name="description" content="jpmap_terrain の 3Dモデル (ModelManager) 公開 API 動作確認デモ (Issue #243 / #244)">
+  <meta name="author" content="8ga3">
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #model-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    }
+
+    #model-overlay .back-link {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      pointer-events: auto;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    #model-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    #model-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      pointer-events: auto;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 200px;
+    }
+
+    #model-controls strong {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: #c8d2e6;
+    }
+
+    #model-controls .info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    #model-controls .info-row .label {
+      color: #9aa5b4;
+    }
+
+    #model-controls .info-row .value {
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+
+    #model-controls input[type="range"] {
+      width: 100%;
+      margin: 4px 0;
+    }
+
+    #model-controls button {
+      pointer-events: auto;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #model-controls button:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="model-overlay">
+    <a class="back-link" href="/">← デモ一覧へ</a>
+    <div id="model-controls">
+      <strong>3Dモデルデモ (Issue #243 / #244)</strong>
+      <div class="info-row">
+        <span class="label">緯度</span>
+        <span class="value" id="model-lat">-</span>
+      </div>
+      <div class="info-row">
+        <span class="label">経度</span>
+        <span class="value" id="model-lon">-</span>
+      </div>
+      <div class="info-row">
+        <span class="label">方位</span>
+        <span class="value" id="model-azimuth">0°</span>
+      </div>
+      <div>
+        <label for="azimuth-slider" style="font-size: 11px; color: #9aa5b4;">方位 (0–360°)</label>
+        <input type="range" id="azimuth-slider" min="0" max="360" value="0" step="1">
+      </div>
+      <button id="fly-to-model">モデル位置へ移動</button>
+      <div style="font-size: 10px; color: #7a8594; margin-top: 4px;">
+        地面をクリックするとモデルが移動します
+      </div>
+    </div>
+  </div>
+</body>
+</html>

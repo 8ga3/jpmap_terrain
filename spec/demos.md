@@ -14,6 +14,7 @@
 | サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 (#201 / #206) |
 | 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認デモ (#186) |
 | Plan Viewer | `/plan.html` | `src/demos/plan/index.ts` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画 |
+| 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb）を配置・移動するデモ。方位変更・座標表示・カメラ移動。Model API (#243) の動作確認 |
 
 ## 設計方針
 
@@ -112,6 +113,24 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 - 1 点ポリゴン（`addPolygon`）でマーカー表示。ラベルは `R番号`。
 
 **URL:** `engine` / カメラ系は他デモと共通（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
+
+### model (`/model.html`)
+
+`JpmapTerrain` の 3D モデル公開 API（§3.3.x）の動作確認デモ（#243 / #244）。
+
+**初期状態:** 東京駅（lat: 35.681236, lon: 139.767125）に `assets/human.glb` を `altitudeMode: "terrain"` で配置。
+
+**操作:**
+
+| 操作 | 効果 |
+|---|---|
+| 地面クリック | クリック地点に 3D モデルを移動（カメラから 5km 以内、地面のみ） |
+| 方位スライダー | 3D モデルの Y 軸回転（0–360°） |
+| 「モデル位置へ移動」ボタン | カメラを 3D モデルの緯度・経度に `flyTo` |
+
+**表示:** 右パネルに緯度・経度・方位を表示。方位変更用スライダーと移動ボタンを配置。
+
+**URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式および `?lat=&lon=` クエリ形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
 ## 新規デモの追加手順
 

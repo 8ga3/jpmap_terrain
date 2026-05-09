@@ -30,6 +30,9 @@ import {
     MarkerHandle,
     MarkerOptions,
     MarkerUpdate,
+    ModelHandle,
+    ModelOptions,
+    ModelUpdate,
     PolygonHandle,
     PolygonOptions,
     PolygonPointOptions,
@@ -45,6 +48,7 @@ import {
 import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
 import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
 import { createCircleManager, type CircleManager } from "../terrain/circleManager";
+import { createModelManager, type ModelManager } from "../terrain/modelManager";
 
 /**
  * jpmap-terrain ビューア。
@@ -109,6 +113,9 @@ export class JpmapTerrain {
 
     /** 円管理 (Issue #201)。`onReady` で初期化される */
     private _circleManager: CircleManager | null = null;
+
+    /** 3Dモデル管理 (Issue #243)。`onReady` で初期化される */
+    private _modelManager: ModelManager | null = null;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
@@ -264,6 +271,10 @@ export class JpmapTerrain {
                     this._circleManager = createCircleManager(
                         controller.getMarkerContext(),
                     );
+                    // 3Dモデル (Issue #243)。MarkerContext と同一のコンテキストを共有する。
+                    this._modelManager = createModelManager(
+                        controller.getMarkerContext(),
+                    );
                 },
             });
             this._scene = scene;
@@ -294,6 +305,10 @@ export class JpmapTerrain {
             if (this._circleManager) {
                 try { this._circleManager.dispose(); } catch { /* best-effort */ }
                 this._circleManager = null;
+            }
+            if (this._modelManager) {
+                try { this._modelManager.dispose(); } catch { /* best-effort */ }
+                this._modelManager = null;
             }
             if (this._polygonManager) {
                 try { this._polygonManager.dispose(); } catch { /* best-effort */ }
@@ -1147,6 +1162,60 @@ export class JpmapTerrain {
         return this._circleManager?.list() ?? [];
     }
 
+    // ---- 3Dモデル (Issue #243) ----
+
+    private _requireModelManager(): ModelManager {
+        if (!this._modelManager) {
+            throw new Error("JpmapTerrain model manager is not ready yet");
+        }
+        return this._modelManager;
+    }
+
+    /**
+     * dispose 後の Model API はマーカーと同方針で統一する:
+     * - 戻り値が `ModelHandle`（非 null）の API（`addModel` / `updateModel`）は throw。
+     * - 戻り値が void / `ModelHandle | null` / `readonly string[]` の API は no-op として扱う。
+     */
+    public addModel(id: string, options: ModelOptions): ModelHandle {
+        this._assertAlive();
+        return this._requireModelManager().add(id, options);
+    }
+
+    public getModel(id: string): ModelHandle | null {
+        if (this._disposed || !this._modelManager) return null;
+        return this._modelManager.get(id);
+    }
+
+    public updateModel(id: string, partial: ModelUpdate): ModelHandle {
+        this._assertAlive();
+        return this._requireModelManager().update(id, partial);
+    }
+
+    public removeModel(id: string): void {
+        if (this._disposed || !this._modelManager) return;
+        this._modelManager.remove(id);
+    }
+
+    public setModelEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._modelManager) return;
+        this._modelManager.setEnabled(id, enabled);
+    }
+
+    public listModels(): readonly string[] {
+        if (this._disposed) return [];
+        return this._modelManager?.list() ?? [];
+    }
+
+    public playModelAnimation(id: string, name?: string): void {
+        if (this._disposed || !this._modelManager) return;
+        this._modelManager.playAnimation(id, name);
+    }
+
+    public stopModelAnimation(id: string, name?: string): void {
+        if (this._disposed || !this._modelManager) return;
+        this._modelManager.stopAnimation(id, name);
+    }
+
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
@@ -1211,6 +1280,15 @@ export class JpmapTerrain {
                 console.error("[JpmapTerrain] circleManager.dispose threw:", err);
             }
             this._circleManager = null;
+        }
+        // 3Dモデルマネージャも Scene dispose 前に解放する (Issue #243)。
+        if (this._modelManager) {
+            try {
+                this._modelManager.dispose();
+            } catch (err) {
+                console.error("[JpmapTerrain] modelManager.dispose threw:", err);
+            }
+            this._modelManager = null;
         }
         // controlPanel が body に追加した UI 要素を Scene dispose 前に除去する。
         if (this._controller) {
