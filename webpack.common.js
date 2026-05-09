@@ -114,12 +114,26 @@ module.exports = {
                 exclude: /node_modules/,
             },
             {
-                test: /\.(png|jpg|gif|env|glb|gltf|stl)$/i,
+                test: /\.(png|jpg|gif|env|glb|gltf)$/i,
                 use: [
                     {
                         loader: "url-loader",
                         options: {
                             limit: 8192,
+                        },
+                    },
+                ],
+            },
+            {
+                // OBJ / MTL / STL はファイル名を保持して出力する。
+                // OBJ ローダーが mtllib ディレクティブで .mtl を rootUrl からの
+                // 相対パスで取得するため、ハッシュ化や data URI 化を避ける。
+                test: /\.(obj|mtl|stl)$/i,
+                use: [
+                    {
+                        loader: "file-loader",
+                        options: {
+                            name: "assets/[name].[ext]",
                         },
                     },
                 ],

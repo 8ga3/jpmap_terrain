@@ -878,7 +878,7 @@ viewer.addPolygon("dist-line", {
 
 #### 3.3.13 3Dモデル (Issue #243)
 
-Babylon.js がサポートする 3D モデルファイル（glb / gltf）を地形上にロードして配置・操作する API。ローダーは `@babylonjs/loaders` の glTF プラグインを使用し、`addModel` 呼び出し時に動的ロードする。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
+Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / stl）を地形上にロードして配置・操作する API。ローダーはファイル拡張子に応じて `@babylonjs/loaders` の glTF / OBJ / STL プラグインを動的ロードし、`addModel` 呼び出し時にインポートする。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
 
 ##### 3.3.13.1 公開 API
 
@@ -897,7 +897,7 @@ Babylon.js がサポートする 3D モデルファイル（glb / gltf）を地�
 
 | パラメータ | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `url` | `string` | (必須) | モデルファイルの URL |
+| `url` | `string` | (必須) | モデルファイルの URL（glb / gltf / obj / stl に対応） |
 | `lat` | `number` | (必須) | 緯度 (度) |
 | `lon` | `number` | (必須) | 経度 (度) |
 | `altitude` | `number` | `0` | 高度 (m)。terrain 時は地表オフセット、absolute 時は海抜高度 |

@@ -60,6 +60,12 @@ jest.unstable_mockModule("@babylonjs/core/Loading/sceneLoader", () => ({
 // ---- glTF 動的 import スタブ ----
 jest.unstable_mockModule("@babylonjs/loaders/glTF", () => ({}));
 
+// ---- OBJ 動的 import スタブ ----
+jest.unstable_mockModule("@babylonjs/loaders/OBJ", () => ({}));
+
+// ---- STL 動的 import スタブ ----
+jest.unstable_mockModule("@babylonjs/loaders/STL", () => ({}));
+
 // ---- buildCtx ヘルパー ----
 const buildCtx = (elevation: number | null = 0) => {
     const observers: Array<() => void> = [];
@@ -96,7 +102,7 @@ const VALID = {
     altitude: 0,
 };
 
-const { createModelManager } = await import("../src/terrain/modelManager");
+const { createModelManager, importLoaderForUrl } = await import("../src/terrain/modelManager");
 
 beforeEach(() => { createdNodes.length = 0; });
 
@@ -253,5 +259,65 @@ describe("ModelManager altitudeMode", () => {
         mgr.add("a", { ...VALID, gravity: true });
         const updated = mgr.update("a", { altitudeMode: "absolute", altitude: 50 });
         expect(updated.elevationResolved).toBe(true);
+    });
+});
+
+// ---- importLoaderForUrl (Issue #247) ----
+
+describe("importLoaderForUrl", () => {
+    test(".glb で glTF ローダーがインポートされる", async () => {
+        await expect(importLoaderForUrl("assets/model.glb")).resolves.toBeUndefined();
+    });
+
+    test(".gltf で glTF ローダーがインポートされる", async () => {
+        await expect(importLoaderForUrl("assets/model.gltf")).resolves.toBeUndefined();
+    });
+
+    test(".obj で OBJ ローダーがインポートされる", async () => {
+        await expect(importLoaderForUrl("assets/model.obj")).resolves.toBeUndefined();
+    });
+
+    test(".stl で STL ローダーがインポートされる", async () => {
+        await expect(importLoaderForUrl("assets/model.stl")).resolves.toBeUndefined();
+    });
+
+    test("大文字拡張子 (.GLB) も認識される", async () => {
+        await expect(importLoaderForUrl("assets/model.GLB")).resolves.toBeUndefined();
+    });
+
+    test("クエリ文字列付き URL でも正しくロードされる", async () => {
+        await expect(importLoaderForUrl("assets/model.obj?v=1")).resolves.toBeUndefined();
+    });
+
+    test("フラグメント付き URL でも正しくロードされる", async () => {
+        await expect(importLoaderForUrl("assets/model.stl#section")).resolves.toBeUndefined();
+    });
+
+    test("未対応拡張子 (.fbx) は throw", async () => {
+        await expect(importLoaderForUrl("assets/model.fbx")).rejects.toThrow(/unsupported file format/);
+    });
+
+    test("拡張子なし URL は throw", async () => {
+        await expect(importLoaderForUrl("assets/model")).rejects.toThrow(/unsupported file format/);
+    });
+});
+
+// ---- OBJ / STL フォーマットでの add (Issue #247) ----
+
+describe("ModelManager OBJ/STL add", () => {
+    test("OBJ URL での add が成功する", () => {
+        const { ctx } = buildCtx();
+        const mgr = createModelManager(ctx);
+        const handle = mgr.add("obj-model", { ...VALID, url: "assets/human.obj" });
+        expect(handle.id).toBe("obj-model");
+        expect(handle.url).toBe("assets/human.obj");
+    });
+
+    test("STL URL での add が成功する", () => {
+        const { ctx } = buildCtx();
+        const mgr = createModelManager(ctx);
+        const handle = mgr.add("stl-model", { ...VALID, url: "assets/human.stl" });
+        expect(handle.id).toBe("stl-model");
+        expect(handle.url).toBe("assets/human.stl");
     });
 });

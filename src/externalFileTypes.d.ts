@@ -5,6 +5,8 @@ declare module "*.env";
 
 // 3D types
 declare module "*.glb";
+declare module "*.obj";
+declare module "*.mtl";
 declare module "*.stl";
 
 // Physics
