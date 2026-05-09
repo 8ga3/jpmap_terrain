@@ -214,6 +214,85 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
     },
 }));
 
+// `modelManager.ts` は Babylon.js の TransformNode / SceneLoader に依存するため、
+// Model API テストでは `createModelManager` を軽量スタブに差し替える。
+jest.unstable_mockModule("../src/terrain/modelManager", () => ({
+    createModelManager: () => {
+        const models = new Map<
+            string,
+            {
+                id: string;
+                url: string;
+                lat: number;
+                lon: number;
+                altitude: number;
+                altitudeMode: string;
+                rotation: { x: number; y: number; z: number };
+                scaling: { x: number; y: number; z: number };
+                enabled: boolean;
+                gravity: boolean;
+                loaded: boolean;
+                elevationResolved: boolean;
+                animationNames: readonly string[];
+            }
+        >();
+        let disposed = false;
+        const toHandle = (m: (typeof models extends Map<string, infer V> ? V : never)) => ({ ...m });
+        return {
+            add(id: string, options: Record<string, unknown>) {
+                if (disposed) throw new Error("ModelManager has been disposed");
+                if (models.has(id)) throw new Error(`id "${id}" already exists`);
+                const entry = {
+                    id,
+                    url: options.url as string,
+                    lat: options.lat as number,
+                    lon: options.lon as number,
+                    altitude: (options.altitude as number) ?? 0,
+                    altitudeMode: (options.altitudeMode as string) ?? "terrain",
+                    rotation: { x: 0, y: 0, z: 0 },
+                    scaling: { x: 1, y: 1, z: 1 },
+                    enabled: (options.enabled as boolean) ?? true,
+                    gravity: (options.gravity as boolean) ?? true,
+                    loaded: false,
+                    elevationResolved: false,
+                    animationNames: [] as readonly string[],
+                };
+                models.set(id, entry);
+                return toHandle(entry);
+            },
+            get(id: string) {
+                const m = models.get(id);
+                return m ? toHandle(m) : null;
+            },
+            update(id: string, partial: Record<string, unknown>) {
+                if (disposed) throw new Error("ModelManager has been disposed");
+                const m = models.get(id);
+                if (!m) throw new Error(`id "${id}" not found`);
+                if (partial.lat !== undefined) m.lat = partial.lat as number;
+                if (partial.lon !== undefined) m.lon = partial.lon as number;
+                if (partial.altitude !== undefined) m.altitude = partial.altitude as number;
+                return toHandle(m);
+            },
+            remove(id: string) {
+                models.delete(id);
+            },
+            setEnabled(id: string, enabled: boolean) {
+                const m = models.get(id);
+                if (m) m.enabled = enabled;
+            },
+            list() {
+                return [...models.keys()];
+            },
+            playAnimation() { /* no-op */ },
+            stopAnimation() { /* no-op */ },
+            dispose() {
+                disposed = true;
+                models.clear();
+            },
+        };
+    },
+}));
+
 jest.unstable_mockModule("../src/scenes/default", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
     // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
@@ -2370,6 +2449,60 @@ describe("JpmapTerrain (skeleton)", () => {
             const updated = viewer.updateCircle("c1", { radius: 300 });
             expect(updated.radius).toBe(300);
             viewer.dispose();
+        });
+    });
+
+    describe("Model API (Issue #243)", () => {
+        const validPos = { lat: 35.681, lon: 139.767 };
+        const validOpts = { url: "test.glb", ...validPos };
+
+        it("addModel → getModel / listModels で参照できる", async () => {
+            const viewer = await create(createMountElement());
+            const handle = viewer.addModel("m1", validOpts);
+            expect(handle.id).toBe("m1");
+            expect(viewer.getModel("m1")?.id).toBe("m1");
+            expect(viewer.listModels()).toEqual(["m1"]);
+        });
+
+        it("removeModel で消える", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addModel("m1", validOpts);
+            viewer.removeModel("m1");
+            expect(viewer.getModel("m1")).toBeNull();
+            expect(viewer.listModels()).toEqual([]);
+        });
+
+        it("updateModel で位置を変更できる", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addModel("m1", validOpts);
+            const updated = viewer.updateModel("m1", { lat: 35.0 });
+            expect(updated.lat).toBe(35.0);
+        });
+
+        it("setModelEnabled は登録済み id に対して throw しない", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addModel("m1", validOpts);
+            expect(() => viewer.setModelEnabled("m1", false)).not.toThrow();
+        });
+
+        it("playModelAnimation / stopModelAnimation は throw しない", async () => {
+            const viewer = await create(createMountElement());
+            viewer.addModel("m1", validOpts);
+            expect(() => viewer.playModelAnimation("m1")).not.toThrow();
+            expect(() => viewer.stopModelAnimation("m1")).not.toThrow();
+        });
+
+        it("dispose 後の addModel / updateModel は throw、その他は no-op / null / []", async () => {
+            const viewer = await create(createMountElement());
+            viewer.dispose();
+            expect(() => viewer.addModel("m1", validOpts)).toThrow();
+            expect(() => viewer.updateModel("m1", { lat: 35.0 })).toThrow();
+            expect(viewer.getModel("m1")).toBeNull();
+            expect(viewer.listModels()).toEqual([]);
+            expect(() => viewer.removeModel("m1")).not.toThrow();
+            expect(() => viewer.setModelEnabled("m1", false)).not.toThrow();
+            expect(() => viewer.playModelAnimation("m1")).not.toThrow();
+            expect(() => viewer.stopModelAnimation("m1")).not.toThrow();
         });
     });
 });
