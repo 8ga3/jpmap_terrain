@@ -19,10 +19,11 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
+import humanGlbUrl from "../../../assets/human.glb";
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "human";
-const MODEL_URL = "assets/human.glb";
+const MODEL_URL: string = humanGlbUrl;
 
 /** 東京駅 */
 const TOKYO_STATION = { lat: 35.681236, lon: 139.767125 };
