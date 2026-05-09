@@ -134,9 +134,12 @@ const start = async (): Promise<void> => {
     }
 
     // モデル位置へ移動ボタン
+    // カメラをモデル位置に即座に移動する（アニメーションなし）。
+    // マップが移動先に再描画され、3Dモデルは既にその場所に存在している状態になる。
     if (flyToBtn) {
         flyToBtn.addEventListener("click", () => {
-            viewer.flyTo({ lat: modelLat, lon: modelLon, duration: 1500 });
+            viewer.lat = modelLat;
+            viewer.lon = modelLon;
         });
     }
 
