@@ -11,7 +11,10 @@ module.exports = merge(common, {
     mode: 'development',
     devtool: 'inline-source-map',
     devServer: {
-        static: path.resolve(appDirectory, "public"),
+        static: [
+            path.resolve(appDirectory, "public"),
+            { directory: path.resolve(appDirectory, "assets"), publicPath: "/assets" },
+        ],
         compress: true,
         historyApiFallback: {
             disableDotRule: true,
