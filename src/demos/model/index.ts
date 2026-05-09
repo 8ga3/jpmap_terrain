@@ -81,15 +81,19 @@ const start = async (): Promise<void> => {
     const lonDisplay = document.getElementById("model-lon") as HTMLSpanElement;
     const azimuthDisplay = document.getElementById("model-azimuth") as HTMLSpanElement;
     const azimuthSlider = document.getElementById("azimuth-slider") as HTMLInputElement;
+    const scaleDisplay = document.getElementById("model-scale") as HTMLSpanElement;
+    const scaleSlider = document.getElementById("scale-slider") as HTMLInputElement;
     const flyToBtn = document.getElementById("fly-to-model") as HTMLButtonElement;
 
     let modelLat = TOKYO_STATION.lat;
     let modelLon = TOKYO_STATION.lon;
+    let currentScale = MODEL_SCALE;
 
     const updateDisplay = (): void => {
         if (latDisplay) latDisplay.textContent = modelLat.toFixed(6);
         if (lonDisplay) lonDisplay.textContent = modelLon.toFixed(6);
         if (azimuthDisplay) azimuthDisplay.textContent = `${currentRotationY}°`;
+        if (scaleDisplay) scaleDisplay.textContent = String(currentScale);
     };
 
     updateDisplay();
@@ -100,6 +104,17 @@ const start = async (): Promise<void> => {
         azimuthSlider.addEventListener("input", () => {
             currentRotationY = Number(azimuthSlider.value);
             viewer.updateModel(MODEL_ID, { rotation: { y: currentRotationY } });
+            updateDisplay();
+        });
+    }
+
+    // 拡大率スライダー
+    if (scaleSlider) {
+        scaleSlider.value = String(currentScale);
+        scaleSlider.addEventListener("input", () => {
+            currentScale = Number(scaleSlider.value);
+            const s = currentScale;
+            viewer.updateModel(MODEL_ID, { scaling: { x: s, y: s, z: s } });
             updateDisplay();
         });
     }

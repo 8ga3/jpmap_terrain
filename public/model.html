@@ -128,6 +128,13 @@
         <label for="azimuth-slider" style="font-size: 11px; color: #e0e4ea;">方位 (0–360°)</label>
         <input type="range" id="azimuth-slider" min="0" max="360" value="0" step="1">
       </div>
+      <div>
+        <div class="info-row">
+          <label for="scale-slider" style="font-size: 11px; color: #e0e4ea;">拡大率</label>
+          <span class="value" id="model-scale">50</span>
+        </div>
+        <input type="range" id="scale-slider" min="1" max="200" value="50" step="1">
+      </div>
       <button id="fly-to-model">モデル位置へ移動</button>
       <div style="font-size: 10px; color: #c8cdd6; margin-top: 4px;">
         地面をクリックするとモデルが移動します
