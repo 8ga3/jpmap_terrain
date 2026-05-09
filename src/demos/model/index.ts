@@ -138,9 +138,15 @@ const start = async (): Promise<void> => {
 
         modelLat = event.lat;
         modelLon = event.lon;
+        // event.altitude はメッシュ表面の実際のY座標。
+        // queryElevationAtWorld は最近傍ピクセルで補間するため、
+        // 急な坂では terrain モードとズレが生じる。
+        // absolute + event.altitude でクリック位置に正確に配置する。
         viewer.updateModel(MODEL_ID, {
             lat: modelLat,
             lon: modelLon,
+            altitudeMode: "absolute",
+            altitude: event.altitude,
         });
         updateDisplay();
     });
