@@ -878,7 +878,7 @@ viewer.addPolygon("dist-line", {
 
 #### 3.3.13 3Dモデル (Issue #243)
 
-Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj 等）を地形上にロードして配置・操作する API。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
+Babylon.js がサポートする 3D モデルファイル（glb / gltf）を地形上にロードして配置・操作する API。ローダーは `@babylonjs/loaders` の glTF プラグインを使用し、`addModel` 呼び出し時に動的ロードする。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
 
 ##### 3.3.13.1 公開 API
 

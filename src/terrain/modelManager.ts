@@ -15,7 +15,9 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import "@babylonjs/loaders/glTF";
+// glTF/GLB ローダーは `addModel` 呼び出し時に動的ロードする。
+// トップレベル import にすると @babylonjs/loaders が optional peer dependency でも
+// パッケージ利用者が Model API を使わない場合に実行時エラーになるため。
 
 import {
     assertLatLonInBounds,
@@ -126,8 +128,9 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
         const { wx, wz } = latLonToWorld(ctx, entry.lat, entry.lon);
 
         if (entry.altitudeMode === "absolute") {
-            entry.root.position = new Vector3(wx, entry.altitude, wz);
+            entry.root.position.set(wx, entry.altitude, wz);
             entry.elevationResolved = true;
+            setMeshVisibility(entry, entry.enabled);
             return;
         }
 
@@ -140,9 +143,9 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
                 return;
             }
             entry.elevationResolved = true;
-            entry.root.position = new Vector3(wx, elev + entry.altitude, wz);
+            entry.root.position.set(wx, elev + entry.altitude, wz);
         } else {
-            entry.root.position = new Vector3(wx, entry.altitude, wz);
+            entry.root.position.set(wx, entry.altitude, wz);
             entry.elevationResolved = true;
         }
         setMeshVisibility(entry, entry.enabled);
@@ -180,6 +183,8 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
     const loadModel = async (entry: ModelEntry): Promise<void> => {
         const { rootUrl, sceneFilename } = splitUrl(entry.url);
         try {
+            // glTF/GLB ローダーを動的ロード（optional peer dependency のため遅延）
+            await import("@babylonjs/loaders/glTF");
             const result = await SceneLoader.ImportMeshAsync(
                 "",
                 rootUrl,
