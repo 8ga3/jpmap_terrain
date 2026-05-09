@@ -352,6 +352,17 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
 
             if (entry.loaded) {
                 applyTransform(entry);
+            } else {
+                // ロード完了前でも altitudeMode 切替で elevationResolved を正しく反映する
+                if (entry.altitudeMode === "absolute") {
+                    entry.elevationResolved = true;
+                } else if (entry.gravity) {
+                    const { wx, wz } = latLonToWorld(ctx, entry.lat, entry.lon);
+                    entry.elevationResolved =
+                        ctx.tileManager.queryElevationAtWorld(wx, wz) !== null;
+                } else {
+                    entry.elevationResolved = true;
+                }
             }
 
             return toHandle(entry);

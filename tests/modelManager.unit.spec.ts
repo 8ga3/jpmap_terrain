@@ -246,4 +246,12 @@ describe("ModelManager altitudeMode", () => {
         const handle = mgr.add("a", { ...VALID, gravity: true });
         expect(handle.elevationResolved).toBe(false);
     });
+
+    test("ロード前に altitudeMode を absolute に切り替えると elevationResolved が true になる", () => {
+        const { ctx } = buildCtx(null);
+        const mgr = createModelManager(ctx);
+        mgr.add("a", { ...VALID, gravity: true });
+        const updated = mgr.update("a", { altitudeMode: "absolute", altitude: 50 });
+        expect(updated.elevationResolved).toBe(true);
+    });
 });
