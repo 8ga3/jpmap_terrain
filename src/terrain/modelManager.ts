@@ -66,6 +66,8 @@ interface ModelEntry {
     animationGroups: AnimationGroup[];
     /** ロード中止用。dispose / remove 時に true にする */
     cancelled: boolean;
+    /** 前フレームの可視状態キャッシュ（冗長な setEnabled 呼び出しを削減） */
+    lastVisible: boolean | null;
 }
 
 const resolveVec3 = (
@@ -152,6 +154,8 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
     };
 
     const setMeshVisibility = (entry: ModelEntry, visible: boolean): void => {
+        if (entry.lastVisible === visible) return;
+        entry.lastVisible = visible;
         for (const mesh of entry.meshes) {
             mesh.setEnabled(visible);
         }
@@ -276,6 +280,7 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
                 meshes: [],
                 animationGroups: [],
                 cancelled: false,
+                lastVisible: null,
             };
 
             entries.set(id, entry);
