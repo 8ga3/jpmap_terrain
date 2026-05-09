@@ -27,6 +27,8 @@ const MODEL_URL = "assets/human.glb";
 /** 東京駅 */
 const TOKYO_STATION = { lat: 35.681236, lon: 139.767125 };
 
+/** モデルの表示スケール。human.glb は約1m なので地形上で視認できるサイズに拡大 */
+const MODEL_SCALE = 50;
 /** クリック可能距離 (m)。カメラからこの距離以内のみクリックを受け付ける */
 const MAX_CLICK_DISTANCE_M = 5000;
 
@@ -70,6 +72,7 @@ const start = async (): Promise<void> => {
         altitudeMode: "terrain",
         altitude: 0,
         rotation: { y: currentRotationY },
+        scaling: { x: MODEL_SCALE, y: MODEL_SCALE, z: MODEL_SCALE },
         gravity: true,
     });
 
