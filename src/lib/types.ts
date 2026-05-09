@@ -728,7 +728,7 @@ export interface ModelVector3 {
 /**
  * `JpmapTerrain.addModel` のオプション (Issue #243)。
  *
- * Babylon.js がサポートする 3D モデルファイル (glb / gltf / obj 等) を
+ * Babylon.js がサポートする 3D モデルファイル (glb / gltf) を
  * 地形上にロードして配置する。
  */
 export interface ModelOptions {
