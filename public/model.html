@@ -136,6 +136,14 @@
         <input type="range" id="scale-slider" min="1" max="200" value="50" step="1">
       </div>
       <button id="fly-to-model">モデル位置へ移動</button>
+      <div>
+        <label for="format-select" style="font-size: 11px; color: #e0e4ea;">フォーマット</label>
+        <select id="format-select" style="width: 100%; margin-top: 4px; padding: 4px 6px; font-size: 12px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.25); border-radius: 4px;">
+          <option value="glb" selected>GLB</option>
+          <option value="obj">OBJ</option>
+          <option value="stl">STL</option>
+        </select>
+      </div>
       <div style="font-size: 10px; color: #c8cdd6; margin-top: 4px;">
         地面をクリックするとモデルが移動します
       </div>

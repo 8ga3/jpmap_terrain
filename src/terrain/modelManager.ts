@@ -15,7 +15,7 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-// glTF/GLB ローダーは `addModel` 呼び出し時に動的ロードする。
+// 3D モデルローダーは `addModel` 呼び出し時に拡張子に応じて動的ロードする。
 // トップレベル import にすると @babylonjs/loaders が optional peer dependency でも
 // パッケージ利用者が Model API を使わない場合に実行時エラーになるため。
 
@@ -122,6 +122,37 @@ const splitUrl = (url: string): { rootUrl: string; sceneFilename: string } => {
     };
 };
 
+/** サポートする 3D モデルフォーマットの拡張子一覧 */
+const SUPPORTED_EXTENSIONS = [".glb", ".gltf", ".obj", ".stl"] as const;
+
+/**
+ * URL の拡張子から対応するローダーを動的 import する。
+ * 未対応拡張子の場合は Error を throw する。
+ */
+export const importLoaderForUrl = async (url: string): Promise<void> => {
+    // クエリ文字列・フラグメントを除去してから拡張子を取得
+    const pathname = url.split("?")[0].split("#")[0];
+    const dotIndex = pathname.lastIndexOf(".");
+    const ext = dotIndex !== -1 ? pathname.substring(dotIndex).toLowerCase() : "";
+
+    switch (ext) {
+        case ".glb":
+        case ".gltf":
+            await import("@babylonjs/loaders/glTF");
+            break;
+        case ".obj":
+            await import("@babylonjs/loaders/OBJ");
+            break;
+        case ".stl":
+            await import("@babylonjs/loaders/STL");
+            break;
+        default:
+            throw new Error(
+                `${ERROR_PREFIX}: unsupported file format "${ext}". Supported formats: ${SUPPORTED_EXTENSIONS.join(", ")}`,
+            );
+    }
+};
+
 export const createModelManager = (ctx: OverlayContext): ModelManager => {
     const entries = new Map<string, ModelEntry>();
     let disposed = false;
@@ -187,8 +218,8 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
     const loadModel = async (entry: ModelEntry): Promise<void> => {
         const { rootUrl, sceneFilename } = splitUrl(entry.url);
         try {
-            // glTF/GLB ローダーを動的ロード（optional peer dependency のため遅延）
-            await import("@babylonjs/loaders/glTF");
+            // 拡張子に応じたローダーを動的ロード（optional peer dependency のため遅延）
+            await importLoaderForUrl(entry.url);
             const result = await SceneLoader.ImportMeshAsync(
                 "",
                 rootUrl,

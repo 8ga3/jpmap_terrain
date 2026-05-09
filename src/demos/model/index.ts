@@ -20,10 +20,21 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import humanGlbUrl from "../../../assets/human.glb";
+import humanObjUrl from "../../../assets/human.obj";
+// MTL は OBJ ローダーが rootUrl から自動取得するが、
+// webpack にバンドル対象として認識させるためインポートしておく。
+import "../../../assets/human.mtl";
+import humanStlUrl from "../../../assets/human.stl";
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "human";
-const MODEL_URL: string = humanGlbUrl;
+
+type ModelFormat = "glb" | "obj" | "stl";
+const MODEL_URLS: Record<ModelFormat, string> = {
+    glb: humanGlbUrl,
+    obj: humanObjUrl,
+    stl: humanStlUrl,
+};
 
 /** 東京駅 */
 const TOKYO_STATION = { lat: 35.681236, lon: 139.767125 };
@@ -64,10 +75,11 @@ const start = async (): Promise<void> => {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
     }
 
-    // 初期配置: 東京駅に human.glb を配置
+    // 初期配置: 東京駅に human モデルを配置
     let currentRotationY = 0;
+    let currentFormat: ModelFormat = "glb";
     viewer.addModel(MODEL_ID, {
-        url: MODEL_URL,
+        url: MODEL_URLS[currentFormat],
         lat: TOKYO_STATION.lat,
         lon: TOKYO_STATION.lon,
         altitudeMode: "terrain",
@@ -85,6 +97,7 @@ const start = async (): Promise<void> => {
     const scaleDisplay = document.getElementById("model-scale") as HTMLSpanElement;
     const scaleSlider = document.getElementById("scale-slider") as HTMLInputElement;
     const flyToBtn = document.getElementById("fly-to-model") as HTMLButtonElement;
+    const formatSelect = document.getElementById("format-select") as HTMLSelectElement;
 
     let modelLat = TOKYO_STATION.lat;
     let modelLon = TOKYO_STATION.lon;
@@ -124,6 +137,28 @@ const start = async (): Promise<void> => {
     if (flyToBtn) {
         flyToBtn.addEventListener("click", () => {
             viewer.flyTo({ lat: modelLat, lon: modelLon, duration: 1500 });
+        });
+    }
+
+    // フォーマット切替セレクタ
+    if (formatSelect) {
+        formatSelect.value = currentFormat;
+        formatSelect.addEventListener("change", () => {
+            const newFormat = formatSelect.value as ModelFormat;
+            if (newFormat === currentFormat) return;
+            currentFormat = newFormat;
+            // モデル差替え: removeModel → addModel
+            viewer.removeModel(MODEL_ID);
+            viewer.addModel(MODEL_ID, {
+                url: MODEL_URLS[currentFormat],
+                lat: modelLat,
+                lon: modelLon,
+                altitudeMode: "terrain",
+                altitude: 0,
+                rotation: { y: currentRotationY },
+                scaling: { x: currentScale, y: currentScale, z: currentScale },
+                gravity: true,
+            });
         });
     }
 
