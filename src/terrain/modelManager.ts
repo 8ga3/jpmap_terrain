@@ -305,12 +305,16 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
             }
 
             if (partial.altitudeMode !== undefined) {
+                // absolute モードへの切替時は、同じ update 呼び出しで altitude も明示指定を要求する。
+                // entry.altitude は常に数値（MODEL_DEFAULTS.altitude = 0）なので、
+                // 暗黙の 0 が absolute の海抜高度として使われることを防ぐ。
                 if (
                     partial.altitudeMode === "absolute" &&
-                    (partial.altitude ?? entry.altitude) === undefined
+                    entry.altitudeMode !== "absolute" &&
+                    partial.altitude === undefined
                 ) {
                     throw new Error(
-                        `${UPDATE_ERROR_PREFIX}: altitudeMode="absolute" requires altitude`,
+                        `${UPDATE_ERROR_PREFIX}: switching to altitudeMode="absolute" requires explicit altitude`,
                     );
                 }
                 entry.altitudeMode = partial.altitudeMode;
