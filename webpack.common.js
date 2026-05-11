@@ -70,6 +70,13 @@ const ENTRY_DEFINITIONS = [
         filename: "model.html",
         title: "jpmap_terrain – 3Dモデルデモ",
     },
+    {
+        name: "avatar",
+        entry: "src/demos/avatar/index.ts",
+        template: "public/avatar.html",
+        filename: "avatar.html",
+        title: "jpmap_terrain – アバターアニメーションデモ",
+    },
 ];
 
 const entry = Object.fromEntries(
