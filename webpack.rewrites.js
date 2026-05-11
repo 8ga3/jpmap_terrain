@@ -22,5 +22,7 @@ module.exports = {
         { from: /^\/plan\.html(?:\/?@.*)?\/?$/, to: '/plan.html' },
         { from: /^\/model(?:\/@.*)?\/?$/, to: '/model.html' },
         { from: /^\/model\.html(?:\/?@.*)?\/?$/, to: '/model.html' },
+        { from: /^\/avatar(?:\/@.*)?\/?$/, to: '/avatar.html' },
+        { from: /^\/avatar\.html(?:\/?@.*)?\/?$/, to: '/avatar.html' },
     ],
 };

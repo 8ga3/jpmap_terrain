@@ -60,6 +60,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "地面クリックで 3D モデル（human.glb）を配置・移動するデモ。方位変更やモデル位置へのカメラ移動が可能です。",
         href: "model",
     },
+    {
+        title: "アバターアニメーション",
+        description:
+            "歩行アニメーション付き 3D モデルがクリック地点を中心に円軌道で地形に沿って移動するデモ。半径・速度の調整が可能です。",
+        href: "avatar",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
