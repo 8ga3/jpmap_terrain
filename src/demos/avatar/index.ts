@@ -94,22 +94,8 @@ const start = async (): Promise<void> => {
         gravity: true,
     });
 
-    // モデルロード完了を待ってアニメーション開始
-    const waitForLoad = (): Promise<void> =>
-        new Promise((resolve) => {
-            const check = (): void => {
-                const handle = viewer.getModel(MODEL_ID);
-                if (handle?.loaded) {
-                    resolve();
-                } else {
-                    setTimeout(check, 100);
-                }
-            };
-            check();
-        });
-
-    await waitForLoad();
-    viewer.playModelAnimation(MODEL_ID);
+    // モデルロード完了フラグ（tick ループ内でアニメーション開始を制御）
+    let animationStarted = false;
 
     // --- UI 要素の取得 ---
     const centerLatDisplay = document.getElementById("center-lat") as HTMLSpanElement | null;
@@ -161,7 +147,10 @@ const start = async (): Promise<void> => {
             animating = !animating;
             if (animating) {
                 lastTimestamp = null;
-                viewer.playModelAnimation(MODEL_ID);
+                // animationStarted が true なら即時再生。まだ未ロードならtickで開始される。
+                if (animationStarted) {
+                    viewer.playModelAnimation(MODEL_ID);
+                }
             } else {
                 viewer.stopModelAnimation(MODEL_ID);
             }
@@ -199,8 +188,17 @@ const start = async (): Promise<void> => {
     // 毎フレーム更新: 円軌道上の位置を計算してモデルを移動
     let rafId = 0;
     const tick = (timestamp: number): void => {
+        const handle = viewer.getModel(MODEL_ID);
         // viewer 破棄後はループを停止
-        if (!viewer.getModel(MODEL_ID)) return;
+        if (!handle) return;
+
+        // モデルロード完了後、最初のフレームでアニメーション開始
+        if (handle.loaded && !animationStarted) {
+            animationStarted = true;
+            if (animating) {
+                viewer.playModelAnimation(MODEL_ID);
+            }
+        }
 
         if (animating) {
             if (lastTimestamp !== null) {
@@ -220,7 +218,10 @@ const start = async (): Promise<void> => {
             viewer.updateModel(MODEL_ID, {
                 lat: pos.lat,
                 lon: pos.lon,
+                altitudeMode: "terrain",
+                altitude: 0,
                 rotation: { y: heading },
+                gravity: true,
             });
         }
         rafId = requestAnimationFrame(tick);
