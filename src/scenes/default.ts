@@ -668,6 +668,12 @@ export class DefaultScene implements CreateSceneClass {
                 const anchorX = camera.target.x;
                 const anchorZ = camera.target.z;
                 const prevAlpha = camera.alpha;
+                // radius（地形からの高度 = ズームレベル）を保存する。
+                // setPosition → setTarget の間に Babylon の rebuildAnglesAndRadius() が
+                // 呼ばれ、stale な target.y を参照して radius が一時的に変化しうる。
+                // _checkLimits() が同期で走ると inertialRadiusOffset がリセットされる
+                // 副作用もあるため、明示的に復元して確実に値を保持する (#254)。
+                const savedRadius = camera.radius;
                 // 山など地形高さが変化してもレイが確実に地形を検出できるよう、
                 // 十分高い位置からキャストする (#254)。
                 const rayOriginY = Math.max(camY, 10000);
@@ -688,9 +694,10 @@ export class DefaultScene implements CreateSceneClass {
                 // position.y を terrain に追随させる (#254)。
                 // ドラッグ中に radius が変化せず一定の俯瞰高度を維持する。
                 // 山など地形が高い場合は camera.position.y が上昇（衝突回避）。
-                const newCamY = terrainY + camera.radius;
+                const newCamY = terrainY + savedRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
                 camera.setTarget(new Vector3(anchorX, terrainY, anchorZ));
+                camera.radius = savedRadius;
                 camera.alpha = prevAlpha;
                 camera.beta = BETA_2D;
                 return;
