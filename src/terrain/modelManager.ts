@@ -10,7 +10,7 @@
 
 import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { Scene } from "@babylonjs/core/scene";
-import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
+import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
@@ -107,21 +107,6 @@ const applyScaling = (root: TransformNode, scaling: Required<ModelVector3>): voi
     root.scaling = new Vector3(scaling.x, scaling.y, scaling.z);
 };
 
-/**
- * URL を rootUrl（ディレクトリ部分）と sceneFilename（ファイル名部分）に分割する。
- * SceneLoader.ImportMeshAsync は rootUrl + sceneFilename の形で指定する。
- */
-const splitUrl = (url: string): { rootUrl: string; sceneFilename: string } => {
-    const lastSlash = url.lastIndexOf("/");
-    if (lastSlash === -1) {
-        return { rootUrl: "", sceneFilename: url };
-    }
-    return {
-        rootUrl: url.substring(0, lastSlash + 1),
-        sceneFilename: url.substring(lastSlash + 1),
-    };
-};
-
 /** サポートする 3D モデルフォーマットの拡張子一覧 */
 const SUPPORTED_EXTENSIONS = [".glb", ".gltf", ".obj", ".stl"] as const;
 
@@ -216,16 +201,10 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
     };
 
     const loadModel = async (entry: ModelEntry): Promise<void> => {
-        const { rootUrl, sceneFilename } = splitUrl(entry.url);
         try {
             // 拡張子に応じたローダーを動的ロード（optional peer dependency のため遅延）
             await importLoaderForUrl(entry.url);
-            const result = await SceneLoader.ImportMeshAsync(
-                "",
-                rootUrl,
-                sceneFilename,
-                ctx.scene,
-            );
+            const result = await ImportMeshAsync(entry.url, ctx.scene);
             if (entry.cancelled) {
                 // dispose / remove が先に呼ばれた場合はロード結果を破棄
                 for (const mesh of result.meshes) {
@@ -240,7 +219,9 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
             entry.animationGroups = result.animationGroups;
             entry.loaded = true;
 
-            // 全メッシュを root TransformNode の子にする
+            // インポートされたメッシュ階層を root TransformNode の子にする。
+            // glTF/GLB のスキンメッシュはボーン階層の親子関係に依存するため、
+            // 親なしの最上位ノードのみを再配置する（内部ノードは触らない）。
             for (const mesh of result.meshes) {
                 if (!mesh.parent) {
                     mesh.parent = entry.root;

@@ -50,11 +50,9 @@ jest.unstable_mockModule("../src/terrain/overlayCoords", () => ({
 
 // ---- SceneLoader スタブ ----
 jest.unstable_mockModule("@babylonjs/core/Loading/sceneLoader", () => ({
-    SceneLoader: {
-        ImportMeshAsync: jest.fn<() => Promise<{ meshes: unknown[]; animationGroups: unknown[] }>>(() =>
-            Promise.resolve({ meshes: [], animationGroups: [] }),
-        ),
-    },
+    ImportMeshAsync: jest.fn<() => Promise<{ meshes: unknown[]; animationGroups: unknown[] }>>(() =>
+        Promise.resolve({ meshes: [], animationGroups: [] }),
+    ),
 }));
 
 // ---- glTF 動的 import スタブ ----

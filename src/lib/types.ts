@@ -801,7 +801,7 @@ export interface ModelHandle {
     readonly gravity: boolean;
     /**
      * モデルのロードが完了しているなら true。
-     * ロード中（非同期 SceneLoader 処理中）は false。
+     * ロード中（非同期 ImportMeshAsync 処理中）は false。
      */
     readonly loaded: boolean;
     /**
