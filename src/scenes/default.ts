@@ -669,7 +669,12 @@ export class DefaultScene implements CreateSceneClass {
                 const anchorZ = camera.target.z;
                 const prevAlpha = camera.alpha;
                 const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                // radius は常に保持する (#254)。
+                // ズーム操作は retarget 呼出し前に camera.radius を更新済みのため、
+                // ここでは savedRadius をそのまま使えば正しいズームが維持される。
+                // ドラッグ中もドロップ後も radius を再計算しないことで、
+                // 地形 pick の微小な誤差による見かけ上のズームジッタを防ぐ。
+                const savedRadius = camera.radius;
                 const rayOriginY = Math.max(camY, 10000);
                 const rayDown = new Ray(
                     new Vector3(anchorX, rayOriginY, anchorZ),
@@ -684,31 +689,11 @@ export class DefaultScene implements CreateSceneClass {
                     pick2d?.hit && pick2d.pickedPoint
                         ? pick2d.pickedPoint.y
                         : camera.target.y;
-
-                let newRadius: number;
-                let newCamY: number;
-                if (pointerDown) {
-                    // ドラッグ中: radius を固定してスムーズなパンを実現する (#254)。
-                    // camY（海抜絶対高度）を維持し、radius は変更しない。
-                    // 山岳衝突（terrainY >= camY - lower）の場合のみ camY を引き上げる。
-                    const savedRadius = camera.radius;
-                    const minCamY = terrainY + lower;
-                    newCamY = Math.max(camY, minCamY);
-                    // 衝突で newCamY > camY となった場合は radius = lower に縮小。
-                    newRadius = newCamY > camY ? lower : savedRadius;
-                } else {
-                    // ドラッグ外（ズーム・ポインタアップ・URL 適用）:
-                    // radius = camY - terrainY で絶対高度ベースに再調整する (#254)。
-                    // position.y = terrainY + radius = camY が成立し、
-                    // 表示スケールが海抜高度に正しく対応する。
-                    newRadius = clamp(camY - terrainY, lower, upper);
-                    newCamY = terrainY + newRadius;
-                }
-
-                // ドラッグ中は target.y を (newCamY - newRadius) に固定して
-                // position.y = target.y + radius = newCamY が成立するようにする。
-                // ドラッグ外は target.y を実際の地形高さに合わせる。
-                const newTargetY = pointerDown ? newCamY - newRadius : terrainY;
+                // camY を維持する。山岳衝突の場合のみ camY を引き上げる。
+                const minCamY = terrainY + lower;
+                const newCamY = Math.max(camY, minCamY);
+                const newRadius = newCamY > camY ? lower : savedRadius;
+                const newTargetY = newCamY - newRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
                 camera.setTarget(new Vector3(anchorX, newTargetY, anchorZ));
                 camera.radius = newRadius;
