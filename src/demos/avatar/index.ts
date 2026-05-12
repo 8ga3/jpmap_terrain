@@ -94,6 +94,9 @@ const start = async (): Promise<void> => {
         gravity: true,
     });
 
+    // human_walk.glb に含まれる唯一の歩行アニメーション名
+    const WALK_ANIM = "rigアクション";
+
     // モデルロード完了フラグ（tick ループ内でアニメーション開始を制御）
     let animationStarted = false;
 
@@ -149,10 +152,10 @@ const start = async (): Promise<void> => {
                 lastTimestamp = null;
                 // animationStarted が true なら即時再生。まだ未ロードならtickで開始される。
                 if (animationStarted) {
-                    viewer.playModelAnimation(MODEL_ID);
+                    viewer.playModelAnimation(MODEL_ID, WALK_ANIM);
                 }
             } else {
-                viewer.stopModelAnimation(MODEL_ID);
+                viewer.stopModelAnimation(MODEL_ID, WALK_ANIM);
             }
             updateToggleLabel();
         });
@@ -196,7 +199,7 @@ const start = async (): Promise<void> => {
         if (handle.loaded && !animationStarted) {
             animationStarted = true;
             if (animating) {
-                viewer.playModelAnimation(MODEL_ID);
+                viewer.playModelAnimation(MODEL_ID, WALK_ANIM);
             }
         }
 
