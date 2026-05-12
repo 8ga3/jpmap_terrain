@@ -95,7 +95,7 @@ const start = async (): Promise<void> => {
     });
 
     // human_walk.glb に含まれる唯一の歩行アニメーション名
-    const WALK_ANIM = "rigアクション";
+    const WALK_ANIM = "rig-action";
 
     // モデルロード完了フラグ（tick ループ内でアニメーション開始を制御）
     let animationStarted = false;
