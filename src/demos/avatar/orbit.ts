@@ -41,5 +41,5 @@ export const circularOrbitPosition = (
  * 時計回りの円軌道なので、進行方向は角度 + 90° (接線方向)。
  */
 export const circularOrbitHeading = (angleDeg: number): number => {
-    return (angleDeg + 90) % 360;
+    return ((angleDeg + 90) % 360 + 360) % 360;
 };

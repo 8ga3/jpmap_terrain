@@ -79,4 +79,12 @@ describe("circularOrbitHeading", () => {
     it("角度 350° で進行方向は 80°", () => {
         expect(circularOrbitHeading(350)).toBe(80);
     });
+
+    it("負の角度 -10° で進行方向は 80°（正規化される）", () => {
+        expect(circularOrbitHeading(-10)).toBe(80);
+    });
+
+    it("負の角度 -100° で進行方向は 350°（正規化される）", () => {
+        expect(circularOrbitHeading(-100)).toBe(350);
+    });
 });
