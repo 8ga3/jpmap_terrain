@@ -693,23 +693,9 @@ export class DefaultScene implements CreateSceneClass {
                 // したがって radius は一切変更しない (#254)。
                 // ズーム操作は retarget 呼出し前に camera.radius を更新済み。
                 const savedRadius = camera.radius;
-                const rayOriginY = Math.max(camY, ORTHO_MIN_CAM_Y);
-                const rayDown = new Ray(
-                    new Vector3(anchorX, rayOriginY, anchorZ),
-                    new Vector3(0, -1, 0),
-                    CAMERA_FAR_CLIP,
-                );
-                const pick2d = scene.pickWithRay(
-                    rayDown,
-                    (m) => m.name.startsWith("tile-ground-"),
-                );
-                const terrainY =
-                    pick2d?.hit && pick2d.pickedPoint
-                        ? pick2d.pickedPoint.y
-                        : camera.target.y;
                 // 2D ortho: position.y は表示範囲に影響しない。
-                // 全地形が near clip 内に収まるよう ORTHO_MIN_CAM_Y 以上を保つ (#254)。
-                const newCamY = Math.max(ORTHO_MIN_CAM_Y, terrainY + ORTHO_MIN_CAM_Y);
+                // 全地形が near clip 内に収まるよう ORTHO_MIN_CAM_Y 固定とする (#254)。
+                const newCamY = ORTHO_MIN_CAM_Y;
                 const newTargetY = newCamY - savedRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
                 camera.setTarget(new Vector3(anchorX, newTargetY, anchorZ));
