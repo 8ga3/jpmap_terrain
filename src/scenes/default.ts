@@ -2096,10 +2096,8 @@ export class DefaultScene implements CreateSceneClass {
                 const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
                 if (currentViewMode === "2d") {
-                    // 2D モードでは altitude = camera.position.y（Y=0 からの絶対高度）。
-                    // radius = altitude - terrainY (= camera.target.y) として設定する。
-                    const desiredRadius = values.altitude - camera.target.y;
-                    camera.radius = clamp(desiredRadius, lower, upper);
+                    // 2D モードでは平行投影のため altitude（海抜高度）は表示範囲に影響しない。
+                    // ズーム制御は zoomLevel (= radius) で行う。altitude 指定は無視する (#254)。
                 } else {
                     // URL/API の altitude はカメラ世界高度 (海抜 = camera.position.y) として扱う。
                     // ArcRotateCamera は radius を保持するため、
