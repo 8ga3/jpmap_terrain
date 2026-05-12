@@ -584,6 +584,13 @@ export class DefaultScene implements CreateSceneClass {
         let prevTargetZ = NaN;
 
         const terrainMinRadius = (): number => {
+            // 2D モード: カメラは常にターゲット直上 (beta ≈ 0) にあり、
+            // retargetAtCameraPosition が position.y = terrainY + radius を保証するため、
+            // 角度補正やキャッシュ標高の参照は不要。固定値で十分 (#254)。
+            if (currentViewMode === "2d") {
+                return camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            }
+
             const { alpha, beta, radius } = camera;
             const { x: tx, y: ty, z: tz } = camera.target;
             if (
