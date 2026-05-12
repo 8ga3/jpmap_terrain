@@ -346,10 +346,6 @@ export class DefaultScene implements CreateSceneClass {
         // tileManager / mapToggle 構築後に行う。
         let currentViewMode: ViewMode = options?.viewMode ?? "3d";
         let savedTiltDeg: number = tiltDeg;
-        // 2D モードの URL 高度は camera.position.y（Y=0 からの絶対高度）だが、
-        // ドラッグ中に position.y が terrainY に追随して変動するため、
-        // URL 向けに安定した値を保持する。ズーム/ポインタアップ/setAltitude 時のみ更新 (#254)。
-        let stableAltitude2d: number = altitude;
         // 2D モード中は lowerBetaLimit を 0 に変更するため、3D 復帰用に元の値を保持する。
         const lowerBetaLimit3d = 0.1;
 
@@ -672,14 +668,12 @@ export class DefaultScene implements CreateSceneClass {
                 const anchorX = camera.target.x;
                 const anchorZ = camera.target.z;
                 const prevAlpha = camera.alpha;
-                // radius（地形からの高度 = ズームレベル）を保存する。
-                // setPosition → setTarget の間に Babylon の rebuildAnglesAndRadius() が
-                // 呼ばれ、stale な target.y を参照して radius が一時的に変化しうる。
-                // _checkLimits() が同期で走ると inertialRadiusOffset がリセットされる
-                // 副作用もあるため、明示的に復元して確実に値を保持する (#254)。
                 const savedRadius = camera.radius;
-                // 山など地形高さが変化してもレイが確実に地形を検出できるよう、
-                // 十分高い位置からキャストする (#254)。
+                // 3D モードと同様、呼び出し元が渡した camY を基本的に維持する。
+                // これによりドラッグ中に地形高さが変化しても camera.position.y が
+                // 変動せず URL 高度が安定する (#254)。
+                // ただし山などで地形が camY - savedRadius より高い場合は
+                // 衝突回避のため position.y を引き上げる。
                 const rayOriginY = Math.max(camY, 10000);
                 const rayDown = new Ray(
                     new Vector3(anchorX, rayOriginY, anchorZ),
@@ -694,13 +688,12 @@ export class DefaultScene implements CreateSceneClass {
                     pick2d?.hit && pick2d.pickedPoint
                         ? pick2d.pickedPoint.y
                         : camera.target.y;
-                // radius（地形からの高度 = ズームレベル）を保持しながら
-                // position.y を terrain に追随させる (#254)。
-                // ドラッグ中に radius が変化せず一定の俯瞰高度を維持する。
-                // 山など地形が高い場合は camera.position.y が上昇（衝突回避）。
-                const newCamY = terrainY + savedRadius;
+                // 地形衝突時のみ引き上げ。それ以外は呼び出し元の camY を尊重する。
+                const minCamY = terrainY + savedRadius;
+                const newCamY = Math.max(camY, minCamY);
+                const newTargetY = newCamY - savedRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
-                camera.setTarget(new Vector3(anchorX, terrainY, anchorZ));
+                camera.setTarget(new Vector3(anchorX, newTargetY, anchorZ));
                 camera.radius = savedRadius;
                 camera.alpha = prevAlpha;
                 camera.beta = BETA_2D;
@@ -1340,7 +1333,6 @@ export class DefaultScene implements CreateSceneClass {
             commitPanOffset();
             if (currentViewMode === "2d") {
                 retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                stableAltitude2d = camera.position.y;
             } else {
                 // 3D: commitPanOffset が target.x/z = gridResidual にリセット済み。
                 // setTarget() を呼ぶと rebuildAnglesAndRadius() が走り beta/tilt が変わるため、
@@ -1624,7 +1616,6 @@ export class DefaultScene implements CreateSceneClass {
                     const factor = computeWheelFactor(e.deltaY < 0);
                     zoomTowardPoint(hit.worldX, hit.worldZ, factor);
                     retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                    if (currentViewMode === "2d") stableAltitude2d = camera.position.y;
                 } else {
                     // 空のホイール操作: カメラ高度ベースの2段階ズーム
                     const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
@@ -1656,7 +1647,6 @@ export class DefaultScene implements CreateSceneClass {
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
                         retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                        if (currentViewMode === "2d") stableAltitude2d = camera.position.y;
                     } else {
                         // Phase 1: ターゲットに向かってズーム
                         const effectiveLower1 = Math.max(lower, terrainMinRadius());
@@ -1664,7 +1654,6 @@ export class DefaultScene implements CreateSceneClass {
                         if (!zoomIn && camera.radius >= upper) return;
                         camera.radius = clamp(camera.radius * factor, effectiveLower1, upper);
                         retargetAtCameraPosition(camera.position.x, camera.position.y, camera.position.z);
-                        if (currentViewMode === "2d") stableAltitude2d = camera.position.y;
                     }
                 }
             },
@@ -1685,9 +1674,6 @@ export class DefaultScene implements CreateSceneClass {
                     lower,
                     camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS
                 );
-            }
-            if (currentViewMode === "2d") {
-                stableAltitude2d = camera.target.y + camera.radius;
             }
         });
 
@@ -1904,7 +1890,6 @@ export class DefaultScene implements CreateSceneClass {
                 camera.beta = BETA_2D;
                 camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
                 applyOrthoFrustum();
-                stableAltitude2d = camera.position.y;
             } else {
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
 
@@ -2018,7 +2003,6 @@ export class DefaultScene implements CreateSceneClass {
                     // radius = altitude - terrainY (= camera.target.y) として設定する。
                     const desiredRadius = values.altitude - camera.target.y;
                     camera.radius = clamp(desiredRadius, lower, upper);
-                    stableAltitude2d = camera.target.y + camera.radius;
                 } else {
                     // URL/API の altitude はカメラ世界高度 (海抜 = camera.position.y) として扱う。
                     // ArcRotateCamera は radius を保持するため、
@@ -2217,11 +2201,10 @@ export class DefaultScene implements CreateSceneClass {
             getLat: derivedLat,
             getLon: derivedLon,
             getAltitude: () => {
-                // 3D モード: camera.position.y（Y=0 からの絶対高度）。
-                // パン中も position.y が一定に保たれるため URL は変動しない (#225)。
-                // 2D モード: stableAltitude2d（ズーム/ポインタアップ時に更新）。
-                // ドラッグ中に position.y が地形追随で変化しても URL は変動しない (#254)。
-                if (currentViewMode === "2d") return stableAltitude2d;
+                // 両モード共通: camera.position.y（Y=0 からの絶対高度）。
+                // 3D: パン中に position.y が一定に保たれる (#225)。
+                // 2D: retargetAtCameraPosition が呼び出し元の camY を尊重するため
+                //     ドラッグ中も position.y が安定する (#254)。
                 return camera.position.y;
             },
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
@@ -2399,9 +2382,6 @@ export class DefaultScene implements CreateSceneClass {
             const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
             const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
             camera.radius = clamp(r, lower, upper);
-            if (currentViewMode === "2d") {
-                stableAltitude2d = targetY + camera.radius;
-            }
         };
         const initElev = tileManager.queryElevationAtWorld(
             gridResidualX,
