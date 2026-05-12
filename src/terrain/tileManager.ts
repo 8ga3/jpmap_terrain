@@ -60,7 +60,15 @@ export interface TileManager {
     readonly activeTileCount: number;
     readonly loadingCount: number;
     onStatusChange: ((status: string) => void) | null;
-    /** キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null） */
+    /**
+     * キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null）。
+     *
+     * 表示中の可視タイル（activeTiles）のデータのみ参照する。
+     * カメラ外に出たタイルのキャッシュは使用しないため、
+     * LOD 切替時に表示メッシュと異なる zoom の標高を返すことを防ぐ。
+     * null が返った場合、呼び出し側は前回の標高を維持すること
+     * （ModelManager の gravity では非表示にせず前回値を保持する）。
+     */
     queryElevationAtWorld(wx: number, wz: number): number | null;
     /** メッシュ頂点の標高が更新されたときに呼ばれるコールバック */
     onTerrainUpdated: (() => void) | null;
@@ -862,8 +870,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /**
      * キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null）。
-     * メッシュ適用時（fillInvalidPixels）と同様に、NaN ピクセルは近傍8方向から補間する。
-     * 近傍にも有効値がなければ低 zoom へフォールバックし、全 zoom で見つからなければ null。
+     *
+     * 可視タイル（activeTiles）のデータのみ参照し、表示メッシュとの標高整合を保つ。
+     * 4 頂点バイリニア補間で標高を算出する。NaN（無効）頂点は重みから除外し、
+     * 有効頂点だけで加重平均を取る。4 頂点全て無効なら低 zoom へフォールバックし、
+     * 全 zoom で見つからなければ null。
      */
     const queryLocalElevation = (wx: number, wz: number): number | null => {
         if (!currentCenter) return null;
