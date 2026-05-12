@@ -134,7 +134,8 @@ const start = async (): Promise<void> => {
 
     const viewer = await JpmapTerrain.create(mount, opts);
 
-    // URL 同期: カメラ変化のたびに `/<demo>@lat,lon,altitude,azimuth,tilt` 形式へ反映する (Issue #155)。
+    // URL 同期: カメラ変化のたびに URL を更新する (Issue #155)。
+    // 2D モードでは `@lat,lon,Xz`、3D では `@lat,lon,altitude,azimuth,tilt` (#254)。
     // 既存クエリ（?engine=, ?start=, ?speed= など）は `createUrlUpdater` 内で保持される。
     const urlUpdater = createUrlUpdater(200);
     viewer.onCameraChange((event) =>
@@ -144,6 +145,7 @@ const start = async (): Promise<void> => {
             altitude: event.altitude,
             azimuth: event.azimuth,
             tilt: event.tilt,
+            zoomLevel: event.zoomLevel,
         }),
     );
 

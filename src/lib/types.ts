@@ -36,6 +36,11 @@ export interface JpmapTerrainOptions {
     azimuth?: number;
     /** カメラチルト角（度） */
     tilt?: number;
+    /**
+     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * `viewMode: "2d"` と組み合わせて指定する。指定時は `altitude` より優先。
+     */
+    zoomLevel?: number;
     /** 地図種類 */
     mapType?: MapType;
     /**
@@ -136,6 +141,12 @@ export interface CameraChangeEvent {
      * `"2d"` のとき `tilt` は常に `0` を返す。
      */
     readonly viewMode: ViewMode;
+    /**
+     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * `viewMode === "2d"` のとき `camera.radius` から算出した値。
+     * 3D モードでは `undefined`。
+     */
+    readonly zoomLevel?: number;
 }
 
 /** `JpmapTerrain.onCameraChange` リスナー */

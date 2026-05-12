@@ -2,7 +2,9 @@
  * 開発用デモエントリ (T9 / Issue #123, #136)
  *
  * パッケージ公開 API である `JpmapTerrain` を直接利用してデモを起動する。
- * - URL 形式: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
+ * - URL 形式:
+ *   - 3D: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
+ *   - 2D: `/@lat,lon,Xz?viewMode=2d` （X はズームレベル, Issue #254）
  *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可、Issue #64）
  * - `#root` 要素にビューアをマウントする。
  * - URL ↔ カメラ同期はパッケージ層から切り離し、デモ層 (本ファイル) で
@@ -148,11 +150,17 @@ const start = async (): Promise<void> => {
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
         ...(showSunShadows !== undefined ? { showSunShadows } : {}),
         ...(mapType !== null ? { mapType } : {}),
-        ...(viewMode !== null ? { viewMode } : {}),
+        // zoomLevel が URL に含まれていれば 2D モードを暗黙に指定する (#254)。
+        ...(viewMode !== null
+            ? { viewMode }
+            : cameraState?.zoomLevel !== undefined
+              ? { viewMode: "2d" as const }
+              : {}),
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 
-    // URL 同期: カメラ変化のたびに `/@lat,lon,altitude,azimuth,tilt` 形式へ反映する（既存クエリは保持）。
+    // URL 同期: カメラ変化のたびに URL を更新する。
+    // 2D モードでは `@lat,lon,Xz`（ズームレベル）、3D では `@lat,lon,altitude,azimuth,tilt` (#254)。
     const urlUpdater = createUrlUpdater(1000);
     viewer.onCameraChange((event) =>
         urlUpdater({
@@ -161,6 +169,7 @@ const start = async (): Promise<void> => {
             altitude: event.altitude,
             azimuth: event.azimuth,
             tilt: event.tilt,
+            zoomLevel: event.zoomLevel,
         }),
     );
 

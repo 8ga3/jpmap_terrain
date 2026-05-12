@@ -14,6 +14,12 @@ export interface CameraUrlState extends LatLon {
     altitude: number;
     azimuth: number;
     tilt: number;
+    /**
+     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 定義されている場合、`toAtPath` は `@lat,lon,Xz` 形式で出力し
+     * altitude / azimuth / tilt は URL に含めない。
+     */
+    zoomLevel?: number;
 }
 
 const PRECISION = 6;
@@ -32,7 +38,53 @@ const TILT_MIN_DEG = (TILT_MIN_RAD * 180) / Math.PI;
 export const CAMERA_URL_LIMITS = {
     altitude: { min: 50, max: 80000 },
     tilt: { min: TILT_MIN_DEG, max: 75 },
+    zoomLevel: { min: 5, max: 23 },
 } as const;
+
+/** ズームレベルの表示精度（小数桁数） */
+const ZOOM_LEVEL_PRECISION = 2;
+
+/**
+ * Web Mercator の赤道上 zoom 0 における 1 ピクセルあたりメートル。
+ * `2π × 6378137 / 256 ≈ 156543.03392804097`
+ */
+const EQUATOR_MPP = 156543.03392804097;
+
+/**
+ * `camera.radius` → Google Maps 互換ズームレベルへ変換する (#254)。
+ *
+ * Web Mercator の定義に基づく:
+ *   mpp = EQUATOR_MPP × cos(φ) / 2^z
+ *   visibleHeight = 2 × radius × tan(fov / 2)
+ *   z = log₂(canvasHeight × EQUATOR_MPP × cos(φ) / (2 × radius × tan(fov / 2)))
+ */
+export const radiusToZoomLevel = (
+    radius: number,
+    canvasHeight: number,
+    latDeg: number,
+    fovRad: number,
+): number => {
+    const cosLat = Math.cos((latDeg * Math.PI) / 180);
+    const tanHalfFov = Math.tan(fovRad / 2);
+    return Math.log2(
+        (canvasHeight * EQUATOR_MPP * cosLat) / (2 * radius * tanHalfFov),
+    );
+};
+
+/**
+ * Google Maps 互換ズームレベル → `camera.radius` へ変換する (#254)。
+ * {@link radiusToZoomLevel} の逆関数。
+ */
+export const zoomLevelToRadius = (
+    z: number,
+    canvasHeight: number,
+    latDeg: number,
+    fovRad: number,
+): number => {
+    const cosLat = Math.cos((latDeg * Math.PI) / 180);
+    const tanHalfFov = Math.tan(fovRad / 2);
+    return (canvasHeight * EQUATOR_MPP * cosLat) / (2 ** z * 2 * tanHalfFov);
+};
 
 /**
  * URL に欠損トークンがあった場合の補完値。
@@ -45,17 +97,22 @@ export const CAMERA_URL_DEFAULTS = {
 } as const;
 
 /**
- * @lat,lon[,altitude,azimuth,tilt] パターン。
+ * @lat,lon[,altitude_or_zoomz,azimuth,tilt] パターン。
  * 2〜5 トークンに対応し、欠損トークンはパース後にデフォルト補完する。
+ * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）はズームレベルとして解釈する (#254)。
  */
 const AT_PATTERN =
-    /@(-?\d+\.?\d*),(-?\d+\.?\d*)(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?/;
+    /@(-?\d+\.?\d*),(-?\d+\.?\d*)(?:,(-?\d+\.?\d*z?))?(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?/;
 
 /** altitude を [50, 80000] にクランプし整数化する */
 export const clampAltitude = (v: number): number => {
     const c = clamp(v, CAMERA_URL_LIMITS.altitude.min, CAMERA_URL_LIMITS.altitude.max);
     return Math.round(c);
 };
+
+/** ズームレベルを [5, 23] にクランプする */
+export const clampZoomLevel = (v: number): number =>
+    clamp(v, CAMERA_URL_LIMITS.zoomLevel.min, CAMERA_URL_LIMITS.zoomLevel.max);
 
 /** tilt を [TILT_MIN_DEG, 75]（deg）にクランプする */
 export const clampTilt = (v: number): number =>
@@ -75,9 +132,12 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
 
 /**
  * URL からカメラ姿勢を含む状態を読み取る。優先順位:
- * 1. パス / ハッシュ内の `@lat,lon[,altitude,azimuth,tilt]`
+ * 1. パス / ハッシュ内の `@lat,lon[,altitude_or_zoomz,azimuth,tilt]`
  * 2. クエリパラメータ `?lat=&lon=`（altitude/azimuth/tilt はデフォルト補完）
  * いずれも無い場合は null を返す。
+ *
+ * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）は Google Maps 互換の
+ * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する (#254)。
  */
 export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
     try {
@@ -90,12 +150,31 @@ export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
             const lat = Number(atMatch[1]);
             const lon = Number(atMatch[2]);
             if (isFinite(lat) && isFinite(lon)) {
-                const altitude = pickFinite(atMatch[3], CAMERA_URL_DEFAULTS.altitude);
+                const clampedLat = clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat);
+                const clampedLon = clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon);
+
+                const rawThird = atMatch[3];
+                if (rawThird !== undefined && rawThird.endsWith("z")) {
+                    // ズームレベル形式: @lat,lon,14.50z (#254)
+                    const z = Number(rawThird.slice(0, -1));
+                    if (isFinite(z)) {
+                        return {
+                            lat: clampedLat,
+                            lon: clampedLon,
+                            altitude: clampAltitude(CAMERA_URL_DEFAULTS.altitude),
+                            azimuth: normalizeAzimuth(CAMERA_URL_DEFAULTS.azimuth),
+                            tilt: clampTilt(CAMERA_URL_DEFAULTS.tilt),
+                            zoomLevel: clampZoomLevel(z),
+                        };
+                    }
+                }
+
+                const altitude = pickFinite(rawThird, CAMERA_URL_DEFAULTS.altitude);
                 const azimuth = pickFinite(atMatch[4], CAMERA_URL_DEFAULTS.azimuth);
                 const tilt = pickFinite(atMatch[5], CAMERA_URL_DEFAULTS.tilt);
                 return {
-                    lat: clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat),
-                    lon: clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon),
+                    lat: clampedLat,
+                    lon: clampedLon,
                     altitude: clampAltitude(altitude),
                     azimuth: normalizeAzimuth(azimuth),
                     tilt: clampTilt(tilt),
@@ -189,6 +268,7 @@ export function toAtPath(
     const prefix = (typeof b === "string" ? b : undefined) ?? "";
     const head = buildHead(prefix);
     const hasExtra =
+        state.zoomLevel !== undefined ||
         state.altitude !== undefined ||
         state.azimuth !== undefined ||
         state.tilt !== undefined;
@@ -196,6 +276,11 @@ export function toAtPath(
     const lonStr = state.lon.toFixed(PRECISION);
     if (!hasExtra) {
         return `${head}${latStr},${lonStr}`;
+    }
+    // zoomLevel が定義されている場合は Google Maps 互換 `@lat,lon,Xz` 形式 (#254)。
+    if (state.zoomLevel !== undefined) {
+        const z = clampZoomLevel(state.zoomLevel);
+        return `${head}${latStr},${lonStr},${z.toFixed(ZOOM_LEVEL_PRECISION)}z`;
     }
     const altitude = clampAltitude(state.altitude ?? CAMERA_URL_DEFAULTS.altitude);
     const azimuth = normalizeAzimuth(state.azimuth ?? CAMERA_URL_DEFAULTS.azimuth);

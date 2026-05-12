@@ -65,6 +65,8 @@ export class JpmapTerrain {
     private _tilt: number;
     private _mapType: MapType;
     private _viewMode: ViewMode;
+    /** 2D モード初期化用ズームレベル (#254)。URL 復元時にのみ設定される。 */
+    private _zoomLevel?: number;
 
     private _showCompass = true;
     private _showZoomButtons = true;
@@ -126,6 +128,7 @@ export class JpmapTerrain {
         this._tilt = options.tilt ?? JPMAP_TERRAIN_DEFAULTS.tilt;
         this._mapType = options.mapType ?? JPMAP_TERRAIN_DEFAULTS.mapType;
         this._viewMode = options.viewMode ?? JPMAP_TERRAIN_DEFAULTS.viewMode;
+        this._zoomLevel = options.zoomLevel;
         this._showViewModeButton =
             options.showViewModeButton ??
             JPMAP_TERRAIN_DEFAULTS.showViewModeButton;
@@ -209,6 +212,7 @@ export class JpmapTerrain {
                 altitude: this._altitude,
                 azimuth: this._azimuth,
                 tilt: this._tilt,
+                zoomLevel: this._zoomLevel,
                 mapType: this._mapType,
                 onMapTypeChange: (next) => this._handleMapTypeChange(next),
                 viewMode: this._viewMode,
@@ -577,6 +581,14 @@ export class JpmapTerrain {
     }
 
     /**
+     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 3D モードでは `undefined` を返す。
+     */
+    public get zoomLevel(): number | undefined {
+        return this._controller?.getZoomLevel();
+    }
+
+    /**
      * `viewMode` が変化した際に呼ばれるリスナーを登録する (Issue #193)。
      *
      * `onMapTypeChange` と対称な API。UI ボタン操作・`viewMode` setter のいずれの
@@ -908,6 +920,7 @@ export class JpmapTerrain {
             azimuth: this.azimuth,
             tilt: this.tilt,
             viewMode: this.viewMode,
+            zoomLevel: this.zoomLevel,
         };
         const prev = this._lastCameraSnapshot;
         if (prev === null) {
@@ -915,13 +928,18 @@ export class JpmapTerrain {
             return;
         }
         const eps = 1e-9;
+        const zoomChanged =
+            snapshot.zoomLevel !== undefined && prev.zoomLevel !== undefined
+                ? Math.abs(snapshot.zoomLevel - prev.zoomLevel) > eps
+                : snapshot.zoomLevel !== prev.zoomLevel;
         const changed =
             Math.abs(snapshot.lat - prev.lat) > eps ||
             Math.abs(snapshot.lon - prev.lon) > eps ||
             Math.abs(snapshot.altitude - prev.altitude) > eps ||
             Math.abs(snapshot.azimuth - prev.azimuth) > eps ||
             Math.abs(snapshot.tilt - prev.tilt) > eps ||
-            snapshot.viewMode !== prev.viewMode;
+            snapshot.viewMode !== prev.viewMode ||
+            zoomChanged;
         if (!changed) return;
         this._lastCameraSnapshot = snapshot;
         // iterate 中の add/remove 安全のためスナップショットを取って iterate
