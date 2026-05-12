@@ -70,6 +70,9 @@ export const assertLatLonInBounds = (
 /**
  * カメラ位置とワールド座標 (wx, wy, wz) からスクリーン定スケール係数を計算する。
  * 近距離での過大スケールを抑えるため下限 0.1 を持つ。
+ *
+ * 2D (orthographic) モード（beta ≈ 0）では、表示範囲が camera.radius に比例するため
+ * 3D 距離ではなく radius を基準にスケールする (#254)。
  */
 export const computeDistanceScale = (
     ctx: OverlayContext,
@@ -78,6 +81,11 @@ export const computeDistanceScale = (
     wz: number,
 ): number => {
     const cam = ctx.getCameraPosition();
+    // 2D ortho: frustum halfH = radius * tan(fov/2)。radius ベースでスケールすることで
+    // ズームに関係なく一定のスクリーンサイズを保つ。
+    if (cam.beta < 0.001) {
+        return Math.max(cam.radius / REF_DISTANCE_M, 0.1);
+    }
     const dx = cam.x - wx;
     const dy = cam.y - wy;
     const dz = cam.z - wz;

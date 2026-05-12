@@ -1556,8 +1556,13 @@ export class DefaultScene implements CreateSceneClass {
         /** レイキャスト距離の一定割合を1ステップとするホイールfactorを返す */
         const WHEEL_STEP = 0.05;
         const computeWheelFactor = (zoomIn: boolean): number => {
-            const rayDist = queryViewRayDistance();
-            const dist = rayDist ?? camera.radius;
+            // 2D ortho: queryViewRayDistance はカメラ→地形の 3D 距離を返すが、
+            // position.y が ORTHO_MIN_CAM_Y で固定のため radius と無関係な定数になる。
+            // radius を直接使うことで一定割合 (5%) のステップを保つ (#254)。
+            const dist =
+                currentViewMode === "2d"
+                    ? camera.radius
+                    : (queryViewRayDistance() ?? camera.radius);
             const delta = dist * WHEEL_STEP;
             return zoomIn
                 ? (camera.radius - delta) / camera.radius
@@ -2427,22 +2432,13 @@ export class DefaultScene implements CreateSceneClass {
                     gridResidualX,
                     gridResidualZ,
                 }),
-                getCameraPosition: () => {
-                    // 2D ortho: position.y は ORTHO_MIN_CAM_Y に引き上げているが、
-                    // マーカー等の distScale はズームレベル（radius）に基づくべき。
-                    // 論理的な高度 target.y + radius を返す (#254)。
-                    const logicalY =
-                        currentViewMode === "2d"
-                            ? camera.target.y + camera.radius
-                            : camera.globalPosition.y;
-                    return {
-                        x: camera.globalPosition.x,
-                        y: logicalY,
-                        z: camera.globalPosition.z,
-                        radius: camera.radius,
-                        beta: camera.beta,
-                    };
-                },
+                getCameraPosition: () => ({
+                    x: camera.globalPosition.x,
+                    y: camera.globalPosition.y,
+                    z: camera.globalPosition.z,
+                    radius: camera.radius,
+                    beta: camera.beta,
+                }),
             }),
             subscribeTerrainClick: (listener) => {
                 terrainClickListeners.push(listener);
