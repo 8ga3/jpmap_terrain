@@ -94,11 +94,42 @@ npm start
 
 3D ビューアデモ（`src/demos/viewer/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` / `mapType` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`、`MapType` は `"standard" | "photo"`）とは別です。
 
-- 形式: `http://localhost:8080/viewer.html/@<lat>,<lon>?engine=<webgpu|webgl|webgl2>&mapType=<standard|photo>`（`webgl` は URL クエリでのみ後方互換として受け付け、内部的に `webgl2` に正規化）
-- 例:
-  - `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu`（東京駅・WebGPU）
-  - `http://localhost:8080/viewer.html/@35.3606,138.7274?engine=webgl2`（富士山・WebGL2）
-  - `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・航空写真）
+### パス形式（カメラ位置）
+
+**3D モード**
+
+- 形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
+- `altitude`: カメラのワールド高度（m）。範囲 [50, 80000]
+- `azimuth`: 方位角（度）。0 = 北、時計回り正
+- `tilt`: 仰角（度）。範囲 [約5.7, 75]
+- 省略した場合は既定値（altitude=2000, azimuth=0, tilt=45）で補完されます
+
+```
+/@35.3606,138.7274,7411,0.00,45.00   ← 富士山山頂、海抜 7411m、真北向き
+```
+
+**2D モード（平行投影・Issue #254）**
+
+- 2D モードでは海抜高度の代わりに **Google Maps 互換のズームレベル**（`z` サフィックス付き）を使用します
+- 形式: `/@<lat>,<lon>,<zoom>z`
+- `zoom`: Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]
+- azimuth / tilt は 2D では固定のため URL に含みません
+- ズームレベルは `canvasHeight × 156543 × cos(緯度) / (2^z × 2 × tan(fov/2))` で `camera.radius` に変換されます
+
+```
+/@35.3606,138.7274,14.50z            ← 富士山山頂、ズームレベル 14.5
+```
+
+- URL をコピーして貼り付けることで、ほぼ同等の表示を再現できます
+- 2D モードでは平行投影のためカメラの海抜高度は表示範囲に影響しないため、URL には含めません
+- 3D モードの `/@lat,lon,altitude,...` 形式の URL を 2D モードで開いた場合、altitude はズームレベルに変換されて扱われます
+
+**例:**
+
+- `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu`（東京駅・3D・WebGPU）
+- `http://localhost:8080/viewer.html/@35.3606,138.7274?engine=webgl2`（富士山・3D・WebGL2）
+- `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・3D・航空写真）
+- `http://localhost:8080/viewer.html/@35.3606,138.7274,14.50z?viewMode=2d`（富士山・2D・ズームレベル 14.5）
 
 ### `engine` パラメータ
 
@@ -115,10 +146,16 @@ npm start
 - 省略・不正値・URL 解析失敗時は `standard` にフォールバックします
 - 地図切替ボタン操作 / `viewer.mapType = ...` のいずれでも、URL のクエリ `?mapType=` が `history.replaceState` で更新されます（パス・他クエリ・ハッシュは保持）
 
+### `viewMode` パラメータ
+
+- `3d` / `2d` を指定できます（大小文字無視）
+- 省略・不正値時は `3d` にフォールバックします
+- 2D/3D 切替ボタン操作でも `?viewMode=` が更新されます
+
 ### 緯度経度の扱い
 
 - 緯度経度は `JAPAN_BOUNDS`（緯度 20〜46、経度 122〜154）でクランプされます
-- カメラ移動に追従して、URL のパスは `/@lat,lon` 形式に書き戻されます（既存のクエリパラメータは保持）
+- カメラ移動に追従して URL のパスが自動更新されます（既存のクエリパラメータは保持）
 
 実装の詳細は `src/demos/viewer/index.ts` および `src/terrain/urlState.ts` を参照してください。
 
