@@ -747,6 +747,9 @@ export class DefaultScene implements CreateSceneClass {
         let dragMeshMode = false;
         let dragAnchorLat = 0;
         let dragAnchorLon = 0;
+        // pointerup 直後に releasePointerCapture が発火させる lostpointercapture
+        // による resetPointerState の二重実行を一度だけ抑止する (#254)。
+        let suppressNextResetPointerState = false;
 
         // ---- ポリゴン頂点インタラクション (Issue #184) ----
         const polygonPointHoverListeners: PolygonPointHoverListener[] = [];
@@ -1322,6 +1325,13 @@ export class DefaultScene implements CreateSceneClass {
             }
             if (e.pointerId !== activePointerId) return;
             pointerDown = false;
+            // releasePointerCapture が lostpointercapture を発火させ
+            // resetPointerState 経由で commitPanOffset / retargetAtCameraPosition が
+            // 二重に呼ばれる。2D モードでは大ドラッグ時に refreshTerrain の
+            // 同期前半で gridResidual が再計算され、僅かに target が動くため
+            // 二度目の retarget で pickWithRay の結果が変動し見かけのズーム
+            // ジッタが発生する。明示的に抑止する (#254)。
+            suppressNextResetPointerState = true;
             canvas.releasePointerCapture(e.pointerId);
             commitPanOffset();
             if (currentViewMode === "2d") {
@@ -1412,9 +1422,13 @@ export class DefaultScene implements CreateSceneClass {
         canvas.addEventListener("pointercancel", (e: PointerEvent) =>
             resetPointerState(e),
         );
-        canvas.addEventListener("lostpointercapture", (e: PointerEvent) =>
-            resetPointerState(e),
-        );
+        canvas.addEventListener("lostpointercapture", (e: PointerEvent) => {
+            if (suppressNextResetPointerState) {
+                suppressNextResetPointerState = false;
+                return;
+            }
+            resetPointerState(e);
+        });
 
         // ---- 地形クリック通知 (Issue #183) ----
         //
