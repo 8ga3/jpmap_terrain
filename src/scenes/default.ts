@@ -2002,8 +2002,10 @@ export class DefaultScene implements CreateSceneClass {
                 const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
                 if (currentViewMode === "2d") {
-                    // 2D モードでは altitude = camera.radius（地形からの高度）として扱う (#254)。
-                    camera.radius = clamp(values.altitude, lower, upper);
+                    // 2D モードでは altitude = camera.position.y（Y=0 からの絶対高度）。
+                    // radius = altitude - terrainY (= camera.target.y) として設定する。
+                    const desiredRadius = values.altitude - camera.target.y;
+                    camera.radius = clamp(desiredRadius, lower, upper);
                 } else {
                     // URL/API の altitude はカメラ世界高度 (海抜 = camera.position.y) として扱う。
                     // ArcRotateCamera は radius を保持するため、
@@ -2202,12 +2204,10 @@ export class DefaultScene implements CreateSceneClass {
             getLat: derivedLat,
             getLon: derivedLon,
             getAltitude: () => {
-                // 3D モード: altitude = camera.position.y（海抜高度）。パン中は position.y が
-                // 一定に保たれるため URL は変動しない (#225)。
-                // 2D モード: altitude = camera.radius（地形からの高度 = ズームレベル）。
-                // 新しい radius ベース frustum では radius がパン中も一定のため URL は変動しない。
-                // position.y = terrainY + radius はパン中に地形高さに追随して変化するため不適 (#254)。
-                if (currentViewMode === "2d") return camera.radius;
+                // 両モード共通: altitude = camera.position.y（Y=0 からの絶対高度）。
+                // 3D モードではパン中に position.y が一定に保たれる (#225)。
+                // 2D モードでは position.y = terrainY + radius であり、パン中に地形高さに
+                // 追随して変化するが、radius（ズームレベル）は一定のため表示スケールは不変。
                 return camera.position.y;
             },
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
@@ -2379,9 +2379,6 @@ export class DefaultScene implements CreateSceneClass {
         // ことで、リロード時のフラッシュを防ぐ (#225)。
         const desiredCamY = altitude;
         const adjustRadiusForCamY = (targetY: number): void => {
-            // 2D モードでは altitude = radius（地形からの高度）のため、
-            // target.y が変化しても radius は維持する (#254)。
-            if (currentViewMode === "2d") return;
             const cosB = Math.cos(camera.beta);
             if (Math.abs(cosB) < 1e-6) return;
             const r = (desiredCamY - targetY) / cosB;
