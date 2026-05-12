@@ -1912,8 +1912,13 @@ export class DefaultScene implements CreateSceneClass {
             } else {
                 // 2D → 3D: 2D 中は position.y を ORTHO_MIN_CAM_Y に引き上げており
                 // target.y もそれに連動して高い。3D ではカメラが地形の上空を
-                // 周回するため、target.y を地形高度に戻す (#254)。
+                // 周回するため、target.y を地形高度に戻し、radius / position.y を
+                // 再計算する (#254)。
                 if (currentViewMode === "2d") {
+                    // ズームレベルを保持するため、先に radius を退避する。
+                    const savedRadius2d = camera.radius;
+                    const savedAlpha2d = camera.alpha;
+
                     const rayDown = new Ray(
                         new Vector3(
                             camera.target.x,
@@ -1931,7 +1936,34 @@ export class DefaultScene implements CreateSceneClass {
                         pick?.hit && pick.pickedPoint
                             ? pick.pickedPoint.y
                             : 0;
-                    camera.target.y = tY;
+
+                    // 3D 復帰時の beta を先に確定する。
+                    const beta3d = clamp(
+                        (savedTiltDeg * Math.PI) / 180,
+                        lowerBetaLimit3d,
+                        camera.upperBetaLimit ?? Math.PI,
+                    );
+                    const cosB = Math.cos(beta3d);
+                    const sinB = Math.sin(beta3d);
+
+                    // radius はそのまま引き継ぎ、target.y + radius*cosB で正しい高度に配置する。
+                    const newCamY = tY + savedRadius2d * cosB;
+                    const newCamX =
+                        camera.target.x +
+                        savedRadius2d * sinB * Math.cos(savedAlpha2d);
+                    const newCamZ =
+                        camera.target.z +
+                        savedRadius2d * sinB * Math.sin(savedAlpha2d);
+
+                    camera.setPosition(
+                        new Vector3(newCamX, newCamY, newCamZ),
+                    );
+                    camera.setTarget(
+                        new Vector3(camera.target.x, tY, camera.target.z),
+                    );
+                    camera.radius = savedRadius2d;
+                    camera.alpha = savedAlpha2d;
+                    camera.beta = beta3d;
                 }
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
 
@@ -2395,13 +2427,22 @@ export class DefaultScene implements CreateSceneClass {
                     gridResidualX,
                     gridResidualZ,
                 }),
-                getCameraPosition: () => ({
-                    x: camera.globalPosition.x,
-                    y: camera.globalPosition.y,
-                    z: camera.globalPosition.z,
-                    radius: camera.radius,
-                    beta: camera.beta,
-                }),
+                getCameraPosition: () => {
+                    // 2D ortho: position.y は ORTHO_MIN_CAM_Y に引き上げているが、
+                    // マーカー等の distScale はズームレベル（radius）に基づくべき。
+                    // 論理的な高度 target.y + radius を返す (#254)。
+                    const logicalY =
+                        currentViewMode === "2d"
+                            ? camera.target.y + camera.radius
+                            : camera.globalPosition.y;
+                    return {
+                        x: camera.globalPosition.x,
+                        y: logicalY,
+                        z: camera.globalPosition.z,
+                        radius: camera.radius,
+                        beta: camera.beta,
+                    };
+                },
             }),
             subscribeTerrainClick: (listener) => {
                 terrainClickListeners.push(listener);
