@@ -59,6 +59,15 @@ const CAMERA_UPPER_RADIUS = 75000;
 const CAMERA_FAR_CLIP = 400000;
 
 /**
+ * 2D (orthographic) モードでのカメラ最低高度（メートル）。
+ * 平行投影では position.y は表示範囲に影響しないが、near clip (minZ=1) より
+ * 高い地形頂点が「カメラの背後」に来ると描画されない。
+ * 日本最高点（富士山 3776m）を十分に下回る位置に near plane が来るよう、
+ * カメラを常にこの高度以上に保つ。
+ */
+const ORTHO_MIN_CAM_Y = 10000;
+
+/**
  * 2D モード時の camera.beta 固定値（ラジアン）。
  * beta=0 だとジンバルロックで alpha（方位）変化がカメラ位置に反映されず、
  * かつ camera.lowerBetaLimit によるクランプで意図通りにならないため、
@@ -684,7 +693,7 @@ export class DefaultScene implements CreateSceneClass {
                 // したがって radius は一切変更しない (#254)。
                 // ズーム操作は retarget 呼出し前に camera.radius を更新済み。
                 const savedRadius = camera.radius;
-                const rayOriginY = Math.max(camY, 10000);
+                const rayOriginY = Math.max(camY, ORTHO_MIN_CAM_Y);
                 const rayDown = new Ray(
                     new Vector3(anchorX, rayOriginY, anchorZ),
                     new Vector3(0, -1, 0),
@@ -698,10 +707,9 @@ export class DefaultScene implements CreateSceneClass {
                     pick2d?.hit && pick2d.pickedPoint
                         ? pick2d.pickedPoint.y
                         : camera.target.y;
-                // position.y は camY を基本維持。地形が高い場合のみ引き上げる
-                // （near/far clip で地形が消えるのを防ぐため）。
-                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-                const newCamY = Math.max(camY, terrainY + lower);
+                // 2D ortho: position.y は表示範囲に影響しない。
+                // 全地形が near clip 内に収まるよう ORTHO_MIN_CAM_Y 以上を保つ (#254)。
+                const newCamY = Math.max(ORTHO_MIN_CAM_Y, terrainY + ORTHO_MIN_CAM_Y);
                 const newTargetY = newCamY - savedRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
                 camera.setTarget(new Vector3(anchorX, newTargetY, anchorZ));
@@ -1902,6 +1910,29 @@ export class DefaultScene implements CreateSceneClass {
                 camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
                 applyOrthoFrustum();
             } else {
+                // 2D → 3D: 2D 中は position.y を ORTHO_MIN_CAM_Y に引き上げており
+                // target.y もそれに連動して高い。3D ではカメラが地形の上空を
+                // 周回するため、target.y を地形高度に戻す (#254)。
+                if (currentViewMode === "2d") {
+                    const rayDown = new Ray(
+                        new Vector3(
+                            camera.target.x,
+                            camera.position.y,
+                            camera.target.z,
+                        ),
+                        Vector3.Down(),
+                        CAMERA_FAR_CLIP,
+                    );
+                    const pick = scene.pickWithRay(
+                        rayDown,
+                        (m) => m.name.startsWith("tile-ground-"),
+                    );
+                    const tY =
+                        pick?.hit && pick.pickedPoint
+                            ? pick.pickedPoint.y
+                            : 0;
+                    camera.target.y = tY;
+                }
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
 
                 // 3D 復帰時に元の lowerBetaLimit を戻してから beta を復元する。
@@ -1948,6 +1979,22 @@ export class DefaultScene implements CreateSceneClass {
         const orthoFrustumObserver = scene.onBeforeRenderObservable.add(() => {
             if (currentViewMode === "2d") {
                 applyOrthoFrustum();
+                // 初回レンダやリロード直後など retargetAtCameraPosition が未発火の状態で
+                // position.y が低いままだと近くの高地形が near clip される。
+                // 安全弁として ORTHO_MIN_CAM_Y 未満なら引き上げる (#254)。
+                if (camera.position.y < ORTHO_MIN_CAM_Y) {
+                    const savedRadius = camera.radius;
+                    const savedAlpha = camera.alpha;
+                    const tx = camera.target.x;
+                    const tz = camera.target.z;
+                    camera.setPosition(new Vector3(tx, ORTHO_MIN_CAM_Y, tz));
+                    camera.setTarget(
+                        new Vector3(tx, ORTHO_MIN_CAM_Y - savedRadius, tz),
+                    );
+                    camera.radius = savedRadius;
+                    camera.alpha = savedAlpha;
+                    camera.beta = BETA_2D;
+                }
             }
         });
 
