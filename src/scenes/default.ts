@@ -605,7 +605,7 @@ export class DefaultScene implements CreateSceneClass {
 
         const terrainMinRadius = (): number => {
             // 2D モード: カメラは常にターゲット直上 (beta ≈ 0) にあり、
-            // retargetAtCameraPosition が position.y = terrainY + radius を保証するため、
+            // position.y は ORTHO_MIN_CAM_Y 固定、target.y = ORTHO_MIN_CAM_Y - radius。
             // 角度補正やキャッシュ標高の参照は不要。固定値で十分 (#254)。
             if (currentViewMode === "2d") {
                 return camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
