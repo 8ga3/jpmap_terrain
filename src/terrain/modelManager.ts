@@ -40,6 +40,14 @@ export interface ModelManager {
     remove(id: string): void;
     setEnabled(id: string, enabled: boolean): void;
     list(): readonly string[];
+    /**
+     * アニメーション再生。
+     * `name` 省略時は全アニメーションを同時再生する。
+     * 同一ボーンを対象とする複数アニメーションを同時再生した場合、
+     * 最後に評価されるアニメーションがボーン変換値を上書きするため
+     * 意図しない結果になることがある。特定のアニメーションのみ
+     * 再生したい場合は `name` を指定すること。
+     */
     playAnimation(id: string, name?: string): void;
     stopAnimation(id: string, name?: string): void;
     dispose(): void;
@@ -423,6 +431,10 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
             return Array.from(entries.keys());
         },
 
+        // name 省略時は全アニメーションを同時再生する。
+        // 同一ボーンを対象とする複数アニメーションがある場合、
+        // 最後に評価されるグループがボーン変換値を上書きするため
+        // 意図しないポーズになることがある。
         playAnimation(id: string, name?: string): void {
             if (disposed) {
                 throw new Error("ModelManager has been disposed");
