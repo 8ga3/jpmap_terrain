@@ -871,8 +871,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const ts = tileSizeForZoom(z);
             const center = convertTileZoom(currentCenter, z);
             const { fracX, fracY } = computeSubTileOffset(currentCenter, z);
-            const tileXFloat = center.x + fracX + wx / ts;
-            const tileYFloat = center.y + fracY - wz / ts;
+            // タイルメッシュの中心が world(0,0) に配置されるため、
+            // ワールド座標 wx=0 はタイルの中央ピクセル（0.5 タイル）に対応する。
+            // + 0.5 は left-edge 基準(0) → center 基準(0.5) への補正。
+            const tileXFloat = center.x + 0.5 + fracX + wx / ts;
+            const tileYFloat = center.y + 0.5 + fracY - wz / ts;
             const tileXInt = Math.floor(tileXFloat);
             const tileYInt = Math.floor(tileYFloat);
             const key = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
