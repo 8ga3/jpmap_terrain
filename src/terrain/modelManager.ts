@@ -11,6 +11,7 @@
 import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { Scene } from "@babylonjs/core/scene";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
+import { GLTFLoaderAnimationStartMode } from "@babylonjs/loaders/glTF/glTFFileLoader";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
@@ -216,7 +217,7 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
             // 再生タイミングは playAnimation() で明示的に制御する。
             const result = await ImportMeshAsync(entry.url, ctx.scene, {
                 pluginOptions: {
-                    gltf: { animationStartMode: 0 },
+                    gltf: { animationStartMode: GLTFLoaderAnimationStartMode.NONE },
                 },
             });
             if (entry.cancelled) {
