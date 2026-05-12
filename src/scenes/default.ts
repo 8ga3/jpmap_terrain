@@ -2298,8 +2298,8 @@ export class DefaultScene implements CreateSceneClass {
             getAltitude: () => {
                 // 両モード共通: camera.position.y（Y=0 からの絶対高度）。
                 // 3D: パン中に position.y が一定に保たれる (#225)。
-                // 2D: retargetAtCameraPosition が呼び出し元の camY を尊重するため
-                //     ドラッグ中も position.y が安定する (#254)。
+                // 2D: position.y は ORTHO_MIN_CAM_Y 固定（平行投影のため表示には無影響）。
+                //     ズームは camera.radius / zoomLevel で制御する (#254)。
                 return camera.position.y;
             },
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
