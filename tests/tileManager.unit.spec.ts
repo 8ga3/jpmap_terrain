@@ -945,19 +945,16 @@ describe("queryElevationAtWorld", () => {
         tm.dispose();
     });
 
-    it("zoomフォールバック: 高zoom未ヒットでも低zoomキャッシュから値を返す", async () => {
+    it("zoomフォールバック: 高zoom標高取得失敗時は低zoomデータ抽出でアクティブタイルの標高を返す", async () => {
         // zoom依存の tileEdgeMeters: z14=1000, z13=2000
         (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
             (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
-
         const elevData13 = new Float32Array(256 * 256);
-        // wx=0, wz=-1000 → zoom13で fracTile=(0.25,0.25) → px=64, py=64
-        // バイリニア補間のため、(63,63)(63,64)(64,63)(64,64) の 4 頂点全てに値を設定
-        elevData13[63 * 256 + 63] = 777;
-        elevData13[63 * 256 + 64] = 777;
-        elevData13[64 * 256 + 63] = 777;
-        elevData13[64 * 256 + 64] = 777;
+        // mock toTileXY が返す中心タイルは (14547, 6452)。
+        // subX = 14547%2 = 1, subY = 6452%2 = 0 → originX=128, originY=0。
+        // wx=0,wz=0 → zoom-14タイル内ピクセル(0,0) = elevData13[0*256+128] を参照する。
+        elevData13[0 * 256 + 128] = 777;
 
         (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
             (zoom) => {
@@ -973,16 +970,17 @@ describe("queryElevationAtWorld", () => {
             zoom: 14,
             subdivisions: 128,
             heightScale: 1.0,
-            maxTiles: 1,
+            maxTiles: 5,
             minZoom: 14,
             maxElevationZoom: 14,
             minElevationZoom: 13,
         });
 
         await tm.setCenter(35.68, 139.77);
-        // wx=0, wz=-1000 → zoom14キー"14/14547/6453"は未キャッシュ
-        // → zoom13キー"13/7273/3226"にフォールバックしてヒット
-        const result = tm.queryElevationAtWorld(0, -1000);
+        // wx=0, wz=0 → 中心タイル (14/14547/6452) が activeTiles にある。
+        // zoom-14 の elevation データは zoom-13 から抽出されたもの。
+        // activeTiles チェックにより、表示タイルと同じデータを使って標高を返す。
+        const result = tm.queryElevationAtWorld(0, 0);
         expect(result).toBe(777);
         tm.dispose();
     });

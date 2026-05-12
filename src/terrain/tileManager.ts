@@ -876,6 +876,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const tileXInt = Math.floor(tileXFloat);
             const tileYInt = Math.floor(tileYFloat);
             const key = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
+            // 現在 activeTiles に存在するタイルのデータのみ使用する。
+            // キャッシュには古い zoom レベルのデータが残留していることがあり、
+            // 表示メッシュと異なる標高データを返すとアバターが地面に潜る原因になる。
+            if (!activeTiles.has(key)) continue;
             const entry = cache.get(key);
             if (!entry) continue;
             // まだ解決できていない all-NaN タイルはスキップ
