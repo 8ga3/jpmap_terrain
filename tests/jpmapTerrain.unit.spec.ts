@@ -496,6 +496,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     getAltitude: () => altitude,
                     getAzimuth: () => azimuth,
                     getTilt: () => (lastViewMode === "2d" ? 0 : tilt),
+                    getZoomLevel: () => lastViewMode === "2d" ? 14.0 : undefined,
                     setLat: (v: number) => applyView({ lat: v }, true),
                     setLon: (v: number) => applyView({ lon: v }, true),
                     setAltitude: (v: number) => applyView({ altitude: v }, true),

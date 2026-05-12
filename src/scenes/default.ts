@@ -14,6 +14,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, tileCenterLatLon, JAPAN_BOUNDS } from "../terrain/gsiTile";
+import { radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { attachResizeRefresh } from "../terrain/resizeRefresh";
 import { createTileManager } from "../terrain/tileManager";
@@ -122,6 +123,11 @@ export interface DefaultSceneController {
     getAzimuth(): number;
     /** チルト角（度）= camera.beta を度に変換した値 */
     getTilt(): number;
+    /**
+     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 3D モードでは `undefined` を返す。
+     */
+    getZoomLevel(): number | undefined;
 
     /** 緯度を即時反映する。Japan bounds でクランプされる */
     setLat(value: number): void;
@@ -278,6 +284,11 @@ export interface DefaultSceneInitOptions {
     azimuth?: number;
     /** カメラチルト角（度）。0 で真下、90 で水平 */
     tilt?: number;
+    /**
+     * 2D モード時の初期ズームレベル (Google Maps 互換, #254)。
+     * 定義時は `altitude` より優先して `camera.radius` を設定する。
+     */
+    zoomLevel?: number;
     /** 地図種類（T6 で配線） */
     mapType?: "standard" | "photo";
     /**
@@ -1914,6 +1925,22 @@ export class DefaultScene implements CreateSceneClass {
         if (currentViewMode === "2d") {
             // 同値だが初期化のため force で適用する（camera.mode / ortho frustum を確定させる）。
             applyViewModeInternal("2d", { silent: true, force: true });
+
+            // URL から zoomLevel が指定された場合、radius へ変換する (#254)。
+            if (options?.zoomLevel !== undefined) {
+                const h = engine.getRenderHeight();
+                if (h > 0) {
+                    const r = zoomLevelToRadius(
+                        options.zoomLevel,
+                        h,
+                        currentLat,
+                        camera.fov,
+                    );
+                    const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                    const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                    camera.radius = clamp(r, lower, upper);
+                }
+            }
         }
 
         // 2D の間は radius / リサイズで ortho frustum を追従させる必要がある。
@@ -2212,6 +2239,12 @@ export class DefaultScene implements CreateSceneClass {
                 currentViewMode === "2d"
                     ? 0
                     : (camera.beta * 180) / Math.PI,
+            getZoomLevel: () => {
+                if (currentViewMode !== "2d") return undefined;
+                const h = engine.getRenderHeight();
+                if (h <= 0) return undefined;
+                return radiusToZoomLevel(camera.radius, h, currentLat, camera.fov);
+            },
             setLat: (value) => applyView({ lat: value }, true),
             setLon: (value) => applyView({ lon: value }, true),
             setAltitude: (value) => applyView({ altitude: value }, true),
@@ -2375,7 +2408,11 @@ export class DefaultScene implements CreateSceneClass {
         // canvas の表示はカメラ高度が確定した後の初回レンダリングまで遅延させる
         // ことで、リロード時のフラッシュを防ぐ (#225)。
         const desiredCamY = altitude;
+        // 2D + zoomLevel 指定時は radius を変更しない（zoomLevel が radius を決定済み）。
+        const initUsesZoomLevel =
+            currentViewMode === "2d" && options?.zoomLevel !== undefined;
         const adjustRadiusForCamY = (targetY: number): void => {
+            if (initUsesZoomLevel) return;
             const cosB = Math.cos(camera.beta);
             if (Math.abs(cosB) < 1e-6) return;
             const r = (desiredCamY - targetY) / cosB;

@@ -6,8 +6,11 @@ import {
     createUrlUpdater,
     clampAltitude,
     clampTilt,
+    clampZoomLevel,
     normalizeAzimuth,
     extractDemoPathPrefix,
+    radiusToZoomLevel,
+    zoomLevelToRadius,
     CAMERA_URL_DEFAULTS,
     CAMERA_URL_LIMITS,
     MAP_TYPE_QUERY_KEY,
@@ -694,6 +697,133 @@ describe("urlState", () => {
                     (globalThis as { window?: unknown }).window = originalWindow;
                 }
             }
+        });
+    });
+
+    // ---- ズームレベル (Issue #254) ----
+
+    describe("clampZoomLevel", () => {
+        it("範囲内はそのまま返す", () => {
+            expect(clampZoomLevel(14.5)).toBe(14.5);
+        });
+        it("下限クランプ", () => {
+            expect(clampZoomLevel(3)).toBe(CAMERA_URL_LIMITS.zoomLevel.min);
+        });
+        it("上限クランプ", () => {
+            expect(clampZoomLevel(30)).toBe(CAMERA_URL_LIMITS.zoomLevel.max);
+        });
+    });
+
+    describe("radiusToZoomLevel / zoomLevelToRadius", () => {
+        const H = 800;
+        const LAT = 35.681;
+        const FOV = 0.8;
+
+        it("往復変換で元の radius に戻る", () => {
+            const radius = 5000;
+            const z = radiusToZoomLevel(radius, H, LAT, FOV);
+            const recovered = zoomLevelToRadius(z, H, LAT, FOV);
+            expect(recovered).toBeCloseTo(radius, 4);
+        });
+
+        it("radius が小さいほどズームレベルが大きい", () => {
+            const z1 = radiusToZoomLevel(50, H, LAT, FOV);
+            const z2 = radiusToZoomLevel(75000, H, LAT, FOV);
+            expect(z1).toBeGreaterThan(z2);
+        });
+
+        it("canvas が高いほど同じ radius で大きなズームレベル", () => {
+            const z1 = radiusToZoomLevel(1000, 600, LAT, FOV);
+            const z2 = radiusToZoomLevel(1000, 1200, LAT, FOV);
+            expect(z2).toBeGreaterThan(z1);
+        });
+    });
+
+    describe("parseCameraStateFromUrl – ズームレベル形式", () => {
+        it("@lat,lon,14.50z をパースできる", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/@35.681236,139.767125,14.50z",
+            );
+            expect(result).not.toBeNull();
+            expect(result!.zoomLevel).toBeCloseTo(14.5, 2);
+            expect(result!.azimuth).toBe(CAMERA_URL_DEFAULTS.azimuth);
+            expect(result!.tilt).toBe(CAMERA_URL_DEFAULTS.tilt);
+        });
+
+        it("整数ズームレベル @lat,lon,12z をパースできる", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/@35.0,139.0,12z",
+            );
+            expect(result).not.toBeNull();
+            expect(result!.zoomLevel).toBe(12);
+        });
+
+        it("ズームレベルが上限を超える場合はクランプされる", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/@35.0,139.0,99z",
+            );
+            expect(result).not.toBeNull();
+            expect(result!.zoomLevel).toBe(CAMERA_URL_LIMITS.zoomLevel.max);
+        });
+
+        it("ズームレベルが下限未満の場合はクランプされる", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/@35.0,139.0,1z",
+            );
+            expect(result).not.toBeNull();
+            expect(result!.zoomLevel).toBe(CAMERA_URL_LIMITS.zoomLevel.min);
+        });
+
+        it("通常の altitude 形式では zoomLevel が undefined", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/@35.0,139.0,2000,0,45",
+            );
+            expect(result).not.toBeNull();
+            expect(result!.zoomLevel).toBeUndefined();
+            expect(result!.altitude).toBe(2000);
+        });
+    });
+
+    describe("toAtPath – ズームレベル形式", () => {
+        it("zoomLevel が指定されている場合、@lat,lon,Xz を出力する", () => {
+            const path = toAtPath({
+                lat: 35.681236,
+                lon: 139.767125,
+                zoomLevel: 14.5,
+            });
+            expect(path).toBe("/@35.681236,139.767125,14.50z");
+        });
+
+        it("zoomLevel がクランプされる", () => {
+            const path = toAtPath({
+                lat: 35.0,
+                lon: 139.0,
+                zoomLevel: 99,
+            });
+            expect(path).toContain(`${CAMERA_URL_LIMITS.zoomLevel.max}.00z`);
+        });
+
+        it("zoomLevel 未指定で altitude がある場合は従来形式", () => {
+            const path = toAtPath({
+                lat: 35.0,
+                lon: 139.0,
+                altitude: 2000,
+                azimuth: 0,
+                tilt: 45,
+            });
+            expect(path).toBe("/@35.000000,139.000000,2000,0.00,45.00");
+        });
+
+        it("prefix 付きズームレベル形式", () => {
+            const path = toAtPath(
+                {
+                    lat: 35.681236,
+                    lon: 139.767125,
+                    zoomLevel: 12.0,
+                },
+                "/viewer",
+            );
+            expect(path).toBe("/viewer/@35.681236,139.767125,12.00z");
         });
     });
 });
