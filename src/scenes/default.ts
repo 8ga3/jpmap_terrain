@@ -661,8 +661,11 @@ export class DefaultScene implements CreateSceneClass {
                 const anchorX = camera.target.x;
                 const anchorZ = camera.target.z;
                 const prevAlpha = camera.alpha;
+                // 山など地形高さが変化してもレイが確実に地形を検出できるよう、
+                // 十分高い位置からキャストする (#254)。
+                const rayOriginY = Math.max(camY, 10000);
                 const rayDown = new Ray(
-                    new Vector3(anchorX, camY, anchorZ),
+                    new Vector3(anchorX, rayOriginY, anchorZ),
                     new Vector3(0, -1, 0),
                     CAMERA_FAR_CLIP,
                 );
@@ -670,12 +673,17 @@ export class DefaultScene implements CreateSceneClass {
                     rayDown,
                     (m) => m.name.startsWith("tile-ground-"),
                 );
-                const anchorY =
+                const terrainY =
                     pick2d?.hit && pick2d.pickedPoint
                         ? pick2d.pickedPoint.y
                         : camera.target.y;
-                camera.setPosition(new Vector3(anchorX, camY, anchorZ));
-                camera.setTarget(new Vector3(anchorX, anchorY, anchorZ));
+                // radius（地形からの高度 = ズームレベル）を保持しながら
+                // position.y を terrain に追随させる (#254)。
+                // ドラッグ中に radius が変化せず一定の俯瞰高度を維持する。
+                // 山など地形が高い場合は camera.position.y が上昇（衝突回避）。
+                const newCamY = terrainY + camera.radius;
+                camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
+                camera.setTarget(new Vector3(anchorX, terrainY, anchorZ));
                 camera.alpha = prevAlpha;
                 camera.beta = BETA_2D;
                 return;
@@ -1607,6 +1615,9 @@ export class DefaultScene implements CreateSceneClass {
                         // radius factor 分だけカメラ高度のみ変化
                         const newRadius = clamp(camera.radius * factor, effectiveLower2, upper);
                         const newCamY = camera.target.y + newRadius * cosB;
+                        // 2D モードでは retargetAtCameraPosition が camera.radius を使って高度を決めるため、
+                        // 先に radius を更新してから旧 camX/Z・新 camY で再ターゲットする (#254)。
+                        camera.radius = newRadius;
                         // 新しいカメラ位置から Ray を飛ばし、camera.targetを設定
                         retargetAtCameraPosition(camX, newCamY, camZ);
                         commitPanOffset();
