@@ -1,8 +1,8 @@
 /**
- * アバター歩行アニメーションデモ (Issue #250)
+ * アバターアニメーション (Issue #250)
  *
  * `JpmapTerrain` の Model 公開 API と `playModelAnimation` を使って
- * 歩行アニメーション付き 3D モデルが地形に沿って円軌道を移動するデモ。
+ * 3D モデルが地形に沿って円軌道を移動するデモ。
  *
  * 仕様:
  * - 東京駅に `assets/human_walk.glb` を初期配置
