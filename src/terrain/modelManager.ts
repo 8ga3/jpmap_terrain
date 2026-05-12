@@ -204,7 +204,13 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
         try {
             // 拡張子に応じたローダーを動的ロード（optional peer dependency のため遅延）
             await importLoaderForUrl(entry.url);
-            const result = await ImportMeshAsync(entry.url, ctx.scene);
+            // animationStartMode: NONE でロードし、アニメーション自動開始を抑制する。
+            // 再生タイミングは playAnimation() で明示的に制御する。
+            const result = await ImportMeshAsync(entry.url, ctx.scene, {
+                pluginOptions: {
+                    gltf: { animationStartMode: 0 },
+                },
+            });
             if (entry.cancelled) {
                 // dispose / remove が先に呼ばれた場合はロード結果を破棄
                 for (const mesh of result.meshes) {
@@ -217,7 +223,6 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
             }
             entry.meshes = result.meshes;
             entry.animationGroups = result.animationGroups;
-            entry.loaded = true;
 
             // インポートされたメッシュ階層を root TransformNode の子にする。
             // glTF/GLB のスキンメッシュはボーン階層の親子関係に依存するため、
@@ -233,10 +238,8 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
             setMeshVisibility(entry, entry.enabled);
             applyTransform(entry);
 
-            // アニメーションは最初は停止状態
-            for (const ag of result.animationGroups) {
-                ag.stop();
-            }
+            // loaded フラグはすべての初期化が完了してからセット
+            entry.loaded = true;
         } catch (err) {
             if (!entry.cancelled) {
                 console.error(
@@ -439,10 +442,10 @@ export const createModelManager = (ctx: OverlayContext): ModelManager => {
                     );
                     return;
                 }
-                ag.start(true);
+                ag.play(true);
             } else {
                 for (const ag of entry.animationGroups) {
-                    ag.start(true);
+                    ag.play(true);
                 }
             }
         },
