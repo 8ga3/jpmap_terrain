@@ -58,6 +58,11 @@ jest.unstable_mockModule("@babylonjs/core/Loading/sceneLoader", () => ({
 // ---- glTF 動的 import スタブ ----
 jest.unstable_mockModule("@babylonjs/loaders/glTF", () => ({}));
 
+// ---- glTF FileLoader enum スタブ ----
+jest.unstable_mockModule("@babylonjs/loaders/glTF/glTFFileLoader", () => ({
+    GLTFLoaderAnimationStartMode: { NONE: 0, FIRST: 1, ALL: 2 },
+}));
+
 // ---- OBJ 動的 import スタブ ----
 jest.unstable_mockModule("@babylonjs/loaders/OBJ", () => ({}));
 
