@@ -61,7 +61,7 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "model",
     },
     {
-        title: "アバターアニメーション",
+        title: "アバターアニメーション #01",
         description:
             "歩行アニメーション付き 3D モデルがクリック地点を中心に円軌道で地形に沿って移動するデモ。半径・速度の調整が可能です。",
         href: "avatar",
