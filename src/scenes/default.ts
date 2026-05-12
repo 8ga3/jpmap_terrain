@@ -668,12 +668,11 @@ export class DefaultScene implements CreateSceneClass {
                 const anchorX = camera.target.x;
                 const anchorZ = camera.target.z;
                 const prevAlpha = camera.alpha;
-                const savedRadius = camera.radius;
-                // 3D モードと同様、呼び出し元が渡した camY を基本的に維持する。
-                // これによりドラッグ中に地形高さが変化しても camera.position.y が
-                // 変動せず URL 高度が安定する (#254)。
-                // ただし山などで地形が camY - savedRadius より高い場合は
-                // 衝突回避のため position.y を引き上げる。
+                // 3D モードと同様、camY（海抜絶対高度）を維持する。
+                // radius = camY - terrainY とすることでズームが絶対高度に連動し、
+                // 平地では radius が大きく（ズームアウト）、山岳では小さく（ズームイン）なる。
+                // これにより position.y = terrainY + radius = camY が保たれ、
+                // URL 高度が安定したまま表示スケールも正しくなる (#254)。
                 const rayOriginY = Math.max(camY, 10000);
                 const rayDown = new Ray(
                     new Vector3(anchorX, rayOriginY, anchorZ),
@@ -688,13 +687,15 @@ export class DefaultScene implements CreateSceneClass {
                     pick2d?.hit && pick2d.pickedPoint
                         ? pick2d.pickedPoint.y
                         : camera.target.y;
-                // 地形衝突時のみ引き上げ。それ以外は呼び出し元の camY を尊重する。
-                const minCamY = terrainY + savedRadius;
-                const newCamY = Math.max(camY, minCamY);
-                const newTargetY = newCamY - savedRadius;
+                // camY を基準に radius を算出する。地形衝突（terrainY >= camY）の場合は
+                // lowerRadiusLimit 分だけ position.y を引き上げて衝突を回避する。
+                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
+                const newRadius = clamp(camY - terrainY, lower, upper);
+                const newCamY = terrainY + newRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
-                camera.setTarget(new Vector3(anchorX, newTargetY, anchorZ));
-                camera.radius = savedRadius;
+                camera.setTarget(new Vector3(anchorX, terrainY, anchorZ));
+                camera.radius = newRadius;
                 camera.alpha = prevAlpha;
                 camera.beta = BETA_2D;
                 return;
