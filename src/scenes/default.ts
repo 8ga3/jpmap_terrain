@@ -1843,9 +1843,21 @@ export class DefaultScene implements CreateSceneClass {
             opts?: { silent?: boolean; force?: boolean },
         ): void => {
             if (next === currentViewMode && !opts?.force) return;
+            const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+            const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
             if (next === "2d") {
                 // 現在の tilt を保存（3D 復帰時に復元するため）
                 savedTiltDeg = (camera.beta * 180) / Math.PI;
+
+                // --- 高度補正 (Issue #255) ---
+                // Perspective ではターゲット平面での可視半高 = radius * tan(fov/2)。
+                // Ortho の frustum は camera.position.y（≈ target.y + radius）を使うため、
+                // target.y > 0 の地形上では 2D 切替時にズームアウトして見える。
+                // radius を target.y ぶん縮めて camera.position.y ≈ old_radius にし、
+                // perspective と同じズームレベルを保つ。
+                const perspRadius = camera.radius;
+                camera.radius = clamp(perspRadius - camera.target.y, lower, upper);
+
                 // ArcRotateCamera は beta=0 でジンバルロックが生じ alpha（方位）変化がカメラ位置に
                 // 反映されなくなる。また lowerBetaLimit=0.1 のままでは 0 付近にクランプされてしまう。
                 // そのため 2D 中は lowerBetaLimit を 0 に緩め、実質 0 の極小値（BETA_2D）で固定する。
@@ -1856,13 +1868,20 @@ export class DefaultScene implements CreateSceneClass {
                 applyOrthoFrustum();
             } else {
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
+
+                // --- 高度補正 (Issue #255) ---
+                // 2D での ortho frustum は camera.position.y（= target.y + radius）基準。
+                // 3D 復帰時に perspective で同じ可視範囲を得るには
+                // radius_3d = camera.position.y（= target.y + current_2d_radius）にする。
+                camera.radius = clamp(camera.target.y + camera.radius, lower, upper);
+
                 // 3D 復帰時に元の lowerBetaLimit を戻してから beta を復元する。
                 camera.lowerBetaLimit = lowerBetaLimit3d;
-                const upper = camera.upperBetaLimit ?? Math.PI;
+                const upperBeta = camera.upperBetaLimit ?? Math.PI;
                 camera.beta = clamp(
                     (savedTiltDeg * Math.PI) / 180,
                     lowerBetaLimit3d,
-                    upper,
+                    upperBeta,
                 );
             }
             currentViewMode = next;
