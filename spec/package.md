@@ -890,7 +890,7 @@ Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / s
 | `removeModel(id)` | `void` | モデルを削除。存在しなければ `console.warn` で no-op |
 | `setModelEnabled(id, enabled)` | `void` | 表示 / 非表示を切替 |
 | `listModels()` | `readonly string[]` | 登録済みモデルの id 一覧 |
-| `playModelAnimation(id, name?)` | `void` | アニメーション再生。`name` 省略時は全アニメーション |
+| `playModelAnimation(id, name?)` | `void` | アニメーション再生。`name` 省略時は全アニメーションを同時再生。※ 同一ボーンを対象とする複数アニメーションを同時再生した場合、最後に評価されるアニメーションがボーン変換値を上書きするため意図しない結果になることがある。特定のアニメーションのみ再生したい場合は `name` を指定すること |
 | `stopModelAnimation(id, name?)` | `void` | アニメーション停止 |
 
 ##### 3.3.13.2 ModelOptions
@@ -947,8 +947,8 @@ const handle = viewer.addModel("human", {
 // 位置を更新
 viewer.updateModel("human", { lat: 35.69, lon: 139.77 });
 
-// アニメーション再生
-viewer.playModelAnimation("human");
+// アニメーション再生（名前を指定して特定のアニメーションを再生）
+viewer.playModelAnimation("human", "walk");
 
 // 向きを変える
 viewer.updateModel("human", { rotation: { y: 180 } });
