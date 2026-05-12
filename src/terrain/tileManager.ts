@@ -883,33 +883,40 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const data = entry.filled ?? entry.elevation;
             const fx = tileXFloat - tileXInt;
             const fy = tileYFloat - tileYInt;
-            const px = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fx * (TILE_SIZE - 1))));
-            const py = Math.min(TILE_SIZE - 1, Math.max(0, Math.round(fy * (TILE_SIZE - 1))));
-            const val = data[py * TILE_SIZE + px];
-            if (!isInvalidElev(val)) {
-                return (val + currentAltitudeOffset) * heightScale;
-            }
-            // 無効値の場合は近傍8ピクセルから補間（fillInvalidPixels と同等の方針）。
-            // 近傍にも有効値がなければ低 zoom へフォールバックする。
-            let sum = 0;
-            let count = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    if (dx === 0 && dy === 0) continue;
-                    const nx = px + dx;
-                    const ny = py + dy;
-                    if (nx < 0 || nx >= TILE_SIZE || ny < 0 || ny >= TILE_SIZE) continue;
-                    const nv = data[ny * TILE_SIZE + nx];
-                    if (!isInvalidElev(nv)) {
-                        sum += nv;
-                        count++;
-                    }
+
+            // バイリニア補間: 地形メッシュのレンダリングと一致させるため
+            // 最近傍ではなく 4 頂点の加重平均を使う
+            const fpx = fx * (TILE_SIZE - 1);
+            const fpy = fy * (TILE_SIZE - 1);
+            const px0 = Math.max(0, Math.floor(fpx));
+            const py0 = Math.max(0, Math.floor(fpy));
+            const px1 = Math.min(TILE_SIZE - 1, px0 + 1);
+            const py1 = Math.min(TILE_SIZE - 1, py0 + 1);
+            const tx = fpx - px0;
+            const ty = fpy - py0;
+            const v00 = data[py0 * TILE_SIZE + px0];
+            const v10 = data[py0 * TILE_SIZE + px1];
+            const v01 = data[py1 * TILE_SIZE + px0];
+            const v11 = data[py1 * TILE_SIZE + px1];
+
+            // 有効な頂点だけで加重補間（w * NaN = NaN を避けるため条件付き加算）。
+            // 全て無効なら低 zoom へフォールバック
+            let wSum = 0;
+            let valSum = 0;
+            const addCorner = (v: number, w: number): void => {
+                if (!isInvalidElev(v)) {
+                    wSum += w;
+                    valSum += w * v;
                 }
+            };
+            addCorner(v00, (1 - tx) * (1 - ty));
+            addCorner(v10, tx * (1 - ty));
+            addCorner(v01, (1 - tx) * ty);
+            addCorner(v11, tx * ty);
+            if (wSum > 0) {
+                return (valSum / wSum + currentAltitudeOffset) * heightScale;
             }
-            if (count > 0) {
-                return (sum / count + currentAltitudeOffset) * heightScale;
-            }
-            // 近傍全て NaN → 低 zoom へフォールバック
+            // 4 頂点全て無効 → 低 zoom へフォールバック
         }
         return null;
     };
