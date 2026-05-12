@@ -396,6 +396,21 @@ interface MarkerOptions {
 - 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.viewMode`（= `"3d"`）にフォールバックする。
 - `viewer.viewMode` の変化は `onViewModeChange` 経由でデモ層が `history.replaceState` により URL の `?viewMode=` を更新する。パス・他クエリ・ハッシュは保持される。
 
+**2D モードにおけるパス形式（Issue #254）:**
+
+- 3D モードのパス形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
+  - `altitude` はカメラのワールド高度（m）。範囲 [50, 80000]
+- 2D モードのパス形式: `/@<lat>,<lon>,<zoom>z`（Google Maps 互換）
+  - `zoom` は Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]
+  - 2D では平行投影のためカメラの海抜高度は表示範囲に影響しないため、altitude の代わりにズームレベルを使用する
+  - azimuth / tilt は 2D モードでは固定のため URL に含めない
+  - ズームレベルと `camera.radius` の変換式:
+    - `z = log₂(canvasHeight × 156543 × cos(φ) / (2 × radius × tan(fov/2)))`
+    - `radius = canvasHeight × 156543 × cos(φ) / (2^z × 2 × tan(fov/2))`
+  - URL コピー＆ペーストで同等の表示を再現できる
+  - 例: `/@35.3606,138.7274,14.50z?viewMode=2d`（富士山をズームレベル 14.5 で表示）
+- パーサーは `z` サフィックスの有無でズームレベルか海抜高度かを自動判別する（`CameraUrlState.zoomLevel` フィールドに格納）
+
 #### 3.3.8 ポリゴン (Issue #169)
 
 任意の点列を受け取り、地表または絶対標高に沿って **ポイント球体** と **ポリライン** を表示する API（基盤）。
