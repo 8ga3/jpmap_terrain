@@ -1,5 +1,5 @@
 /**
- * アバターアニメーション (Issue #250)
+ * アバターアニメーション #01 (Issue #250)
  *
  * `JpmapTerrain` の Model 公開 API と `playModelAnimation` を使って
  * 3D モデルが地形に沿って円軌道を移動するデモ。
