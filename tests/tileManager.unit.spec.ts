@@ -952,8 +952,11 @@ describe("queryElevationAtWorld", () => {
         );
 
         const elevData13 = new Float32Array(256 * 256);
-        // zoom13タイルのピクセル(64,64)に既知の値を設定
         // wx=0, wz=-1000 → zoom13で fracTile=(0.25,0.25) → px=64, py=64
+        // バイリニア補間のため、(63,63)(63,64)(64,63)(64,64) の 4 頂点全てに値を設定
+        elevData13[63 * 256 + 63] = 777;
+        elevData13[63 * 256 + 64] = 777;
+        elevData13[64 * 256 + 63] = 777;
         elevData13[64 * 256 + 64] = 777;
 
         (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
@@ -1578,16 +1581,20 @@ describe("同zoom タイル間ステッチの対称性", () => {
         flushRAF();
 
         // A の右辺 (col=255) と B の左辺 (col=0) を queryElevationAtWorld で取得
-        // wx=999 → tile A col=255, wx=1000 → tile B col=0, wz=-4 → row=1（辺、非角）
+        // wx=999 → tile A 右辺付近, wx=1000 → tile B 左辺付近, wz=-4 → row=1（辺、非角）
         const aRightEdge = tm.queryElevationAtWorld(999, -4);
         const bLeftEdge = tm.queryElevationAtWorld(1000, -4);
 
         expect(aRightEdge).not.toBeNull();
         expect(bLeftEdge).not.toBeNull();
-        // 共有辺が対称（同一値）であること
-        expect(aRightEdge).toBe(bLeftEdge);
-        // raw 平均 avg(100, 200) = 150 であること
-        expect(aRightEdge).toBe(150);
+        // バイリニア補間により、ステッチ値(150)と内部ピクセル(100/200)の加重平均となる。
+        // ステッチが機能していれば境界付近の値は 100〜200 の間に収まる。
+        // ステッチなしの場合: tile A 右辺 = 100, tile B 左辺 = 200（不連続）
+        // ステッチありの場合: 両辺ともステッチ値150が含まれ 100〜200 の中間に近づく
+        expect(aRightEdge!).toBeGreaterThan(100);  // 150 が混入して 100 より大きい
+        expect(aRightEdge!).toBeLessThanOrEqual(150);
+        expect(bLeftEdge!).toBeGreaterThanOrEqual(100);
+        expect(bLeftEdge!).toBeLessThan(200);      // 150 が混入して 200 より小さい
 
         tm.dispose();
     });
