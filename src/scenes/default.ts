@@ -668,12 +668,10 @@ export class DefaultScene implements CreateSceneClass {
                 const anchorX = camera.target.x;
                 const anchorZ = camera.target.z;
                 const prevAlpha = camera.alpha;
-                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
-                // radius は常に保持する (#254)。
-                // ズーム操作は retarget 呼出し前に camera.radius を更新済みのため、
-                // ここでは savedRadius をそのまま使えば正しいズームが維持される。
-                // ドラッグ中もドロップ後も radius を再計算しないことで、
-                // 地形 pick の微小な誤差による見かけ上のズームジッタを防ぐ。
+                // 2D は平行投影のため camera.position.y は表示範囲に影響しない。
+                // ズームは camera.radius → applyOrthoFrustum のみで決まる。
+                // したがって radius は一切変更しない (#254)。
+                // ズーム操作は retarget 呼出し前に camera.radius を更新済み。
                 const savedRadius = camera.radius;
                 const rayOriginY = Math.max(camY, 10000);
                 const rayDown = new Ray(
@@ -689,14 +687,14 @@ export class DefaultScene implements CreateSceneClass {
                     pick2d?.hit && pick2d.pickedPoint
                         ? pick2d.pickedPoint.y
                         : camera.target.y;
-                // camY を維持する。山岳衝突の場合のみ camY を引き上げる。
-                const minCamY = terrainY + lower;
-                const newCamY = Math.max(camY, minCamY);
-                const newRadius = newCamY > camY ? lower : savedRadius;
-                const newTargetY = newCamY - newRadius;
+                // position.y は camY を基本維持。地形が高い場合のみ引き上げる
+                // （near/far clip で地形が消えるのを防ぐため）。
+                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                const newCamY = Math.max(camY, terrainY + lower);
+                const newTargetY = newCamY - savedRadius;
                 camera.setPosition(new Vector3(anchorX, newCamY, anchorZ));
                 camera.setTarget(new Vector3(anchorX, newTargetY, anchorZ));
-                camera.radius = newRadius;
+                camera.radius = savedRadius;
                 camera.alpha = prevAlpha;
                 camera.beta = BETA_2D;
                 return;
