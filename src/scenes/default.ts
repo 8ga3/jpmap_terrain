@@ -1973,17 +1973,22 @@ export class DefaultScene implements CreateSceneClass {
             if (values.altitude !== undefined) {
                 const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
                 const upper = camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS;
-                // URL/API の altitude はカメラ世界高度 (海抜 = camera.position.y) として扱う。
-                // ArcRotateCamera は radius を保持するため、
-                //   camY = target.y + radius * cos(beta)
-                // を解いて radius に変換する (#225)。
-                const cosB = Math.cos(camera.beta);
-                if (Math.abs(cosB) >= 1e-6) {
-                    const desiredRadius =
-                        (values.altitude - camera.target.y) / cosB;
-                    camera.radius = clamp(desiredRadius, lower, upper);
-                } else {
+                if (currentViewMode === "2d") {
+                    // 2D モードでは altitude = camera.radius（地形からの高度）として扱う (#254)。
                     camera.radius = clamp(values.altitude, lower, upper);
+                } else {
+                    // URL/API の altitude はカメラ世界高度 (海抜 = camera.position.y) として扱う。
+                    // ArcRotateCamera は radius を保持するため、
+                    //   camY = target.y + radius * cos(beta)
+                    // を解いて radius に変換する (#225)。
+                    const cosB = Math.cos(camera.beta);
+                    if (Math.abs(cosB) >= 1e-6) {
+                        const desiredRadius =
+                            (values.altitude - camera.target.y) / cosB;
+                        camera.radius = clamp(desiredRadius, lower, upper);
+                    } else {
+                        camera.radius = clamp(values.altitude, lower, upper);
+                    }
                 }
             }
             if (values.azimuth !== undefined) {
@@ -2169,10 +2174,12 @@ export class DefaultScene implements CreateSceneClass {
             getLat: derivedLat,
             getLon: derivedLon,
             getAltitude: () => {
-                // altitude は Y=0 からの絶対高度 (= camera.position.y) (#225)。
-                // ドラッグ移動でカメラ Y が変わらない限り URL の altitude も変動しない。
-                // リロード時の水平位置一致は retargetAtCameraPosition で target.y を
-                // queryElevationAtWorld 由来に揃えることで保証する。
+                // 3D モード: altitude = camera.position.y（海抜高度）。パン中は position.y が
+                // 一定に保たれるため URL は変動しない (#225)。
+                // 2D モード: altitude = camera.radius（地形からの高度 = ズームレベル）。
+                // 新しい radius ベース frustum では radius がパン中も一定のため URL は変動しない。
+                // position.y = terrainY + radius はパン中に地形高さに追随して変化するため不適 (#254)。
+                if (currentViewMode === "2d") return camera.radius;
                 return camera.position.y;
             },
             getAzimuth: () => azimuthDegFromAlpha(camera.alpha),
@@ -2344,6 +2351,9 @@ export class DefaultScene implements CreateSceneClass {
         // ことで、リロード時のフラッシュを防ぐ (#225)。
         const desiredCamY = altitude;
         const adjustRadiusForCamY = (targetY: number): void => {
+            // 2D モードでは altitude = radius（地形からの高度）のため、
+            // target.y が変化しても radius は維持する (#254)。
+            if (currentViewMode === "2d") return;
             const cosB = Math.cos(camera.beta);
             if (Math.abs(cosB) < 1e-6) return;
             const r = (desiredCamY - targetY) / cosB;
