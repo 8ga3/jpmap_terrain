@@ -14,7 +14,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
 import { clamp, toTileXY, tileEdgeMeters, tileCenterLatLon, JAPAN_BOUNDS } from "../terrain/gsiTile";
-import { radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
+import { clampZoomLevel, radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { attachResizeRefresh } from "../terrain/resizeRefresh";
 import { createTileManager } from "../terrain/tileManager";
@@ -2311,7 +2311,9 @@ export class DefaultScene implements CreateSceneClass {
                 if (currentViewMode !== "2d") return undefined;
                 const h = engine.getRenderHeight();
                 if (h <= 0) return undefined;
-                return radiusToZoomLevel(camera.radius, h, currentLat, camera.fov);
+                return clampZoomLevel(
+                    radiusToZoomLevel(camera.radius, h, currentLat, camera.fov),
+                );
             },
             setLat: (value) => applyView({ lat: value }, true),
             setLon: (value) => applyView({ lon: value }, true),
