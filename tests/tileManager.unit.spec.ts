@@ -824,8 +824,7 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("中心座標でキャッシュ済み標高値を返す", async () => {
-        const elevData = new Float32Array(256 * 256);
-        elevData[0] = 100; // pixel (0,0) = 100m
+        const elevData = new Float32Array(256 * 256).fill(100); // 全ピクセル 100m
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(elevData)
         );
@@ -842,15 +841,14 @@ describe("queryElevationAtWorld", () => {
         });
 
         await tm.setCenter(35.68, 139.77);
-        // ワールド原点 (0,0) は中心タイルのピクセル (0,0) に対応
+        // ワールド原点 (0,0) は中心タイルの中央ピクセル (127.5, 127.5) に対応
         const result = tm.queryElevationAtWorld(0, 0);
         expect(result).toBe(100);
         tm.dispose();
     });
 
     it("heightScaleが標高値に反映される", async () => {
-        const elevData = new Float32Array(256 * 256);
-        elevData[0] = 100;
+        const elevData = new Float32Array(256 * 256).fill(100);
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(elevData)
         );
@@ -873,8 +871,7 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("altitudeOffsetが標高値に反映される", async () => {
-        const elevData = new Float32Array(256 * 256);
-        elevData[0] = 100;
+        const elevData = new Float32Array(256 * 256).fill(100);
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(elevData)
         );
@@ -897,8 +894,7 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("heightScaleとaltitudeOffsetが同時に反映される", async () => {
-        const elevData = new Float32Array(256 * 256);
-        elevData[0] = 100;
+        const elevData = new Float32Array(256 * 256).fill(100);
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(elevData)
         );
@@ -950,11 +946,10 @@ describe("queryElevationAtWorld", () => {
         (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
             (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
         );
-        const elevData13 = new Float32Array(256 * 256);
-        // mock toTileXY が返す中心タイルは (14547, 6452)。
-        // subX = 14547%2 = 1, subY = 6452%2 = 0 → originX=128, originY=0。
-        // wx=0,wz=0 → zoom-14タイル内ピクセル(0,0) = elevData13[0*256+128] を参照する。
-        elevData13[0 * 256 + 128] = 777;
+        const elevData13 = new Float32Array(256 * 256).fill(777);
+        // elevData13 を全て 777 で埋めることで、zoom-13 から抽出した
+        // zoom-14 タイルの全ピクセルが 777 になる。
+        // wx=0,wz=0 → 中心ピクセル (127.5,127.5) のバイリニア補間結果 = 777。
 
         (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
             (zoom) => {
@@ -978,7 +973,7 @@ describe("queryElevationAtWorld", () => {
 
         await tm.setCenter(35.68, 139.77);
         // wx=0, wz=0 → 中心タイル (14/14547/6452) が activeTiles にある。
-        // zoom-14 の elevation データは zoom-13 から抽出されたもの。
+        // zoom-14 の elevation データは zoom-13 から抽出されたもの（全て 777）。
         // activeTiles チェックにより、表示タイルと同じデータを使って標高を返す。
         const result = tm.queryElevationAtWorld(0, 0);
         expect(result).toBe(777);
@@ -1144,7 +1139,11 @@ describe("queryElevationAtWorld", () => {
 
     it("NaN混在タイルで有効ピクセルは正しく返す", async () => {
         const mixedData = new Float32Array(256 * 256).fill(NaN);
-        mixedData[0] = 88; // ピクセル(0,0)のみ有効
+        // ワールド原点 (0,0) は中心ピクセル (127.5, 127.5) → (127,127)〜(128,128) を使用
+        mixedData[127 * 256 + 127] = 88;
+        mixedData[127 * 256 + 128] = 88;
+        mixedData[128 * 256 + 127] = 88;
+        mixedData[128 * 256 + 128] = 88;
         (gsiTileMock.loadElevationTile as jest.Mock).mockImplementation(
             () => Promise.resolve(mixedData)
         );
@@ -1163,7 +1162,7 @@ describe("queryElevationAtWorld", () => {
         });
 
         await tm.setCenter(35.68, 139.77);
-        // ピクセル(0,0)は有効値88 → フォールバック不要でそのまま返す
+        // ピクセル(127,127)〜(128,128)が有効値88 → バイリニア補間で88を返す
         expect(tm.queryElevationAtWorld(0, 0)).toBe(88);
         tm.dispose();
     });
@@ -1579,9 +1578,10 @@ describe("同zoom タイル間ステッチの対称性", () => {
         flushRAF();
 
         // A の右辺 (col=255) と B の左辺 (col=0) を queryElevationAtWorld で取得
-        // wx=999 → tile A 右辺付近, wx=1000 → tile B 左辺付近, wz=-4 → row=1（辺、非角）
-        const aRightEdge = tm.queryElevationAtWorld(999, -4);
-        const bLeftEdge = tm.queryElevationAtWorld(1000, -4);
+        // tile A: world [-500, +500), tile B: world [+500, +1500), wz=-4 → 辺（非角）
+        // wx=499 → tile A 右辺付近, wx=500 → tile B 左辺付近
+        const aRightEdge = tm.queryElevationAtWorld(499, -4);
+        const bLeftEdge = tm.queryElevationAtWorld(500, -4);
 
         expect(aRightEdge).not.toBeNull();
         expect(bLeftEdge).not.toBeNull();
