@@ -878,7 +878,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      */
     const queryLocalElevation = (wx: number, wz: number): number | null => {
         if (!currentCenter) return null;
-        for (let z = maxElevationZoom; z >= minElevationZoom; z--) {
+        // activeTiles は表示ズーム（zoom）で登録されるため、
+        // maxElevationZoom ではなく zoom から探索を開始する（#260）。
+        for (let z = zoom; z >= minElevationZoom; z--) {
             const ts = tileSizeForZoom(z);
             const center = convertTileZoom(currentCenter, z);
             const { fracX, fracY } = computeSubTileOffset(currentCenter, z);

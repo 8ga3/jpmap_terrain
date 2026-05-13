@@ -1166,6 +1166,46 @@ describe("queryElevationAtWorld", () => {
         expect(tm.queryElevationAtWorld(0, 0)).toBe(88);
         tm.dispose();
     });
+
+    it("zoom > maxElevationZoom でも activeTiles のデータから標高を返す (#260)", async () => {
+        // zoom=18（表示最大）, maxElevationZoom=17（標高タイル最大）
+        // zoom18 の標高データは zoom17 から extractSubTileElevation で抽出される。
+        // 修正前: ループが maxElevationZoom(17) から始まるため activeTiles(zoom18) にヒットせず null。
+        // 修正後: ループが zoom(18) から始まるため activeTiles(zoom18) にヒットして値を返す。
+        (gsiTileMock.tileEdgeMeters as jest.Mock<(lat: number, zoom: number) => number>).mockImplementation(
+            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        );
+        const elevData = new Float32Array(256 * 256).fill(55);
+        (gsiTileMock.loadElevationTile as jest.Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
+            (zoom) => {
+                if (zoom >= 18) return Promise.reject(new Error("not available"));
+                return Promise.resolve(elevData);
+            }
+        );
+
+        const camera = createNearCamera();
+        // radius を小さくして zoom18 のタイルがロードされるようにする
+        (camera as any).radius = 50;
+        (camera as any).position = { x: 0, y: 50, z: 0 };
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 18,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 5,
+            minZoom: 18,
+            maxElevationZoom: 17,
+            minElevationZoom: 17,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        const result = tm.queryElevationAtWorld(0, 0);
+        // activeTiles には zoom18 のエントリがあり、その標高データは
+        // zoom17 から抽出された値（55）。修正により正しくヒットする。
+        expect(result).toBe(55);
+        tm.dispose();
+    });
 });
 
 /* ================================================================
