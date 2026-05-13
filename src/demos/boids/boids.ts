@@ -302,6 +302,9 @@ export const updateBoid = (
     return { x: newX, y: newY, vx: newVx, vy: newVy };
 };
 
+/** 重なり解消判定に使うアバター半径 (m) */
+const COLLISION_RADIUS = 8;
+
 /**
  * 全 Boid を 1 ステップ一括更新する（同時更新 — 旧状態を参照して一斉に更新）
  */
@@ -311,7 +314,34 @@ export const updateFlock = (
     bounds: BoidsBounds,
     dt: number,
 ): BoidState[] => {
-    return flock.map((boid) => updateBoid(boid, flock, params, bounds, dt));
+    const updated = flock.map((boid) => updateBoid(boid, flock, params, bounds, dt));
+
+    // 簡易重なり解消: 近すぎるペアを互いに押し出す（1パス）
+    const minDist = COLLISION_RADIUS * 2;
+    for (let i = 0; i < updated.length; i++) {
+        for (let j = i + 1; j < updated.length; j++) {
+            const dx = updated[j].x - updated[i].x;
+            const dy = updated[j].y - updated[i].y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d > 0 && d < minDist) {
+                const overlap = (minDist - d) * 0.5;
+                const nx = dx / d;
+                const ny = dy / d;
+                updated[i] = {
+                    ...updated[i],
+                    x: Math.max(bounds.minX, Math.min(bounds.maxX, updated[i].x - nx * overlap)),
+                    y: Math.max(bounds.minY, Math.min(bounds.maxY, updated[i].y - ny * overlap)),
+                };
+                updated[j] = {
+                    ...updated[j],
+                    x: Math.max(bounds.minX, Math.min(bounds.maxX, updated[j].x + nx * overlap)),
+                    y: Math.max(bounds.minY, Math.min(bounds.maxY, updated[j].y + ny * overlap)),
+                };
+            }
+        }
+    }
+
+    return updated;
 };
 
 /**
