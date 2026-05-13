@@ -15,6 +15,7 @@
 | 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認デモ (#186) |
 | Plan Viewer | `/plan.html` | `src/demos/plan/index.ts` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画 |
 | 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb/obj/stl）を配置・移動するデモ。方位変更・座標表示・カメラ移動・フォーマット切替。Model API (#243 / #247) の動作確認 |
+| アバターアニメーション #01 | `/avatar.html` | `src/demos/avatar/index.ts` | 3D アバター（`human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。地面クリックで軌道中心を変更、半径・速度スライダー、アニメーション開始/停止トグル。Model API + `playModelAnimation` (#250) の動作確認 |
 
 ## 設計方針
 
@@ -158,3 +159,27 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 - 既存の VR スナップショット（`tests/validation.spec.ts-snapshots/`）は viewer の URL 変更（`/?scene=default` → `/viewer.html?scene=default`）後も同一の描画結果のため流用可能。
 - `splitChunks.cacheGroups` は変更していないため、バンドル分割の方針は従来どおり。
+
+### avatar (`/avatar.html`)
+
+3D アバター（`assets/human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ（#250）。`JpmapTerrain` の Model 公開 API と `playModelAnimation` を使用する。
+
+**仕様:**
+
+- 東京駅（35.681236, 139.767125）に初期配置
+- 地面クリックでクリック地点を中心とする円軌道の中心を移動（カメラから 5000m 以内）
+- 歩行アニメーション（`rig-action`）を再生しながら毎フレーム円周上を移動
+- 進行方向に向きを自動回転（接線方向 = `angleDeg + 90°`）
+- 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
+- モデルスケール: 50 倍
+
+**コントロール（右上パネル）:**
+
+| UI | 操作 |
+|---|---|
+| 半径スライダー | 円軌道の半径 (m) を変更（既定 200m） |
+| 速度スライダー | 角速度 (°/秒) を変更（既定 20°/秒） |
+| 開始/停止ボタン | アニメーション再生のトグル |
+| 中心へ移動ボタン | カメラを軌道中心に移動 |
+
+**URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
