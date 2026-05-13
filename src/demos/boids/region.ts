@@ -119,6 +119,9 @@ export const isInsideRegion = (
     return x >= -halfW && x <= halfW && y >= -halfH && y <= halfH;
 };
 
+/** 初期配置を境界から内側に寄せる係数（境界付近での初期衝突を回避） */
+const SPAWN_INNER_RATIO = 0.8;
+
 /**
  * リージョン内のランダムな位置を返す（ローカル座標）。
  */
@@ -128,8 +131,8 @@ export const randomPositionInRegion = (
     const halfW = region.widthM / 2;
     const halfH = region.heightM / 2;
     return {
-        x: (Math.random() - 0.5) * 2 * halfW * 0.8,
-        y: (Math.random() - 0.5) * 2 * halfH * 0.8,
+        x: (Math.random() - 0.5) * 2 * halfW * SPAWN_INNER_RATIO,
+        y: (Math.random() - 0.5) * 2 * halfH * SPAWN_INNER_RATIO,
     };
 };
 
