@@ -108,11 +108,11 @@ const start = async (): Promise<void> => {
     let lastTimestamp: number | null = null;
     const animationStarted = new Set<number>();
 
+    /** 全モデルを破棄しランダム配置で再生成する（リスタート用） */
     const initFlock = (count: number): void => {
         const wasPaused = paused;
         paused = true;
 
-        // 既存モデルを削除
         for (let i = 0; i < flock.length; i++) {
             try {
                 viewer.removeModel(boidModelId(i));
@@ -142,6 +142,46 @@ const start = async (): Promise<void> => {
         }
         lastTimestamp = null;
         paused = wasPaused;
+    };
+
+    /** 差分だけモデルを増減する（スライダー用） */
+    const resizeFlock = (newCount: number): void => {
+        const oldCount = flock.length;
+        if (newCount === oldCount) return;
+
+        if (newCount > oldCount) {
+            // 不足分を追加
+            for (let i = oldCount; i < newCount; i++) {
+                const pos = randomPositionInRegion(region);
+                const vel = randomVelocity(
+                    params.minSpeed + Math.random() * (params.maxSpeed - params.minSpeed),
+                );
+                flock.push({ x: pos.x, y: pos.y, vx: vel.vx, vy: vel.vy });
+
+                const geo = localToGeo(pos.x, pos.y, region);
+                viewer.addModel(boidModelId(i), {
+                    url: humanWalkGlbUrl,
+                    lat: geo.lat,
+                    lon: geo.lon,
+                    altitudeMode: "terrain",
+                    altitude: 0,
+                    rotation: { y: boidHeading(flock[i]) },
+                    scaling: { x: MODEL_SCALE, y: MODEL_SCALE, z: MODEL_SCALE },
+                    gravity: true,
+                });
+            }
+        } else {
+            // 余分を末尾から削除
+            for (let i = newCount; i < oldCount; i++) {
+                try {
+                    viewer.removeModel(boidModelId(i));
+                } catch {
+                    // 既に削除済みの場合無視
+                }
+                animationStarted.delete(i);
+            }
+            flock.length = newCount;
+        }
     };
 
     initFlock(boidCount);
@@ -174,7 +214,7 @@ const start = async (): Promise<void> => {
             const newCount = Number(boidCountSlider.value);
             if (newCount !== boidCount && newCount >= 1 && newCount <= MAX_BOID_COUNT) {
                 boidCount = newCount;
-                initFlock(boidCount);
+                resizeFlock(boidCount);
                 updateDisplay();
             }
         });
