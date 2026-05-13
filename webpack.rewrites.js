@@ -24,5 +24,7 @@ module.exports = {
         { from: /^\/model\.html(?:\/?@.*)?\/?$/, to: '/model.html' },
         { from: /^\/avatar(?:\/@.*)?\/?$/, to: '/avatar.html' },
         { from: /^\/avatar\.html(?:\/?@.*)?\/?$/, to: '/avatar.html' },
+        { from: /^\/boids(?:\/@.*)?\/?$/, to: '/boids.html' },
+        { from: /^\/boids\.html(?:\/?@.*)?\/?$/, to: '/boids.html' },
     ],
 };
