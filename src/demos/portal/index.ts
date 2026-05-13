@@ -66,6 +66,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "歩行アニメーション付き 3D モデルがクリック地点を中心に円軌道で地形に沿って移動するデモ。半径・速度の調整が可能です。",
         href: "avatar",
     },
+    {
+        title: "Boids フロッキング",
+        description:
+            "Boids アルゴリズム（分離・整列・結合）で複数のアバターが群衆行動するデモ。アバター数の変更やシミュレーションの一時停止・リスタートが可能です。",
+        href: "boids",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";

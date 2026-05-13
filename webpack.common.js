@@ -77,6 +77,13 @@ const ENTRY_DEFINITIONS = [
         filename: "avatar.html",
         title: "jpmap_terrain – アバターアニメーションデモ",
     },
+    {
+        name: "boids",
+        entry: "src/demos/boids/index.ts",
+        template: "public/boids.html",
+        filename: "boids.html",
+        title: "jpmap_terrain – Boidsフロッキングデモ",
+    },
 ];
 
 const entry = Object.fromEntries(

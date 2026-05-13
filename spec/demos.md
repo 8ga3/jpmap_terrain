@@ -16,6 +16,7 @@
 | Plan Viewer | `/plan.html` | `src/demos/plan/index.ts` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画 |
 | 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb/obj/stl）を配置・移動するデモ。方位変更・座標表示・カメラ移動・フォーマット切替。Model API (#243 / #247) の動作確認 |
 | アバターアニメーション #01 | `/avatar.html` | `src/demos/avatar/index.ts` | 3D アバター（`human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。地面クリックで軌道中心を変更、半径・速度スライダー、アニメーション開始/停止トグル。Model API + `playModelAnimation` (#250) の動作確認 |
+| Boids フロッキング | `/boids.html` | `src/demos/boids/index.ts` | Boids アルゴリズム（分離・整列・結合）による群衆シミュレーション。高尾山山頂付近の矩形リージョン内で複数のアバターが自律的に歩き回る。アバター数スライダー・一時停止・リスタート。Model API + Polygon API (#251) の動作確認 |
 
 ## 設計方針
 
@@ -181,5 +182,36 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 | 速度スライダー | 角速度 (°/秒) を変更（既定 20°/秒） |
 | 開始/停止ボタン | アニメーション再生のトグル |
 | 中心へ移動ボタン | カメラを軌道中心に移動 |
+
+**URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
+
+### boids (`/boids.html`)
+
+Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレーションデモ（#251）。高尾山山頂付近の矩形リージョン内で複数のアバター（`assets/human_walk.glb`）が分離・整列・結合の 3 ルールに従い自律的に歩き回る。
+
+**仕様:**
+
+- 高尾山山頂（35.6251, 139.2436）を中心とした矩形リージョン（約 300m × 300m）
+- リージョン境界を Polygon API（`addPolygon`, `closed: true`）で可視化
+- 複数のアバターを Model API（`addModel` / `updateModel` / `playModelAnimation`）で配置・更新
+- Boids の 3 ルール:
+  - **分離 (Separation)**: 近すぎる仲間から離れる
+  - **整列 (Alignment)**: 近隣の仲間と進行方向を揃える
+  - **結合 (Cohesion)**: 近隣の仲間の重心に向かう
+- 歩行アニメーション（`rig-action`）を再生
+- 進行方向に向きを自動回転
+- 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
+- 地形の高度による速度影響・転落はなし
+- アバターはリージョン境界から出られない（境界回避力を適用）
+- モデルスケール: 50 倍
+
+**コントロール（右上パネル）:**
+
+| UI | 操作 |
+|---|---|
+| アバター数スライダー | アバター数を動的に変更（1〜50 体、既定 20 体） |
+| 一時停止 / 再開ボタン | シミュレーションの一時停止 / 再開トグル |
+| リスタートボタン | アバターを初期位置にリセットし再スタート |
+| リージョン中心へ移動ボタン | カメラをリージョン中心に移動 |
 
 **URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
