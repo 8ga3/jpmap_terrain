@@ -529,7 +529,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const tex = new Texture(
             url,
             scene,
-            true,
+            // noMipmap=false: mipmap を有効化して縮小描画の GPU 負荷とアーティファクト（モアレ・点滅）を抑える。
+            //   遠景タイルが多い Follow モードで効果が大きい (Issue #245)
+            false,
             true,
             Texture.TRILINEAR_SAMPLINGMODE,
             () => {
