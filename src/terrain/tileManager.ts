@@ -509,12 +509,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
-     * - new Texture(url) で fetch + 画像 decode を Babylon に任せ（img 要素経由で
-     *   decode は別スレッドで動く）、`onLoad` で GPU bind 完了タイミングを取得
-     * - onLoad 後にフレーム境界で 1 タイル / フレームの apply にシリアライズし、
-     *   `mat.diffuseTexture = tex` の代入による effect 再評価 / 描画乱れを分散
+     * - `mat.diffuseTexture = tex` は同期で代入し、Babylon の Texture 内部の
+     *   非同期 fetch + decode 完了時に GPU bind される（img.decode 経由で
+     *   ブラウザの decoder thread を利用するためメインスレッドは塞がらない）
+     * - 連続して applyTexture が同じ mesh に呼ばれた場合は texReqId で
+     *   古い load 結果を破棄してテクスチャ取り違えを防ぐ
      */
-    let textureApplyChain: Promise<void> = Promise.resolve();
     const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
         const targetZoom = fallbackZoom ?? coord.zoom;
         const targetCoord = convertTileZoom(coord, targetZoom);
@@ -522,8 +522,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const texReqId = (textureRequestIds.get(mesh) ?? 0) + 1;
         textureRequestIds.set(mesh, texReqId);
 
-        const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
+        const mat = mesh.material as StandardMaterial;
+        const prevTex = mat.diffuseTexture;
 
+        const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
         const tex = new Texture(
             url,
             scene,
@@ -531,35 +533,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             true,
             Texture.TRILINEAR_SAMPLINGMODE,
             () => {
-                // onLoad: GPU upload 完了後、フレーム境界で apply chain にぶら下げて
-                // mat.diffuseTexture 代入をシリアライズする
-                void (async () => {
-                    const prev = textureApplyChain;
-                    let releaseNext!: () => void;
-                    const slot = new Promise<void>((r) => { releaseNext = r; });
-                    textureApplyChain = prev.then(() => slot);
-                    try {
-                        await prev;
-                        await yieldToFrame();
-
-                        // mesh が別タイル用に再利用 / 破棄 されていたら捨てる
-                        if (textureRequestIds.get(mesh) !== texReqId
-                            || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
-                            tex.dispose();
-                            return;
-                        }
-                        const mat = mesh.material as StandardMaterial;
-                        if (mat.diffuseTexture && mat.diffuseTexture !== tex) {
-                            mat.diffuseTexture.dispose();
-                        }
-                        mat.diffuseTexture = tex;
-                    } finally {
-                        releaseNext();
-                    }
-                })();
+                // ロード完了時: 既に別タイルへ再利用されていれば自身を破棄
+                if (textureRequestIds.get(mesh) !== texReqId
+                    || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                    tex.dispose();
+                    return;
+                }
+                // 古いテクスチャの破棄はここで行う（差し替わったタイミング）
+                if (prevTex && prevTex !== tex) prevTex.dispose();
             },
             () => {
-                // meshが既に別タイルへ再利用されていたらフォールバックしない
+                // 取得失敗: 自身は破棄、低 zoom へフォールバック
                 if (textureRequestIds.get(mesh) !== texReqId) {
                     tex.dispose();
                     return;
@@ -575,6 +559,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         tex.vScale = uv.vScale;
         tex.uOffset = uv.uOffset;
         tex.vOffset = uv.vOffset;
+
+        mat.diffuseTexture = tex;
     };
 
     /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */
