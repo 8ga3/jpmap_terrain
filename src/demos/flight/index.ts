@@ -271,6 +271,8 @@ const start = async (): Promise<void> => {
         }
         // terrain camera の自動タイル更新を再開
         viewer.attachTileCamera();
+        // コンパスを通常モードに戻す
+        viewer.setExternalCompassDegrees(null);
         showFollowCamInfo(false);
     };
 
@@ -466,9 +468,17 @@ const start = async (): Promise<void> => {
             });
         }
 
-        // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定
+        // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定 + コンパス同期
         if (currentCameraMode === "follow") {
             updateFollowCameraPosition();
+            // コンパスを Follow カメラの水平方位に同期
+            if (followCamera) {
+                // followCamRotationOffset: 飛行機の進行方向に対するカメラのオフセット角度
+                // heading + rotationOffset がカメラの向いている方位
+                const headingDeg = circularOrbitHeading(angleDeg);
+                const camAzimuth = (headingDeg + followCamRotationOffset + 180) % 360;
+                viewer.setExternalCompassDegrees(camAzimuth);
+            }
         }
 
         // Follow モード: Follow カメラの frustum を直接 tileManager に注入し、

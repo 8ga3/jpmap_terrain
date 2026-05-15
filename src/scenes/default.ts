@@ -190,6 +190,15 @@ export interface DefaultSceneController {
     /** terrain camera の onViewMatrixChanged 監視を再開する */
     attachTileCamera(): void;
 
+    /**
+     * コンパスの回転角を外部から上書きする (Issue #245)。
+     *
+     * `degrees` が `number` の場合、コンパスの回転を外部指定値に固定し、
+     * terrain camera の alpha による自動更新とクリック時のリセット動作を抑制する。
+     * `null` を渡すと通常の camera.alpha 連動に戻る。
+     */
+    setExternalCompassDegrees(degrees: number | null): void;
+
     // ---- UI / mapType (T6 / Issue #120) ----
 
     /** 現在の地図種類を spec 表記 (`standard` / `photo`) で返す */
@@ -1713,7 +1722,10 @@ export class DefaultScene implements CreateSceneClass {
         });
 
         // 方位磁針の回転同期
+        // 外部コンパス制御 (Issue #245)
+        let externalCompassDegrees: number | null = null;
         const syncCompass = (): void => {
+            if (externalCompassDegrees !== null) return;
             const degrees = (camera.alpha * 180) / Math.PI + 90;
             ui.compass.style.transform = `rotate(${degrees}deg)`;
         };
@@ -1758,6 +1770,8 @@ export class DefaultScene implements CreateSceneClass {
         // 方位磁針: 北向き・真下にスムーズアニメーション
         ui.compass.style.cursor = "pointer";
         const resetCompassView = (): void => {
+            // 外部制御中はコンパスクリックを無視
+            if (externalCompassDegrees !== null) return;
             // カメラ光軸と地形メッシュの交点を新しい中心座標にする
             const cx = canvas.clientWidth / 2;
             const cy = canvas.clientHeight / 2;
@@ -2365,6 +2379,15 @@ export class DefaultScene implements CreateSceneClass {
             },
             detachTileCamera: () => tileManager.detachCamera(),
             attachTileCamera: () => tileManager.attachCamera(),
+            setExternalCompassDegrees: (degrees) => {
+                externalCompassDegrees = degrees;
+                if (degrees !== null) {
+                    ui.compass.style.transform = `rotate(${degrees}deg)`;
+                } else {
+                    // 通常モードに戻す: 現在の camera.alpha で即時同期
+                    syncCompass();
+                }
+            },
             // ---- T6 (Issue #120) ----
             getMapType: () =>
                 tileManager.mapType === "std" ? "standard" : "photo",
