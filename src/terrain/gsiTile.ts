@@ -199,27 +199,9 @@ export const loadElevationTile = async (
     x: number,
     y: number
 ): Promise<Float32Array> => {
-    const urls = DEM_LAYERS.map(
-        (layer) => `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`
-    );
-
-    // Worker 経路（OffscreenCanvas で fetch + decode をメインスレッドから外す）。
-    // メインスレッドの drawImage + getImageData + RGB→Float ループによる
-    // フレームスパイクを排除するのが目的 (Issue #245)
-    // 動的 import: テスト・SSR 等で Worker URL 評価が失敗しても本ファイルの
-    // 読み込み自体には影響しないようにする
-    try {
-        const mod = await import("./elevationDecodePool");
-        const pool = mod.getElevationDecodePool();
-        if (pool) {
-            return await pool.decode(urls, FETCH_TIMEOUT_MS);
-        }
-    } catch {
-        // pool 利用不可 → 同期パスにフォールバック
-    }
-
     let lastErr: unknown;
-    for (const url of urls) {
+    for (const layer of DEM_LAYERS) {
+        const url = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`;
         try {
             const img = await loadImageData(url);
             const elev = new Float32Array(img.width * img.height);
