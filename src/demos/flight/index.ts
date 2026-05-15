@@ -305,6 +305,17 @@ const start = async (): Promise<void> => {
     const followCamInfo = document.getElementById("follow-cam-info") as HTMLDivElement | null;
     const followRadiusDisplay = document.getElementById("follow-radius-value") as HTMLSpanElement | null;
     const followHeightDisplay = document.getElementById("follow-height-value") as HTMLSpanElement | null;
+    const followLodBiasInput = document.getElementById("follow-lod-bias") as HTMLInputElement | null;
+    const followLodBiasDisplay = document.getElementById("follow-lod-bias-value") as HTMLSpanElement | null;
+    // Follow モード時のタイル粒度調整 (0 = 通常, 大きいほど粗い)
+    let followLodBias = followLodBiasInput ? Number(followLodBiasInput.value) || 0 : 0;
+    followLodBiasInput?.addEventListener("input", () => {
+        followLodBias = Number(followLodBiasInput.value) || 0;
+        if (followLodBiasDisplay) followLodBiasDisplay.textContent = String(followLodBias);
+        // 即時反映: 次フレームの tile update で新しい bias が使われるが、
+        // ユーザー体感を早めるため lastTileUpdateTime をリセットして即更新を促す
+        lastTileUpdateTime = 0;
+    });
 
     const showFollowCamInfo = (visible: boolean): void => {
         if (followCamInfo) followCamInfo.style.display = visible ? "block" : "none";
@@ -312,6 +323,7 @@ const start = async (): Promise<void> => {
     const updateFollowCamDisplay = (): void => {
         if (followRadiusDisplay) followRadiusDisplay.textContent = followCamRadius.toFixed(1);
         if (followHeightDisplay) followHeightDisplay.textContent = followCamHeightOffset.toFixed(1);
+        if (followLodBiasDisplay) followLodBiasDisplay.textContent = String(followLodBias);
     };
 
     const updateDisplay = (): void => {
@@ -560,6 +572,7 @@ const start = async (): Promise<void> => {
                         planePos.lon,
                         frustumPlanes,
                         cameraPosition,
+                        followLodBias,
                     )
                     .finally(() => {
                         tileRefreshInFlight = false;

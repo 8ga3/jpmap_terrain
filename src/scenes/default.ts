@@ -179,6 +179,7 @@ export interface DefaultSceneController {
         lon: number,
         frustumPlanes: FrustumPlane[],
         cameraPosition: { x: number; y: number; z: number },
+        lodBias?: number,
     ): Promise<void>;
 
     /**
@@ -2361,7 +2362,7 @@ export class DefaultScene implements CreateSceneClass {
             setTilt: (value) => applyView({ tilt: value }, true),
             setView: (values, opts) =>
                 applyView(values, opts?.refreshTerrain ?? true),
-            refreshTerrainWithExternalFrustum: (lat, lon, frustumPlanes, cameraPosition) => {
+            refreshTerrainWithExternalFrustum: (lat, lon, frustumPlanes, cameraPosition, lodBias) => {
                 // terrain camera の target を外部 lat/lon に合わせてから tileManager に委譲
                 currentLat = clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat);
                 currentLon = clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon);
@@ -2375,7 +2376,7 @@ export class DefaultScene implements CreateSceneClass {
                 gridResidualZ = (currentLat - tileCenterLat) * METERS_PER_DEGREE_LAT;
                 camera.target.x = gridResidualX;
                 camera.target.z = gridResidualZ;
-                return tileManager.refreshWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition);
+                return tileManager.refreshWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition, lodBias);
             },
             detachTileCamera: () => tileManager.detachCamera(),
             attachTileCamera: () => tileManager.attachCamera(),

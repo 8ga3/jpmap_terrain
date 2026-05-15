@@ -74,6 +74,11 @@ export interface QuadtreeTilesOptions {
     viewportHeight: number;
     /** SSE 採用しきい値（ピクセル）。省略時は DEFAULT_SSE_THRESHOLD。 */
     sseThreshold?: number;
+    /**
+     * LOD バイアス。正の値で粗いタイルを採用しやすくする。
+     * 内部的には `sseThreshold *= 2^lodBias` として作用する (Issue #245)。
+     */
+    lodBias?: number;
     /** AABB の maxY に使う値。省略時 DEFAULT_MAX_ELEVATION */
     maxElevation?: number;
     /** 結果タイル数の上限。省略時 DEFAULT_MAX_TILES */
@@ -158,6 +163,7 @@ export const computeQuadtreeTiles = (
         verticalFov,
         viewportHeight,
         sseThreshold = DEFAULT_SSE_THRESHOLD,
+        lodBias = 0,
         maxElevation = DEFAULT_MAX_ELEVATION,
         maxTiles = DEFAULT_MAX_TILES,
         rootSearchRadius = DEFAULT_ROOT_SEARCH_RADIUS,
@@ -169,6 +175,7 @@ export const computeQuadtreeTiles = (
     // SSE 分母の定数部分。fov=0 等の極小値で発散しないよう下限を設定。
     const tanHalfFov = Math.tan(verticalFov / 2);
     const sseDenomBase = 2 * Math.max(1e-6, tanHalfFov);
+    const effectiveSseThreshold = sseThreshold * Math.pow(2, lodBias);
 
     // 暴発的な再帰を防ぐ安全弁。通常運用では到達しない。
     const maxVisited = _maxVisited ?? Math.max(maxTiles, 256) * 32;
@@ -179,7 +186,7 @@ export const computeQuadtreeTiles = (
         if (zoom >= maxZoom) return true;
         const d = Math.max(1, distance);
         const sse = (tileSize * viewportHeight) / (d * sseDenomBase);
-        return sse <= sseThreshold;
+        return sse <= effectiveSseThreshold;
     };
 
     const accepted: { entry: LodTileEntry; distance: number }[] = [];

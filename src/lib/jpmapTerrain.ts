@@ -523,9 +523,10 @@ export class JpmapTerrain {
         lon: number,
         frustumPlanes: { normal: { x: number; y: number; z: number }; d: number }[],
         cameraPosition: { x: number; y: number; z: number },
+        lodBias = 0,
     ): Promise<void> {
         return this._controller
-            ? this._controller.refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition)
+            ? this._controller.refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition, lodBias)
             : Promise.resolve();
     }
 
