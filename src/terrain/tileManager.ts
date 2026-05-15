@@ -465,12 +465,25 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         typeof process !== "undefined" &&
         typeof (process as { env?: Record<string, string | undefined> }).env !== "undefined" &&
         (process as { env: Record<string, string | undefined> }).env.JEST_WORKER_ID !== undefined;
-    const yieldToFrame = (): Promise<void> =>
-        isTestEnv
-            ? Promise.resolve()
-            : typeof requestAnimationFrame === "function"
-                ? new Promise<void>((r) => requestAnimationFrame(() => r()))
-                : new Promise<void>((r) => setTimeout(r, 0));
+    // Babylon の onAfterRenderObservable に同期して、現在フレームの
+     // 描画完了後にタイル sync を再開する。これにより
+     // 「飛行機の位置反映 → render → タイル sync」の順番が保証され、
+     // sync 処理が描画途中に割り込んでフレームを乱すことが無くなる。
+     // sync 自体が 1 フレーム超過する場合でも、直前の render は
+     // 正しい飛行機位置で完了しているため、ちらつきとして見えない。
+    const yieldToFrame = (): Promise<void> => {
+        if (isTestEnv) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+            const obs = scene.onAfterRenderObservable.addOnce(() => {
+                resolve();
+            });
+            // scene が render されない期間でも進行できるよう保険のタイムアウト
+            setTimeout(() => {
+                if (obs) scene.onAfterRenderObservable.remove(obs);
+                resolve();
+            }, 100);
+        });
+    };
 
     /**
      * タイル sync 適用のフレーム単位排他ロック。
