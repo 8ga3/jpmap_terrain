@@ -53,7 +53,6 @@ export const createElevationWorkerPool = (
         try {
             const w = new Worker(
                 new URL("./elevationWorker.ts", import.meta.url),
-                { type: "module" },
             );
             w.onmessage = (e: MessageEvent<ElevationComputeResponse>) => {
                 const task = pending.get(e.data.id);
