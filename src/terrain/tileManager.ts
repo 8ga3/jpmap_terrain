@@ -65,6 +65,7 @@ export interface TileManager {
         lon: number,
         frustumPlanes: FrustumPlane[],
         cameraPosition: { x: number; y: number; z: number },
+        lodBias?: number,
     ): Promise<void>;
     setMapType(mapType: MapType): void;
     readonly mapType: MapType;
@@ -1158,6 +1159,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             lon: number,
             frustumPlanes: FrustumPlane[],
             cameraPosition: { x: number; y: number; z: number },
+            lodBias = 0,
         ): Promise<void> {
             const rid = ++requestId;
 
@@ -1186,6 +1188,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 maxElevation,
                 maxTiles,
                 rootSearchRadius,
+                lodBias,
             });
 
             await applyVisibleTiles(visibleEntries, rid, needsReposition);
