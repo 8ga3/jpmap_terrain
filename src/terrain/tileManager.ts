@@ -364,11 +364,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 mesh.position.x = wx;
                 mesh.position.z = wz;
 
-                // 標高適用（ステッチ＋NaN埋め）
-                await applyStitchedElevation(mesh, entry.elevation, coord);
-
-                // テクスチャ
+                // テクスチャを先に適用（Worker 待ちの applyStitchedElevation と無関係に
+                //  非同期 fetch を開始しておく）。標高反映後でも順序的には問題ない。
                 applyTexture(mesh, coord);
+
+                // 標高適用（ステッチ＋NaN埋め）— Worker でオフロード
+                await applyStitchedElevation(mesh, entry.elevation, coord);
 
                 activeTiles.set(key, { key, coord, mesh, tileSize });
 
