@@ -52,6 +52,20 @@ export interface TileManagerOptions {
 
 export interface TileManager {
     setCenter(lat: number, lon: number, altitudeOffset?: number): Promise<void>;
+    /**
+     * 外部カメラの frustum を使って可視タイルを再計算する。
+     *
+     * Follow カメラなど、terrain 用 ArcRotateCamera とは異なるカメラで
+     * 地形を表示するケースで使う。terrain camera のフラスタムではなく、
+     * 呼び出し側が計算した frustumPlanes と cameraPosition を直接渡す。
+     * `setCenter` と異なり reposition は行わない（タイル位置は変更済みの前提）。
+     */
+    refreshWithExternalFrustum(
+        lat: number,
+        lon: number,
+        frustumPlanes: FrustumPlane[],
+        cameraPosition: { x: number; y: number; z: number },
+    ): Promise<void>;
     setMapType(mapType: MapType): void;
     readonly mapType: MapType;
     attachCamera(): void;
@@ -1048,6 +1062,40 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             altitudeOffset = 0
         ): Promise<void> {
             await refresh(lat, lon, altitudeOffset);
+        },
+
+        async refreshWithExternalFrustum(
+            lat: number,
+            lon: number,
+            frustumPlanes: FrustumPlane[],
+            cameraPosition: { x: number; y: number; z: number },
+        ): Promise<void> {
+            const rid = ++requestId;
+
+            const center = toTileXY(lat, lon, zoom);
+            currentCenter = { zoom, x: center.x, y: center.y };
+            currentLat = lat;
+
+            const maxElevation =
+                (MAX_BASE_ELEVATION + Math.max(0, currentAltitudeOffset)) *
+                heightScale;
+
+            const engine = scene.getEngine();
+            const visibleEntries = computeQuadtreeTiles({
+                maxZoom: zoom,
+                minZoom,
+                baseCenter: currentCenter,
+                tileSizeForZoom,
+                frustumPlanes,
+                cameraPosition,
+                verticalFov: camera.fov,
+                viewportHeight: engine.getRenderHeight(),
+                maxElevation,
+                maxTiles,
+                rootSearchRadius,
+            });
+
+            await applyVisibleTiles(visibleEntries, rid, true);
         },
 
         setMapType(mapType: MapType): void {

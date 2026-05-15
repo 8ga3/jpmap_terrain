@@ -15,7 +15,9 @@
  * - アニメーション開始/停止トグル
  */
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
 
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
@@ -247,6 +249,8 @@ const start = async (): Promise<void> => {
             followCamera = setupFollowCamera();
         }
         if (followCamera) {
+            // terrain camera の自動タイル更新を停止（C案: 外部 frustum で更新する）
+            viewer.detachTileCamera();
             // 即座にカメラ位置を飛行機の後方に設定
             updateFollowCameraPosition();
             scene.activeCamera = followCamera;
@@ -265,6 +269,8 @@ const start = async (): Promise<void> => {
         if (arcCam) {
             scene.activeCamera = arcCam;
         }
+        // terrain camera の自動タイル更新を再開
+        viewer.attachTileCamera();
         showFollowCamInfo(false);
     };
 
@@ -465,22 +471,44 @@ const start = async (): Promise<void> => {
             updateFollowCameraPosition();
         }
 
-        // Follow モード: タイル中心を飛行機の現在位置に追従させ、
-        // 3D モードと同様にタイルのレベル更新・新規読み込みを行う。
-        // flyTo(duration=0) で lat/lon をまとめて 1 回だけ setCenter する。
-        // terrain camera は真上からの俯瞰（tilt なし）にして全方位均等にタイルをカバー。
-        // altitude は Follow カメラ実効高度の 2 倍で LOD とカバレッジのバランスをとる。
+        // Follow モード: Follow カメラの frustum を直接 tileManager に注入し、
+        // 画面に映っている範囲のタイルを正しく LOD 更新する (C案)。
         if (
             currentCameraMode === "follow" &&
+            followCamera &&
             timestamp - lastTileUpdateTime >= TILE_UPDATE_INTERVAL_MS
         ) {
             const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
-            void viewer.flyTo({
-                lat: planePos.lat,
-                lon: planePos.lon,
-                altitude: (altitudeM + followCamHeightOffset) * 2,
-                duration: 0,
-            });
+            // Follow カメラの view/projection → frustum planes
+            const viewMat = followCamera.getViewMatrix();
+            const projMat = followCamera.getProjectionMatrix();
+            const transform = Matrix.Identity();
+            viewMat.multiplyToRef(projMat, transform);
+            const rawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+            Frustum.GetPlanesToRef(transform, rawPlanes);
+            const frustumPlanes = rawPlanes.map((p) => ({
+                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+                d: p.d,
+            }));
+
+            // カメラ位置を terrain camera target 基準のローカル座標系に変換
+            const scene = viewer.__debugScene;
+            const terrainCam = scene?.getCameraByName("terrain-camera");
+            const target = terrainCam && "target" in terrainCam
+                ? (terrainCam as { target: Vector3 }).target
+                : Vector3.Zero();
+            const cameraPosition = {
+                x: followCamera.position.x - target.x,
+                y: followCamera.position.y - target.y,
+                z: followCamera.position.z - target.z,
+            };
+
+            viewer.refreshTerrainWithExternalFrustum(
+                planePos.lat,
+                planePos.lon,
+                frustumPlanes,
+                cameraPosition,
+            );
             lastTileUpdateTime = timestamp;
         }
 

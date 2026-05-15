@@ -510,6 +510,37 @@ export class JpmapTerrain {
         });
     }
 
+    /**
+     * 外部カメラの frustum でタイルの可視判定・LOD 更新を行う (C案 / Issue #245)。
+     *
+     * Follow カメラなど、terrain 用 ArcRotateCamera とは別のカメラで描画しているときに、
+     * そのカメラの frustum planes とワールド位置を渡してタイルを更新する。
+     * `flyTo` と異なりカメラアニメーションは行わない。
+     */
+    public refreshTerrainWithExternalFrustum(
+        lat: number,
+        lon: number,
+        frustumPlanes: { normal: { x: number; y: number; z: number }; d: number }[],
+        cameraPosition: { x: number; y: number; z: number },
+    ): void {
+        this._controller?.refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition);
+    }
+
+    /**
+     * terrain camera の自動タイル更新監視を停止する (Issue #245)。
+     * Follow モードなど外部カメラ使用中に呼び出す。
+     */
+    public detachTileCamera(): void {
+        this._controller?.detachTileCamera();
+    }
+
+    /**
+     * terrain camera の自動タイル更新監視を再開する (Issue #245)。
+     */
+    public attachTileCamera(): void {
+        this._controller?.attachTileCamera();
+    }
+
     // ---- UI 表示制御 (spec §3.3.2) ----
 
     public get showCompass(): boolean {
