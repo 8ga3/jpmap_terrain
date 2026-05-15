@@ -35,20 +35,13 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
 
 jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
     const TextureMock = jest.fn<(...args: unknown[]) => unknown>().mockImplementation(
-        (...args: unknown[]) => {
-            // onLoad コールバックを呼んで applyTexture 内のスロットを解放する
-            const onLoad = args[5];
-            if (typeof onLoad === "function") {
-                queueMicrotask(() => (onLoad as () => void)());
-            }
-            return {
-                dispose: jest.fn(),
-                uScale: 1,
-                vScale: 1,
-                uOffset: 0,
-                vOffset: 0,
-            };
-        }
+        () => ({
+            dispose: jest.fn(),
+            uScale: 1,
+            vScale: 1,
+            uOffset: 0,
+            vOffset: 0,
+        })
     ) as jest.Mock & { TRILINEAR_SAMPLINGMODE: number };
     TextureMock.TRILINEAR_SAMPLINGMODE = 3;
     return { Texture: TextureMock };
@@ -656,6 +649,9 @@ describe("setMapType", () => {
 
         await tm.setCenter(35.68, 139.77);
 
+        // 初回 setCenter のテクスチャ job キューが片付くのを待つ
+        await new Promise((r) => setTimeout(r, 100));
+
         // 初期状態では std で呼ばれている
         const initialCalls = (gsiTileMock.textureUrl as jest.Mock).mock.calls;
         expect(initialCalls.length).toBeGreaterThan(0);
@@ -665,6 +661,10 @@ describe("setMapType", () => {
 
         // photo に切り替え
         tm.setMapType("photo");
+
+        // テクスチャ発行は 1フレームあたり N 個に絞られるため、
+        // キューに残った job を消化するため setTimeout(16ms) ベースの flush を待つ
+        await new Promise((r) => setTimeout(r, 100));
 
         // retextureAll が呼ばれ、photo タイプで textureUrl が呼ばれる
         const photoCalls = (gsiTileMock.textureUrl as jest.Mock).mock.calls;
@@ -687,10 +687,13 @@ describe("setMapType", () => {
         });
 
         await tm.setCenter(35.68, 139.77);
+        // 初回 setCenter のテクスチャ job キューが片付くのを待つ
+        await new Promise((r) => setTimeout(r, 100));
         (gsiTileMock.textureUrl as jest.Mock).mockClear();
 
         // 同じタイプを再設定
         tm.setMapType("std");
+        await new Promise((r) => setTimeout(r, 100));
 
         expect((gsiTileMock.textureUrl as jest.Mock).mock.calls.length).toBe(0);
 
