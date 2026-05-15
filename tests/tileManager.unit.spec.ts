@@ -35,13 +35,20 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
 
 jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
     const TextureMock = jest.fn<(...args: unknown[]) => unknown>().mockImplementation(
-        () => ({
-            dispose: jest.fn(),
-            uScale: 1,
-            vScale: 1,
-            uOffset: 0,
-            vOffset: 0,
-        })
+        (...args: unknown[]) => {
+            // onLoad コールバックを呼んで applyTexture 内のスロットを解放する
+            const onLoad = args[5];
+            if (typeof onLoad === "function") {
+                queueMicrotask(() => (onLoad as () => void)());
+            }
+            return {
+                dispose: jest.fn(),
+                uScale: 1,
+                vScale: 1,
+                uOffset: 0,
+                vOffset: 0,
+            };
+        }
     ) as jest.Mock & { TRILINEAR_SAMPLINGMODE: number };
     TextureMock.TRILINEAR_SAMPLINGMODE = 3;
     return { Texture: TextureMock };
