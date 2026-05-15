@@ -84,6 +84,13 @@ const ENTRY_DEFINITIONS = [
         filename: "boids.html",
         title: "jpmap_terrain – Boidsフロッキングデモ",
     },
+    {
+        name: "flight",
+        entry: "src/demos/flight/index.ts",
+        template: "public/flight.html",
+        filename: "flight.html",
+        title: "jpmap_terrain – フライトデモ",
+    },
 ];
 
 const entry = Object.fromEntries(

@@ -72,6 +72,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "Boids アルゴリズム（分離・整列・結合）で複数のアバターが群衆行動するデモ。アバター数の変更やシミュレーションの一時停止・リスタートが可能です。",
         href: "boids",
     },
+    {
+        title: "フライト（飛行機フォロー）",
+        description:
+            "飛行機が上空を大きな半径で高速旋回し、FollowCamera で追跡するデモ。3D / 2D / Follow のカメラモード切替が可能です。",
+        href: "flight",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
