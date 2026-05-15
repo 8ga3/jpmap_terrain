@@ -5,7 +5,6 @@ import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";
@@ -29,6 +28,7 @@ import {
 } from "./gsiTile";
 import { stitchTileEdges, stitchTileEdgesCrossLevel } from "./tileStitching";
 import type { CoarseEdgeNeighbor } from "./tileStitching";
+import { createElevationWorkerPool, type ElevationWorkerPool } from "./elevationWorkerPool";
 
 export interface TileManagerOptions {
     scene: Scene;
@@ -112,33 +112,8 @@ const MAX_BASE_ELEVATION = 4000;
  */
 const NEAR_DISTANCE_TILES_FACTOR = 3;
 
-/** 頂点Y座標を標高値で更新 */
-const applyElevation = (
-    positions: Float32Array,
-    elevations: Float32Array,
-    altitudeOffset: number,
-    heightScale: number,
-    subdivisions: number
-): void => {
-    const cols = subdivisions + 1;
-    for (let row = 0; row <= subdivisions; row++) {
-        for (let col = 0; col <= subdivisions; col++) {
-            const u = col / subdivisions;
-            const v = row / subdivisions;
-            const sx = Math.min(
-                TILE_SIZE - 1,
-                Math.round(u * (TILE_SIZE - 1))
-            );
-            const sy = Math.min(
-                TILE_SIZE - 1,
-                Math.round(v * (TILE_SIZE - 1))
-            );
-            const elev = elevations[sy * TILE_SIZE + sx];
-            positions[(row * cols + col) * 3 + 1] =
-                (elev + altitudeOffset) * heightScale;
-        }
-    }
-};
+// 旧 applyElevation はインラインで使われていたが、Web Worker への移行に伴い
+// `elevationCompute.ts` の `applyElevationToPositions` に集約された。
 
 /**
  * 低zoomテクスチャ使用時のUVパラメータを算出する。
@@ -390,7 +365,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 mesh.position.z = wz;
 
                 // 標高適用（ステッチ＋NaN埋め）
-                applyStitchedElevation(mesh, entry.elevation, coord);
+                await applyStitchedElevation(mesh, entry.elevation, coord);
 
                 // テクスチャ
                 applyTexture(mesh, coord);
@@ -416,8 +391,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /** 既存 activeTiles の position/scaling/標高を現在の中心・高度オフセットに合わせて再配置 */
-    const repositionActiveTiles = (): void => {
+    const repositionActiveTiles = async (): Promise<void> => {
         if (!currentCenter) return;
+        const promises: Promise<void>[] = [];
         for (const [key, tile] of activeTiles) {
             const { mesh, coord } = tile;
 
@@ -442,9 +418,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // キャッシュから標高データを取得し再適用（ステッチ＋NaN埋め）
             const entry = cache.get(key);
             if (entry) {
-                applyStitchedElevation(mesh, entry.elevation, coord);
+                promises.push(applyStitchedElevation(mesh, entry.elevation, coord));
             }
         }
+        if (promises.length > 0) await Promise.all(promises);
         terrainUpdatedCallback?.();
     };
 
@@ -687,18 +664,48 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         return result;
     };
 
-    /** 補間済み標高データをメッシュ頂点・法線に反映する */
-    const applyElevationDataToMesh = (mesh: Mesh, filled: Float32Array): void => {
+    /** Web Worker による標高 → 頂点 / 法線変換のオフロード用プール */
+    const elevationWorkerPool: ElevationWorkerPool = createElevationWorkerPool(2);
+
+    /** 補間済み標高データをメッシュ頂点・法線に反映する（Web Worker オフロード版） */
+    const applyElevationDataToMesh = async (mesh: Mesh, filled: Float32Array): Promise<void> => {
         const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
         const idx = mesh.getIndices();
         if (!pos || !idx) return;
-        const typed = pos instanceof Float32Array ? pos : new Float32Array(pos);
-        applyElevation(typed, filled, currentAltitudeOffset, heightScale, subdivisions);
-        mesh.updateVerticesData(VertexBuffer.PositionKind, typed);
-        const normals = new Float32Array(typed.length);
-        VertexData.ComputeNormals(typed, idx, normals);
-        mesh.updateVerticesData(VertexBuffer.NormalKind, normals);
-        mesh.refreshBoundingInfo();
+
+        // worker に transfer するため必ずコピーを作る（mesh 内部バッファを detach しない）
+        const typed = new Float32Array(pos);
+        // indices を TypedArray にコピー（number[] / TypedArray いずれにも対応）
+        let indices: Int32Array | Uint32Array | Uint16Array;
+        if (idx instanceof Int32Array || idx instanceof Uint32Array || idx instanceof Uint16Array) {
+            indices = new (idx.constructor as Int32ArrayConstructor)(idx);
+        } else {
+            indices = new Int32Array(idx as ArrayLike<number>);
+        }
+        // elevations もコピー（filled は cache 内データで破壊禁止）
+        const elevations = new Float32Array(filled);
+
+        const res = await elevationWorkerPool.run({
+            id: 0,
+            positions: typed,
+            indices,
+            elevations,
+            altitudeOffset: currentAltitudeOffset,
+            heightScale,
+            subdivisions,
+            tileSize: TILE_SIZE,
+        });
+
+        if (res.positions.length === 0) return;
+        try {
+            // mesh が disposed 済みの場合は何もしない（worker 待ち中に dispose されうる）
+            if (typeof mesh.isDisposed === "function" && mesh.isDisposed()) return;
+            mesh.updateVerticesData(VertexBuffer.PositionKind, res.positions);
+            mesh.updateVerticesData(VertexBuffer.NormalKind, res.normals);
+            mesh.refreshBoundingInfo();
+        } catch {
+            // disposed 等で更新に失敗しても致命的ではないので無視
+        }
     };
 
     /**
@@ -733,11 +740,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /** タイルの標高データをステッチ＋NaN埋めしてメッシュに適用 */
-    const applyStitchedElevation = (
+    const applyStitchedElevation = async (
         mesh: Mesh,
         elevation: Float32Array,
         coord: TileCoord,
-    ): void => {
+    ): Promise<void> => {
         const cacheEntryPre = cache.get(toTileKey(coord));
 
         // 異 zoom 隣接（粗タイル）と縫い合わせ。
@@ -767,7 +774,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const meshData = (cacheEntryPre?.wasAllNaN && !hasSeed && cacheEntryPre.filled)
             ? cacheEntryPre.filled
             : stitched;
-        applyElevationDataToMesh(mesh, meshData);
+        await applyElevationDataToMesh(mesh, meshData);
 
         // キャッシュ更新:
         // - wasAllNaN + シードあり: filled/unblocked を更新
@@ -792,15 +799,24 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 蓄積された再ステッチ対象タイルを一括処理する */
     const flushRestitch = (): void => {
         restitchRafId = null;
+        const promises: Promise<void>[] = [];
         for (const key of pendingRestitch) {
             const neighborTile = activeTiles.get(key);
             if (!neighborTile) continue;
             const entry = cache.get(key);
             if (!entry) continue;
-            applyStitchedElevation(neighborTile.mesh, entry.elevation, neighborTile.coord);
+            promises.push(
+                applyStitchedElevation(neighborTile.mesh, entry.elevation, neighborTile.coord),
+            );
         }
         pendingRestitch.clear();
-        terrainUpdatedCallback?.();
+        if (promises.length === 0) {
+            terrainUpdatedCallback?.();
+            return;
+        }
+        void Promise.all(promises).then(() => {
+            terrainUpdatedCallback?.();
+        });
     };
 
     /** 新タイルの隣接タイル（同zoom、アクティブなもの）を再ステッチキューに追加 */
@@ -855,7 +871,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * 4. 到達不能タイルはレスキューパス（代表標高で平坦化）
      */
     const ALL_NAN_REFINE_MAX_ITER = 32;
-    const refineAllNaNTiles = (): void => {
+    const refineAllNaNTiles = async (): Promise<void> => {
         // wasAllNaN タイルを収集
         const allNanTiles: Array<[TileKey, ActiveTile]> = [];
         for (const [key, tile] of activeTiles) {
@@ -906,11 +922,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         // Step 3: メッシュ適用（今回新たに解決したタイルのみ）
         let progressed = false;
+        const meshPromises: Promise<void>[] = [];
         for (const [key, tile] of allNanTiles) {
             if (!resolvedInThisCall.has(key)) continue;
             const entry = cache.get(key);
             if (!entry?.filled) continue;
-            applyElevationDataToMesh(tile.mesh, entry.filled);
+            meshPromises.push(applyElevationDataToMesh(tile.mesh, entry.filled));
             progressed = true;
         }
 
@@ -940,11 +957,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     entry.filled = filled;
                     entry.unblocked = true;
                     entry.isRescue = true;
-                    applyElevationDataToMesh(tile.mesh, filled);
+                    meshPromises.push(applyElevationDataToMesh(tile.mesh, filled));
                 }
                 progressed = true;
             }
         }
+
+        if (meshPromises.length > 0) await Promise.all(meshPromises);
 
         if (progressed) {
             terrainUpdatedCallback?.();
@@ -1069,7 +1088,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
 
         if (reposition) {
-            repositionActiveTiles();
+            await repositionActiveTiles();
         }
 
         // 新規タイルのみロード
@@ -1083,7 +1102,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         if (rid === requestId) {
             // all-NaN だったタイルを反復補間で埋める（湖中央等）
-            refineAllNaNTiles();
+            await refineAllNaNTiles();
         }
 
         emitStatus();
@@ -1218,6 +1237,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             textureRequestIds.clear();
             cache.clear();
             meshPool.dispose();
+            elevationWorkerPool.dispose();
         },
 
         get activeTileCount(): number {
