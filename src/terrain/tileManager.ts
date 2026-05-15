@@ -612,6 +612,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         tex.dispose();
                         return;
                     }
+                    // GPU テクスチャが確実に存在する onLoad 内で diffuseTexture を差し替え、
+                    // null gpu texture bind エラーを防ぐ。
+                    mat.diffuseTexture = tex;
                     if (prevTex && prevTex !== tex) prevTex.dispose();
                 },
                 () => {
@@ -630,8 +633,6 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             tex.vScale = uv.vScale;
             tex.uOffset = uv.uOffset;
             tex.vOffset = uv.vOffset;
-
-            mat.diffuseTexture = tex;
         });
     };
 
