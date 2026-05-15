@@ -39,18 +39,22 @@ export const computeNormalsForIndexedMesh = (
 ): void => {
     for (let i = 0; i < normals.length; i++) normals[i] = 0;
 
+    // Babylon の VertexData.ComputeNormals と符号を合わせるため、
+    // 中心頂点を indices[i+1] (= b) とし、エッジを (a-b) × (c-b) で計算する。
+    // (b-a) × (c-a) と符号が逆になるため、Babylon ground の winding と組み合わせると
+    // 法線が下向きになり、ライティングで真っ黒に描画されてしまう (Issue #245)。
     const triCount = indices.length;
     for (let i = 0; i < triCount; i += 3) {
         const a = indices[i] * 3;
         const b = indices[i + 1] * 3;
         const c = indices[i + 2] * 3;
 
-        const e1x = positions[b] - positions[a];
-        const e1y = positions[b + 1] - positions[a + 1];
-        const e1z = positions[b + 2] - positions[a + 2];
-        const e2x = positions[c] - positions[a];
-        const e2y = positions[c + 1] - positions[a + 1];
-        const e2z = positions[c + 2] - positions[a + 2];
+        const e1x = positions[a] - positions[b];
+        const e1y = positions[a + 1] - positions[b + 1];
+        const e1z = positions[a + 2] - positions[b + 2];
+        const e2x = positions[c] - positions[b];
+        const e2y = positions[c + 1] - positions[b + 1];
+        const e2z = positions[c + 2] - positions[b + 2];
 
         const nx = e1y * e2z - e1z * e2y;
         const ny = e1z * e2x - e1x * e2z;
