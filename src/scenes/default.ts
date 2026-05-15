@@ -18,6 +18,7 @@ import { clampZoomLevel, radiusToZoomLevel, zoomLevelToRadius } from "../terrain
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { attachResizeRefresh } from "../terrain/resizeRefresh";
 import { createTileManager } from "../terrain/tileManager";
+import type { FrustumPlane } from "../terrain/visibleTiles";
 import { createSkybox } from "../terrain/skybox";
 import { computeSunPosition } from "../terrain/sunPosition";
 import { deriveSunState } from "../terrain/sunState";
@@ -164,6 +165,30 @@ export interface DefaultSceneController {
         },
         options?: { refreshTerrain?: boolean },
     ): void;
+
+    /**
+     * 外部カメラの frustum を使ってタイルの可視判定・LOD 更新を行う (C案 / Issue #245)。
+     *
+     * terrain 用 ArcRotateCamera とは異なるカメラ（Follow カメラ等）で
+     * 地形を描画している場合に、そのカメラの frustum と位置から
+     * 可視タイルを再計算してロードする。
+     * `setCenter` と異なりタイルの reposition は行わない。
+     */
+    refreshTerrainWithExternalFrustum(
+        lat: number,
+        lon: number,
+        frustumPlanes: FrustumPlane[],
+        cameraPosition: { x: number; y: number; z: number },
+    ): void;
+
+    /**
+     * terrain camera の onViewMatrixChanged 監視を停止する。
+     * Follow モードなど外部カメラ使用中に、terrain camera の
+     * frustum による不要なタイル再計算を防ぐ。
+     */
+    detachTileCamera(): void;
+    /** terrain camera の onViewMatrixChanged 監視を再開する */
+    attachTileCamera(): void;
 
     // ---- UI / mapType (T6 / Issue #120) ----
 
@@ -2322,6 +2347,24 @@ export class DefaultScene implements CreateSceneClass {
             setTilt: (value) => applyView({ tilt: value }, true),
             setView: (values, opts) =>
                 applyView(values, opts?.refreshTerrain ?? true),
+            refreshTerrainWithExternalFrustum: (lat, lon, frustumPlanes, cameraPosition) => {
+                // terrain camera の target を外部 lat/lon に合わせてから tileManager に委譲
+                currentLat = clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat);
+                currentLon = clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon);
+                const centerTile = toTileXY(currentLat, currentLon, MAX_ZOOM);
+                const { lat: tileCenterLat, lon: tileCenterLon } = tileCenterLatLon(
+                    centerTile.x, centerTile.y, MAX_ZOOM,
+                );
+                const metersPerDegLon =
+                    METERS_PER_DEGREE_LAT * Math.cos((currentLat * Math.PI) / 180);
+                gridResidualX = (currentLon - tileCenterLon) * metersPerDegLon;
+                gridResidualZ = (currentLat - tileCenterLat) * METERS_PER_DEGREE_LAT;
+                camera.target.x = gridResidualX;
+                camera.target.z = gridResidualZ;
+                void tileManager.refreshWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition);
+            },
+            detachTileCamera: () => tileManager.detachCamera(),
+            attachTileCamera: () => tileManager.attachCamera(),
             // ---- T6 (Issue #120) ----
             getMapType: () =>
                 tileManager.mapType === "std" ? "standard" : "photo",
