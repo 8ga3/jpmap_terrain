@@ -972,6 +972,62 @@ viewer.updateModel("human", { rotation: { y: 180 } });
 viewer.removeModel("human");
 ```
 
+#### 3.3.14 外部カメラ連携 (Issue #245)
+
+Follow カメラなど Babylon.js の ArcRotateCamera 以外のカメラで地形タイルを更新するための API。
+
+##### 3.3.14.1 公開 API
+
+| メソッド | 戻り値 | 説明 |
+|---|---|---|
+| `refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition, lodBias?)` | `Promise<void>` | 外部カメラの frustum に基づいてタイルを更新する。内蔵 terrain camera の監視を使わず、指定した視錐台内のタイルを LOD 判定して読み込む |
+| `detachTileCamera()` | `void` | 内蔵 terrain camera の自動タイル更新監視を停止する。Follow モードなど外部カメラ使用中に呼び出す |
+| `attachTileCamera()` | `void` | 内蔵 terrain camera の自動タイル更新監視を再開する |
+| `setExternalCompassDegrees(degrees)` | `void` | コンパス UI の回転角を外部から上書きする。`null` を渡すと通常の terrain camera 連動に戻る |
+
+##### 3.3.14.2 refreshTerrainWithExternalFrustum パラメータ
+
+| パラメータ | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `lat` | `number` | (必須) | タイル中心の緯度 (度) |
+| `lon` | `number` | (必須) | タイル中心の経度 (度) |
+| `frustumPlanes` | `{ normal: { x, y, z }; d: number }[]` | (必須) | 6 面の視錐台平面（Babylon.js の `Frustum.GetPlanesToRef` 形式） |
+| `cameraPosition` | `{ x: number; y: number; z: number }` | (必須) | カメラのワールド座標（terrain camera target 基準のローカル座標系） |
+| `lodBias` | `number` | `0` | タイル LOD レベルを下げるバイアス（0 = 通常、大きいほど粗いタイルを使用） |
+
+##### 3.3.14.3 利用例
+
+```typescript
+import { JpmapTerrain } from "jpmap-terrain";
+import { FreeCamera, Frustum, Matrix } from "@babylonjs/core";
+
+const viewer = await JpmapTerrain.create(mount, { lat: 35.68, lon: 139.77 });
+
+// 外部カメラ使用時は内蔵カメラのタイル監視を停止
+viewer.detachTileCamera();
+
+// コンパスを外部カメラの方位に同期
+viewer.setExternalCompassDegrees(heading);
+
+// 外部カメラの frustum でタイルを更新
+const viewMat = externalCamera.getViewMatrix();
+const projMat = externalCamera.getProjectionMatrix();
+const transform = viewMat.multiply(projMat);
+const planes = Frustum.GetPlanes(transform);
+const frustumPlanes = planes.map(p => ({
+  normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+  d: p.d,
+}));
+
+await viewer.refreshTerrainWithExternalFrustum(
+  lat, lon, frustumPlanes, cameraPosition, 0
+);
+
+// 通常モードに復帰
+viewer.attachTileCamera();
+viewer.setExternalCompassDegrees(null);
+```
+
 ### 3.4 型定義
 
 `CameraChangeEvent` および `CameraChangeListener` は、`jpmap-terrain` から import 可能である（パッケージエントリで re-export 済み）。

@@ -461,67 +461,77 @@ const start = async (): Promise<void> => {
 
     // 毎フレーム更新: 円軌道上の位置を計算してモデルを移動
     let rafId = 0;
+    // plane mesh の描画設定（renderingGroupId / alwaysSelectAsActiveMesh）を
+    // ロード後に一度だけ適用するためのフラグ。
+    // - renderingGroupId=1: 地形タイル (group 0) より後に描画して、Follow モードで
+    //   タイル reposition のタイミングと描画順が乱れて「飛行機の場所に奥側地図が
+    //   一瞬見える」現象を防ぐ。
+    // - alwaysSelectAsActiveMesh=true: 飛行機の frustum culling 判定が
+    //   ワールド行列更新と非同期に走るフレームでも active mesh から外れないように。
+    let planeRenderTuned = false;
+    const tunePlaneRenderSettings = (): void => {
+        if (planeRenderTuned) return;
+        const scene = viewer.__debugScene;
+        if (!scene) return;
+        const root = scene.getTransformNodeByName(`model-${MODEL_ID}`);
+        if (!root) return;
+        const meshes = root.getChildMeshes(false);
+        if (meshes.length === 0) return;
+        for (const mesh of meshes) {
+            mesh.renderingGroupId = 1;
+            mesh.alwaysSelectAsActiveMesh = true;
+        }
+        planeRenderTuned = true;
+    };
+
     const tick = (timestamp: number): void => {
         const handle = viewer.getModel(MODEL_ID);
         if (!handle) return;
+        tunePlaneRenderSettings();
 
-        if (animating) {
-            if (lastTimestamp !== null) {
-                const dtSec = (timestamp - lastTimestamp) / 1000;
-                // 線速度 (m/s) → 角速度 (°/s) に変換: ω = v / r * (180/π)
-                const speedDegPerSec = (speedMps / radiusM) * (180 / Math.PI);
-                angleDeg = (angleDeg + speedDegPerSec * dtSec) % 360;
-            }
-            lastTimestamp = timestamp;
-
-            const pos = circularOrbitPosition(
-                centerLat,
-                centerLon,
-                radiusM,
-                angleDeg,
-            );
-            const heading = circularOrbitHeading(angleDeg);
-
-            viewer.updateModel(MODEL_ID, {
-                lat: pos.lat,
-                lon: pos.lon,
-                altitudeMode: "absolute",
-                altitude: altitudeM,
-                rotation: { y: heading },
-                gravity: false,
-            });
+        if (animating && lastTimestamp !== null) {
+            const dtSec = (timestamp - lastTimestamp) / 1000;
+            // 線速度 (m/s) → 角速度 (°/s) に変換: ω = v / r * (180/π)
+            const speedDegPerSec = (speedMps / radiusM) * (180 / Math.PI);
+            angleDeg = (angleDeg + speedDegPerSec * dtSec) % 360;
         }
+        if (animating) lastTimestamp = timestamp;
 
-        // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定 + コンパス同期
-        if (currentCameraMode === "follow") {
-            updateFollowCameraPosition();
-            // コンパスを Follow カメラの水平方位に同期
-            if (followCamera) {
-                // followCamRotationOffset: 飛行機の進行方向に対するカメラのオフセット角度
-                // heading + rotationOffset がカメラの向いている方位
-                const headingDeg = circularOrbitHeading(angleDeg);
-                const camAzimuth = (headingDeg + followCamRotationOffset + 180) % 360;
-                viewer.setExternalCompassDegrees(camAzimuth);
-            }
-        }
+        // この tick で使う最終位置・方位を先に決定する。
+        // 順序: (1) refreshTerrain で gridResidual を更新 → (2) updateModel で
+        // 新 gridResidual を使って plane.position を更新 → (3) updateFollowCameraPosition
+        // でカメラを新 plane 絶対位置に追従させる。
+        // 旧順序 (model→camera→refresh) では中心タイル境界を跨いだフレームで
+        // gridResidual だけ tileSize ジャンプし、followCamera が旧 plane 位置を見続け、
+        // tile/plane が一斉にスライドして「飛行機の場所に奥側地図」のように見えていた。
+        const pos = circularOrbitPosition(
+            centerLat,
+            centerLon,
+            radiusM,
+            angleDeg,
+        );
+        const heading = circularOrbitHeading(angleDeg);
 
         // Follow モード: Follow カメラの frustum を直接 tileManager に注入し、
         // 画面に映っている範囲のタイルを正しく LOD 更新する (C案)。
         // - 前回 refresh が in-flight ならスキップ（オーバーラップを防ぎ過剰負荷を回避）
         // - 一定時間経過 + 意味のある変化（位置/方位/オフセット）があった場合のみ発火
+        // - refreshTerrainWithExternalFrustum の同期部分で gridResidualX/Z が
+        //   tileSize 単位でジャンプし得るため、必ず updateModel/Follow カメラ更新より
+        //   前に呼ぶ。これにより後段の updateModel が新 origin を使って plane.position
+        //   を再計算し、followCamera も新 plane 絶対位置に追従できる。
         if (
             currentCameraMode === "follow" &&
             followCamera &&
             !tileRefreshInFlight &&
             timestamp - lastTileUpdateTime >= TILE_UPDATE_INTERVAL_MS
         ) {
-            const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
             // 前回 refresh からの差分を判定
-            const dLat = (planePos.lat - lastRefreshLat) * 111320;
+            const dLat = (pos.lat - lastRefreshLat) * 111320;
             const dLon =
-                (planePos.lon - lastRefreshLon) *
+                (pos.lon - lastRefreshLon) *
                 111320 *
-                Math.cos((planePos.lat * Math.PI) / 180);
+                Math.cos((pos.lat * Math.PI) / 180);
             const moved = Math.sqrt(dLat * dLat + dLon * dLon);
             const rotDelta = Math.abs(
                 ((followCamRotationOffset - lastRefreshRotationOffset + 540) % 360) - 180,
@@ -559,17 +569,18 @@ const start = async (): Promise<void> => {
                     z: followCamera.position.z - target.z,
                 };
 
-                lastRefreshLat = planePos.lat;
-                lastRefreshLon = planePos.lon;
+                lastRefreshLat = pos.lat;
+                lastRefreshLon = pos.lon;
                 lastRefreshRotationOffset = followCamRotationOffset;
                 lastRefreshHeightOffset = followCamHeightOffset;
                 lastRefreshRadius = followCamRadius;
                 lastTileUpdateTime = timestamp;
                 tileRefreshInFlight = true;
+                // この呼び出しの同期部分で gridResidualX/Z が更新される。
                 void viewer
                     .refreshTerrainWithExternalFrustum(
-                        planePos.lat,
-                        planePos.lon,
+                        pos.lat,
+                        pos.lon,
                         frustumPlanes,
                         cameraPosition,
                         followLodBias,
@@ -580,6 +591,33 @@ const start = async (): Promise<void> => {
             } else {
                 // 意味のある変化なし: 次回の判定を遅延させすぎないよう最終チェック時刻だけ進める
                 lastTileUpdateTime = timestamp;
+            }
+        }
+
+        // 上記 refresh により gridResidual がジャンプし得るため、ここで必ず
+        // updateModel を呼んで plane.root.position を新 origin で再計算する。
+        // animating でなくても、refresh による origin シフトを反映するため呼ぶ。
+        viewer.updateModel(MODEL_ID, {
+            lat: pos.lat,
+            lon: pos.lon,
+            altitudeMode: "absolute",
+            altitude: altitudeM,
+            rotation: { y: heading },
+            gravity: false,
+        });
+
+        // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定 + コンパス同期
+        // plane.root.position 更新後に呼ぶことで、followCamera の注視点が
+        // 新 origin の plane 絶対位置と一致する。
+        if (currentCameraMode === "follow") {
+            updateFollowCameraPosition();
+            // コンパスを Follow カメラの水平方位に同期
+            if (followCamera) {
+                // followCamRotationOffset: 飛行機の進行方向に対するカメラのオフセット角度
+                // heading + rotationOffset がカメラの向いている方位
+                const headingDeg = circularOrbitHeading(angleDeg);
+                const camAzimuth = (headingDeg + followCamRotationOffset + 180) % 360;
+                viewer.setExternalCompassDegrees(camAzimuth);
             }
         }
 

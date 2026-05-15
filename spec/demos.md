@@ -17,6 +17,7 @@
 | 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb/obj/stl）を配置・移動するデモ。方位変更・座標表示・カメラ移動・フォーマット切替。Model API (#243 / #247) の動作確認 |
 | アバターアニメーション #01 | `/avatar.html` | `src/demos/avatar/index.ts` | 3D アバター（`human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。地面クリックで軌道中心を変更、半径・速度スライダー、アニメーション開始/停止トグル。Model API + `playModelAnimation` (#250) の動作確認 |
 | Boids フロッキング | `/boids.html` | `src/demos/boids/index.ts` | Boids アルゴリズム（分離・整列・結合）による群衆シミュレーション。高尾山山頂付近の矩形リージョン内で複数のアバターが自律的に歩き回る。アバター数スライダー・一時停止・リスタート。Model API + Polygon API (#251) の動作確認 |
+| フライトデモ | `/flight.html` | `src/demos/flight/index.ts` | 飛行機（`plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ。外部カメラ frustum API による地形タイル更新。3D/2D/Follow のカメラモード切替。Model API + 外部カメラ連携 API (#245) の動作確認 |
 
 ## 設計方針
 
@@ -213,5 +214,42 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 | 一時停止 / 再開ボタン | シミュレーションの一時停止 / 再開トグル |
 | リスタートボタン | アバターを初期位置にリセットし再スタート |
 | リージョン中心へ移動ボタン | カメラをリージョン中心に移動 |
+
+**URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
+
+### flight (`/flight.html`)
+
+飛行機（`assets/plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ（#245）。`JpmapTerrain` の外部カメラ連携 API（§3.3.14）と Model API（§3.3.13）を使用する。
+
+**仕様:**
+
+- 東京駅（35.681236, 139.767125）上空に初期配置
+- 地面クリックでクリック地点を中心とする円軌道の中心を移動（カメラから 5000m 以内）
+- 毎フレーム円周上を移動し、進行方向に自動回転（接線方向）
+- `altitudeMode: "absolute"` で絶対標高指定
+- Follow モード時は FreeCamera を飛行機の後方上方に配置し、外部 frustum API でタイル更新
+- 3D/2D モード時は通常の ArcRotateCamera を使用
+
+**コントロール（右上パネル）:**
+
+| UI | 操作 |
+|---|---|
+| 緯度・経度表示 | 現在の円軌道中心座標 |
+| 半径スライダー | 円軌道の半径 (m) を変更（既定 2000m、500–10000m） |
+| 速度スライダー | 飛行速度 (m/s) を変更（既定 100m/s、100–340m/s） |
+| 高度スライダー | 飛行高度 (m) を変更（既定 2000m、100–10000m） |
+| 停止/再開ボタン | アニメーション再生のトグル |
+| 移動ボタン | カメラを軌道中心に移動 |
+| カメラモードボタン | 3D / 2D / Follow の切替 |
+| Follow 距離・高度 Offset | Follow カメラの飛行機からの距離と高度オフセット（ドラッグ/ホイールで操作） |
+| LOD bias スライダー | Follow モード時のタイル粒度調整（0–4、大きいほど粗い） |
+
+**Follow カメラ操作:**
+
+| 操作 | 効果 |
+|---|---|
+| 左右ドラッグ | カメラの水平回転（飛行機を中心に周回） |
+| 上下ドラッグ | カメラの高度オフセット変更 |
+| マウスホイール | カメラの距離変更 |
 
 **URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。

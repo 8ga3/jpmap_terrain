@@ -53,7 +53,7 @@
       top: 12px;
       right: 64px;
       pointer-events: auto;
-      padding: 12px 14px;
+      padding: 10px 12px;
       font-size: 13px;
       color: #fff;
       background: rgba(0, 0, 0, 0.5);
@@ -61,8 +61,32 @@
       border-radius: 8px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       min-width: 200px;
+    }
+
+    #flight-controls .btn-row {
+      display: flex;
+      gap: 4px;
+    }
+
+    #flight-controls .btn-row button {
+      flex: 1;
+    }
+
+    #flight-controls .inline-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    #flight-controls .inline-row .label {
+      color: #e0e4ea;
+    }
+
+    #flight-controls .inline-row .value {
+      font-family: "SF Mono", "Fira Code", monospace;
     }
 
     #flight-controls strong {
@@ -73,6 +97,7 @@
 
     #flight-controls .info-row {
       display: flex;
+      align-items: baseline;
       justify-content: space-between;
       font-size: 12px;
     }
@@ -125,14 +150,10 @@
   <div id="flight-overlay">
     <a class="back-link" href="/">← デモ一覧へ</a>
     <div id="flight-controls">
-      <strong>フライトデモ (Issue #245)</strong>
-      <div class="info-row">
-        <span class="label">中心緯度</span>
-        <span class="value" id="center-lat">-</span>
-      </div>
-      <div class="info-row">
-        <span class="label">中心経度</span>
-        <span class="value" id="center-lon">-</span>
+      <strong>フライトデモ</strong>
+      <div class="inline-row">
+        <span class="label">緯度</span><span class="value" id="center-lat">-</span>
+        <span class="label">経度</span><span class="value" id="center-lon">-</span>
       </div>
       <div>
         <div class="info-row">
@@ -155,33 +176,30 @@
         </div>
         <input type="range" id="altitude-slider" min="100" max="10000" value="500" step="50">
       </div>
-      <button id="toggle-animation">⏸ 停止</button>
-      <button id="fly-to-center">中心位置へ移動</button>
-      <div style="font-size: 11px; color: #e0e4ea; margin-top: 4px;">カメラモード</div>
+      <div class="btn-row">
+        <button id="toggle-animation">⏸ 停止</button>
+        <button id="fly-to-center">移動</button>
+      </div>
+      <div style="font-size: 11px; color: #e0e4ea;">カメラモード</div>
       <div class="camera-buttons">
         <button id="camera-3d" class="active">3D</button>
         <button id="camera-2d">2D</button>
         <button id="camera-follow">Follow</button>
       </div>
       <div id="follow-cam-info" style="display:none; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 6px; margin-top: 2px;">
-        <div style="font-size: 11px; color: #e0e4ea; margin-bottom: 4px;">Follow カメラ</div>
-        <div class="info-row">
-          <span class="label">距離 (m)</span>
-          <span class="value" id="follow-radius-value">-</span>
+        <div class="inline-row" style="margin-bottom: 4px;">
+          <span class="label">距離</span><span class="value" id="follow-radius-value">-</span>
+          <span class="label">高度Offset</span><span class="value" id="follow-height-value">-</span>
         </div>
         <div class="info-row">
-          <span class="label">高度 Offset (m)</span>
-          <span class="value" id="follow-height-value">-</span>
-        </div>
-        <div class="info-row" style="margin-top: 4px;">
           <span class="label">タイル粒度↓ (LOD bias)</span>
           <span class="value" id="follow-lod-bias-value">0</span>
         </div>
         <input type="range" id="follow-lod-bias" min="0" max="4" step="1" value="0" style="width: 100%; margin-top: 2px;" />
         <div style="font-size: 10px; color: #c8cdd6; margin-top: 4px;">ドラッグ左右: 回転 / 上下: 高度 / ホイール: 距離</div>
       </div>
-      <div style="font-size: 10px; color: #c8cdd6; margin-top: 4px;">
-        地面をクリックすると円軌道の中心が移動します
+      <div style="font-size: 10px; color: #c8cdd6; margin-top: 2px;">
+        地面クリックで円軌道の中心を移動
       </div>
     </div>
   </div>
