@@ -179,7 +179,7 @@ export interface DefaultSceneController {
         lon: number,
         frustumPlanes: FrustumPlane[],
         cameraPosition: { x: number; y: number; z: number },
-    ): void;
+    ): Promise<void>;
 
     /**
      * terrain camera の onViewMatrixChanged 監視を停止する。
@@ -2375,7 +2375,7 @@ export class DefaultScene implements CreateSceneClass {
                 gridResidualZ = (currentLat - tileCenterLat) * METERS_PER_DEGREE_LAT;
                 camera.target.x = gridResidualX;
                 camera.target.z = gridResidualZ;
-                void tileManager.refreshWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition);
+                return tileManager.refreshWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition);
             },
             detachTileCamera: () => tileManager.detachCamera(),
             attachTileCamera: () => tileManager.attachCamera(),

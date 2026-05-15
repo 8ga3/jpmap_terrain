@@ -446,6 +446,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             while (idx < entries.length && rid === requestId) {
                 const { coord, tileSize } = entries[idx++];
                 await loadTile(coord, tileSize, rid);
+                // 1 タイルごとに macrotask へ譲る。
+                // loadTile の同期部 (elevation/mesh/GPU upload) はそれなりに重く、
+                // 連続して走ると 1 フレームで複数タイル分の同期処理が積み上がり
+                // アニメーションがガク落ちする。setTimeout(0) でフレーム描画を挟む。
+                await new Promise<void>((r) => setTimeout(r, 0));
             }
         };
 

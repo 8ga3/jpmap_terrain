@@ -111,8 +111,20 @@ const start = async (): Promise<void> => {
     let followCamRotationOffset = FOLLOW_CAMERA_ROTATION_OFFSET;
     // Follow モードでのタイル中心更新スロットル
     let lastTileUpdateTime = 0;
+    let tileRefreshInFlight = false;
+    let lastRefreshLat = TOKYO_STATION.lat;
+    let lastRefreshLon = TOKYO_STATION.lon;
+    let lastRefreshRotationOffset = FOLLOW_CAMERA_ROTATION_OFFSET;
+    let lastRefreshHeightOffset = FOLLOW_CAMERA_HEIGHT_OFFSET;
+    let lastRefreshRadius = FOLLOW_CAMERA_RADIUS;
     /** Follow モードでタイル中心を飛行機位置に追従させる最小間隔 (ms) */
-    const TILE_UPDATE_INTERVAL_MS = 2000;
+    const TILE_UPDATE_INTERVAL_MS = 300;
+    /** 緯度/経度差がこの距離 (m) を超えたら更新を発火 */
+    const TILE_UPDATE_DISTANCE_M = 80;
+    /** カメラ方位がこれ以上変わったら更新を発火 (度) */
+    const TILE_UPDATE_ROTATION_DEG = 8;
+    /** 高度オフセット/半径がこれ以上変わったら更新を発火 (m) */
+    const TILE_UPDATE_OFFSET_M = 5;
 
     // 初期配置: 円周上 0° の位置
     const initPos = circularOrbitPosition(
@@ -483,43 +495,79 @@ const start = async (): Promise<void> => {
 
         // Follow モード: Follow カメラの frustum を直接 tileManager に注入し、
         // 画面に映っている範囲のタイルを正しく LOD 更新する (C案)。
+        // - 前回 refresh が in-flight ならスキップ（オーバーラップを防ぎ過剰負荷を回避）
+        // - 一定時間経過 + 意味のある変化（位置/方位/オフセット）があった場合のみ発火
         if (
             currentCameraMode === "follow" &&
             followCamera &&
+            !tileRefreshInFlight &&
             timestamp - lastTileUpdateTime >= TILE_UPDATE_INTERVAL_MS
         ) {
             const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
-            // Follow カメラの view/projection → frustum planes
-            const viewMat = followCamera.getViewMatrix();
-            const projMat = followCamera.getProjectionMatrix();
-            const transform = Matrix.Identity();
-            viewMat.multiplyToRef(projMat, transform);
-            const rawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
-            Frustum.GetPlanesToRef(transform, rawPlanes);
-            const frustumPlanes = rawPlanes.map((p) => ({
-                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
-                d: p.d,
-            }));
-
-            // カメラ位置を terrain camera target 基準のローカル座標系に変換
-            const scene = viewer.__debugScene;
-            const terrainCam = scene?.getCameraByName("terrain-camera");
-            const target = terrainCam && "target" in terrainCam
-                ? (terrainCam as { target: Vector3 }).target
-                : Vector3.Zero();
-            const cameraPosition = {
-                x: followCamera.position.x - target.x,
-                y: followCamera.position.y - target.y,
-                z: followCamera.position.z - target.z,
-            };
-
-            viewer.refreshTerrainWithExternalFrustum(
-                planePos.lat,
-                planePos.lon,
-                frustumPlanes,
-                cameraPosition,
+            // 前回 refresh からの差分を判定
+            const dLat = (planePos.lat - lastRefreshLat) * 111320;
+            const dLon =
+                (planePos.lon - lastRefreshLon) *
+                111320 *
+                Math.cos((planePos.lat * Math.PI) / 180);
+            const moved = Math.sqrt(dLat * dLat + dLon * dLon);
+            const rotDelta = Math.abs(
+                ((followCamRotationOffset - lastRefreshRotationOffset + 540) % 360) - 180,
             );
-            lastTileUpdateTime = timestamp;
+            const heightDelta = Math.abs(followCamHeightOffset - lastRefreshHeightOffset);
+            const radiusDelta = Math.abs(followCamRadius - lastRefreshRadius);
+            const meaningful =
+                moved >= TILE_UPDATE_DISTANCE_M ||
+                rotDelta >= TILE_UPDATE_ROTATION_DEG ||
+                heightDelta >= TILE_UPDATE_OFFSET_M ||
+                radiusDelta >= TILE_UPDATE_OFFSET_M;
+
+            if (meaningful) {
+                // Follow カメラの view/projection → frustum planes
+                const viewMat = followCamera.getViewMatrix();
+                const projMat = followCamera.getProjectionMatrix();
+                const transform = Matrix.Identity();
+                viewMat.multiplyToRef(projMat, transform);
+                const rawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+                Frustum.GetPlanesToRef(transform, rawPlanes);
+                const frustumPlanes = rawPlanes.map((p) => ({
+                    normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+                    d: p.d,
+                }));
+
+                // カメラ位置を terrain camera target 基準のローカル座標系に変換
+                const scene = viewer.__debugScene;
+                const terrainCam = scene?.getCameraByName("terrain-camera");
+                const target = terrainCam && "target" in terrainCam
+                    ? (terrainCam as { target: Vector3 }).target
+                    : Vector3.Zero();
+                const cameraPosition = {
+                    x: followCamera.position.x - target.x,
+                    y: followCamera.position.y - target.y,
+                    z: followCamera.position.z - target.z,
+                };
+
+                lastRefreshLat = planePos.lat;
+                lastRefreshLon = planePos.lon;
+                lastRefreshRotationOffset = followCamRotationOffset;
+                lastRefreshHeightOffset = followCamHeightOffset;
+                lastRefreshRadius = followCamRadius;
+                lastTileUpdateTime = timestamp;
+                tileRefreshInFlight = true;
+                void viewer
+                    .refreshTerrainWithExternalFrustum(
+                        planePos.lat,
+                        planePos.lon,
+                        frustumPlanes,
+                        cameraPosition,
+                    )
+                    .finally(() => {
+                        tileRefreshInFlight = false;
+                    });
+            } else {
+                // 意味のある変化なし: 次回の判定を遅延させすぎないよう最終チェック時刻だけ進める
+                lastTileUpdateTime = timestamp;
+            }
         }
 
         rafId = requestAnimationFrame(tick);
