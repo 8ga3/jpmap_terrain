@@ -193,15 +193,32 @@ const loadImageData = async (url: string): Promise<ImageData> => {
     return data;
 };
 
+import { getElevationDecodePool } from "./elevationDecodePool";
+
 /** 標高タイルを読み込み Float32Array で返す（dem5a → dem5b → dem フォールバック） */
 export const loadElevationTile = async (
     zoom: number,
     x: number,
     y: number
 ): Promise<Float32Array> => {
+    const urls = DEM_LAYERS.map(
+        (layer) => `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`
+    );
+
+    // Worker 経路（OffscreenCanvas で fetch + decode をメインスレッドから外す）。
+    // メインスレッドの drawImage + getImageData + RGB→Float ループによる
+    // フレームスパイクを排除する (Issue #245)
+    const pool = getElevationDecodePool();
+    if (pool) {
+        try {
+            return await pool.decode(urls, FETCH_TIMEOUT_MS);
+        } catch {
+            // Worker 失敗時はメインスレッドにフォールバック
+        }
+    }
+
     let lastErr: unknown;
-    for (const layer of DEM_LAYERS) {
-        const url = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`;
+    for (const url of urls) {
         try {
             const img = await loadImageData(url);
             const elev = new Float32Array(img.width * img.height);
