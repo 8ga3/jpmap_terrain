@@ -509,88 +509,72 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
-     * - fetch + createImageBitmap で画像 decode をメインスレッド外に逃がし、
-     * - 取得完了後に texture apply chain にぶら下げて 1 フレーム = 1 タイル
-     *   の GPU upload にシリアライズする (Issue #245)。
+     * - new Texture(url) で fetch + 画像 decode を Babylon に任せ（img 要素経由で
+     *   decode は別スレッドで動く）、`onLoad` で GPU bind 完了タイミングを取得
+     * - onLoad 後にフレーム境界で 1 タイル / フレームの apply にシリアライズし、
+     *   `mat.diffuseTexture = tex` の代入による effect 再評価 / 描画乱れを分散
      */
     let textureApplyChain: Promise<void> = Promise.resolve();
     const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
         const targetZoom = fallbackZoom ?? coord.zoom;
         const targetCoord = convertTileZoom(coord, targetZoom);
 
-        // このリクエストのIDを発行し、meshに紐付ける
         const texReqId = (textureRequestIds.get(mesh) ?? 0) + 1;
         textureRequestIds.set(mesh, texReqId);
 
         const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
 
-        void (async () => {
-            // 1) 画像 decode はメインスレッド外（createImageBitmap）
-            let bitmap: ImageBitmap | null = null;
-            try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const blob = await res.blob();
-                bitmap = await createImageBitmap(blob);
-            } catch {
-                // テクスチャ取得失敗 → 低zoomへフォールバック
-                if (textureRequestIds.get(mesh) !== texReqId) return;
-                if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
-                return;
-            }
+        const tex = new Texture(
+            url,
+            scene,
+            true,
+            true,
+            Texture.TRILINEAR_SAMPLINGMODE,
+            () => {
+                // onLoad: GPU upload 完了後、フレーム境界で apply chain にぶら下げて
+                // mat.diffuseTexture 代入をシリアライズする
+                void (async () => {
+                    const prev = textureApplyChain;
+                    let releaseNext!: () => void;
+                    const slot = new Promise<void>((r) => { releaseNext = r; });
+                    textureApplyChain = prev.then(() => slot);
+                    try {
+                        await prev;
+                        await yieldToFrame();
 
-            // mesh が別タイル用に再利用 / 破棄 されていたら捨てる
-            if (textureRequestIds.get(mesh) !== texReqId
-                || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
-                bitmap.close();
-                return;
-            }
-
-            // 2) フレーム境界で 1 タイル / フレームに upload をシリアライズ
-            const prev = textureApplyChain;
-            let releaseNext!: () => void;
-            const slot = new Promise<void>((r) => { releaseNext = r; });
-            textureApplyChain = prev.then(() => slot);
-            try {
-                await prev;
-                await yieldToFrame();
-
-                // 待機中に別リクエストで上書きされた / 破棄された 場合は早期撤退
-                if (textureRequestIds.get(mesh) !== texReqId
-                    || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
-                    bitmap.close();
+                        // mesh が別タイル用に再利用 / 破棄 されていたら捨てる
+                        if (textureRequestIds.get(mesh) !== texReqId
+                            || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                            tex.dispose();
+                            return;
+                        }
+                        const mat = mesh.material as StandardMaterial;
+                        if (mat.diffuseTexture && mat.diffuseTexture !== tex) {
+                            mat.diffuseTexture.dispose();
+                        }
+                        mat.diffuseTexture = tex;
+                    } finally {
+                        releaseNext();
+                    }
+                })();
+            },
+            () => {
+                // meshが既に別タイルへ再利用されていたらフォールバックしない
+                if (textureRequestIds.get(mesh) !== texReqId) {
+                    tex.dispose();
                     return;
                 }
-
-                const mat = mesh.material as StandardMaterial;
-                if (mat.diffuseTexture) {
-                    mat.diffuseTexture.dispose();
-                }
-
-                // ImageBitmap から Texture を構築（GPU upload はここ）
-                const tex = new Texture(
-                    null,
-                    scene,
-                    true,
-                    true,
-                    Texture.TRILINEAR_SAMPLINGMODE,
-                    undefined,
-                    undefined,
-                    bitmap,
-                );
-
-                // UV補正（低zoomテクスチャ使用時）
-                const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
-                tex.uScale = uv.uScale;
-                tex.vScale = uv.vScale;
-                tex.uOffset = uv.uOffset;
-                tex.vOffset = uv.vOffset;
-
-                mat.diffuseTexture = tex;
-            } finally {
-                releaseNext();
+                tex.dispose();
+                if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
             }
-        })();
+        );
+
+        // UV補正（低zoomテクスチャ使用時）
+        const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
+        tex.uScale = uv.uScale;
+        tex.vScale = uv.vScale;
+        tex.uOffset = uv.uOffset;
+        tex.vOffset = uv.vOffset;
     };
 
     /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */
