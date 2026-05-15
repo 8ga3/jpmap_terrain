@@ -507,7 +507,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
     const tileSizeForZoom = (z: number): number => tileEdgeMeters(currentLat, z);
 
-    /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック） */
+    /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
+     *
+     * - fetch + createImageBitmap で画像 decode をメインスレッド外に逃がし、
+     * - 取得完了後に texture apply chain にぶら下げて 1 フレーム = 1 タイル
+     *   の GPU upload にシリアライズする (Issue #245)。
+     */
+    let textureApplyChain: Promise<void> = Promise.resolve();
     const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
         const targetZoom = fallbackZoom ?? coord.zoom;
         const targetCoord = convertTileZoom(coord, targetZoom);
@@ -516,36 +522,75 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const texReqId = (textureRequestIds.get(mesh) ?? 0) + 1;
         textureRequestIds.set(mesh, texReqId);
 
-        const mat = mesh.material as StandardMaterial;
-        if (mat.diffuseTexture) {
-            mat.diffuseTexture.dispose();
-        }
+        const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
 
-        const tex = new Texture(
-            textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y),
-            scene,
-            true,
-            true,
-            Texture.TRILINEAR_SAMPLINGMODE,
-            undefined,
-            () => {
-                // meshが既に別タイルへ再利用されていたらフォールバックしない
-                if (textureRequestIds.get(mesh) !== texReqId) return;
+        void (async () => {
+            // 1) 画像 decode はメインスレッド外（createImageBitmap）
+            let bitmap: ImageBitmap | null = null;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const blob = await res.blob();
+                bitmap = await createImageBitmap(blob);
+            } catch {
                 // テクスチャ取得失敗 → 低zoomへフォールバック
-                if (targetZoom > minZoom) {
-                    applyTexture(mesh, coord, targetZoom - 1);
-                }
+                if (textureRequestIds.get(mesh) !== texReqId) return;
+                if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
+                return;
             }
-        );
 
-        // UV補正（低zoomテクスチャ使用時）
-        const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
-        tex.uScale = uv.uScale;
-        tex.vScale = uv.vScale;
-        tex.uOffset = uv.uOffset;
-        tex.vOffset = uv.vOffset;
+            // mesh が別タイル用に再利用 / 破棄 されていたら捨てる
+            if (textureRequestIds.get(mesh) !== texReqId
+                || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                bitmap.close();
+                return;
+            }
 
-        mat.diffuseTexture = tex;
+            // 2) フレーム境界で 1 タイル / フレームに upload をシリアライズ
+            const prev = textureApplyChain;
+            let releaseNext!: () => void;
+            const slot = new Promise<void>((r) => { releaseNext = r; });
+            textureApplyChain = prev.then(() => slot);
+            try {
+                await prev;
+                await yieldToFrame();
+
+                // 待機中に別リクエストで上書きされた / 破棄された 場合は早期撤退
+                if (textureRequestIds.get(mesh) !== texReqId
+                    || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                    bitmap.close();
+                    return;
+                }
+
+                const mat = mesh.material as StandardMaterial;
+                if (mat.diffuseTexture) {
+                    mat.diffuseTexture.dispose();
+                }
+
+                // ImageBitmap から Texture を構築（GPU upload はここ）
+                const tex = new Texture(
+                    null,
+                    scene,
+                    true,
+                    true,
+                    Texture.TRILINEAR_SAMPLINGMODE,
+                    undefined,
+                    undefined,
+                    bitmap,
+                );
+
+                // UV補正（低zoomテクスチャ使用時）
+                const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
+                tex.uScale = uv.uScale;
+                tex.vScale = uv.vScale;
+                tex.uOffset = uv.uOffset;
+                tex.vOffset = uv.vOffset;
+
+                mat.diffuseTexture = tex;
+            } finally {
+                releaseNext();
+            }
+        })();
     };
 
     /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */
