@@ -485,22 +485,38 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /** 並列数制限付きのロードキュー */
+    /**
+     * 新規タイル群を「並列度 {@link FOLLOW_FRIENDLY_CONCURRENT} で、かつ各 loadTile の後に
+     * `requestAnimationFrame` 1 回待つ」スケジューラで消化する。
+     *
+     * 通常パスは debounce + ユーザー停止後の単発リフレッシュなので問題にならないが、
+     * Follow モードでは 300ms ごとに必ず新規タイル群を要求し、内部で fetch 完了が
+     * ほぼ同時に揃った瞬間に「ステッチ + Worker post + texture 構築」が同フレームに
+     * 集中してフレーム飛びを起こす。次タイル投入をフレーム境界で区切ることで
+     * GPU/メインスレッドのスパイクを時間方向に分散する (Issue #245)。
+     */
+    const FOLLOW_FRIENDLY_CONCURRENT = 2;
+
     const loadTilesInQueue = async (
         entries: readonly LodTileEntry[],
         rid: number
     ): Promise<void> => {
         let idx = 0;
+        const concurrency = isTestEnv
+            ? Math.min(maxConcurrent, entries.length)
+            : Math.min(maxConcurrent, FOLLOW_FRIENDLY_CONCURRENT, entries.length);
         const next = async (): Promise<void> => {
             while (idx < entries.length && rid === requestId) {
                 const { coord, tileSize } = entries[idx++];
                 await loadTile(coord, tileSize, rid);
+                if (rid !== requestId) return;
+                // 次のタイル投入前にフレーム境界で 1 回 yield する
+                // → fetch 完了の同時揃いによるスパイクを分散
+                if (idx < entries.length) await yieldToFrame();
             }
         };
 
-        const workers = Array.from(
-            { length: Math.min(maxConcurrent, entries.length) },
-            () => next()
-        );
+        const workers = Array.from({ length: concurrency }, () => next());
         await Promise.all(workers);
     };
 
