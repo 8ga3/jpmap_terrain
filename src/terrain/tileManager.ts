@@ -509,12 +509,31 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
-     * - `mat.diffuseTexture = tex` は同期で代入し、Babylon の Texture 内部の
-     *   非同期 fetch + decode 完了時に GPU bind される（img.decode 経由で
-     *   ブラウザの decoder thread を利用するためメインスレッドは塞がらない）
-     * - 連続して applyTexture が同じ mesh に呼ばれた場合は texReqId で
-     *   古い load 結果を破棄してテクスチャ取り違えを防ぐ
+     * - 同時に走る `new Texture` の数を {@link MAX_TEXTURE_INFLIGHT} に制限する
+     *   キューを介して GPU upload + mipmap 生成のスパイクを均す (Issue #245)
+     * - キュー待ち中も `mat.diffuseTexture` は前のテクスチャのまま残るので、
+     *   描画されないタイル（空が透ける症状）にはならない
      */
+    const MAX_TEXTURE_INFLIGHT = 2;
+    let textureInflight = 0;
+    const textureQueue: (() => void)[] = [];
+    const releaseTextureSlot = (): void => {
+        textureInflight--;
+        const next = textureQueue.shift();
+        if (next) {
+            textureInflight++;
+            next();
+        }
+    };
+    const runOnTextureSlot = (job: () => void): void => {
+        if (textureInflight < MAX_TEXTURE_INFLIGHT) {
+            textureInflight++;
+            job();
+        } else {
+            textureQueue.push(job);
+        }
+    };
+
     const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
         const targetZoom = fallbackZoom ?? coord.zoom;
         const targetCoord = convertTileZoom(coord, targetZoom);
@@ -522,47 +541,62 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const texReqId = (textureRequestIds.get(mesh) ?? 0) + 1;
         textureRequestIds.set(mesh, texReqId);
 
-        const mat = mesh.material as StandardMaterial;
-        const prevTex = mat.diffuseTexture;
-
-        const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
-        const tex = new Texture(
-            url,
-            scene,
-            // noMipmap=false: mipmap を有効化して縮小描画の GPU 負荷とアーティファクト（モアレ・点滅）を抑える。
-            //   遠景タイルが多い Follow モードで効果が大きい (Issue #245)
-            false,
-            true,
-            Texture.TRILINEAR_SAMPLINGMODE,
-            () => {
-                // ロード完了時: 既に別タイルへ再利用されていれば自身を破棄
-                if (textureRequestIds.get(mesh) !== texReqId
-                    || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
-                    tex.dispose();
-                    return;
-                }
-                // 古いテクスチャの破棄はここで行う（差し替わったタイミング）
-                if (prevTex && prevTex !== tex) prevTex.dispose();
-            },
-            () => {
-                // 取得失敗: 自身は破棄、低 zoom へフォールバック
-                if (textureRequestIds.get(mesh) !== texReqId) {
-                    tex.dispose();
-                    return;
-                }
-                tex.dispose();
-                if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
+        runOnTextureSlot(() => {
+            // キュー待ち中に別のリクエストで上書き / mesh 破棄されていたら即スキップ
+            if (textureRequestIds.get(mesh) !== texReqId
+                || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                releaseTextureSlot();
+                return;
             }
-        );
 
-        // UV補正（低zoomテクスチャ使用時）
-        const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
-        tex.uScale = uv.uScale;
-        tex.vScale = uv.vScale;
-        tex.uOffset = uv.uOffset;
-        tex.vOffset = uv.vOffset;
+            const mat = mesh.material as StandardMaterial;
+            const prevTex = mat.diffuseTexture;
+            const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
+            let slotReleased = false;
+            const release = (): void => {
+                if (slotReleased) return;
+                slotReleased = true;
+                releaseTextureSlot();
+            };
 
-        mat.diffuseTexture = tex;
+            const tex = new Texture(
+                url,
+                scene,
+                false,
+                true,
+                Texture.TRILINEAR_SAMPLINGMODE,
+                () => {
+                    // GPU upload + mipmap 生成完了時点でスロットを返却
+                    if (textureRequestIds.get(mesh) !== texReqId
+                        || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                        tex.dispose();
+                    } else if (prevTex && prevTex !== tex) {
+                        prevTex.dispose();
+                    }
+                    release();
+                },
+                () => {
+                    // 取得失敗時もスロット返却
+                    if (textureRequestIds.get(mesh) !== texReqId) {
+                        tex.dispose();
+                        release();
+                        return;
+                    }
+                    tex.dispose();
+                    release();
+                    if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
+                }
+            );
+
+            // UV補正（低zoomテクスチャ使用時）
+            const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
+            tex.uScale = uv.uScale;
+            tex.vScale = uv.vScale;
+            tex.uOffset = uv.uOffset;
+            tex.vOffset = uv.vOffset;
+
+            mat.diffuseTexture = tex;
+        });
     };
 
     /** 全アクティブタイルのテクスチャを現在の mapType で差し替え */
