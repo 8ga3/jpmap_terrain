@@ -363,35 +363,47 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (rid !== requestId) return;
             if (activeTiles.has(key)) return;
 
-            // メッシュ取得・配置
-            const mesh = meshPool.acquire();
+            // 重い mesh sync 処理（elevation 適用 + GPU upload + 隣接ステッチ）を
+            // フレーム単位でシリアライズする。並列ワーカーが同フレームに集中して
+            // sync 処理を積み上げて Babylon の rAF レンダーを抜かさないようにし、
+            // 飛行機アニメーションがちらつくのを防ぐ (Issue #245)。
+            const releaseSlot = await acquireApplySlot();
+            try {
+                if (rid !== requestId) return;
+                if (activeTiles.has(key)) return;
 
-            // スケーリング
-            mesh.scaling.x = tileSize;
-            mesh.scaling.z = tileSize;
-            mesh.scaling.y = 1;
+                // メッシュ取得・配置
+                const mesh = meshPool.acquire();
 
-            // 中心タイルからのオフセット（サブタイルオフセット補正込み）
-            const center = convertTileZoom(currentCenter, coord.zoom);
-            const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
-            const dx = coord.x - center.x;
-            const dy = coord.y - center.y;
-            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
-            mesh.position.x = wx;
-            mesh.position.z = wz;
+                // スケーリング
+                mesh.scaling.x = tileSize;
+                mesh.scaling.z = tileSize;
+                mesh.scaling.y = 1;
 
-            // 標高適用（ステッチ＋NaN埋め）
-            applyStitchedElevation(mesh, entry.elevation, coord);
+                // 中心タイルからのオフセット（サブタイルオフセット補正込み）
+                const center = convertTileZoom(currentCenter, coord.zoom);
+                const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+                const dx = coord.x - center.x;
+                const dy = coord.y - center.y;
+                const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
+                mesh.position.x = wx;
+                mesh.position.z = wz;
 
-            // テクスチャ
-            applyTexture(mesh, coord);
+                // 標高適用（ステッチ＋NaN埋め）
+                applyStitchedElevation(mesh, entry.elevation, coord);
 
-            activeTiles.set(key, { key, coord, mesh, tileSize });
+                // テクスチャ
+                applyTexture(mesh, coord);
 
-            // 隣接タイルのメッシュも再ステッチ
-            restitchNeighbors(coord);
+                activeTiles.set(key, { key, coord, mesh, tileSize });
 
-            terrainUpdatedCallback?.();
+                // 隣接タイルのメッシュも再ステッチ
+                restitchNeighbors(coord);
+
+                terrainUpdatedCallback?.();
+            } finally {
+                releaseSlot();
+            }
         } catch (e) {
             if (rid !== requestId) return;
             statusCallback?.(
@@ -436,6 +448,50 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         terrainUpdatedCallback?.();
     };
 
+    /**
+     * 1 フレーム待機する yield ユーティリティ。
+     *
+     * `setTimeout(0)` は macrotask 譲渡だけで描画フレームを挟む保証がなく、
+     * 連続するタイル sync 処理（elevation + ComputeNormals + GPU upload）が
+     * Babylon の rAF レンダーを抜かしてアニメーションをガク落ちさせる原因になる。
+     * rAF を await することで「1 フレーム = 1 タイル sync」を保証し、
+     * Babylon のレンダーループ（VSync 同期）が必ず間に走るようにする。
+     * テスト環境など rAF が無い場合は setTimeout(0) にフォールバック。
+     */
+    // テスト環境（Jest）では rAF が setTimeout(16) に近い挙動になり、
+    // タイル数が多いと sync 完了までに 5s 以上かかってタイムアウトするため
+    // 即時 resolve にして直列化のみ維持する。
+    const isTestEnv =
+        typeof process !== "undefined" &&
+        typeof (process as { env?: Record<string, string | undefined> }).env !== "undefined" &&
+        (process as { env: Record<string, string | undefined> }).env.JEST_WORKER_ID !== undefined;
+    const yieldToFrame = (): Promise<void> =>
+        isTestEnv
+            ? Promise.resolve()
+            : typeof requestAnimationFrame === "function"
+                ? new Promise<void>((r) => requestAnimationFrame(() => r()))
+                : new Promise<void>((r) => setTimeout(r, 0));
+
+    /**
+     * タイル sync 適用のフレーム単位排他ロック。
+     *
+     * 並列フェッチ後の重い同期処理（applyStitchedElevation /
+     * ComputeNormals / GPU upload / restitchNeighbors）を
+     * 1 フレームに 1 タイルだけ走らせるための Promise チェーン排他制御。
+     * 取得時に release 関数を返し、呼び出し側は finally で release する。
+     */
+    let applyChain: Promise<void> = Promise.resolve();
+    const acquireApplySlot = async (): Promise<() => void> => {
+        const prev = applyChain;
+        let release!: () => void;
+        const slot = new Promise<void>((r) => { release = r; });
+        applyChain = prev.then(() => slot);
+        await prev;
+        // 直前の sync が完了したら、レンダーフレームを 1 つ挟んで自分の番に入る。
+        await yieldToFrame();
+        return release;
+    };
+
     /** 並列数制限付きのロードキュー */
     const loadTilesInQueue = async (
         entries: readonly LodTileEntry[],
@@ -446,11 +502,6 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             while (idx < entries.length && rid === requestId) {
                 const { coord, tileSize } = entries[idx++];
                 await loadTile(coord, tileSize, rid);
-                // 1 タイルごとに macrotask へ譲る。
-                // loadTile の同期部 (elevation/mesh/GPU upload) はそれなりに重く、
-                // 連続して走ると 1 フレームで複数タイル分の同期処理が積み上がり
-                // アニメーションがガク落ちする。setTimeout(0) でフレーム描画を挟む。
-                await new Promise<void>((r) => setTimeout(r, 0));
             }
         };
 
