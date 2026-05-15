@@ -393,22 +393,43 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /** 既存 activeTiles の position/scaling/標高を現在の中心・高度オフセットに合わせて再配置 */
+    /** 既存 activeTiles の position/scaling/標高を現在の中心・高度オフセットに合わせて再配置 */
     const repositionActiveTiles = async (): Promise<void> => {
+        repositionActiveTilesGeom();
         if (!currentCenter) return;
         const promises: Promise<void>[] = [];
         for (const [key, tile] of activeTiles) {
+            // キャッシュから標高データを取得し再適用（ステッチ＋NaN埋め）
+            const entry = cache.get(key);
+            if (entry) {
+                promises.push(applyStitchedElevation(tile.mesh, entry.elevation, tile.coord));
+            }
+        }
+        if (promises.length > 0) await Promise.all(promises);
+        terrainUpdatedCallback?.();
+    };
+
+    /**
+     * 既存 activeTiles の position/scaling のみを再計算する軽量リポジション。
+     *
+     * 中心タイルが 1 つ進んでも各タイルの world 座標上の地形そのものは
+     * 不変なので、 elevation を再 apply する必要はない。Follow モードでは
+     * 飛行機が連続的に中心タイル境界を跨ぐため、フル再ステッチ
+     * (applyStitchedElevation × N) を毎秒走らせると全画面フラッシュとして
+     * 視認されるため、Follow パスではこちらを呼ぶ (Issue #245)。
+     */
+    const repositionActiveTilesGeom = (): void => {
+        if (!currentCenter) return;
+        for (const [, tile] of activeTiles) {
             const { mesh, coord } = tile;
 
-            // tileSize を現在の緯度で再計算
             const tileSize = tileSizeForZoom(coord.zoom);
             tile.tileSize = tileSize;
 
-            // スケーリング
             mesh.scaling.x = tileSize;
             mesh.scaling.z = tileSize;
             mesh.scaling.y = 1;
 
-            // 位置（サブタイルオフセット補正込み）
             const center = convertTileZoom(currentCenter, coord.zoom);
             const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
             const dx = coord.x - center.x;
@@ -416,15 +437,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
             mesh.position.x = wx;
             mesh.position.z = wz;
-
-            // キャッシュから標高データを取得し再適用（ステッチ＋NaN埋め）
-            const entry = cache.get(key);
-            if (entry) {
-                promises.push(applyStitchedElevation(mesh, entry.elevation, coord));
-            }
         }
-        if (promises.length > 0) await Promise.all(promises);
-        terrainUpdatedCallback?.();
     };
 
     /**
@@ -1150,7 +1163,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const applyVisibleTiles = async (
         visibleEntries: readonly LodTileEntry[],
         rid: number,
-        reposition: boolean
+        reposition: boolean,
+        /** true: 標高再 apply をスキップして position/scaling のみ更新する軽量モード */
+        geomOnlyReposition = false,
     ): Promise<void> => {
         const visibleKeys = new Set(visibleEntries.map((e) => toTileKey(e.coord)));
 
@@ -1164,7 +1179,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
 
         if (reposition) {
-            await repositionActiveTiles();
+            if (geomOnlyReposition) {
+                repositionActiveTilesGeom();
+            } else {
+                await repositionActiveTiles();
+            }
         }
 
         // 新規タイルのみロード
@@ -1265,7 +1284,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 lodBias,
             });
 
-            await applyVisibleTiles(visibleEntries, rid, needsReposition);
+            // Follow パスでは中心タイルが変わっても各タイルの世界座標上の地形は
+            // 不変なので、 elevation の再 apply はスキップして position/scaling
+            // のみ更新する（フル再ステッチが毎秒走るとフラッシュ感の原因になる）。
+            await applyVisibleTiles(visibleEntries, rid, needsReposition, true);
         },
 
         setMapType(mapType: MapType): void {
