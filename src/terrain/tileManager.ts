@@ -509,29 +509,47 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
-     * - 同時に走る `new Texture` の数を {@link MAX_TEXTURE_INFLIGHT} に制限する
-     *   キューを介して GPU upload + mipmap 生成のスパイクを均す (Issue #245)
-     * - キュー待ち中も `mat.diffuseTexture` は前のテクスチャのまま残るので、
+     * - `new Texture` の発行を「1フレームあたり最大 {@link MAX_TEXTURE_PER_FRAME} 個」
+     *   に制限することで GPU upload + mipmap 生成のスパイクを時間方向に分散する (Issue #245)
+     * - スロット枠は requestAnimationFrame でフレーム境界ごとにリセットされるため、
+     *   onLoad/onError が呼ばれないケース（tile unload による先 dispose、
+     *   ネットワーク中断など）でも永久占有は発生しない
+     * - キュー待ち中は `mat.diffuseTexture` が前のテクスチャのまま残るので、
      *   描画されないタイル（空が透ける症状）にはならない
      */
-    const MAX_TEXTURE_INFLIGHT = 2;
-    let textureInflight = 0;
-    const textureQueue: (() => void)[] = [];
-    const releaseTextureSlot = (): void => {
-        textureInflight--;
-        const next = textureQueue.shift();
-        if (next) {
-            textureInflight++;
-            next();
+    const MAX_TEXTURE_PER_FRAME = 2;
+    let textureBudgetUsed = 0;
+    const textureJobQueue: (() => void)[] = [];
+    let textureFlushScheduled = false;
+    const flushTextureJobs = (): void => {
+        textureFlushScheduled = false;
+        textureBudgetUsed = 0;
+        while (textureBudgetUsed < MAX_TEXTURE_PER_FRAME && textureJobQueue.length > 0) {
+            const job = textureJobQueue.shift();
+            if (!job) break;
+            textureBudgetUsed++;
+            job();
+        }
+        if (textureJobQueue.length > 0) scheduleTextureFlush();
+    };
+    const scheduleTextureFlush = (): void => {
+        if (textureFlushScheduled) return;
+        textureFlushScheduled = true;
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(flushTextureJobs);
+        } else {
+            setTimeout(flushTextureJobs, 16);
         }
     };
-    const runOnTextureSlot = (job: () => void): void => {
-        if (textureInflight < MAX_TEXTURE_INFLIGHT) {
-            textureInflight++;
+    const enqueueTextureJob = (job: () => void): void => {
+        if (textureBudgetUsed < MAX_TEXTURE_PER_FRAME) {
+            textureBudgetUsed++;
+            scheduleTextureFlush(); // 次フレームで budget をリセット
             job();
-        } else {
-            textureQueue.push(job);
+            return;
         }
+        textureJobQueue.push(job);
+        scheduleTextureFlush();
     };
 
     const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
@@ -541,23 +559,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const texReqId = (textureRequestIds.get(mesh) ?? 0) + 1;
         textureRequestIds.set(mesh, texReqId);
 
-        runOnTextureSlot(() => {
+        enqueueTextureJob(() => {
             // キュー待ち中に別のリクエストで上書き / mesh 破棄されていたら即スキップ
             if (textureRequestIds.get(mesh) !== texReqId
                 || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
-                releaseTextureSlot();
                 return;
             }
 
             const mat = mesh.material as StandardMaterial;
             const prevTex = mat.diffuseTexture;
             const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
-            let slotReleased = false;
-            const release = (): void => {
-                if (slotReleased) return;
-                slotReleased = true;
-                releaseTextureSlot();
-            };
 
             const tex = new Texture(
                 url,
@@ -566,24 +577,20 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 true,
                 Texture.TRILINEAR_SAMPLINGMODE,
                 () => {
-                    // GPU upload + mipmap 生成完了時点でスロットを返却
+                    // 既に別タイル用へ差し替わっていれば自身を破棄
                     if (textureRequestIds.get(mesh) !== texReqId
                         || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
                         tex.dispose();
-                    } else if (prevTex && prevTex !== tex) {
-                        prevTex.dispose();
+                        return;
                     }
-                    release();
+                    if (prevTex && prevTex !== tex) prevTex.dispose();
                 },
                 () => {
-                    // 取得失敗時もスロット返却
                     if (textureRequestIds.get(mesh) !== texReqId) {
                         tex.dispose();
-                        release();
                         return;
                     }
                     tex.dispose();
-                    release();
                     if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
                 }
             );
