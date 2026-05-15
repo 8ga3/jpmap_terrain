@@ -516,14 +516,17 @@ export class JpmapTerrain {
      * Follow カメラなど、terrain 用 ArcRotateCamera とは別のカメラで描画しているときに、
      * そのカメラの frustum planes とワールド位置を渡してタイルを更新する。
      * `flyTo` と異なりカメラアニメーションは行わない。
+     * 戻り値は内部のタイル fetch/mesh 適用が完了したら resolve する Promise。
      */
     public refreshTerrainWithExternalFrustum(
         lat: number,
         lon: number,
         frustumPlanes: { normal: { x: number; y: number; z: number }; d: number }[],
         cameraPosition: { x: number; y: number; z: number },
-    ): void {
-        this._controller?.refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition);
+    ): Promise<void> {
+        return this._controller
+            ? this._controller.refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition)
+            : Promise.resolve();
     }
 
     /**
