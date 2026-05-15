@@ -1073,6 +1073,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const rid = ++requestId;
 
             const center = toTileXY(lat, lon, zoom);
+            // 中心タイルが変わった場合のみ reposition する
+            const needsReposition = !currentCenter ||
+                currentCenter.x !== center.x ||
+                currentCenter.y !== center.y;
             currentCenter = { zoom, x: center.x, y: center.y };
             currentLat = lat;
 
@@ -1095,7 +1099,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 rootSearchRadius,
             });
 
-            await applyVisibleTiles(visibleEntries, rid, true);
+            await applyVisibleTiles(visibleEntries, rid, needsReposition);
         },
 
         setMapType(mapType: MapType): void {

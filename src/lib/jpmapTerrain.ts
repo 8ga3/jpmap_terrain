@@ -541,6 +541,14 @@ export class JpmapTerrain {
         this._controller?.attachTileCamera();
     }
 
+    /**
+     * コンパスの回転角を外部から上書きする (Issue #245)。
+     * `null` を渡すと通常の terrain camera 連動に戻る。
+     */
+    public setExternalCompassDegrees(degrees: number | null): void {
+        this._controller?.setExternalCompassDegrees(degrees);
+    }
+
     // ---- UI 表示制御 (spec §3.3.2) ----
 
     public get showCompass(): boolean {
