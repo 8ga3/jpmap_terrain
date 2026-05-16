@@ -393,7 +393,6 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /** 既存 activeTiles の position/scaling/標高を現在の中心・高度オフセットに合わせて再配置 */
-    /** 既存 activeTiles の position/scaling/標高を現在の中心・高度オフセットに合わせて再配置 */
     const repositionActiveTiles = async (): Promise<void> => {
         repositionActiveTilesGeom();
         if (!currentCenter) return;
@@ -615,7 +614,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     // GPU テクスチャが確実に存在する onLoad 内で diffuseTexture を差し替え、
                     // null gpu texture bind エラーを防ぐ。
                     mat.diffuseTexture = tex;
-                    if (prevTex && prevTex !== tex) prevTex.dispose();
+                    // テクスチャ準備完了後にメッシュを表示する（acquire 時は非表示）。
+                    mesh.setEnabled(true);
+                    if (prevTex && prevTex !== tex) {
+                        // 旧テクスチャが同フレームの GPU コマンドバッファにまだ残っている場合、
+                        // 即座に dispose すると WebGPU の "Destroyed texture used in a submit"
+                        // エラーになる。次フレームまで遅延して安全に破棄する。
+                        setTimeout(() => prevTex.dispose(), 0);
+                    }
                 },
                 () => {
                     if (textureRequestIds.get(mesh) !== texReqId) {
@@ -623,7 +629,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         return;
                     }
                     tex.dispose();
-                    if (targetZoom > minZoom) applyTexture(mesh, coord, targetZoom - 1);
+                    if (targetZoom > minZoom) {
+                        applyTexture(mesh, coord, targetZoom - 1);
+                    } else {
+                        // 全 zoom で失敗 — テクスチャなしでもメッシュは表示する
+                        mesh.setEnabled(true);
+                    }
                 }
             );
 
@@ -1236,6 +1247,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             heightScale;
 
         const visibleEntries = computeVisible(frustumPlanes, maxElevation);
+        // 既存タイルの position を現在の currentCenter に合わせて再配置する。
+        // Follow モード離脱直後など、currentCenter が変わった状態で呼ばれた場合に
+        // 古い位置のままのタイルが残るのを防ぐ。
+        repositionActiveTilesGeom();
         await applyVisibleTiles(visibleEntries, rid, false);
     };
 
