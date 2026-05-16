@@ -514,7 +514,12 @@ export class JpmapTerrain {
      * 外部カメラの frustum でタイルの可視判定・LOD 更新を行う (C案 / Issue #245)。
      *
      * Follow カメラなど、terrain 用 ArcRotateCamera とは別のカメラで描画しているときに、
-     * そのカメラの frustum planes とワールド位置を渡してタイルを更新する。
+     * そのカメラの frustum planes と位置を渡してタイルを更新する。
+     *
+     * @param cameraPosition terrain camera target 基準のローカル座標系でのカメラ位置。
+     *   SSE (Screen-Space Error) による LOD 距離計算に使用される。
+     *   絶対ワールド座標ではなく、terrain camera target からの相対位置を渡すこと。
+     *
      * `flyTo` と異なりカメラアニメーションは行わない。
      * 戻り値は内部のタイル fetch/mesh 適用が完了したら resolve する Promise。
      */
