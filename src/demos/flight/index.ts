@@ -200,7 +200,7 @@ const start = async (): Promise<void> => {
         followDragging = true;
         followLastX = e.clientX;
         followLastY = e.clientY;
-        e.stopPropagation();
+        e.stopImmediatePropagation();
     };
     const onFollowPointerMove = (e: PointerEvent): void => {
         if (!followDragging || !followCamera) return;
@@ -217,11 +217,11 @@ const start = async (): Promise<void> => {
         followCamHeightOffset = Math.max(1, Math.min(maxOffset, followCamHeightOffset + dy * DRAG_HEIGHT_M_PER_PX));
 
         updateFollowCamDisplay();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
     };
     const onFollowPointerUp = (e: PointerEvent): void => {
         followDragging = false;
-        e.stopPropagation();
+        e.stopImmediatePropagation();
     };
     const onFollowWheel = (e: WheelEvent): void => {
         if (!followCamera) return;
@@ -230,7 +230,7 @@ const start = async (): Promise<void> => {
         const maxOffset = followCamRadius * FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG;
         followCamHeightOffset = Math.min(followCamHeightOffset, maxOffset);
         updateFollowCamDisplay();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         e.preventDefault();
     };
 
@@ -281,6 +281,10 @@ const start = async (): Promise<void> => {
         if (arcCam) {
             scene.activeCamera = arcCam;
         }
+        // Follow 中の最新タイル中心座標で ArcRotateCamera を再配置してから
+        // attachTileCamera を呼ぶ。そうしないと旧座標のタイルがロードされる。
+        viewer.lat = lastRefreshLat;
+        viewer.lon = lastRefreshLon;
         // terrain camera の自動タイル更新を再開
         viewer.attachTileCamera();
         // コンパスを通常モードに戻す
@@ -401,8 +405,12 @@ const start = async (): Promise<void> => {
     const switchCameraMode = (mode: CameraMode): void => {
         if (mode === currentCameraMode) return;
 
-        // 前のモードの後処理
+        // Follow モードから離脱する場合は、先に viewMode を確定させてから
+        // deactivateFollowCamera を呼ぶ。attachTileCamera 内の
+        // refreshFromCamera が正しいフラスタム（2D orthographic /
+        // 3D perspective）で可視タイルを計算できるようにする。
         if (currentCameraMode === "follow") {
+            viewer.viewMode = mode === "follow" ? "3d" : mode;
             deactivateFollowCamera();
         }
 
