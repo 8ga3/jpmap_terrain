@@ -917,6 +917,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
         void Promise.all(promises).then(() => {
             terrainUpdatedCallback?.();
+        }).catch(() => {
+            // Worker エラーや mesh dispose 時の reject は無視する。
+            // 再ステッチ失敗は致命的ではなく、次回のタイル更新で再試行される。
         });
     };
 
