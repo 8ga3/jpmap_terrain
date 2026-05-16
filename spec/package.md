@@ -992,7 +992,7 @@ Follow カメラなど Babylon.js の ArcRotateCamera 以外のカメラで地�
 | `lat` | `number` | (必須) | タイル中心の緯度 (度) |
 | `lon` | `number` | (必須) | タイル中心の経度 (度) |
 | `frustumPlanes` | `{ normal: { x, y, z }; d: number }[]` | (必須) | 6 面の視錐台平面（Babylon.js の `Frustum.GetPlanesToRef` 形式） |
-| `cameraPosition` | `{ x: number; y: number; z: number }` | (必須) | カメラのワールド座標（terrain camera target 基準のローカル座標系） |
+| `cameraPosition` | `{ x: number; y: number; z: number }` | (必須) | カメラ位置（terrain camera target 基準のローカル座標系）。SSE 距離計算に使用 |
 | `lodBias` | `number` | `0` | タイル LOD レベルを下げるバイアス（0 = 通常、大きいほど粗いタイルを使用） |
 
 ##### 3.3.14.3 利用例
