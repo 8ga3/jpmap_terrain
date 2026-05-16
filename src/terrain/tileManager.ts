@@ -1311,6 +1311,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     void refreshFromCamera();
                 }, debounceMs);
             });
+            // 再アタッチ直後はカメラが動いていなくても view matrix イベントが発火しないため、
+            // 即時 refresh を1回発火させてタイルを確実に更新する。
+            void refreshFromCamera();
         },
 
         detachCamera(): void {
