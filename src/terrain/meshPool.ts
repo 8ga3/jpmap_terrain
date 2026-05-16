@@ -71,7 +71,9 @@ export const createMeshPool = (opts: MeshPoolOptions): MeshPool => {
     return {
         acquire(): Mesh {
             const mesh = pool.pop() ?? createNewMesh();
-            mesh.setEnabled(true);
+            // テクスチャが onLoad で設定されるまで描画しない。
+            // diffuseTexture=null のまま描画すると WebGPU で null bind エラーになる。
+            mesh.setEnabled(false);
             active.add(mesh);
             shadowHooks?.onAcquire(mesh);
             return mesh;
@@ -82,11 +84,13 @@ export const createMeshPool = (opts: MeshPoolOptions): MeshPool => {
             shadowHooks?.onRelease(mesh);
             active.delete(mesh);
             mesh.setEnabled(false);
-            // テクスチャを解放
+            // テクスチャを解放 — 同フレームの GPU コマンドバッファがまだ
+            // 参照している場合があるため、次フレームまで遅延して破棄する。
             const mat = mesh.material as StandardMaterial | null;
             if (mat?.diffuseTexture) {
-                mat.diffuseTexture.dispose();
+                const tex = mat.diffuseTexture;
                 mat.diffuseTexture = null;
+                setTimeout(() => tex.dispose(), 0);
             }
             pool.push(mesh);
         },
