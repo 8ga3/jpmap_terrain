@@ -313,4 +313,56 @@ describe("computeQuadtreeTiles", () => {
             warnSpy.mockRestore();
         }
     });
+
+    it("lodBias > 0 で粗いタイル（低 zoom）が選ばれやすくなる", () => {
+        // 中遠距離カメラで zoom 分布が混在する条件。
+        // lodBias=2 は effectiveSseThreshold を4倍にし、早期に採用される。
+        const scaled: Partial<QuadtreeTilesOptions> = {
+            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            rootSearchRadius: 0,
+            sseThreshold: 2.0,
+            cameraPosition: { x: 0, y: 1e5, z: 0 },
+            viewportHeight: 500,
+        };
+        const noBias = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            lodBias: 0,
+        });
+        const withBias = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            lodBias: 2,
+        });
+        const avg = (entries: typeof noBias): number =>
+            entries.reduce((s, e) => s + e.coord.zoom, 0) / Math.max(1, entries.length);
+
+        expect(noBias.length).toBeGreaterThan(0);
+        expect(withBias.length).toBeGreaterThan(0);
+        // noBias は深く分割されるが、withBias は途中で採用される
+        expect(avg(withBias)).toBeLessThan(avg(noBias));
+    });
+
+    it("lodBias=0 は lodBias 省略と同じ結果になる", () => {
+        const scaled: Partial<QuadtreeTilesOptions> = {
+            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            rootSearchRadius: 0,
+            sseThreshold: 2.0,
+            cameraPosition: { x: 0, y: 1e5, z: 0 },
+            viewportHeight: 500,
+        };
+        const omitted = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+        });
+        const explicit = computeQuadtreeTiles({
+            ...baseOpts,
+            ...scaled,
+            lodBias: 0,
+        });
+        expect(omitted.length).toBe(explicit.length);
+        const keys = (entries: typeof omitted): string[] =>
+            entries.map((e) => `${e.coord.zoom}/${e.coord.x}/${e.coord.y}`).sort();
+        expect(keys(omitted)).toEqual(keys(explicit));
+    });
 });
