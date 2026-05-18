@@ -26,6 +26,7 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
+import { createPipCamera, PipState } from "./pipCamera";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 const DEMO_MOUNT_ID = "root";
@@ -142,6 +143,89 @@ const start = async (): Promise<void> => {
         rotation: { y: circularOrbitHeading(angleDeg) },
         scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL },
         gravity: false,
+    });
+
+    // --- PIP カメラセットアップ ---
+    let pipState: PipState | null = null;
+    const setupPip = (): void => {
+        const scene = viewer.__debugScene;
+        if (!scene) return;
+        pipState = createPipCamera(scene);
+
+        // activeCameras モードに切り替え
+        const mainCam = scene.activeCamera;
+        if (mainCam) {
+            scene.activeCameras = [mainCam, pipState.camera];
+            scene.activeCamera = null;
+        }
+    };
+    setupPip();
+
+    /** Ensure PIP camera is always in activeCameras as the last element */
+    const ensurePipInActiveCameras = (): void => {
+        const scene = viewer.__debugScene;
+        if (!scene || !pipState) return;
+        const mainCam = scene.activeCamera ?? scene.activeCameras?.[0];
+        if (mainCam) {
+            scene.activeCameras = [mainCam, pipState.camera];
+            scene.activeCamera = null;
+        }
+    };
+
+    // --- PIP オーバーレイ同期 & ドラッグリサイズ ---
+    const pipFrame = document.getElementById("pip-frame");
+    const pipResizeHandle = document.getElementById("pip-resize-handle");
+
+    const updatePipOverlay = (): void => {
+        if (!pipFrame || !pipState) return;
+        const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
+        if (!canvas) return;
+        const canvasWidth = canvas.clientWidth;
+        const pipPixelWidth = pipState.widthFraction * canvasWidth;
+        const pipPixelHeight = pipPixelWidth * (4 / 3);
+        pipFrame.style.width = `${pipPixelWidth}px`;
+        pipFrame.style.height = `${pipPixelHeight}px`;
+        pipFrame.style.left = "12px";
+        pipFrame.style.bottom = "12px";
+    };
+    updatePipOverlay();
+
+    if (pipResizeHandle && pipFrame) {
+        let resizing = false;
+        let resizeStartX = 0;
+        let resizeStartWidth = 0;
+
+        pipResizeHandle.addEventListener("pointerdown", (e: PointerEvent) => {
+            resizing = true;
+            resizeStartX = e.clientX;
+            resizeStartWidth = pipFrame!.clientWidth;
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            e.stopPropagation();
+            e.preventDefault();
+        });
+
+        document.addEventListener("pointermove", (e: PointerEvent) => {
+            if (!resizing || !pipState) return;
+            const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
+            if (!canvas) return;
+            const dx = e.clientX - resizeStartX;
+            const newPixelWidth = Math.max(50, resizeStartWidth + dx);
+            const canvasWidth = canvas.clientWidth;
+            pipState.widthFraction = newPixelWidth / canvasWidth;
+            pipState.refreshViewport();
+            updatePipOverlay();
+        });
+
+        document.addEventListener("pointerup", () => {
+            resizing = false;
+        });
+    }
+
+    window.addEventListener("resize", () => {
+        if (pipState) {
+            pipState.refreshViewport();
+            updatePipOverlay();
+        }
     });
 
     // --- Follow カメラセットアップ（FreeCamera + 毎フレーム手動位置計算） ---
@@ -265,7 +349,12 @@ const start = async (): Promise<void> => {
             viewer.detachTileCamera();
             // 即座にカメラ位置を飛行機の後方に設定
             updateFollowCameraPosition();
-            scene.activeCamera = followCamera;
+            if (pipState) {
+                scene.activeCameras = [followCamera, pipState.camera];
+                scene.activeCamera = null;
+            } else {
+                scene.activeCamera = followCamera;
+            }
             attachFollowPointerHandlers();
             showFollowCamInfo(true);
             updateFollowCamDisplay();
@@ -278,7 +367,10 @@ const start = async (): Promise<void> => {
 
         detachFollowPointerHandlers();
         const arcCam = scene.getCameraByName("terrain-camera");
-        if (arcCam) {
+        if (pipState && arcCam) {
+            scene.activeCameras = [arcCam, pipState.camera];
+            scene.activeCamera = null;
+        } else if (arcCam) {
             scene.activeCamera = arcCam;
         }
         // Follow 中の最新タイル中心座標で ArcRotateCamera を再配置してから
@@ -434,6 +526,7 @@ const start = async (): Promise<void> => {
         }
 
         updateCameraModeButtons();
+        ensurePipInActiveCameras();
     };
 
     if (camera3dBtn) {
@@ -626,6 +719,19 @@ const start = async (): Promise<void> => {
                 const headingDeg = circularOrbitHeading(angleDeg);
                 const camAzimuth = (headingDeg + followCamRotationOffset + 180) % 360;
                 viewer.setExternalCompassDegrees(camAzimuth);
+            }
+        }
+
+        // PIP カメラ更新: 飛行機の現在位置と方位を反映
+        if (pipState) {
+            const scene = viewer.__debugScene;
+            const targetNode = scene?.getTransformNodeByName(`model-${MODEL_ID}`);
+            if (targetNode) {
+                const meshes = targetNode.getChildMeshes(false);
+                if (meshes.length > 0) {
+                    meshes[0].computeWorldMatrix(true);
+                    pipState.update(meshes[0].absolutePosition, heading);
+                }
             }
         }
 
