@@ -36,6 +36,13 @@ const PIP_WIDTH_FRACTION_MAX = 0.4;
 const PIP_BELLY_TILT_DEG = 45;
 /** PIP カメラのターゲットを飛行機より下に置くオフセット (m) */
 const PIP_TARGET_ALTITUDE_OFFSET_M = 200;
+/**
+ * PIP Viewer 状態 (lat/lon/altitude/azimuth) を更新する間隔 (ms)。
+ * 毎フレーム setter を呼ぶと attachTileCamera の debounce が
+ * 永続的に再延長され refreshTerrain が走らずタイルが消えるため、
+ * 内部 debounce を上回る間隔でスロットルする。
+ */
+const PIP_UPDATE_INTERVAL_MS = 300;
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "plane";
@@ -164,6 +171,7 @@ const start = async (): Promise<void> => {
 
     let pipViewer: JpmapTerrain | null = null;
     let pipWidthFraction = PIP_WIDTH_FRACTION_DEFAULT;
+    let lastPipUpdateMs = 0;
 
     const updatePipFrameSize = (): void => {
         if (!pipFrame) return;
@@ -201,6 +209,19 @@ const start = async (): Promise<void> => {
         pipViewer.showScaleBar = false;
         pipViewer.showMapToggle = false;
         pipViewer.showAttribution = false;
+        // PIP はリサイズ以外のマウス操作を一切受け付けない (Issue #264)。
+        // - secondary canvas に attach されている Babylon カメラ入力を解除
+        // - canvas 自体の pointer-events を切ってクリック/ドラッグを無視する
+        const pipScene = pipViewer.__debugScene;
+        const pipCanvas = pipScene?.getEngine().getRenderingCanvas();
+        const pipCam = pipScene?.activeCamera;
+        if (pipCam) {
+            pipCam.detachControl();
+            pipCam.inputs.clear();
+        }
+        if (pipCanvas) {
+            pipCanvas.style.pointerEvents = "none";
+        }
         updatePipFrameSize();
     }
 
@@ -725,10 +746,17 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // PIP セカンダリ Viewer 更新: 飛行機の現在 lat/lon/方位に追従
+        // PIP セカンダリ Viewer 更新: 飛行機の現在 lat/lon/方位に追従。
         // セカンダリ Viewer は独立 Scene/タイルマネージャーで動作するため、
         // メイン側のドラッグ/ズーム/カメラモード変更の影響を一切受けない。
-        if (pipViewer) {
+        //
+        // ⚠ 毎フレーム setter を呼ぶと、attachTileCamera の
+        //   onViewMatrixChangedObservable debounce が毎フレーム再延長され、
+        //   refreshTerrain が一度も走らずタイル期限切れで PIP が水色になる。
+        //   → 一定間隔 (PIP_UPDATE_INTERVAL_MS) でのみ setter を呼ぶ。
+        const now = performance.now();
+        if (pipViewer && now - lastPipUpdateMs >= PIP_UPDATE_INTERVAL_MS) {
+            lastPipUpdateMs = now;
             pipViewer.lat = pos.lat;
             pipViewer.lon = pos.lon;
             pipViewer.altitude = altitudeM + PIP_TARGET_ALTITUDE_OFFSET_M;
