@@ -149,12 +149,21 @@
       position: absolute;
       border: 2px solid rgba(255, 255, 255, 0.6);
       border-radius: 4px;
-      pointer-events: none;
+      pointer-events: auto;
       box-sizing: border-box;
       bottom: 12px;
       left: 12px;
       width: 20%;
-      aspect-ratio: 3 / 4;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #pip-mount {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
     }
 
     #pip-resize-handle {
@@ -168,6 +177,7 @@
       border-radius: 50%;
       cursor: ne-resize;
       pointer-events: auto;
+      z-index: 2;
     }
 
     #pip-resize-handle:hover {
@@ -183,6 +193,7 @@
       color: rgba(255, 255, 255, 0.8);
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
       pointer-events: none;
+      z-index: 2;
     }
   </style>
 </head>
@@ -244,6 +255,7 @@
       </div>
     </div>
     <div id="pip-frame">
+      <div id="pip-mount"></div>
       <span id="pip-label">機体カメラ</span>
       <div id="pip-resize-handle"></div>
     </div>

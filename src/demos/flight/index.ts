@@ -26,8 +26,16 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
-import { createPipCamera, PipState } from "./pipCamera";
 import planeGlbUrl from "../../../assets/plane.glb";
+
+/** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
+const PIP_WIDTH_FRACTION_DEFAULT = 0.2;
+const PIP_WIDTH_FRACTION_MIN = 0.1;
+const PIP_WIDTH_FRACTION_MAX = 0.4;
+/** PIP belly カメラの俯角（度）— 水平から下方向の角度 */
+const PIP_BELLY_TILT_DEG = 70;
+/** PIP カメラのターゲットを飛行機より下に置くオフセット (m) */
+const PIP_TARGET_ALTITUDE_OFFSET_M = 200;
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "plane";
@@ -145,50 +153,48 @@ const start = async (): Promise<void> => {
         gravity: false,
     });
 
-    // --- PIP カメラセットアップ ---
-    let pipState: PipState | null = null;
-    const setupPip = (): void => {
-        const scene = viewer.__debugScene;
-        if (!scene) return;
-        pipState = createPipCamera(scene);
-
-        // activeCameras モードに切り替え
-        const mainCam = scene.activeCamera;
-        if (mainCam) {
-            scene.activeCameras = [mainCam, pipState.camera];
-            scene.activeCamera = null;
-        }
-    };
-    setupPip();
-
-    /** Ensure PIP camera is always in activeCameras as the last element */
-    const ensurePipInActiveCameras = (): void => {
-        const scene = viewer.__debugScene;
-        if (!scene || !pipState) return;
-        const mainCam = scene.activeCamera ?? scene.activeCameras?.[0];
-        if (mainCam) {
-            scene.activeCameras = [mainCam, pipState.camera];
-            scene.activeCamera = null;
-        }
-    };
-
-    // --- PIP オーバーレイ同期 & ドラッグリサイズ ---
+    // --- PIP (Picture-in-Picture) セカンダリ Viewer セットアップ ---
+    // Issue #264 Option C: 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
+    // - メイン Viewer の入力系・タイル管理・カメラに一切手を入れない（バグ非導入）
+    // - PIP は独立タイルマネージャーで動作し、メインのズーム/ドラッグの影響を受けない
+    // - 将来の N 分割ビューも `JpmapTerrain` を複数並べるだけで実現可能
+    const pipMount = document.getElementById("pip-mount");
     const pipFrame = document.getElementById("pip-frame");
     const pipResizeHandle = document.getElementById("pip-resize-handle");
 
-    const updatePipOverlay = (): void => {
-        if (!pipFrame || !pipState) return;
+    let pipViewer: JpmapTerrain | null = null;
+    let pipWidthFraction = PIP_WIDTH_FRACTION_DEFAULT;
+
+    const updatePipFrameSize = (): void => {
+        if (!pipFrame) return;
         const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
         if (!canvas) return;
-        const canvasWidth = canvas.clientWidth;
-        const pipPixelWidth = pipState.widthFraction * canvasWidth;
-        const pipPixelHeight = pipPixelWidth * (4 / 3);
-        pipFrame.style.width = `${pipPixelWidth}px`;
-        pipFrame.style.height = `${pipPixelHeight}px`;
-        pipFrame.style.left = "12px";
-        pipFrame.style.bottom = "12px";
+        const pixelWidth = pipWidthFraction * canvas.clientWidth;
+        pipFrame.style.width = `${pixelWidth}px`;
+        // 高さは CSS の aspect-ratio: 4/3 に任せる
     };
-    updatePipOverlay();
+
+    if (pipMount) {
+        const pipOpts: JpmapTerrainOptions = {
+            engine: opts.engine,
+            lat: initPos.lat,
+            lon: initPos.lon,
+            altitude: altitudeM,
+            azimuth: circularOrbitHeading(angleDeg),
+            tilt: PIP_BELLY_TILT_DEG,
+            mapType: opts.mapType,
+            showViewModeButton: false,
+        };
+        pipViewer = await JpmapTerrain.create(pipMount, pipOpts);
+        // セカンダリ Viewer の UI を全て非表示にする
+        // （compass/zoom/mapToggle/scaleBar/attribution は document.body へ append されるため）
+        pipViewer.showCompass = false;
+        pipViewer.showZoomButtons = false;
+        pipViewer.showScaleBar = false;
+        pipViewer.showMapToggle = false;
+        pipViewer.showAttribution = false;
+        updatePipFrameSize();
+    }
 
     if (pipResizeHandle && pipFrame) {
         let resizing = false;
@@ -198,22 +204,25 @@ const start = async (): Promise<void> => {
         pipResizeHandle.addEventListener("pointerdown", (e: PointerEvent) => {
             resizing = true;
             resizeStartX = e.clientX;
-            resizeStartWidth = pipFrame!.clientWidth;
+            resizeStartWidth = pipFrame.clientWidth;
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
             e.stopPropagation();
             e.preventDefault();
         });
 
         document.addEventListener("pointermove", (e: PointerEvent) => {
-            if (!resizing || !pipState) return;
+            if (!resizing) return;
             const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
             if (!canvas) return;
             const dx = e.clientX - resizeStartX;
             const newPixelWidth = Math.max(50, resizeStartWidth + dx);
             const canvasWidth = canvas.clientWidth;
-            pipState.widthFraction = newPixelWidth / canvasWidth;
-            pipState.refreshViewport();
-            updatePipOverlay();
+            const fraction = newPixelWidth / canvasWidth;
+            pipWidthFraction = Math.max(
+                PIP_WIDTH_FRACTION_MIN,
+                Math.min(PIP_WIDTH_FRACTION_MAX, fraction),
+            );
+            updatePipFrameSize();
         });
 
         document.addEventListener("pointerup", () => {
@@ -221,12 +230,7 @@ const start = async (): Promise<void> => {
         });
     }
 
-    window.addEventListener("resize", () => {
-        if (pipState) {
-            pipState.refreshViewport();
-            updatePipOverlay();
-        }
-    });
+    window.addEventListener("resize", updatePipFrameSize);
 
     // --- Follow カメラセットアップ（FreeCamera + 毎フレーム手動位置計算） ---
     // FollowCamera の内部補間を使わず、tick() で直接位置を設定する。
@@ -349,12 +353,7 @@ const start = async (): Promise<void> => {
             viewer.detachTileCamera();
             // 即座にカメラ位置を飛行機の後方に設定
             updateFollowCameraPosition();
-            if (pipState) {
-                scene.activeCameras = [followCamera, pipState.camera];
-                scene.activeCamera = null;
-            } else {
-                scene.activeCamera = followCamera;
-            }
+            scene.activeCamera = followCamera;
             attachFollowPointerHandlers();
             showFollowCamInfo(true);
             updateFollowCamDisplay();
@@ -367,10 +366,7 @@ const start = async (): Promise<void> => {
 
         detachFollowPointerHandlers();
         const arcCam = scene.getCameraByName("terrain-camera");
-        if (pipState && arcCam) {
-            scene.activeCameras = [arcCam, pipState.camera];
-            scene.activeCamera = null;
-        } else if (arcCam) {
+        if (arcCam) {
             scene.activeCamera = arcCam;
         }
         // Follow 中の最新タイル中心座標で ArcRotateCamera を再配置してから
@@ -526,7 +522,6 @@ const start = async (): Promise<void> => {
         }
 
         updateCameraModeButtons();
-        ensurePipInActiveCameras();
     };
 
     if (camera3dBtn) {
@@ -722,17 +717,14 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // PIP カメラ更新: 飛行機の現在位置と方位を反映
-        if (pipState) {
-            const scene = viewer.__debugScene;
-            const targetNode = scene?.getTransformNodeByName(`model-${MODEL_ID}`);
-            if (targetNode) {
-                const meshes = targetNode.getChildMeshes(false);
-                if (meshes.length > 0) {
-                    meshes[0].computeWorldMatrix(true);
-                    pipState.update(meshes[0].absolutePosition, heading);
-                }
-            }
+        // PIP セカンダリ Viewer 更新: 飛行機の現在 lat/lon/方位に追従
+        // セカンダリ Viewer は独立 Scene/タイルマネージャーで動作するため、
+        // メイン側のドラッグ/ズーム/カメラモード変更の影響を一切受けない。
+        if (pipViewer) {
+            pipViewer.lat = pos.lat;
+            pipViewer.lon = pos.lon;
+            pipViewer.altitude = altitudeM + PIP_TARGET_ALTITUDE_OFFSET_M;
+            pipViewer.azimuth = heading;
         }
 
         rafId = requestAnimationFrame(tick);
@@ -742,6 +734,9 @@ const start = async (): Promise<void> => {
     // ページ離脱時にアニメーションフレームをキャンセル
     window.addEventListener("beforeunload", () => {
         cancelAnimationFrame(rafId);
+        if (pipViewer) {
+            pipViewer.dispose();
+        }
     });
 };
 
