@@ -168,21 +168,32 @@
 
     #pip-resize-handle {
       position: absolute;
-      top: -6px;
-      right: -6px;
-      width: 14px;
-      height: 14px;
-      background: rgba(255, 255, 255, 0.8);
-      border: 1px solid rgba(0, 0, 0, 0.3);
-      border-radius: 50%;
+      top: 0;
+      right: 0;
+      width: 24px;
+      height: 24px;
       cursor: ne-resize;
-      pointer-events: auto;
-      z-index: 2;
+      z-index: 1001;
+      border-radius: 0 0 0 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.20);
+      transition: background 0.2s ease;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #pip-resize-handle::after {
+      content: '⤡';
+      font-size: 32px;
+      color: rgba(255, 255, 255, 0.7);
+      transform: scaleX(-1) translate(-1px, -3px);
+      line-height: 1;
     }
 
     #pip-resize-handle:hover {
-      background: #fff;
-      transform: scale(1.2);
+      background: rgba(33, 150, 243, 0.7);
     }
 
     #pip-label {
@@ -257,7 +268,7 @@
     <div id="pip-frame">
       <div id="pip-mount"></div>
       <span id="pip-label">機体カメラ</span>
-      <div id="pip-resize-handle"></div>
+      <div id="pip-resize-handle" title="サイズ変更" aria-label="サイズ変更"></div>
     </div>
   </div>
 </body>
