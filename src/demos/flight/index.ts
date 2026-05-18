@@ -32,10 +32,8 @@ import planeGlbUrl from "../../../assets/plane.glb";
 const PIP_WIDTH_FRACTION_DEFAULT = 0.2;
 const PIP_WIDTH_FRACTION_MIN = 0.1;
 const PIP_WIDTH_FRACTION_MAX = 0.4;
-/** PIP belly カメラの俯角（度）— 水平から下方向の角度 */
+/** PIP belly カメラの俯角（度）— 天頂角（垂直からの角度）。45 = 水平から 45° 下 */
 const PIP_BELLY_TILT_DEG = 45;
-/** PIP カメラのターゲットを飛行機より下に置くオフセット (m) */
-const PIP_TARGET_ALTITUDE_OFFSET_M = 200;
 /**
  * PIP Viewer 状態 (lat/lon/altitude/azimuth) を更新する間隔 (ms)。
  * 毎フレーム setter を呼ぶと attachTileCamera の debounce が
@@ -48,7 +46,7 @@ const PIP_UPDATE_INTERVAL_MS = 50;
  * 内部的に `sseThreshold *= 2^lodBias` として作用し、小さい PIP ウィンドウに
  * 過剰な高解像度タイルを読み込まないようにする。
  */
-const PIP_LOD_BIAS = 2;
+const PIP_LOD_BIAS = 1;
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "plane";
@@ -178,6 +176,8 @@ const start = async (): Promise<void> => {
     let pipViewer: JpmapTerrain | null = null;
     let pipWidthFraction = PIP_WIDTH_FRACTION_DEFAULT;
     let lastPipUpdateMs = 0;
+    /** PIP belly カメラ (FreeCamera)。飛行機と同じ位置に置き、機首方向の地面を見る。 */
+    let pipBellyCamera: FreeCamera | null = null;
 
     const updatePipFrameSize = (): void => {
         if (!pipFrame) return;
@@ -202,7 +202,7 @@ const start = async (): Promise<void> => {
             lat: initPos.lat,
             lon: initPos.lon,
             altitude: altitudeM,
-            azimuth: circularOrbitHeading(angleDeg),
+            azimuth: -circularOrbitHeading(angleDeg),
             tilt: PIP_BELLY_TILT_DEG,
             // PIP は写真タイルを表示 (Issue #264)
             mapType: "photo",
@@ -232,6 +232,23 @@ const start = async (): Promise<void> => {
         // PIP では LOD bias を効かせるため、自動タイル更新を停止して
         // 外部 frustum 経由で明示的に refresh する。
         pipViewer.detachTileCamera();
+
+        // PIP のレンダリングカメラを ArcRotateCamera から FreeCamera に差し替える。
+        // ArcRotateCamera は (target + radius * dir) で位置が決まるため、
+        // 「飛行機と同じ x,y,z」「機首方向 + 俯角の視線」を直接表現できない。
+        // FreeCamera を飛行機座標に置き、tilt と heading から決まる「地面交点」を
+        // ターゲットにして belly view を構成する。
+        if (pipScene) {
+            pipBellyCamera = new FreeCamera(
+                "pip-belly-camera",
+                new Vector3(0, altitudeM, 0),
+                pipScene,
+            );
+            pipBellyCamera.minZ = 0.5;
+            pipBellyCamera.maxZ = 400000;
+            pipBellyCamera.inputs.clear();
+            pipScene.activeCamera = pipBellyCamera;
+        }
         updatePipFrameSize();
     }
 
@@ -765,50 +782,53 @@ const start = async (): Promise<void> => {
         //   → PIP_UPDATE_INTERVAL_MS 間隔でスロットルし、かつ detachTileCamera 後に
         //     外部 frustum 経由で lodBias を効かせて refresh する。
         const now = performance.now();
-        if (pipViewer && now - lastPipUpdateMs >= PIP_UPDATE_INTERVAL_MS) {
+        if (pipViewer && pipBellyCamera && now - lastPipUpdateMs >= PIP_UPDATE_INTERVAL_MS) {
             lastPipUpdateMs = now;
-            // ⚠ lat/lon setter は内部で refreshTerrain(lodBias=0) を走らせるため、
-            //   下の refreshTerrainWithExternalFrustum(lodBias=2) と競合し
-            //   PIP がちらつく。タイル中心の更新は refreshTerrainWithExternalFrustum
-            //   側に一本化し、ここでは camera 姿勢のみ setter で反映する。
-            pipViewer.altitude = altitudeM + PIP_TARGET_ALTITUDE_OFFSET_M;
-            pipViewer.azimuth = heading;
 
-            // PIP の terrain-camera で frustum を構築し、lodBias=2 で
+            // PIP terrain は (pos.lat, pos.lon) を中心に refresh するため、
+            // PIP world 原点 (0,0,0) = 飛行機直下の海面 (Y=0)、飛行機の PIP world
+            // 座標は (0, altitudeM, 0)。FreeCamera をその位置に置く。
+            pipBellyCamera.position.set(0, altitudeM, 0);
+
+            // ターゲット: 機首方向 (heading) に俯角 PIP_BELLY_TILT_DEG (天頂角) で
+            // 伸ばしたレイと Y=0 (海面) との交点。
+            //   水平距離 d = altitudeM * tan(tiltFromZenith)
+            //   forwardX = sin(heading), forwardZ = cos(heading) (北=+Z 左手系)
+            const headingRad = (heading * Math.PI) / 180;
+            const tiltRad = (PIP_BELLY_TILT_DEG * Math.PI) / 180;
+            const horizontalDist = altitudeM * Math.tan(tiltRad);
+            const targetX = Math.sin(headingRad) * horizontalDist;
+            const targetZ = Math.cos(headingRad) * horizontalDist;
+            pipBellyCamera.setTarget(new Vector3(targetX, 0, targetZ));
+
+            // PIP belly カメラの frustum を構築し、lodBias で
             // タイル中心 (pos.lat, pos.lon) を更新する。
-            const pipScene = pipViewer.__debugScene;
-            const pipTerrainCam = pipScene?.getCameraByName("terrain-camera");
-            if (pipTerrainCam) {
-                const viewMat = pipTerrainCam.getViewMatrix();
-                const projMat = pipTerrainCam.getProjectionMatrix();
-                const transform = Matrix.Identity();
-                viewMat.multiplyToRef(projMat, transform);
-                const rawPlanes: Plane[] = Array.from(
-                    { length: 6 },
-                    () => new Plane(0, 0, 0, 0),
-                );
-                Frustum.GetPlanesToRef(transform, rawPlanes);
-                const frustumPlanes = rawPlanes.map((p) => ({
-                    normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
-                    d: p.d,
-                }));
-                const target = "target" in pipTerrainCam
-                    ? (pipTerrainCam as { target: Vector3 }).target
-                    : Vector3.Zero();
-                const camPos = pipTerrainCam.position;
-                const cameraPosition = {
-                    x: camPos.x - target.x,
-                    y: camPos.y - target.y,
-                    z: camPos.z - target.z,
-                };
-                void pipViewer.refreshTerrainWithExternalFrustum(
-                    pos.lat,
-                    pos.lon,
-                    frustumPlanes,
-                    cameraPosition,
-                    PIP_LOD_BIAS,
-                );
-            }
+            const viewMat = pipBellyCamera.getViewMatrix();
+            const projMat = pipBellyCamera.getProjectionMatrix();
+            const transform = Matrix.Identity();
+            viewMat.multiplyToRef(projMat, transform);
+            const rawPlanes: Plane[] = Array.from(
+                { length: 6 },
+                () => new Plane(0, 0, 0, 0),
+            );
+            Frustum.GetPlanesToRef(transform, rawPlanes);
+            const frustumPlanes = rawPlanes.map((p) => ({
+                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+                d: p.d,
+            }));
+            // PIP terrain target は世界原点 (0,0,0) なのでカメラ位置をそのまま渡す。
+            const cameraPosition = {
+                x: pipBellyCamera.position.x,
+                y: pipBellyCamera.position.y,
+                z: pipBellyCamera.position.z,
+            };
+            void pipViewer.refreshTerrainWithExternalFrustum(
+                pos.lat,
+                pos.lon,
+                frustumPlanes,
+                cameraPosition,
+                PIP_LOD_BIAS,
+            );
         }
 
         rafId = requestAnimationFrame(tick);
