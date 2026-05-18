@@ -35,12 +35,6 @@ const PIP_WIDTH_FRACTION_MAX = 0.4;
 /** PIP belly カメラの俯角（度）— 天頂角（垂直からの角度）。45 = 水平から 45° 下 */
 const PIP_BELLY_TILT_DEG = 45;
 /**
- * PIP の LOD を下げるための altitude 倍率。
- * lib 内部の SSE 計算は camera.radius (≈ altitude) に基づくため、
- * altitude を 2^lodBias 倍にすると lodBias 段分粗いタイルが選ばれる。
- */
-const PIP_LOD_ALTITUDE_SCALE = 2; // lodBias = 1 相当
-/**
  * PIP Viewer 状態 (lat/lon/altitude/azimuth) を更新する間隔 (ms)。
  * 毎フレーム setter を呼ぶと attachTileCamera の debounce が
  * 永続的に再延長され refreshTerrain が走らずタイルが消えるため、
@@ -767,7 +761,7 @@ const start = async (): Promise<void> => {
                 (111320 * Math.cos((pos.lat * Math.PI) / 180));
             pipViewer.lat = pos.lat + dLatDeg;
             pipViewer.lon = pos.lon + dLonDeg;
-            pipViewer.altitude = altitudeM * PIP_LOD_ALTITUDE_SCALE;
+            pipViewer.altitude = altitudeM;
             pipViewer.azimuth = -heading;
             pipViewer.tilt = PIP_BELLY_TILT_DEG;
         }
