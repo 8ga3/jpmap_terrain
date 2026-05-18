@@ -42,7 +42,13 @@ const PIP_TARGET_ALTITUDE_OFFSET_M = 200;
  * 永続的に再延長され refreshTerrain が走らずタイルが消えるため、
  * 内部 debounce を上回る間隔でスロットルする。
  */
-const PIP_UPDATE_INTERVAL_MS = 300;
+const PIP_UPDATE_INTERVAL_MS = 50;
+/**
+ * PIP のタイル粒度を下げる LOD bias (Issue #264)。
+ * 内部的に `sseThreshold *= 2^lodBias` として作用し、小さい PIP ウィンドウに
+ * 過剰な高解像度タイルを読み込まないようにする。
+ */
+const PIP_LOD_BIAS = 2;
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "plane";
@@ -198,7 +204,8 @@ const start = async (): Promise<void> => {
             altitude: altitudeM,
             azimuth: circularOrbitHeading(angleDeg),
             tilt: PIP_BELLY_TILT_DEG,
-            mapType: opts.mapType,
+            // PIP は写真タイルを表示 (Issue #264)
+            mapType: "photo",
             showViewModeButton: false,
         };
         pipViewer = await JpmapTerrain.create(pipMount, pipOpts);
@@ -222,6 +229,9 @@ const start = async (): Promise<void> => {
         if (pipCanvas) {
             pipCanvas.style.pointerEvents = "none";
         }
+        // PIP では LOD bias を効かせるため、自動タイル更新を停止して
+        // 外部 frustum 経由で明示的に refresh する。
+        pipViewer.detachTileCamera();
         updatePipFrameSize();
     }
 
@@ -750,10 +760,10 @@ const start = async (): Promise<void> => {
         // セカンダリ Viewer は独立 Scene/タイルマネージャーで動作するため、
         // メイン側のドラッグ/ズーム/カメラモード変更の影響を一切受けない。
         //
-        // ⚠ 毎フレーム setter を呼ぶと、attachTileCamera の
-        //   onViewMatrixChangedObservable debounce が毎フレーム再延長され、
-        //   refreshTerrain が一度も走らずタイル期限切れで PIP が水色になる。
-        //   → 一定間隔 (PIP_UPDATE_INTERVAL_MS) でのみ setter を呼ぶ。
+        // ⚠ 毎フレーム setter を呼ぶと、内部 debounce が毎フレーム再延長され
+        //   refreshTerrain が走らずタイル期限切れで PIP が水色になる。
+        //   → PIP_UPDATE_INTERVAL_MS 間隔でスロットルし、かつ detachTileCamera 後に
+        //     外部 frustum 経由で lodBias を効かせて refresh する。
         const now = performance.now();
         if (pipViewer && now - lastPipUpdateMs >= PIP_UPDATE_INTERVAL_MS) {
             lastPipUpdateMs = now;
@@ -761,6 +771,44 @@ const start = async (): Promise<void> => {
             pipViewer.lon = pos.lon;
             pipViewer.altitude = altitudeM + PIP_TARGET_ALTITUDE_OFFSET_M;
             pipViewer.azimuth = heading;
+
+            // PIP の terrain-camera で frustum を構築し、lodBias=2 で refresh。
+            // setter 内の自動 refresh は detachTileCamera 済みで onViewMatrixChange
+            // が監視されておらず走らないが、setter 自身が refreshTerrain を呼ぶため
+            // ここで lodBias=2 の refresh を後出しして上書きする (requestId 後勝ち)。
+            const pipScene = pipViewer.__debugScene;
+            const pipTerrainCam = pipScene?.getCameraByName("terrain-camera");
+            if (pipTerrainCam) {
+                const viewMat = pipTerrainCam.getViewMatrix();
+                const projMat = pipTerrainCam.getProjectionMatrix();
+                const transform = Matrix.Identity();
+                viewMat.multiplyToRef(projMat, transform);
+                const rawPlanes: Plane[] = Array.from(
+                    { length: 6 },
+                    () => new Plane(0, 0, 0, 0),
+                );
+                Frustum.GetPlanesToRef(transform, rawPlanes);
+                const frustumPlanes = rawPlanes.map((p) => ({
+                    normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+                    d: p.d,
+                }));
+                const target = "target" in pipTerrainCam
+                    ? (pipTerrainCam as { target: Vector3 }).target
+                    : Vector3.Zero();
+                const camPos = pipTerrainCam.position;
+                const cameraPosition = {
+                    x: camPos.x - target.x,
+                    y: camPos.y - target.y,
+                    z: camPos.z - target.z,
+                };
+                void pipViewer.refreshTerrainWithExternalFrustum(
+                    pos.lat,
+                    pos.lon,
+                    frustumPlanes,
+                    cameraPosition,
+                    PIP_LOD_BIAS,
+                );
+            }
         }
 
         rafId = requestAnimationFrame(tick);
