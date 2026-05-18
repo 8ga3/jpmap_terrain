@@ -170,6 +170,7 @@ const start = async (): Promise<void> => {
     let pipViewer: JpmapTerrain | null = null;
     let pipWidthFraction = PIP_WIDTH_FRACTION_DEFAULT;
     let lastPipUpdateMs = 0;
+    const pipCleanups: (() => void)[] = [];
 
     const updatePipFrameSize = (): void => {
         if (!pipFrame) return;
@@ -228,17 +229,21 @@ const start = async (): Promise<void> => {
         let resizing = false;
         let resizeStartX = 0;
         let resizeStartWidth = 0;
+        let capturedElement: HTMLElement | null = null;
+        let capturedPointerId = -1;
 
-        pipResizeHandle.addEventListener("pointerdown", (e: PointerEvent) => {
+        const onPipPointerDown = (e: PointerEvent): void => {
             resizing = true;
             resizeStartX = e.clientX;
             resizeStartWidth = pipFrame.clientWidth;
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            capturedElement = e.target as HTMLElement;
+            capturedPointerId = e.pointerId;
+            capturedElement.setPointerCapture(e.pointerId);
             e.stopPropagation();
             e.preventDefault();
-        });
+        };
 
-        document.addEventListener("pointermove", (e: PointerEvent) => {
+        const onPipPointerMove = (e: PointerEvent): void => {
             if (!resizing) return;
             const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
             if (!canvas) return;
@@ -251,14 +256,33 @@ const start = async (): Promise<void> => {
                 Math.min(PIP_WIDTH_FRACTION_MAX, fraction),
             );
             updatePipFrameSize();
-        });
+        };
 
-        document.addEventListener("pointerup", () => {
+        const onPipPointerUp = (): void => {
+            if (resizing && capturedElement && capturedPointerId >= 0) {
+                capturedElement.releasePointerCapture(capturedPointerId);
+                capturedElement = null;
+                capturedPointerId = -1;
+            }
             resizing = false;
+        };
+
+        pipResizeHandle.addEventListener("pointerdown", onPipPointerDown);
+        document.addEventListener("pointermove", onPipPointerMove);
+        document.addEventListener("pointerup", onPipPointerUp);
+
+        // クリーンアップ用に保存
+        pipCleanups.push(() => {
+            pipResizeHandle.removeEventListener("pointerdown", onPipPointerDown);
+            document.removeEventListener("pointermove", onPipPointerMove);
+            document.removeEventListener("pointerup", onPipPointerUp);
         });
     }
 
     window.addEventListener("resize", updatePipFrameSize);
+    pipCleanups.push(() => {
+        window.removeEventListener("resize", updatePipFrameSize);
+    });
 
     // --- Follow カメラセットアップ（FreeCamera + 毎フレーム手動位置計算） ---
     // FollowCamera の内部補間を使わず、tick() で直接位置を設定する。
@@ -770,9 +794,10 @@ const start = async (): Promise<void> => {
     };
     rafId = requestAnimationFrame(tick);
 
-    // ページ離脱時にアニメーションフレームをキャンセル
+    // ページ離脱時にアニメーションフレームをキャンセル + PIP クリーンアップ
     window.addEventListener("beforeunload", () => {
         cancelAnimationFrame(rafId);
+        pipCleanups.forEach((fn) => fn());
         if (pipViewer) {
             pipViewer.dispose();
         }
