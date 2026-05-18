@@ -745,16 +745,24 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // PIP セカンダリ Viewer 更新: メイン Viewer と完全に同期。
-        // lib の lat/lon/azimuth/altitude/tilt setter に任せて内部タイル管理を
-        // 動かす（メインと同じ経路）→ タイル境界の再計算ズレが発生しない。
+        // PIP セカンダリ Viewer 更新: 飛行機の腹部カメラを再現。
+        // lib の lat/lon = ArcRotateCamera のターゲット (地面の注視点)。
+        // belly カメラは飛行機位置にあり、heading 方向 + 俯角 tilt で地面を見るので、
+        // ターゲットは飛行機から heading 方向に altitude*tan(tilt) メートル前方の地表。
         const now = performance.now();
         if (pipViewer && now - lastPipUpdateMs >= PIP_UPDATE_INTERVAL_MS) {
             lastPipUpdateMs = now;
-            pipViewer.lat = pos.lat;
-            pipViewer.lon = pos.lon;
+            const tiltRad = (PIP_BELLY_TILT_DEG * Math.PI) / 180;
+            const forwardDistM = altitudeM * Math.tan(tiltRad);
+            const headingRad = (heading * Math.PI) / 180;
+            const dLatDeg = (forwardDistM * Math.cos(headingRad)) / 111320;
+            const dLonDeg =
+                (forwardDistM * Math.sin(headingRad)) /
+                (111320 * Math.cos((pos.lat * Math.PI) / 180));
+            pipViewer.lat = pos.lat + dLatDeg;
+            pipViewer.lon = pos.lon + dLonDeg;
             pipViewer.altitude = altitudeM;
-            pipViewer.azimuth = heading;
+            pipViewer.azimuth = -heading;
             pipViewer.tilt = PIP_BELLY_TILT_DEG;
         }
 
