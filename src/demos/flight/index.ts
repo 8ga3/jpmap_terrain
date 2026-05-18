@@ -767,15 +767,15 @@ const start = async (): Promise<void> => {
         const now = performance.now();
         if (pipViewer && now - lastPipUpdateMs >= PIP_UPDATE_INTERVAL_MS) {
             lastPipUpdateMs = now;
-            pipViewer.lat = pos.lat;
-            pipViewer.lon = pos.lon;
+            // ⚠ lat/lon setter は内部で refreshTerrain(lodBias=0) を走らせるため、
+            //   下の refreshTerrainWithExternalFrustum(lodBias=2) と競合し
+            //   PIP がちらつく。タイル中心の更新は refreshTerrainWithExternalFrustum
+            //   側に一本化し、ここでは camera 姿勢のみ setter で反映する。
             pipViewer.altitude = altitudeM + PIP_TARGET_ALTITUDE_OFFSET_M;
             pipViewer.azimuth = heading;
 
-            // PIP の terrain-camera で frustum を構築し、lodBias=2 で refresh。
-            // setter 内の自動 refresh は detachTileCamera 済みで onViewMatrixChange
-            // が監視されておらず走らないが、setter 自身が refreshTerrain を呼ぶため
-            // ここで lodBias=2 の refresh を後出しして上書きする (requestId 後勝ち)。
+            // PIP の terrain-camera で frustum を構築し、lodBias=2 で
+            // タイル中心 (pos.lat, pos.lon) を更新する。
             const pipScene = pipViewer.__debugScene;
             const pipTerrainCam = pipScene?.getCameraByName("terrain-camera");
             if (pipTerrainCam) {
