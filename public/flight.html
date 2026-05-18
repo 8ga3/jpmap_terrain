@@ -143,6 +143,47 @@
     #flight-controls .camera-buttons button {
       flex: 1;
     }
+
+    /* PIP overlay */
+    #pip-frame {
+      position: absolute;
+      border: 2px solid rgba(255, 255, 255, 0.6);
+      border-radius: 4px;
+      pointer-events: none;
+      box-sizing: border-box;
+      bottom: 12px;
+      left: 12px;
+      width: 20%;
+      aspect-ratio: 3 / 4;
+    }
+
+    #pip-resize-handle {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 14px;
+      height: 14px;
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(0, 0, 0, 0.3);
+      border-radius: 50%;
+      cursor: ne-resize;
+      pointer-events: auto;
+    }
+
+    #pip-resize-handle:hover {
+      background: #fff;
+      transform: scale(1.2);
+    }
+
+    #pip-label {
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.8);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -201,6 +242,10 @@
       <div style="font-size: 10px; color: #c8cdd6; margin-top: 2px;">
         地面クリックで円軌道の中心を移動
       </div>
+    </div>
+    <div id="pip-frame">
+      <span id="pip-label">機体カメラ</span>
+      <div id="pip-resize-handle"></div>
     </div>
   </div>
 </body>
