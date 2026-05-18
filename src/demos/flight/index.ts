@@ -33,7 +33,7 @@ const PIP_WIDTH_FRACTION_DEFAULT = 0.2;
 const PIP_WIDTH_FRACTION_MIN = 0.1;
 const PIP_WIDTH_FRACTION_MAX = 0.4;
 /** PIP belly カメラの俯角（度）— 水平から下方向の角度 */
-const PIP_BELLY_TILT_DEG = 70;
+const PIP_BELLY_TILT_DEG = 45;
 /** PIP カメラのターゲットを飛行機より下に置くオフセット (m) */
 const PIP_TARGET_ALTITUDE_OFFSET_M = 200;
 
@@ -172,6 +172,14 @@ const start = async (): Promise<void> => {
         const pixelWidth = pipWidthFraction * canvas.clientWidth;
         pipFrame.style.width = `${pixelWidth}px`;
         // 高さは CSS の aspect-ratio: 4/3 に任せる
+        // 地図切替ボタン (lib 製) は既定で `bottom:12px; left:12px` に配置されるため
+        // PIP と重なる。PIP の右隣 (= 12 + PIP 幅 + 8px) に移動させる。
+        const mapToggleBtn = document.querySelector<HTMLButtonElement>(
+            'button[aria-label^="地図切替"]',
+        );
+        if (mapToggleBtn) {
+            mapToggleBtn.style.left = `${12 + pixelWidth + 8}px`;
+        }
     };
 
     if (pipMount) {
