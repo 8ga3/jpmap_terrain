@@ -37,6 +37,12 @@ const PIP_BELLY_TILT_DEG = 45;
 /** PIP カメラのターゲットを飛行機より下に置くオフセット (m) */
 const PIP_TARGET_ALTITUDE_OFFSET_M = 200;
 /**
+ * PIP カメラの方位を飛行機の進行方位 (heading) からずらす補正 (度)。
+ * plane.glb のデフォルト機首方向と、lib azimuth (= カメラ視線の compass 方位) の
+ * 差を吸収する。180° のとき plane.glb の機首と PIP の視線が一致する。
+ */
+const PIP_AZIMUTH_OFFSET_DEG = 180;
+/**
  * PIP Viewer 状態 (lat/lon/altitude/azimuth) を更新する間隔 (ms)。
  * 毎フレーム setter を呼ぶと attachTileCamera の debounce が
  * 永続的に再延長され refreshTerrain が走らずタイルが消えるため、
@@ -202,7 +208,7 @@ const start = async (): Promise<void> => {
             lat: initPos.lat,
             lon: initPos.lon,
             altitude: altitudeM,
-            azimuth: circularOrbitHeading(angleDeg),
+            azimuth: (circularOrbitHeading(angleDeg) + PIP_AZIMUTH_OFFSET_DEG) % 360,
             tilt: PIP_BELLY_TILT_DEG,
             // PIP は写真タイルを表示 (Issue #264)
             mapType: "photo",
@@ -772,7 +778,7 @@ const start = async (): Promise<void> => {
             //   PIP がちらつく。タイル中心の更新は refreshTerrainWithExternalFrustum
             //   側に一本化し、ここでは camera 姿勢のみ setter で反映する。
             pipViewer.altitude = altitudeM + PIP_TARGET_ALTITUDE_OFFSET_M;
-            pipViewer.azimuth = heading;
+            pipViewer.azimuth = (heading + PIP_AZIMUTH_OFFSET_DEG) % 360;
 
             // PIP の terrain-camera で frustum を構築し、lodBias=2 で
             // タイル中心 (pos.lat, pos.lon) を更新する。
