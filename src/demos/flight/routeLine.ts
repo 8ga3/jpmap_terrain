@@ -139,6 +139,11 @@ export const createRouteLine = (scene: Scene): RouteLine => {
     ribbon.alwaysSelectAsActiveMesh = true;
     ribbon.hasVertexAlpha = true;
 
+    // 頂点カラーバッファ: 固定長 Float32Array を再利用して GC を抑制
+    // 頂点数 = SAMPLE_COUNT * 2 (path0 + path1)、各頂点 RGBA 4 要素
+    const colorBuffer = new Float32Array(SAMPLE_COUNT * 2 * 4);
+    let colorBufferInitialized = false;
+
     const update = (ctx: RouteLineContext, time: number): void => {
         const { angleDeg, centerLat, centerLon, radiusM, modelNodeName } = ctx;
 
@@ -157,9 +162,6 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
 
         const timeSec = time * 0.001;
-
-        // 各サンプル点 i の色を事前計算
-        const colorPerSample: Color4[] = [];
 
         for (let i = 0; i < SAMPLE_COUNT; i++) {
             const t = i / (SAMPLE_COUNT - 1); // 0..1
@@ -202,18 +204,18 @@ export const createRouteLine = (scene: Scene): RouteLine => {
                 wz + perpZ * RIBBON_HALF_WIDTH_M,
             );
 
-            colorPerSample.push(computeGradientColor(t, timeSec));
-        }
-
-        // 頂点カラー: CreateRibbon の頂点順序は path0[0..n-1] → path1[0..n-1]
-        const colors: number[] = [];
-        for (let i = 0; i < SAMPLE_COUNT; i++) {
-            const c = colorPerSample[i];
-            colors.push(c.r, c.g, c.b, c.a);
-        }
-        for (let i = 0; i < SAMPLE_COUNT; i++) {
-            const c = colorPerSample[i];
-            colors.push(c.r, c.g, c.b, c.a);
+            // 頂点カラーを colorBuffer に直接書き込み (path0[i], path1[i] それぞれ)
+            const col = computeGradientColor(t, timeSec);
+            const idx0 = i * 4;                      // path0 側
+            const idx1 = (SAMPLE_COUNT + i) * 4;     // path1 側
+            colorBuffer[idx0] = col.r;
+            colorBuffer[idx0 + 1] = col.g;
+            colorBuffer[idx0 + 2] = col.b;
+            colorBuffer[idx0 + 3] = col.a;
+            colorBuffer[idx1] = col.r;
+            colorBuffer[idx1 + 1] = col.g;
+            colorBuffer[idx1 + 2] = col.b;
+            colorBuffer[idx1 + 3] = col.a;
         }
 
         // Ribbon を更新 (instance 指定時は同じ Mesh が返る)
@@ -222,8 +224,13 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             { pathArray, updatable: true, instance: ribbon },
         );
 
-        // 頂点カラーを毎フレーム更新してアニメーション
-        ribbon.setVerticesData(VertexBuffer.ColorKind, colors, true);
+        // 頂点カラーバッファを更新
+        if (!colorBufferInitialized) {
+            ribbon.setVerticesData(VertexBuffer.ColorKind, colorBuffer, true);
+            colorBufferInitialized = true;
+        } else {
+            ribbon.updateVerticesData(VertexBuffer.ColorKind, colorBuffer);
+        }
     };
 
     const dispose = (): void => {
