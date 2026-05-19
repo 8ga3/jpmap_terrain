@@ -171,8 +171,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
 
         const timeSec = time * 0.001;
 
-        // 頂点カラー配列: CreateRibbon は pathArray[0][i], pathArray[1][i] 順でインターリーブ
-        const colors: number[] = [];
+        // 各サンプル点 i の色を事前計算
+        const colorPerSample: Color4[] = [];
 
         for (let i = 0; i < SAMPLE_COUNT; i++) {
             const t = i / (SAMPLE_COUNT - 1); // 0..1
@@ -215,10 +215,18 @@ export const createRouteLine = (scene: Scene): RouteLine => {
                 wz + perpZ * scaledHalfWidth,
             );
 
-            // 頂点カラー: path[0][i], path[1][i] それぞれに同色
-            const col = computeGradientColor(t, timeSec);
-            colors.push(col.r, col.g, col.b, col.a); // left
-            colors.push(col.r, col.g, col.b, col.a); // right
+            colorPerSample.push(computeGradientColor(t, timeSec));
+        }
+
+        // 頂点カラー: CreateRibbon の頂点順序は path0[0..n-1] → path1[0..n-1]
+        const colors: number[] = [];
+        for (let i = 0; i < SAMPLE_COUNT; i++) {
+            const c = colorPerSample[i];
+            colors.push(c.r, c.g, c.b, c.a);
+        }
+        for (let i = 0; i < SAMPLE_COUNT; i++) {
+            const c = colorPerSample[i];
+            colors.push(c.r, c.g, c.b, c.a);
         }
 
         // Ribbon を更新
