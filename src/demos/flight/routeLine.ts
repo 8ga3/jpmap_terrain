@@ -129,7 +129,7 @@ export const createRouteLine = (scene: Scene): RouteLine => {
 
     const pathArray = initPath();
 
-    let ribbon: Mesh = CreateRibbon(
+    const ribbon: Mesh = CreateRibbon(
         "flightRouteRibbon",
         { pathArray, updatable: true, sideOrientation: Mesh.DOUBLESIDE },
         scene,
@@ -216,8 +216,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             colors.push(c.r, c.g, c.b, c.a);
         }
 
-        // Ribbon を更新
-        ribbon = CreateRibbon(
+        // Ribbon を更新 (instance 指定時は同じ Mesh が返る)
+        CreateRibbon(
             "flightRouteRibbon",
             { pathArray, updatable: true, instance: ribbon },
         );
