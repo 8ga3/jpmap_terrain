@@ -34,6 +34,9 @@ const RIBBON_HALF_WIDTH_M = 3;
 /** 経路上のサンプル点数（固定）。多いほど滑らか・負荷大 */
 const SAMPLE_COUNT = 40;
 
+/** リボンを飛行機のわずか下に配置し Follow カメラからの視認性を上げる (m) */
+const RIBBON_Y_OFFSET_M = -2;
+
 // ─── フェード区間 ─────────────────────────────────────
 /** 先端フェード区間の割合 (0-1)。先頭 20% でフェードイン */
 const FADE_IN_RATIO = 0.2;
@@ -182,6 +185,9 @@ export const createRouteLine = (scene: Scene): RouteLine => {
     ribbon.isPickable = false;
     // Frustum culling を無効化（位置が毎フレーム変わるため bounding が遅延しがち）
     ribbon.alwaysSelectAsActiveMesh = true;
+    // 深度書き込み無効: Follow カメラから見て飛行機メッシュに遮蔽されないようにする
+    ribbon.renderOverlay = false;
+    material.disableDepthWrite = true;
 
     const update = (ctx: RouteLineContext, time: number): void => {
         const { angleDeg, centerLat, centerLon, radiusM, altitudeM, modelNodeName, modelScale } = ctx;
@@ -229,7 +235,7 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             // 未来点のワールド座標
             const wx = planeWorldPos.x + offsetX;
             const wz = planeWorldPos.z + offsetZ;
-            const wy = altitudeM; // absolute altitude = Y
+            const wy = altitudeM + RIBBON_Y_OFFSET_M;
 
             // 未来点での接線方向（進行方向に垂直にリボン幅を出す）
             const futureHeading = circularOrbitHeading(futureAngle);
