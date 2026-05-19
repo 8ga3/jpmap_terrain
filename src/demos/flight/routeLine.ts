@@ -38,10 +38,10 @@ const SAMPLE_COUNT = 40;
 const RIBBON_Y_OFFSET_M = -2;
 
 // ─── フェード区間 ─────────────────────────────────────
-/** 先端フェード区間の割合 (0-1)。先頭 20% でフェードイン */
-const FADE_IN_RATIO = 0.2;
-/** 末端フェード区間の割合 (0-1)。末尾 30% でフェードアウト */
-const FADE_OUT_RATIO = 0.3;
+/** 先端フェード区間の割合 (0-1)。飛行機側 35% でフェードイン */
+const FADE_IN_RATIO = 0.35;
+/** 末端フェード区間の割合 (0-1)。末尾 25% でフェードアウト */
+const FADE_OUT_RATIO = 0.25;
 
 // ─── 型 ─────────────────────────────────────────────────
 export interface RouteLineContext {
@@ -103,8 +103,9 @@ const computeGradientColor = (t: number, timeSec: number): Color4 => {
         b = c2.b + (c3.b - c2.b) * f;
     }
 
-    const alphaStart = smoothstep(0, FADE_IN_RATIO, 1.0 - t);
-    const alphaEnd = smoothstep(0, FADE_OUT_RATIO, t);
+    // t=0 (飛行機側) は透明 → t が進むほど不透明、末端で再びフェードアウト
+    const alphaStart = smoothstep(0, FADE_IN_RATIO, t);
+    const alphaEnd = smoothstep(0, FADE_OUT_RATIO, 1.0 - t);
     const alpha = alphaStart * alphaEnd * 0.8;
 
     return new Color4(r, g, b, alpha);
