@@ -788,7 +788,6 @@ const start = async (): Promise<void> => {
                     centerLat,
                     centerLon,
                     radiusM,
-                    altitudeM,
                     modelNodeName: `model-${MODEL_ID}`,
                     modelScale: MODEL_SCALE_FOLLOW,
                 },
