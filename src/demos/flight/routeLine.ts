@@ -54,8 +54,6 @@ export interface RouteLineContext {
     centerLon: number;
     /** 軌道半径 (m) */
     radiusM: number;
-    /** 飛行高度 (m, absolute) */
-    altitudeM: number;
     /** model の TransformNode 名。実際の world position 取得用 */
     modelNodeName: string;
     /**
