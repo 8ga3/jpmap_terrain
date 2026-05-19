@@ -161,10 +161,6 @@ const start = async (): Promise<void> => {
 
     // --- ルートライン (Issue #265) ---
     let routeLine: RouteLine | null = null;
-    const mainScene = viewer.__debugScene;
-    if (mainScene) {
-        routeLine = createRouteLine(mainScene);
-    }
 
     // --- PIP (Picture-in-Picture) セカンダリ Viewer セットアップ ---
     // Issue #264 Option C: 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
@@ -777,7 +773,14 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // ルートライン更新 (Issue #265)
+        // ルートライン更新 (Issue #265) — 遅延初期化
+        if (!routeLine) {
+            const scene = viewer.__debugScene;
+            if (scene) {
+                routeLine = createRouteLine(scene);
+                console.log("[routeLine] created");
+            }
+        }
         if (routeLine) {
             routeLine.update(
                 {
