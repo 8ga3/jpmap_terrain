@@ -29,7 +29,7 @@ const START_GAP_M = 2;
 /** ルートライン開始地点 = 中心から前方への距離 (m) */
 const ROUTE_START_OFFSET_M = NOSE_OFFSET_M + START_GAP_M;
 /** ルートラインの表示距離 (m) */
-const ROUTE_LENGTH_M = 200;
+const ROUTE_LENGTH_M = 400;
 /** リボンの幅 (m)。進行方向に対して左右に半幅ずつ広がる */
 const RIBBON_HALF_WIDTH_M = 3;
 /** 経路上のサンプル点数（固定）。多いほど滑らか・負荷大 */
@@ -103,8 +103,8 @@ const computeGradientColor = (t: number, timeSec: number): Color4 => {
         b = c2.b + (c3.b - c2.b) * f;
     }
 
-    const alphaStart = smoothstep(0, FADE_IN_RATIO, t);
-    const alphaEnd = smoothstep(0, FADE_OUT_RATIO, 1.0 - t);
+    const alphaStart = smoothstep(0, FADE_IN_RATIO, 1.0 - t);
+    const alphaEnd = smoothstep(0, FADE_OUT_RATIO, t);
     const alpha = alphaStart * alphaEnd * 0.8;
 
     return new Color4(r, g, b, alpha);
