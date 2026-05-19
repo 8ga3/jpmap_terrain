@@ -26,6 +26,7 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
+import { createRouteLine, type RouteLine } from "./routeLine";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
@@ -157,6 +158,13 @@ const start = async (): Promise<void> => {
         scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL },
         gravity: false,
     });
+
+    // --- ルートライン (Issue #265) ---
+    let routeLine: RouteLine | null = null;
+    const mainScene = viewer.__debugScene;
+    if (mainScene) {
+        routeLine = createRouteLine(mainScene);
+    }
 
     // --- PIP (Picture-in-Picture) セカンダリ Viewer セットアップ ---
     // Issue #264 Option C: 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
@@ -769,6 +777,22 @@ const start = async (): Promise<void> => {
             }
         }
 
+        // ルートライン更新 (Issue #265)
+        if (routeLine) {
+            routeLine.update(
+                {
+                    scene: viewer.__debugScene!,
+                    angleDeg,
+                    centerLat,
+                    centerLon,
+                    radiusM,
+                    altitudeM,
+                    modelNodeName: `model-${MODEL_ID}`,
+                },
+                timestamp,
+            );
+        }
+
         // PIP セカンダリ Viewer 更新: 飛行機の腹部カメラを再現。
         // lib の lat/lon = ArcRotateCamera のターゲット (地面の注視点)。
         // belly カメラは飛行機位置にあり、heading 方向 + 俯角 tilt で地面を見るので、
@@ -797,6 +821,9 @@ const start = async (): Promise<void> => {
     // ページ離脱時にアニメーションフレームをキャンセル + PIP クリーンアップ
     window.addEventListener("beforeunload", () => {
         cancelAnimationFrame(rafId);
+        if (routeLine) {
+            routeLine.dispose();
+        }
         pipCleanups.forEach((fn) => fn());
         if (pipViewer) {
             pipViewer.dispose();
