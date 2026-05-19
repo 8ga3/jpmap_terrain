@@ -11,11 +11,12 @@
  * - Babylon.js CreateRibbon + StandardMaterial + 頂点カラーで実装
  */
 
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import type { Scene } from "@babylonjs/core/scene";
 
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
@@ -37,11 +38,10 @@ const SAMPLE_COUNT = 40;
 const RIBBON_Y_OFFSET_M = -2;
 
 // ─── フェード区間 ─────────────────────────────────────
-// デバッグ完了後に頂点カラーを復活する際に使う定数
-// /** 先端フェード区間の割合 (0-1)。先頭 20% でフェードイン */
-// const FADE_IN_RATIO = 0.2;
-// /** 末端フェード区間の割合 (0-1)。末尾 30% でフェードアウト */
-// const FADE_OUT_RATIO = 0.3;
+/** 先端フェード区間の割合 (0-1)。先頭 20% でフェードイン */
+const FADE_IN_RATIO = 0.2;
+/** 末端フェード区間の割合 (0-1)。末尾 30% でフェードアウト */
+const FADE_OUT_RATIO = 0.3;
 
 // ─── 型 ─────────────────────────────────────────────────
 export interface RouteLineContext {
@@ -73,52 +73,55 @@ export interface RouteLine {
     dispose(): void;
 }
 
-// デバッグ完了後に復活するユーティリティ関数群
-// /** smoothstep helper */
-// const smoothstep = (edge0: number, edge1: number, x: number): number => {
-//     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-//     return t * t * (3 - 2 * t);
-// };
-//
-// /**
-//  * グラデーションカラーを t (0-1) と time から計算する。
-//  */
-// const computeGradientColor = (t: number, timeSec: number): Color4 => {
-//     const phase = ((t * 2.0 - timeSec * 0.4) % 1.0 + 1.0) % 1.0;
-//     const c1 = { r: 0.0, g: 0.8, b: 1.0 };
-//     const c2 = { r: 1.0, g: 0.2, b: 0.6 };
-//     const c3 = { r: 1.0, g: 0.9, b: 0.1 };
-//
-//     let r: number, g: number, b: number;
-//     if (phase < 0.5) {
-//         const f = phase * 2.0;
-//         r = c1.r + (c2.r - c1.r) * f;
-//         g = c1.g + (c2.g - c1.g) * f;
-//         b = c1.b + (c2.b - c1.b) * f;
-//     } else {
-//         const f = (phase - 0.5) * 2.0;
-//         r = c2.r + (c3.r - c2.r) * f;
-//         g = c2.g + (c3.g - c2.g) * f;
-//         b = c2.b + (c3.b - c2.b) * f;
-//     }
-//
-//     const alphaStart = smoothstep(0, FADE_IN_RATIO, t);
-//     const alphaEnd = smoothstep(0, FADE_OUT_RATIO, 1.0 - t);
-//     const alpha = alphaStart * alphaEnd * 0.6;
-//
-//     return new Color4(r, g, b, alpha);
-// };
+/** smoothstep helper */
+const smoothstep = (edge0: number, edge1: number, x: number): number => {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+};
+
+/**
+ * グラデーションカラーを t (0-1) と time から計算する。
+ * 3色グラデーション (cyan → magenta → yellow) を時間でスクロールし、
+ * 両端を smoothstep でフェードアウトする。
+ */
+const computeGradientColor = (t: number, timeSec: number): Color4 => {
+    const phase = ((t * 2.0 - timeSec * 0.4) % 1.0 + 1.0) % 1.0;
+    const c1 = { r: 0.0, g: 0.8, b: 1.0 };
+    const c2 = { r: 1.0, g: 0.2, b: 0.6 };
+    const c3 = { r: 1.0, g: 0.9, b: 0.1 };
+
+    let r: number, g: number, b: number;
+    if (phase < 0.5) {
+        const f = phase * 2.0;
+        r = c1.r + (c2.r - c1.r) * f;
+        g = c1.g + (c2.g - c1.g) * f;
+        b = c1.b + (c2.b - c1.b) * f;
+    } else {
+        const f = (phase - 0.5) * 2.0;
+        r = c2.r + (c3.r - c2.r) * f;
+        g = c2.g + (c3.g - c2.g) * f;
+        b = c2.b + (c3.b - c2.b) * f;
+    }
+
+    const alphaStart = smoothstep(0, FADE_IN_RATIO, t);
+    const alphaEnd = smoothstep(0, FADE_OUT_RATIO, 1.0 - t);
+    const alpha = alphaStart * alphaEnd * 0.8;
+
+    return new Color4(r, g, b, alpha);
+};
 
 /**
  * ルートラインを作成する。
  * 呼び出し側は毎フレーム `update()` を呼ぶこと。
  */
 export const createRouteLine = (scene: Scene): RouteLine => {
-    // デバッグ用: 最もシンプルなマテリアル（不透明・赤）
+    // StandardMaterial + 頂点カラー (hasVertexAlpha) で
+    // グラデーション + アルファフェードを実現する。
     const material = new StandardMaterial("flightRouteMat", scene);
     material.disableLighting = true;
-    material.emissiveColor = new Color3(1, 0, 0);
+    material.emissiveColor = Color3.White();
     material.backFaceCulling = false;
+    material.alpha = 1;
 
     // 初期 Ribbon 用のダミーパス（2列、SAMPLE_COUNT 点ずつ）
     const initPath = (): Vector3[][] => {
@@ -141,24 +144,16 @@ export const createRouteLine = (scene: Scene): RouteLine => {
     ribbon.material = material;
     ribbon.isPickable = false;
     ribbon.alwaysSelectAsActiveMesh = true;
-
-    let debugLogged = false;
+    ribbon.hasVertexAlpha = true;
 
     const update = (ctx: RouteLineContext, time: number): void => {
         const { angleDeg, centerLat, centerLon, radiusM, modelNodeName, modelScale } = ctx;
-        void time; // unused in debug mode
 
         // 飛行機の root TransformNode からワールド位置を取得
         const root = ctx.scene.getTransformNodeByName(modelNodeName);
-        if (!root) {
-            if (!debugLogged) { console.warn("[routeLine] root not found:", modelNodeName); debugLogged = true; }
-            return;
-        }
+        if (!root) return;
         const childMesh = root.getChildMeshes(false)[0];
-        if (!childMesh) {
-            if (!debugLogged) { console.warn("[routeLine] no child mesh"); debugLogged = true; }
-            return;
-        }
+        if (!childMesh) return;
         childMesh.computeWorldMatrix(true);
         const planeWorldPos = childMesh.absolutePosition;
 
@@ -172,6 +167,11 @@ export const createRouteLine = (scene: Scene): RouteLine => {
 
         // 飛行機の現在 lat/lon
         const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
+
+        const timeSec = time * 0.001;
+
+        // 頂点カラー配列: CreateRibbon は pathArray[0][i], pathArray[1][i] 順でインターリーブ
+        const colors: number[] = [];
 
         for (let i = 0; i < SAMPLE_COUNT; i++) {
             const t = i / (SAMPLE_COUNT - 1); // 0..1
@@ -213,14 +213,11 @@ export const createRouteLine = (scene: Scene): RouteLine => {
                 wy,
                 wz + perpZ * scaledHalfWidth,
             );
-        }
 
-        if (!debugLogged) {
-            console.log("[routeLine] planeWorldPos:", planeWorldPos.toString());
-            console.log("[routeLine] pathArray[0][0]:", pathArray[0][0].toString());
-            console.log("[routeLine] pathArray[1][0]:", pathArray[1][0].toString());
-            console.log("[routeLine] wy:", planeWorldPos.y + RIBBON_Y_OFFSET_M);
-            debugLogged = true;
+            // 頂点カラー: path[0][i], path[1][i] それぞれに同色
+            const col = computeGradientColor(t, timeSec);
+            colors.push(col.r, col.g, col.b, col.a); // left
+            colors.push(col.r, col.g, col.b, col.a); // right
         }
 
         // Ribbon を更新
@@ -228,6 +225,9 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             "flightRouteRibbon",
             { pathArray, updatable: true, instance: ribbon },
         );
+
+        // 頂点カラーを毎フレーム更新してアニメーション
+        ribbon.setVerticesData(VertexBuffer.ColorKind, colors, true);
     };
 
     const dispose = (): void => {

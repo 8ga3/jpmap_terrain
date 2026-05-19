@@ -778,7 +778,6 @@ const start = async (): Promise<void> => {
             const scene = viewer.__debugScene;
             if (scene) {
                 routeLine = createRouteLine(scene);
-                console.log("[routeLine] created");
             }
         }
         if (routeLine) {
