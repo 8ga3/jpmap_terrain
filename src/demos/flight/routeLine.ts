@@ -8,14 +8,15 @@
  * - ROUTE_LENGTH_M 分だけ表示
  * - 両端が徐々に透明にフェード
  * - グラデーションカラーアニメーション
- * - Babylon.js CreateRibbon + ShaderMaterial で実装
+ * - Babylon.js CreateRibbon + StandardMaterial + 頂点カラーで実装
  */
 
-import { Effect } from "@babylonjs/core/Materials/effect";
-import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import type { Scene } from "@babylonjs/core/scene";
 
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
@@ -33,7 +34,6 @@ const ROUTE_LENGTH_M = 200;
 const RIBBON_HALF_WIDTH_M = 3;
 /** 経路上のサンプル点数（固定）。多いほど滑らか・負荷大 */
 const SAMPLE_COUNT = 40;
-
 /** リボンを飛行機のわずか下に配置し Follow カメラからの視認性を上げる (m) */
 const RIBBON_Y_OFFSET_M = -2;
 
@@ -42,72 +42,6 @@ const RIBBON_Y_OFFSET_M = -2;
 const FADE_IN_RATIO = 0.2;
 /** 末端フェード区間の割合 (0-1)。末尾 30% でフェードアウト */
 const FADE_OUT_RATIO = 0.3;
-
-// ─── シェーダー定義 ─────────────────────────────────────
-const SHADER_NAME = "flightRoute";
-
-const VERTEX_SHADER = /* glsl */ `
-precision highp float;
-
-attribute vec3 position;
-attribute vec2 uv;
-
-uniform mat4 worldViewProjection;
-
-varying vec2 vUV;
-
-void main() {
-    vUV = uv;
-    gl_Position = worldViewProjection * vec4(position, 1.0);
-}
-`;
-
-const FRAGMENT_SHADER = /* glsl */ `
-precision highp float;
-
-uniform float uTime;
-uniform float uFadeInRatio;
-uniform float uFadeOutRatio;
-
-varying vec2 vUV;
-
-void main() {
-    float t = vUV.x; // 0 = start (near plane), 1 = end (far)
-
-    // ─── グラデーションカラー (animated) ───
-    // 3色グラデーション: cyan → magenta → yellow、時間でスクロール
-    float phase = fract(t * 2.0 - uTime * 0.4);
-    vec3 c1 = vec3(0.0, 0.8, 1.0);  // cyan
-    vec3 c2 = vec3(1.0, 0.2, 0.6);  // magenta
-    vec3 c3 = vec3(1.0, 0.9, 0.1);  // yellow
-    vec3 color;
-    if (phase < 0.5) {
-        color = mix(c1, c2, phase * 2.0);
-    } else {
-        color = mix(c2, c3, (phase - 0.5) * 2.0);
-    }
-
-    // ─── 両端フェード ───
-    float alphaStart = smoothstep(0.0, uFadeInRatio, t);
-    float alphaEnd = smoothstep(0.0, uFadeOutRatio, 1.0 - t);
-    float alpha = alphaStart * alphaEnd * 0.6; // 全体の最大不透明度
-
-    // 中央 (vUV.y=0.5) が最も濃く、端で少し薄くする
-    float edgeFade = 1.0 - 0.3 * abs(vUV.y - 0.5) * 2.0;
-    alpha *= edgeFade;
-
-    gl_FragColor = vec4(color, alpha);
-}
-`;
-
-// シェーダーを Effect Store に登録（一度だけ）
-let shaderRegistered = false;
-const ensureShaderRegistered = (): void => {
-    if (shaderRegistered) return;
-    Effect.ShadersStore[`${SHADER_NAME}VertexShader`] = VERTEX_SHADER;
-    Effect.ShadersStore[`${SHADER_NAME}FragmentShader`] = FRAGMENT_SHADER;
-    shaderRegistered = true;
-};
 
 // ─── 型 ─────────────────────────────────────────────────
 export interface RouteLineContext {
@@ -139,28 +73,57 @@ export interface RouteLine {
     dispose(): void;
 }
 
+/** smoothstep helper */
+const smoothstep = (edge0: number, edge1: number, x: number): number => {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+};
+
+/**
+ * グラデーションカラーを t (0-1) と time から計算する。
+ */
+const computeGradientColor = (t: number, timeSec: number): Color4 => {
+    // 3色グラデーション: cyan → magenta → yellow、時間でスクロール
+    const phase = ((t * 2.0 - timeSec * 0.4) % 1.0 + 1.0) % 1.0;
+    const c1 = { r: 0.0, g: 0.8, b: 1.0 };
+    const c2 = { r: 1.0, g: 0.2, b: 0.6 };
+    const c3 = { r: 1.0, g: 0.9, b: 0.1 };
+
+    let r: number, g: number, b: number;
+    if (phase < 0.5) {
+        const f = phase * 2.0;
+        r = c1.r + (c2.r - c1.r) * f;
+        g = c1.g + (c2.g - c1.g) * f;
+        b = c1.b + (c2.b - c1.b) * f;
+    } else {
+        const f = (phase - 0.5) * 2.0;
+        r = c2.r + (c3.r - c2.r) * f;
+        g = c2.g + (c3.g - c2.g) * f;
+        b = c2.b + (c3.b - c2.b) * f;
+    }
+
+    // 両端フェード
+    const alphaStart = smoothstep(0, FADE_IN_RATIO, t);
+    const alphaEnd = smoothstep(0, FADE_OUT_RATIO, 1.0 - t);
+    const alpha = alphaStart * alphaEnd * 0.6;
+
+    return new Color4(r, g, b, alpha);
+};
+
 /**
  * ルートラインを作成する。
  * 呼び出し側は毎フレーム `update()` を呼ぶこと。
  */
 export const createRouteLine = (scene: Scene): RouteLine => {
-    ensureShaderRegistered();
-
-    // ShaderMaterial
-    const material = new ShaderMaterial(
-        "flightRouteMat",
-        scene,
-        { vertex: SHADER_NAME, fragment: SHADER_NAME },
-        {
-            attributes: ["position", "uv"],
-            uniforms: ["worldViewProjection", "uTime", "uFadeInRatio", "uFadeOutRatio"],
-            needAlphaBlending: true,
-        },
-    );
+    // StandardMaterial + 頂点カラー (hasVertexAlpha) で
+    // グラデーション + アルファフェードを実現する。
+    // ShaderMaterial は BJS 9 + WebGPU で互換性問題がある場合があるため回避。
+    const material = new StandardMaterial("flightRouteMat", scene);
+    material.disableLighting = true;
+    material.emissiveColor = Color3.White();
     material.backFaceCulling = false;
-    material.alphaMode = 2; // ALPHA_COMBINE
-    material.setFloat("uFadeInRatio", FADE_IN_RATIO);
-    material.setFloat("uFadeOutRatio", FADE_OUT_RATIO);
+    material.alpha = 1;
+    material.disableDepthWrite = true;
 
     // 初期 Ribbon 用のダミーパス（2列、SAMPLE_COUNT 点ずつ）
     const initPath = (): Vector3[][] => {
@@ -183,11 +146,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
     ribbon.material = material;
     ribbon.renderingGroupId = 1;
     ribbon.isPickable = false;
-    // Frustum culling を無効化（位置が毎フレーム変わるため bounding が遅延しがち）
     ribbon.alwaysSelectAsActiveMesh = true;
-    // 深度書き込み無効: Follow カメラから見て飛行機メッシュに遮蔽されないようにする
-    ribbon.renderOverlay = false;
-    material.disableDepthWrite = true;
+    ribbon.hasVertexAlpha = true;
 
     const update = (ctx: RouteLineContext, time: number): void => {
         const { angleDeg, centerLat, centerLon, radiusM, altitudeM, modelNodeName, modelScale } = ctx;
@@ -205,13 +165,17 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         const scaledLength = ROUTE_LENGTH_M * modelScale;
         const scaledHalfWidth = RIBBON_HALF_WIDTH_M * modelScale;
 
-        // 円軌道の角速度方向: 時計回りなので、前方 = angleDeg + delta
-        // arc length (m) → angle offset (deg): delta_deg = (arcLen / radius) * (180/π)
         const startArcLen = scaledStartOffset;
         const endArcLen = scaledStartOffset + scaledLength;
 
         // 飛行機の現在 lat/lon
         const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
+
+        const timeSec = time * 0.001;
+
+        // 頂点カラー配列: ribbon の頂点順序に合わせる
+        // CreateRibbon は pathArray[0][i], pathArray[1][i] を交互に配置
+        const colors: number[] = [];
 
         for (let i = 0; i < SAMPLE_COUNT; i++) {
             const t = i / (SAMPLE_COUNT - 1); // 0..1
@@ -228,7 +192,6 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             const dLat = futurePos.lat - planePos.lat;
             const dLon = futurePos.lon - planePos.lon;
             const cosLat = Math.cos((planePos.lat * Math.PI) / 180);
-            // world: X = east/west (lon), Z = north/south (lat)
             const offsetX = dLon * 111320 * cosLat;
             const offsetZ = dLat * 111320;
 
@@ -240,8 +203,7 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             // 未来点での接線方向（進行方向に垂直にリボン幅を出す）
             const futureHeading = circularOrbitHeading(futureAngle);
             const fhRad = (futureHeading * Math.PI) / 180;
-            // 進行方向に垂直な左右ベクトル: heading を 90° 回転
-            const perpX = Math.cos(fhRad); // 左方向 (heading+90 の sin と cos)
+            const perpX = Math.cos(fhRad);
             const perpZ = -Math.sin(fhRad);
 
             // 左右のパスを設定
@@ -255,6 +217,11 @@ export const createRouteLine = (scene: Scene): RouteLine => {
                 wy,
                 wz + perpZ * scaledHalfWidth,
             );
+
+            // 頂点カラー: CreateRibbon は path[0][i], path[1][i] 順でインターリーブ
+            const col = computeGradientColor(t, timeSec);
+            colors.push(col.r, col.g, col.b, col.a); // left
+            colors.push(col.r, col.g, col.b, col.a); // right
         }
 
         // Ribbon を更新
@@ -263,8 +230,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             { pathArray, updatable: true, instance: ribbon },
         );
 
-        // シェーダー時間を更新
-        material.setFloat("uTime", time * 0.001); // ms → seconds
+        // 頂点カラーを設定（毎フレーム更新でアニメーション）
+        ribbon.setVerticesData(VertexBuffer.ColorKind, colors, true);
     };
 
     const dispose = (): void => {
