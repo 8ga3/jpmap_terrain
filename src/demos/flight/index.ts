@@ -789,7 +789,6 @@ const start = async (): Promise<void> => {
                     centerLon,
                     radiusM,
                     modelNodeName: `model-${MODEL_ID}`,
-                    modelScale: MODEL_SCALE_FOLLOW,
                 },
                 timestamp,
             );

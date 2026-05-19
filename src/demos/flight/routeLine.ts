@@ -56,12 +56,6 @@ export interface RouteLineContext {
     radiusM: number;
     /** model の TransformNode 名。実際の world position 取得用 */
     modelNodeName: string;
-    /**
-     * モデルのワールドスケール倍率。
-     * ROUTE_START_OFFSET_M / ROUTE_LENGTH_M / RIBBON_HALF_WIDTH_M は
-     * モデル空間 (m) で定義されているため、この値を掛けてワールド空間に変換する。
-     */
-    modelScale: number;
 }
 
 export interface RouteLine {
@@ -146,7 +140,7 @@ export const createRouteLine = (scene: Scene): RouteLine => {
     ribbon.hasVertexAlpha = true;
 
     const update = (ctx: RouteLineContext, time: number): void => {
-        const { angleDeg, centerLat, centerLon, radiusM, modelNodeName, modelScale } = ctx;
+        const { angleDeg, centerLat, centerLon, radiusM, modelNodeName } = ctx;
 
         // 飛行機の root TransformNode からワールド位置を取得
         const root = ctx.scene.getTransformNodeByName(modelNodeName);
@@ -156,13 +150,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         childMesh.computeWorldMatrix(true);
         const planeWorldPos = childMesh.absolutePosition;
 
-        // モデル空間の定数をワールド空間にスケール変換
-        const scaledStartOffset = ROUTE_START_OFFSET_M * modelScale;
-        const scaledLength = ROUTE_LENGTH_M * modelScale;
-        const scaledHalfWidth = RIBBON_HALF_WIDTH_M * modelScale;
-
-        const startArcLen = scaledStartOffset;
-        const endArcLen = scaledStartOffset + scaledLength;
+        const startArcLen = ROUTE_START_OFFSET_M;
+        const endArcLen = ROUTE_START_OFFSET_M + ROUTE_LENGTH_M;
 
         // 飛行機の現在 lat/lon
         const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
@@ -203,14 +192,14 @@ export const createRouteLine = (scene: Scene): RouteLine => {
 
             // 左右のパスを設定
             pathArray[0][i].set(
-                wx - perpX * scaledHalfWidth,
+                wx - perpX * RIBBON_HALF_WIDTH_M,
                 wy,
-                wz - perpZ * scaledHalfWidth,
+                wz - perpZ * RIBBON_HALF_WIDTH_M,
             );
             pathArray[1][i].set(
-                wx + perpX * scaledHalfWidth,
+                wx + perpX * RIBBON_HALF_WIDTH_M,
                 wy,
-                wz + perpZ * scaledHalfWidth,
+                wz + perpZ * RIBBON_HALF_WIDTH_M,
             );
 
             colorPerSample.push(computeGradientColor(t, timeSec));
