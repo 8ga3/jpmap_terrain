@@ -77,7 +77,7 @@ const smoothstep = (edge0: number, edge1: number, x: number): number => {
  * 両端を smoothstep でフェードアウトする。
  */
 const computeGradientColor = (t: number, timeSec: number): Color4 => {
-    const phase = ((t * 2.0 - timeSec * 0.4) % 1.0 + 1.0) % 1.0;
+    const phase = ((t * 2.0 + timeSec * 0.4) % 1.0 + 1.0) % 1.0;
     const c1 = { r: 0.0, g: 0.8, b: 1.0 };
     const c2 = { r: 1.0, g: 0.2, b: 0.6 };
     const c3 = { r: 1.0, g: 0.9, b: 0.1 };
