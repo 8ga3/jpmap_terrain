@@ -27,6 +27,7 @@ import {
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
 import { createRouteLine, type RouteLine } from "./routeLine";
+import { createWaypointManager, type WaypointManager } from "./waypoints";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
@@ -161,6 +162,13 @@ const start = async (): Promise<void> => {
 
     // --- ルートライン (Issue #265) ---
     let routeLine: RouteLine | null = null;
+
+    // --- ウェイポイント (Issue #274) ---
+    let waypointManager: WaypointManager | null = null;
+    /** ウェイポイント表示フラグ */
+    let showWaypoints = true;
+    /** リボン表示フラグ */
+    let showRibbon = true;
 
     // --- PIP (Picture-in-Picture) セカンダリ Viewer セットアップ ---
     // Issue #264 Option C: 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
@@ -490,6 +498,21 @@ const start = async (): Promise<void> => {
         radiusSlider.addEventListener("input", () => {
             radiusM = Number(radiusSlider.value);
             updateDisplay();
+            // ウェイポイント再計算 (Issue #274)
+            if (waypointManager) {
+                const scene = viewer.__debugScene;
+                if (scene) {
+                    waypointManager.reset({
+                        scene,
+                        centerLat,
+                        centerLon,
+                        radiusM,
+                        altitudeM,
+                        angleDeg,
+                        modelNodeName: `model-${MODEL_ID}`,
+                    });
+                }
+            }
         });
     }
 
@@ -508,6 +531,21 @@ const start = async (): Promise<void> => {
         altitudeSlider.addEventListener("input", () => {
             altitudeM = Number(altitudeSlider.value);
             updateDisplay();
+            // ウェイポイント再計算 (Issue #274)
+            if (waypointManager) {
+                const scene = viewer.__debugScene;
+                if (scene) {
+                    waypointManager.reset({
+                        scene,
+                        centerLat,
+                        centerLon,
+                        radiusM,
+                        altitudeM,
+                        angleDeg,
+                        modelNodeName: `model-${MODEL_ID}`,
+                    });
+                }
+            }
         });
     }
 
@@ -526,6 +564,29 @@ const start = async (): Promise<void> => {
                 lastTimestamp = null;
             }
             updateToggleLabel();
+        });
+    }
+
+    // ウェイポイント / リボン 表示切替チェックボックス (Issue #274)
+    const waypointToggle = document.getElementById("waypoint-toggle") as HTMLInputElement | null;
+    const ribbonToggle = document.getElementById("ribbon-toggle") as HTMLInputElement | null;
+    if (waypointToggle) {
+        waypointToggle.checked = showWaypoints;
+        waypointToggle.addEventListener("change", () => {
+            showWaypoints = waypointToggle.checked;
+            if (!showWaypoints && waypointManager) {
+                waypointManager.dispose();
+                waypointManager = null;
+            }
+        });
+    }
+    if (ribbonToggle) {
+        ribbonToggle.checked = showRibbon;
+        ribbonToggle.addEventListener("change", () => {
+            showRibbon = ribbonToggle.checked;
+            if (routeLine) {
+                routeLine.setVisible(showRibbon);
+            }
         });
     }
 
@@ -609,6 +670,21 @@ const start = async (): Promise<void> => {
         angleDeg = 0;
         lastTimestamp = null;
         updateDisplay();
+        // ウェイポイント再計算 (Issue #274)
+        if (waypointManager) {
+            const scene = viewer.__debugScene;
+            if (scene) {
+                waypointManager.reset({
+                    scene,
+                    centerLat,
+                    centerLon,
+                    radiusM,
+                    altitudeM,
+                    angleDeg,
+                    modelNodeName: `model-${MODEL_ID}`,
+                });
+            }
+        }
     });
 
     // 毎フレーム更新: 円軌道上の位置を計算してモデルを移動
@@ -781,18 +857,58 @@ const start = async (): Promise<void> => {
             }
         }
         if (routeLine) {
-            routeLine.update(
-                {
-                    scene: viewer.__debugScene!,
-                    angleDeg,
-                    centerLat,
-                    centerLon,
-                    radiusM,
-                    modelNodeName: `model-${MODEL_ID}`,
-                },
-                timestamp,
-            );
+            if (showRibbon) {
+                routeLine.update(
+                    {
+                        scene: viewer.__debugScene!,
+                        angleDeg,
+                        centerLat,
+                        centerLon,
+                        radiusM,
+                        modelNodeName: `model-${MODEL_ID}`,
+                    },
+                    timestamp,
+                );
+            }
         }
+
+        // ウェイポイント更新 (Issue #274) — Followモードのみ
+        if (currentCameraMode === "follow" && showWaypoints) {
+            if (!waypointManager) {
+                const scene = viewer.__debugScene;
+                if (scene) {
+                    waypointManager = createWaypointManager(scene);
+                    waypointManager.reset({
+                        scene,
+                        centerLat,
+                        centerLon,
+                        radiusM,
+                        altitudeM,
+                        angleDeg,
+                        modelNodeName: `model-${MODEL_ID}`,
+                    });
+                }
+            }
+            if (waypointManager) {
+                waypointManager.update(
+                    {
+                        scene: viewer.__debugScene!,
+                        centerLat,
+                        centerLon,
+                        radiusM,
+                        altitudeM,
+                        angleDeg,
+                        modelNodeName: `model-${MODEL_ID}`,
+                    },
+                    timestamp,
+                );
+            }
+        } else if (waypointManager && currentCameraMode !== "follow") {
+            // Followモードを離れたらウェイポイントを破棄
+            waypointManager.dispose();
+            waypointManager = null;
+        }
+
 
         // PIP セカンダリ Viewer 更新: 飛行機の腹部カメラを再現。
         // lib の lat/lon = ArcRotateCamera のターゲット (地面の注視点)。
@@ -824,6 +940,9 @@ const start = async (): Promise<void> => {
         cancelAnimationFrame(rafId);
         if (routeLine) {
             routeLine.dispose();
+        }
+        if (waypointManager) {
+            waypointManager.dispose();
         }
         pipCleanups.forEach((fn) => fn());
         if (pipViewer) {
