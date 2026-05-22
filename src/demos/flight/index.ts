@@ -170,6 +170,20 @@ const start = async (): Promise<void> => {
     /** リボン表示フラグ */
     let showRibbon = true;
 
+    /** ウェイポイント再計算ヘルパー — パラメータ変更時に共通で呼ぶ */
+    const resetWaypointsIfNeeded = (): void => {
+        if (waypointManager && viewer.__debugScene) {
+            waypointManager.reset({
+                centerLat,
+                centerLon,
+                radiusM,
+                altitudeM,
+                angleDeg,
+                modelNodeName: `model-${MODEL_ID}`,
+            });
+        }
+    };
+
     // --- PIP (Picture-in-Picture) セカンダリ Viewer セットアップ ---
     // Issue #264 Option C: 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
     // - メイン Viewer の入力系・タイル管理・カメラに一切手を入れない（バグ非導入）
@@ -498,20 +512,7 @@ const start = async (): Promise<void> => {
         radiusSlider.addEventListener("input", () => {
             radiusM = Number(radiusSlider.value);
             updateDisplay();
-            // ウェイポイント再計算 (Issue #274)
-            if (waypointManager) {
-                const scene = viewer.__debugScene;
-                if (scene) {
-                    waypointManager.reset({
-                        centerLat,
-                        centerLon,
-                        radiusM,
-                        altitudeM,
-                        angleDeg,
-                        modelNodeName: `model-${MODEL_ID}`,
-                    });
-                }
-            }
+            resetWaypointsIfNeeded();
         });
     }
 
@@ -530,20 +531,7 @@ const start = async (): Promise<void> => {
         altitudeSlider.addEventListener("input", () => {
             altitudeM = Number(altitudeSlider.value);
             updateDisplay();
-            // ウェイポイント再計算 (Issue #274)
-            if (waypointManager) {
-                const scene = viewer.__debugScene;
-                if (scene) {
-                    waypointManager.reset({
-                        centerLat,
-                        centerLon,
-                        radiusM,
-                        altitudeM,
-                        angleDeg,
-                        modelNodeName: `model-${MODEL_ID}`,
-                    });
-                }
-            }
+            resetWaypointsIfNeeded();
         });
     }
 
@@ -668,20 +656,7 @@ const start = async (): Promise<void> => {
         angleDeg = 0;
         lastTimestamp = null;
         updateDisplay();
-        // ウェイポイント再計算 (Issue #274)
-        if (waypointManager) {
-            const scene = viewer.__debugScene;
-            if (scene) {
-                waypointManager.reset({
-                    centerLat,
-                    centerLon,
-                    radiusM,
-                    altitudeM,
-                    angleDeg,
-                    modelNodeName: `model-${MODEL_ID}`,
-                });
-            }
-        }
+        resetWaypointsIfNeeded();
     });
 
     // 毎フレーム更新: 円軌道上の位置を計算してモデルを移動
@@ -876,14 +851,7 @@ const start = async (): Promise<void> => {
                 const scene = viewer.__debugScene;
                 if (scene) {
                     waypointManager = createWaypointManager(scene);
-                    waypointManager.reset({
-                        centerLat,
-                        centerLon,
-                        radiusM,
-                        altitudeM,
-                        angleDeg,
-                        modelNodeName: `model-${MODEL_ID}`,
-                    });
+                    resetWaypointsIfNeeded();
                 }
             }
             if (waypointManager) {
