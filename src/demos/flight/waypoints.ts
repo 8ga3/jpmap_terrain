@@ -25,6 +25,8 @@ const DISC_DIAMETER_M = 60;
 const PASS_THRESHOLD_M = 40;
 /** フェードアウト速度 (alpha/秒) */
 const FADE_SPEED = 3.0;
+/** フェード完了時の拡大倍率 */
+const FADE_MAX_SCALE = 2.5;
 /** 初期配置時に飛行機の前方へずらすオフセット (m) — 即通過を防ぐ */
 const INITIAL_OFFSET_M = WAYPOINT_SPACING_M * 0.5;
 
@@ -182,7 +184,7 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
                 createPassEffect(ctx.scene, wp.mesh.position.clone());
             }
 
-            // ─── フェードアウト ───
+            // ─── フェードアウト + 拡大アニメーション ───
             if (wp.passed && wp.fadeAlpha > 0) {
                 wp.fadeAlpha -= FADE_SPEED * dt;
                 if (wp.fadeAlpha <= 0) {
@@ -194,10 +196,15 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
                     nextSpawnAngleDeg += angleStepDeg;
                     wp.passed = false;
                     wp.fadeAlpha = 1;
+                    wp.mesh.scaling.set(1, 1, 1);
                     applyRingOrientation(wp.mesh, wp.angleDeg);
                     // setEnabled(true) は位置更新後（下部）に実行
                 } else {
                     wp.mesh.visibility = wp.fadeAlpha;
+                    // fadeAlpha 1→0 にあわせて 1→FADE_MAX_SCALE に拡大
+                    const t = 1 - wp.fadeAlpha;
+                    const scale = 1 + t * (FADE_MAX_SCALE - 1);
+                    wp.mesh.scaling.set(scale, scale, scale);
                 }
             }
 
