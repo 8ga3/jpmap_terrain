@@ -25,13 +25,12 @@ const PARTICLE_TEXTURE_BASE64 =
     "LIZkMJgNEmBgYGBkAAlAaJACSAAkAGIzMEJNAQkAAHHJDQkd" +
     "hBG8AAAAAElFTkSuQmCC";
 
-let sharedTexture: Texture | null = null;
-const getTexture = (scene: Scene): Texture => {
-    if (!sharedTexture) {
-        sharedTexture = new Texture(PARTICLE_TEXTURE_BASE64, scene);
-    }
-    return sharedTexture;
-};
+/**
+ * パーティクルテクスチャを生成する。
+ * ParticleSystem の dispose で Texture も破棄されるため共有しない。
+ */
+const createParticleTexture = (scene: Scene): Texture =>
+    new Texture(PARTICLE_TEXTURE_BASE64, scene);
 
 interface ParticleConfig {
     name: string;
@@ -54,7 +53,7 @@ interface ParticleConfig {
 
 const createPS = (scene: Scene, position: Vector3, cfg: ParticleConfig): ParticleSystem => {
     const ps = new ParticleSystem(cfg.name, cfg.capacity, scene);
-    ps.particleTexture = getTexture(scene);
+    ps.particleTexture = createParticleTexture(scene);
     ps.emitter = position;
     ps.minEmitBox = cfg.emitBoxMin;
     ps.maxEmitBox = cfg.emitBoxMax;
