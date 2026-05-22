@@ -137,7 +137,6 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
             mesh.material = mat;
             mesh.isPickable = false;
             mesh.alwaysSelectAsActiveMesh = true;
-            mesh.rotation.x = Math.PI / 2;
             applyRingOrientation(mesh, wpAngle);
 
             waypoints.push({
