@@ -13,16 +13,21 @@ import type { Scene } from "@babylonjs/core/scene";
 // ESM環境のモック: jest.unstable_mockModule を使い、動的 import でテスト対象を取得
 
 jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/discBuilder", () => ({
-    CreateDisc: jest.fn(() => ({
-        material: null,
-        isPickable: false,
-        alwaysSelectAsActiveMesh: false,
-        rotation: { x: 0, y: 0, z: 0 },
-        position: { x: 0, y: 0, z: 0, set: jest.fn(), clone: jest.fn(() => ({ x: 0, y: 0, z: 0 })) },
-        visibility: 1,
-        dispose: jest.fn(),
-        setEnabled: jest.fn(),
-    })),
+    CreateDisc: jest.fn(() => {
+        const scaling = { x: 1, y: 1, z: 1, set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; } };
+        return {
+            material: null,
+            isPickable: false,
+            alwaysSelectAsActiveMesh: false,
+            rotation: { x: 0, y: 0, z: 0 },
+            position: { x: 0, y: 0, z: 0, set: jest.fn(), clone: jest.fn(() => ({ x: 0, y: 0, z: 0 })) },
+            visibility: 1,
+            scaling,
+            enabled: true,
+            dispose: jest.fn(),
+            setEnabled(v: boolean) { this.enabled = v; },
+        };
+    }),
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
@@ -181,5 +186,68 @@ describe("createWaypointManager", () => {
                 1000,
             ),
         ).not.toThrow();
+    });
+
+    // Issue #274 PR #277 レビュー指摘: 通過 → フェード → 復活で state がリセットされることを検証
+    it("regenerates waypoint after pass: passed/fadeAlpha/visibility/scaling reset", () => {
+        CreateDiscMock.mockClear();
+        const scene = createMockScene();
+        const mgr = createWaypointManager(scene);
+        const radiusM = 2000;
+        mgr.reset({
+            centerLat: 35.68,
+            centerLon: 139.77,
+            radiusM,
+            altitudeM: 2000,
+            angleDeg: 0,
+            modelNodeName: "model-plane",
+        });
+
+        // CreateDisc が返した最初のメッシュインスタンス（先頭ウェイポイント）
+        const firstMesh = CreateDiscMock.mock.results[0].value as {
+            visibility: number;
+            scaling: { x: number; y: number; z: number };
+            enabled: boolean;
+        };
+
+        // 先頭ウェイポイントは ctx.angleDeg + offsetDeg ≈ 8.594° (radius=2000, offset=300m)
+        // 通過判定: |dist| < PASS_THRESHOLD_M(40m) かつ ahead=true
+        // 飛行機角度を 8.594° の少し手前 (8.5°) に置き、約 3.3m 手前 → ahead+dist<40m で通過
+        const passingAngle = 8.5;
+
+        // 第1フレーム: lastTime=0 のため dt=0.016 既定。通過判定発火。
+        mgr.update(
+            {
+                centerLat: 35.68,
+                centerLon: 139.77,
+                radiusM,
+                altitudeM: 2000,
+                angleDeg: passingAngle,
+                modelNodeName: "model-plane",
+            },
+            1000,
+        );
+
+        // フェードが完了するまで update を回す (FADE_SPEED=3/sec → ~340ms で完了)
+        for (let i = 1; i <= 30; i++) {
+            mgr.update(
+                {
+                    centerLat: 35.68,
+                    centerLon: 139.77,
+                    radiusM,
+                    altitudeM: 2000,
+                    angleDeg: passingAngle,
+                    modelNodeName: "model-plane",
+                },
+                1000 + i * 20, // 20ms 刻み × 30 = 600ms
+            );
+        }
+
+        // 復活後の検証: visibility=1, scaling=1, mesh 再有効化されている (フレーム末 setEnabled(true))
+        expect(firstMesh.visibility).toBe(1);
+        expect(firstMesh.scaling.x).toBe(1);
+        expect(firstMesh.scaling.y).toBe(1);
+        expect(firstMesh.scaling.z).toBe(1);
+        expect(firstMesh.enabled).toBe(true);
     });
 });
