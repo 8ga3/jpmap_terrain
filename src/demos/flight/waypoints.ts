@@ -36,7 +36,6 @@ const INITIAL_OFFSET_M = WAYPOINT_SPACING_M * 0.5;
 
 // ─── 型 ──────────────────────────────────────────────────
 export interface WaypointManagerContext {
-    scene: Scene;
     centerLat: number;
     centerLon: number;
     radiusM: number;
@@ -164,7 +163,7 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
         const timeSec = time * 0.001;
 
         // 飛行機のワールド座標
-        const root = ctx.scene.getTransformNodeByName(ctx.modelNodeName);
+        const root = scene.getTransformNodeByName(ctx.modelNodeName);
         if (!root) return;
         const childMesh = root.getChildMeshes(false)[0];
         if (!childMesh) return;
@@ -185,7 +184,7 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
             // ─── 通過判定: 前方かつ近い ───
             if (!wp.passed && ahead && dist < PASS_THRESHOLD_M) {
                 wp.passed = true;
-                createPassEffect(ctx.scene, wp.mesh.position.clone());
+                createPassEffect(scene, wp.mesh.position.clone());
             }
 
             // ─── フェードアウト + 拡大アニメーション ───
