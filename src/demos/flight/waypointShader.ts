@@ -54,6 +54,7 @@ float ring(float r, float center, float width) {
 }
 
 // N角形の距離関数
+// atan(p.x, p.y) は意図的: +Y軸を0°基準にして頂点を12時方向に配置する
 float polygon(vec2 p, int n, float size) {
     float a = atan(p.x, p.y) + PI;
     float r = TAU / float(n);
