@@ -8,6 +8,7 @@
  * 他テストとのキャッシュ衝突を回避する。
  */
 import { describe, it, expect, jest, beforeAll } from "@jest/globals";
+import type { Scene } from "@babylonjs/core/scene";
 
 // ESM環境のモック: jest.unstable_mockModule を使い、動的 import でテスト対象を取得
 
@@ -73,7 +74,7 @@ jest.unstable_mockModule("../src/demos/flight/waypointEffect", () => ({
     createPassEffect: jest.fn(),
 }));
 
-const createMockScene = () => ({
+const createMockScene = (): Scene => ({
     getTransformNodeByName: jest.fn((): unknown => ({
         getChildMeshes: jest.fn(() => [
             {
@@ -82,10 +83,10 @@ const createMockScene = () => ({
             },
         ]),
     })),
-});
+}) as unknown as Scene;
 
 describe("createWaypointManager", () => {
-    let createWaypointManager: any;
+    let createWaypointManager: typeof import("../src/demos/flight/waypoints").createWaypointManager;
     let CreateDiscMock: jest.Mock;
 
     beforeAll(async () => {
