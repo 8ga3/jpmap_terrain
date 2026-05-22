@@ -196,6 +196,7 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
                     nextSpawnAngleDeg += angleStepDeg;
                     wp.passed = false;
                     wp.fadeAlpha = 1;
+                    wp.mesh.visibility = 1;
                     wp.mesh.scaling.set(1, 1, 1);
                     applyRingOrientation(wp.mesh, wp.angleDeg);
                     // setEnabled(true) は位置更新後（下部）に実行
