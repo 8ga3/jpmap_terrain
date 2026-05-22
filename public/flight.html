@@ -42,28 +42,30 @@
       z-index: 9;
       opacity: 0;
       border-radius: 50%;
-      mix-blend-mode: screen;
       background: radial-gradient(
         circle at center,
-        rgba(255, 255, 255, 0) 0%,
-        rgba(120, 200, 255, 0) 60%,
-        rgba(180, 240, 255, 0.6) 75%,
-        rgba(255, 255, 255, 0.9) 86%,
-        rgba(180, 240, 255, 0.6) 94%,
-        rgba(80, 160, 255, 0) 100%
+        rgba(255, 255, 255, 0)    0%,
+        rgba(180, 240, 255, 0)   52%,
+        rgba(180, 240, 255, 0.7) 62%,
+        rgba(255, 255, 255, 1.0) 72%,
+        rgba(140, 220, 255, 1.0) 80%,
+        rgba(80,  180, 255, 0.5) 90%,
+        rgba(40,  140, 255, 0)  100%
       );
       box-shadow:
-        0 0 60px 10px rgba(180, 230, 255, 0.4),
-        0 0 120px 30px rgba(120, 200, 255, 0.2);
+        0 0 30px 12px rgba(255, 255, 255, 0.6),
+        0 0 80px 30px rgba(140, 210, 255, 0.5),
+        0 0 140px 60px rgba(80, 160, 255, 0.3);
       transform: scale(0.1);
     }
     #wp-shockwave.firing {
-      animation: wpShockwave 0.8s cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+      animation: wpShockwave 0.9s cubic-bezier(0.1, 0.6, 0.3, 1) forwards;
     }
     @keyframes wpShockwave {
-      0%   { opacity: 0;    transform: scale(0.1); }
-      10%  { opacity: 1;    transform: scale(0.3); }
-      100% { opacity: 0;    transform: scale(18); }
+      0%   { opacity: 0;   transform: scale(0.1); }
+      8%   { opacity: 1;   transform: scale(0.4); }
+      40%  { opacity: 1;   transform: scale(2.8); }
+      100% { opacity: 0;   transform: scale(8); }
     }
 
     #flight-overlay .back-link {
