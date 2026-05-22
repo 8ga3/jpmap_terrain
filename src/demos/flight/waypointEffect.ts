@@ -1,62 +1,47 @@
 /**
- * ウェイポイント通過エフェクト — 小粒パーティクルの軽快な弾け (Issue #274)。
+ * ウェイポイント通過エフェクト — 画面全体の衝撃波リップル (Issue #274)。
  *
- * 全方位に小さな輝点を短時間放射し、すぐに消える「シャラッ」とした演出。
+ * DOM オーバーレイ (#wp-shockwave) に `firing` クラスを付与して
+ * CSS keyframes で画面いっぱいに広がる円形リップルを再生する。
+ * 3D シーンに依存しないため、カメラ位置・モードに関わらず画面中央から発火。
+ *
+ * 連射対応: アニメーション中に再発火された場合は再生をリセットする。
  */
 
-import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core/scene";
 
-/** 8×8 の白い円 PNG (パーティクルテクスチャ) */
-const PARTICLE_TEXTURE_BASE64 =
-    "data:image/png;base64," +
-    "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAA" +
-    "RElEQVQYV2P8////fwYGBgZGRkYGBgYGBkYQDWJgYMDCgHKA" +
-    "LIZkMJgNEmBgYGBkAAlAaJACSAAkAGIzMEJNAQkAAHHJDQkd" +
-    "hBG8AAAAAElFTkSuQmCC";
+const OVERLAY_ID = "wp-shockwave";
+const FIRING_CLASS = "firing";
+
+let pendingTimer: number | null = null;
+
+const getOverlay = (): HTMLElement | null => {
+    if (typeof document === "undefined") return null;
+    return document.getElementById(OVERLAY_ID);
+};
 
 /**
- * ウェイポイント通過時の小粒パーティクル弾けエフェクト。
- * 自動停止・自動破棄。
+ * ウェイポイント通過時の画面衝撃波エフェクトを発火する。
+ * 引数 scene/position は API 互換のため受け取るが内部では使用しない
+ * (3D 空間ではなく DOM オーバーレイで再生)。
  */
-export const createPassEffect = (scene: Scene, position: Vector3): ParticleSystem => {
-    const ps = new ParticleSystem("wpPassEffect", 120, scene);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export const createPassEffect = (_scene: Scene, _position: Vector3): void => {
+    const el = getOverlay();
+    if (!el) return;
 
-    ps.particleTexture = new Texture(PARTICLE_TEXTURE_BASE64, scene);
-    ps.emitter = position;
+    // 連射時はクラスを一旦外して reflow → 再付与してアニメーション再生
+    el.classList.remove(FIRING_CLASS);
+    // 強制 reflow
+    void el.offsetWidth;
+    el.classList.add(FIRING_CLASS);
 
-    // 全方位に小さく放射
-    ps.minEmitBox = new Vector3(-0.5, -0.5, -0.5);
-    ps.maxEmitBox = new Vector3(0.5, 0.5, 0.5);
-
-    // カラー: 白〜薄いシアン (魔法陣のカラーに合わせる)
-    ps.color1 = new Color4(1.0, 1.0, 1.0, 1.0);
-    ps.color2 = new Color4(0.6, 0.9, 1.0, 1.0);
-    ps.colorDead = new Color4(0.4, 0.7, 1.0, 0.0);
-
-    // 小さなパーティクル
-    ps.minSize = 0.8;
-    ps.maxSize = 2.0;
-
-    // 短いライフタイム
-    ps.minLifeTime = 0.2;
-    ps.maxLifeTime = 0.5;
-
-    // 中速で弾ける
-    ps.minEmitPower = 20;
-    ps.maxEmitPower = 50;
-
-    ps.emitRate = 600;
-    ps.gravity = new Vector3(0, 0, 0);
-    ps.blendMode = ParticleSystem.BLENDMODE_ADD;
-
-    // 短い発火時間で「シャラッ」と消える
-    ps.targetStopDuration = 0.1;
-    ps.disposeOnStop = true;
-
-    ps.start();
-    return ps;
+    if (pendingTimer !== null) {
+        clearTimeout(pendingTimer);
+    }
+    pendingTimer = window.setTimeout(() => {
+        el.classList.remove(FIRING_CLASS);
+        pendingTimer = null;
+    }, 900);
 };

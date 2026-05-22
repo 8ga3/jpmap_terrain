@@ -30,6 +30,42 @@
         "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
     }
 
+    #wp-shockwave {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 200px;
+      height: 200px;
+      margin-left: -100px;
+      margin-top: -100px;
+      pointer-events: none;
+      z-index: 9;
+      opacity: 0;
+      border-radius: 50%;
+      mix-blend-mode: screen;
+      background: radial-gradient(
+        circle at center,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(120, 200, 255, 0) 60%,
+        rgba(180, 240, 255, 0.6) 75%,
+        rgba(255, 255, 255, 0.9) 86%,
+        rgba(180, 240, 255, 0.6) 94%,
+        rgba(80, 160, 255, 0) 100%
+      );
+      box-shadow:
+        0 0 60px 10px rgba(180, 230, 255, 0.4),
+        0 0 120px 30px rgba(120, 200, 255, 0.2);
+      transform: scale(0.1);
+    }
+    #wp-shockwave.firing {
+      animation: wpShockwave 0.8s cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+    }
+    @keyframes wpShockwave {
+      0%   { opacity: 0;    transform: scale(0.1); }
+      10%  { opacity: 1;    transform: scale(0.3); }
+      100% { opacity: 0;    transform: scale(18); }
+    }
+
     #flight-overlay .back-link {
       position: absolute;
       top: 12px;
@@ -210,6 +246,7 @@
 </head>
 <body>
   <div id="root"></div>
+  <div id="wp-shockwave"></div>
   <div id="flight-overlay">
     <a class="back-link" href="/">← デモ一覧へ</a>
     <div id="flight-controls">
