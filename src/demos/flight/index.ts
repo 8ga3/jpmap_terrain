@@ -851,6 +851,7 @@ const start = async (): Promise<void> => {
             const scene = viewer.__debugScene;
             if (scene) {
                 routeLine = createRouteLine(scene);
+                routeLine.setVisible(showRibbon);
             }
         }
         if (routeLine) {
