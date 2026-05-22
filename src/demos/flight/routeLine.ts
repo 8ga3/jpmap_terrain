@@ -61,6 +61,8 @@ export interface RouteLineContext {
 export interface RouteLine {
     /** 毎フレーム呼び出してリボンを更新する */
     update(ctx: RouteLineContext, time: number): void;
+    /** リボンの表示/非表示を切り替える */
+    setVisible(visible: boolean): void;
     /** リソース解放 */
     dispose(): void;
 }
@@ -233,10 +235,14 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         }
     };
 
+    const setVisible = (visible: boolean): void => {
+        ribbon.setEnabled(visible);
+    };
+
     const dispose = (): void => {
         ribbon.dispose();
         material.dispose();
     };
 
-    return { update, dispose };
+    return { update, setVisible, dispose };
 };
