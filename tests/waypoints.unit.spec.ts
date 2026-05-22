@@ -110,7 +110,6 @@ describe("createWaypointManager", () => {
         const scene = createMockScene();
         const mgr = createWaypointManager(scene);
         mgr.reset({
-            scene,
             centerLat: 35.68,
             centerLon: 139.77,
             radiusM: 2000,
@@ -132,7 +131,6 @@ describe("createWaypointManager", () => {
         const scene = createMockScene();
         const mgr = createWaypointManager(scene);
         mgr.reset({
-            scene,
             centerLat: 35.68,
             centerLon: 139.77,
             radiusM: 50000,
@@ -147,7 +145,6 @@ describe("createWaypointManager", () => {
         const scene = createMockScene();
         const mgr = createWaypointManager(scene);
         mgr.reset({
-            scene,
             centerLat: 35.68,
             centerLon: 139.77,
             radiusM: 2000,
@@ -163,7 +160,6 @@ describe("createWaypointManager", () => {
         scene.getTransformNodeByName = jest.fn(() => null);
         const mgr = createWaypointManager(scene);
         mgr.reset({
-            scene,
             centerLat: 35.68,
             centerLon: 139.77,
             radiusM: 2000,
@@ -174,7 +170,6 @@ describe("createWaypointManager", () => {
         expect(() =>
             mgr.update(
                 {
-                    scene,
                     centerLat: 35.68,
                     centerLon: 139.77,
                     radiusM: 2000,

@@ -503,7 +503,6 @@ const start = async (): Promise<void> => {
                 const scene = viewer.__debugScene;
                 if (scene) {
                     waypointManager.reset({
-                        scene,
                         centerLat,
                         centerLon,
                         radiusM,
@@ -536,7 +535,6 @@ const start = async (): Promise<void> => {
                 const scene = viewer.__debugScene;
                 if (scene) {
                     waypointManager.reset({
-                        scene,
                         centerLat,
                         centerLon,
                         radiusM,
@@ -675,7 +673,6 @@ const start = async (): Promise<void> => {
             const scene = viewer.__debugScene;
             if (scene) {
                 waypointManager.reset({
-                    scene,
                     centerLat,
                     centerLon,
                     radiusM,
@@ -879,7 +876,6 @@ const start = async (): Promise<void> => {
                 if (scene) {
                     waypointManager = createWaypointManager(scene);
                     waypointManager.reset({
-                        scene,
                         centerLat,
                         centerLon,
                         radiusM,
@@ -892,7 +888,6 @@ const start = async (): Promise<void> => {
             if (waypointManager) {
                 waypointManager.update(
                     {
-                        scene: viewer.__debugScene!,
                         centerLat,
                         centerLon,
                         radiusM,
