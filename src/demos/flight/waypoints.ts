@@ -15,7 +15,11 @@ import { createWaypointMaterial, updateWaypointMaterialTime } from "./waypointSh
 import { createPassEffect } from "./waypointEffect";
 
 // ─── 定数 ────────────────────────────────────────────────
-/** ウェイポイント間の弧長距離 (m) */
+/**
+ * ウェイポイント間の弧長距離 (m)。
+ * Issue #274 初版は約350m（音速340m/s相当）だったが、視認性と密度のバランスを
+ * 確認した結果ユーザー判断で 600m に変更（PR #277 レビュースレッド参照）。
+ */
 const WAYPOINT_SPACING_M = 600;
 /** ウィンドウの最大ウェイポイント数 */
 const MAX_WAYPOINT_COUNT = 10;
