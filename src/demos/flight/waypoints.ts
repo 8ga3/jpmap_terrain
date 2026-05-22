@@ -1,12 +1,12 @@
 /**
  * ウェイポイント管理モジュール (Issue #274)。
  *
- * 円軌道上にスライディングウィンドウ方式でリング（トーラス）を配置。
+ * 円軌道上にスライディングウィンドウ方式で魔法陣ディスクを配置。
  * 飛行機が通過するとフェードアウトし、完全消滅後に最後尾の次の位置へ移動して復活。
  * メッシュをプールとして再利用するため create/dispose のオーバーヘッドがない。
  */
 
-import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
+import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 
@@ -19,10 +19,8 @@ import { createPassEffect } from "./waypointEffect";
 const WAYPOINT_SPACING_M = 600;
 /** ウィンドウの最大ウェイポイント数 */
 const MAX_WAYPOINT_COUNT = 10;
-/** リングの直径 (m) — 飛行機がくぐれるサイズ */
-const RING_DIAMETER_M = 60;
-/** リングのチューブ太さ (m) */
-const RING_TUBE_DIAMETER_M = 3;
+/** 魔法陣ディスクの直径 (m) — 飛行機がくぐれるサイズ */
+const DISC_DIAMETER_M = 60;
 /** 通過判定の弧長距離 (m) */
 const PASS_THRESHOLD_M = 40;
 /** フェードアウト速度 (alpha/秒) */
@@ -128,12 +126,11 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
             const mat = createWaypointMaterial(scene, `wp${i}`);
             materials.push(mat);
 
-            const mesh = CreateTorus(
-                `waypointRing_${i}`,
+            const mesh = CreateDisc(
+                `waypointDisc_${i}`,
                 {
-                    diameter: RING_DIAMETER_M,
-                    thickness: RING_TUBE_DIAMETER_M,
-                    tessellation: 24,
+                    radius: DISC_DIAMETER_M / 2,
+                    tessellation: 48,
                 },
                 scene,
             );

@@ -11,8 +11,8 @@ import { describe, it, expect, jest, beforeAll } from "@jest/globals";
 
 // ESM環境のモック: jest.unstable_mockModule を使い、動的 import でテスト対象を取得
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/torusBuilder", () => ({
-    CreateTorus: jest.fn(() => ({
+jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/discBuilder", () => ({
+    CreateDisc: jest.fn(() => ({
         material: null,
         isPickable: false,
         alwaysSelectAsActiveMesh: false,
@@ -86,14 +86,14 @@ const createMockScene = () => ({
 
 describe("createWaypointManager", () => {
     let createWaypointManager: any;
-    let CreateTorusMock: jest.Mock;
+    let CreateDiscMock: jest.Mock;
 
     beforeAll(async () => {
         const waypoints = await import("../src/demos/flight/waypoints");
         createWaypointManager = waypoints.createWaypointManager;
 
-        const torusModule = await import("@babylonjs/core/Meshes/Builders/torusBuilder");
-        CreateTorusMock = torusModule.CreateTorus as unknown as jest.Mock;
+        const discModule = await import("@babylonjs/core/Meshes/Builders/discBuilder");
+        CreateDiscMock = discModule.CreateDisc as unknown as jest.Mock;
     });
 
     it("creates a WaypointManager with update/reset/dispose", () => {
@@ -106,7 +106,7 @@ describe("createWaypointManager", () => {
     });
 
     it("reset creates waypoints based on radius", () => {
-        CreateTorusMock.mockClear();
+        CreateDiscMock.mockClear();
         const scene = createMockScene();
         const mgr = createWaypointManager(scene);
         mgr.reset({
@@ -124,11 +124,11 @@ describe("createWaypointManager", () => {
             Math.floor((2 * Math.PI * 2000) / 600),
             10,
         );
-        expect(CreateTorusMock).toHaveBeenCalledTimes(expectedCount);
+        expect(CreateDiscMock).toHaveBeenCalledTimes(expectedCount);
     });
 
     it("reset caps waypoints at MAX_WAYPOINTS", () => {
-        CreateTorusMock.mockClear();
+        CreateDiscMock.mockClear();
         const scene = createMockScene();
         const mgr = createWaypointManager(scene);
         mgr.reset({
@@ -140,7 +140,7 @@ describe("createWaypointManager", () => {
             angleDeg: 0,
             modelNodeName: "model-plane",
         });
-        expect(CreateTorusMock).toHaveBeenCalledTimes(10);
+        expect(CreateDiscMock).toHaveBeenCalledTimes(10);
     });
 
     it("dispose cleans up without error", () => {
