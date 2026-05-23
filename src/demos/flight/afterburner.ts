@@ -56,8 +56,7 @@ export interface Afterburner {
 
 /**
  * アフターバーナー用 StandardMaterial を作成する。
- * emissive オレンジ〜青のグラデーション感を出すため、明るいオレンジの emissive に
- * ALPHA_ADD ブレンドで重なりが強く光る炎っぽい表現にする。
+ * 明るいオレンジの emissive + ALPHA_ADD ブレンドで重なりが強く光る炎っぽい表現にする。
  */
 const createAfterburnerMaterial = (scene: Scene): StandardMaterial => {
     const mat = new StandardMaterial("afterburner-mat", scene);
