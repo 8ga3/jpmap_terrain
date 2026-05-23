@@ -35,15 +35,15 @@ const TRAIL_LENGTH = 10;
 const TRAIL_SECTIONS = 8;
 
 // ─── 型 ─────────────────────────────────────────────────
-export interface ContrailContext {
+export interface AfterburnerContext {
     scene: Scene;
     /** model の TransformNode 名（generator の親に使う） */
     modelNodeName: string;
 }
 
-export interface Contrail {
+export interface Afterburner {
     /** トレイル生成を開始（Follow モード ON 時に呼ぶ） */
-    start(ctx: ContrailContext): void;
+    start(ctx: AfterburnerContext): void;
     /** トレイル生成を停止（Follow モード OFF 時に呼ぶ） */
     stop(): void;
     /** トレイルの頂点をリセット（グリッド原点ジャンプ後の折れ線防止） */
@@ -59,7 +59,7 @@ export interface Contrail {
  * emissive オレンジ〜青のグラデーション感を出すため、明るいオレンジの emissive に
  * ALPHA_ADD ブレンドで重なりが強く光る炎っぽい表現にする。
  */
-const createContrailMaterial = (scene: Scene): StandardMaterial => {
+const createAfterburnerMaterial = (scene: Scene): StandardMaterial => {
     const mat = new StandardMaterial("afterburner-mat", scene);
     mat.disableLighting = true;
     // アフターバーナーの炎色: 明るいオレンジ〜黄（高輝度で GlowLayer に反応）
@@ -73,12 +73,12 @@ const createContrailMaterial = (scene: Scene): StandardMaterial => {
 };
 
 /**
- * コントレイルエフェクトを作成する。
+ * アフターバーナーエフェクトを作成する。
  * 初期化時には TrailMesh は作らず、start() で実際の generator を取得して構築する
  * （飛行機モデルの非同期ロード完了後に呼ばれるため）。
  */
-export const createContrail = (scene: Scene): Contrail => {
-    const material = createContrailMaterial(scene);
+export const createAfterburner = (scene: Scene): Afterburner => {
+    const material = createAfterburnerMaterial(scene);
 
     // GlowLayer: TrailMesh のみに発光を適用（他メッシュに影響なし）
     const glow = new GlowLayer("afterburner-glow", scene, {
@@ -93,7 +93,7 @@ export const createContrail = (scene: Scene): Contrail => {
     let running = false;
     let visible = true;
 
-    const buildTrails = (ctx: ContrailContext): boolean => {
+    const buildTrails = (ctx: AfterburnerContext): boolean => {
         const root = ctx.scene.getTransformNodeByName(ctx.modelNodeName);
         if (!root) return false;
 
@@ -111,7 +111,7 @@ export const createContrail = (scene: Scene): Contrail => {
         // root は updateModel() で明示的に lat/lon に従って位置・回転が更新されるため、
         // 子メッシュ (childMesh) よりも安定して飛行機の動きに追従する。
         // Babylon.js 左手座標系: X=右, Y=上, Z=前方。後方は -Z。
-        leftGen = new TransformNode("contrail-left-gen", ctx.scene);
+        leftGen = new TransformNode("afterburner-left-gen", ctx.scene);
         leftGen.parent = root;
         leftGen.position.set(
             -ENGINE_LATERAL_OFFSET_M,
@@ -119,7 +119,7 @@ export const createContrail = (scene: Scene): Contrail => {
             -ENGINE_REAR_OFFSET_M,
         );
 
-        rightGen = new TransformNode("contrail-right-gen", ctx.scene);
+        rightGen = new TransformNode("afterburner-right-gen", ctx.scene);
         rightGen.parent = root;
         rightGen.position.set(
             ENGINE_LATERAL_OFFSET_M,
@@ -132,7 +132,7 @@ export const createContrail = (scene: Scene): Contrail => {
         leftGen.computeWorldMatrix(true);
         rightGen.computeWorldMatrix(true);
 
-        leftTrail = new TrailMesh("contrail-left", leftGen, ctx.scene, {
+        leftTrail = new TrailMesh("afterburner-left", leftGen, ctx.scene, {
             diameter: TRAIL_DIAMETER_M,
             length: TRAIL_LENGTH,
             sections: TRAIL_SECTIONS,
@@ -144,7 +144,7 @@ export const createContrail = (scene: Scene): Contrail => {
         leftTrail.alwaysSelectAsActiveMesh = true;
         leftTrail.renderingGroupId = 1;
 
-        rightTrail = new TrailMesh("contrail-right", rightGen, ctx.scene, {
+        rightTrail = new TrailMesh("afterburner-right", rightGen, ctx.scene, {
             diameter: TRAIL_DIAMETER_M,
             length: TRAIL_LENGTH,
             sections: TRAIL_SECTIONS,
@@ -166,7 +166,7 @@ export const createContrail = (scene: Scene): Contrail => {
         return true;
     };
 
-    const start = (ctx: ContrailContext): void => {
+    const start = (ctx: AfterburnerContext): void => {
         if (running) return;
         // 毎回作り直すことで、前回 Follow セッションの残骸軌跡を完全に排除する
         if (!buildTrails(ctx)) return;
