@@ -1367,8 +1367,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const key = toTileKey({ zoom: z, x: tileXInt, y: tileYInt });
             // 表示中タイルのデータのみ使用する。activeTiles に加え、
             // LOD 遷移中で表示を維持している pendingRelease タイルも含める。
+            // ただし hiddenChildTiles のタイルは mesh disabled で実際には描画されて
+            // いないため除外し、親(pendingRelease)へフォールバックさせる。
             // キャッシュには古い zoom レベルのデータが残留していることがあり、
             // 表示メッシュと異なる標高データを返すとアバターが地面に潜る原因になる。
+            if (hiddenChildTiles.has(key)) continue;
             if (!activeTiles.has(key) && !pendingRelease.has(key)) continue;
             const entry = cache.get(key);
             if (!entry) continue;
