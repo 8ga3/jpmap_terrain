@@ -38,8 +38,8 @@ const makeSound = (initialState: number = SoundState.Stopped) => ({
 const mockCreateAudioEngineAsync = jest.fn<() => Promise<typeof mockEngine>>()
     .mockResolvedValue(mockEngine);
 
-const mockCreateSoundAsync = jest.fn()
-    .mockResolvedValue(makeSound());
+type MockSound = ReturnType<typeof makeSound>;
+const mockCreateSoundAsync = jest.fn<() => Promise<MockSound>>();
 
 jest.unstable_mockModule("@babylonjs/core/AudioV2/webAudio/webAudioEngine", () => ({
     CreateAudioEngineAsync: mockCreateAudioEngineAsync,
@@ -62,6 +62,7 @@ describe("createFlightAudio", () => {
         jest.clearAllMocks();
         mockUnlockAsync.mockResolvedValue(undefined);
         mockCreateAudioEngineAsync.mockResolvedValue(mockEngine);
+        mockCreateSoundAsync.mockResolvedValue(makeSound());
         const mod = await import("../src/demos/flight/flightAudio");
         createFlightAudio = mod.createFlightAudio;
     });
@@ -106,8 +107,32 @@ describe("createFlightAudio", () => {
             expect(engineSound.play).not.toHaveBeenCalled();
         });
 
+        it("startEngineSound: Starting 状態なら play() を呼ばない（重複再生防止）", async () => {
+            const engineSound = makeSound(SoundState.Starting);
+            const wpSound = makeSound();
+            mockCreateSoundAsync
+                .mockResolvedValueOnce(engineSound)
+                .mockResolvedValueOnce(wpSound);
+
+            const audio = await createFlightAudio();
+            audio.startEngineSound();
+            expect(engineSound.play).not.toHaveBeenCalled();
+        });
+
         it("stopEngineSound: Started 状態なら stop() を呼ぶ", async () => {
             const engineSound = makeSound(SoundState.Started);
+            const wpSound = makeSound();
+            mockCreateSoundAsync
+                .mockResolvedValueOnce(engineSound)
+                .mockResolvedValueOnce(wpSound);
+
+            const audio = await createFlightAudio();
+            audio.stopEngineSound();
+            expect(engineSound.stop).toHaveBeenCalledTimes(1);
+        });
+
+        it("stopEngineSound: Starting 状態でも stop() を呼ぶ（follow 離脱時キャンセル）", async () => {
+            const engineSound = makeSound(SoundState.Starting);
             const wpSound = makeSound();
             mockCreateSoundAsync
                 .mockResolvedValueOnce(engineSound)
