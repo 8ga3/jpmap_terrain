@@ -440,12 +440,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
 
             // Case 2: 旧タイルが祖先タイルでカバーされたか（zoom-down 2段以上対応）
+            // 祖先タイルも isMeshTextureReady を満たしていなければ、まだ描画されていないので解放しない。
             let ancestorFound = false;
             for (let az = coord.zoom - 1; az >= minZoom; az--) {
                 const diff = coord.zoom - az;
                 const ancestorX = coord.x >> diff;
                 const ancestorY = coord.y >> diff;
-                if (activeTiles.has(toTileKey({ zoom: az, x: ancestorX, y: ancestorY }))) {
+                const ancestorTile = activeTiles.get(toTileKey({ zoom: az, x: ancestorX, y: ancestorY }));
+                if (ancestorTile && isMeshTextureReady(ancestorTile.mesh)) {
                     ancestorFound = true;
                     break;
                 }
@@ -456,7 +458,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
 
             // Case 3: 同 zoom の新タイルが同じキーで既に active なら不要
-            if (activeTiles.has(key)) {
+            const sameTile = activeTiles.get(key);
+            if (sameTile && isMeshTextureReady(sameTile.mesh)) {
                 releasePendingTile(key);
             }
         }
