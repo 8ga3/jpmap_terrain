@@ -29,7 +29,7 @@ const ENGINE_VERTICAL_OFFSET_M = 1.5;
 
 /** TrailMesh のリボン直径 (m)。アフターバーナーの炎幅 */
 const TRAIL_DIAMETER_M = 0.5;
-/** TrailMesh の長さ（セグメント数）。約30m相当（60fps / 100m/s で≈18フレーム） */
+/** TrailMesh の長さ（セグメント数）。60fps / 100m/s 前提で約17m相当 */
 const TRAIL_LENGTH = 10;
 /** 断面の多角形頂点数。8+で円柱状に滑らか */
 const TRAIL_SECTIONS = 8;
