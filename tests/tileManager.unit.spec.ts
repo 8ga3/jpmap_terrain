@@ -1731,7 +1731,8 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         // cameraHeight=1e6 → SSE 極小 → zoom=12 タイルが採用（過剰分割しない）
         // cameraHeight=0.1 → 距離 max(1,0.1)=1 → SSE 極大 → maxZoom=14 まで分割
         // 旧実装（即時解放）では pendingReleaseCount=0 になり、このテストは失敗する。
-        const camera = createMockCamera();
+        const cameraMock = createMockCamera() as { position: { x: number; y: number; z: number } };
+        const camera = cameraMock as never;
         const tm = createTileManager({
             scene: createMockScene() as never,
             camera,
@@ -1742,7 +1743,7 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         });
 
         // 1st setCenter: カメラを高空（1e6）に置き zoom=12 タイルのみを採用させる
-        camera.position = { ...camera.position, y: 1e6 };
+        cameraMock.position = { ...cameraMock.position, y: 1e6 };
         await tm.setCenter(35.68, 139.77);
         expect(tm.activeTileCount).toBeGreaterThan(0);
         const countAtZoom12 = tm.activeTileCount;
@@ -1750,7 +1751,7 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         // 2nd setCenter: カメラを地表付近（0.1）に下げ zoom=14 タイルまで分割させる
         // 旧 zoom=12 タイルは新 zoom=14 タイルの祖先 → hasZoomRelation = true
         // → 即時解放されず pendingRelease に入る
-        camera.position = { ...camera.position, y: 0.1 };
+        cameraMock.position = { ...cameraMock.position, y: 0.1 };
         await tm.setCenter(35.68, 139.77);
 
         expect(tm.pendingReleaseCount).toBeGreaterThan(0);
