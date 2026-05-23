@@ -1712,12 +1712,16 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
 
         await tm.setCenter(35.68, 139.77);
         const count1 = tm.activeTileCount;
+        const loadCallsBefore = (gsiTileMock.loadElevationTile as jest.Mock).mock.calls.length;
 
-        // 同じ中心で再度呼び出し → pendingRelease にあるタイルが復元されるため
-        // ロード数は増えない
+        // 同じ中心で再度呼び出し → 既に activeTiles にあるため再ロード不要
         await tm.setCenter(35.68, 139.77);
         const count2 = tm.activeTileCount;
+        const loadCallsAfter = (gsiTileMock.loadElevationTile as jest.Mock).mock.calls.length;
+
         expect(count2).toBe(count1);
+        // loadElevationTile の呼び出し回数が増えていないこと（重複ロードなし）
+        expect(loadCallsAfter).toBe(loadCallsBefore);
 
         tm.dispose();
     });
