@@ -30,6 +30,7 @@ import { createRouteLine, type RouteLine } from "./routeLine";
 import { createWaypointManager, type WaypointManager } from "./waypoints";
 import { createFlightAudio, type FlightAudio } from "./flightAudio";
 import { createAfterburner, type Afterburner } from "./afterburner";
+import { toTileXY } from "../../terrain/gsiTile";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
@@ -137,6 +138,10 @@ const start = async (): Promise<void> => {
     let lastRefreshRotationOffset = FOLLOW_CAMERA_ROTATION_OFFSET;
     let lastRefreshHeightOffset = FOLLOW_CAMERA_HEIGHT_OFFSET;
     let lastRefreshRadius = FOLLOW_CAMERA_RADIUS;
+    /** refreshTerrainWithExternalFrustum で使用されるズームレベル */
+    const TERRAIN_MAX_ZOOM = 18;
+    /** 前回 refresh 時の centerTile (タイルジャンプ検出用) */
+    let lastCenterTile = toTileXY(TOKYO_STATION.lat, TOKYO_STATION.lon, TERRAIN_MAX_ZOOM);
     /** Follow モードでタイル中心を飛行機位置に追従させる最小間隔 (ms) */
     const TILE_UPDATE_INTERVAL_MS = 300;
     /** 緯度/経度差がこの距離 (m) を超えたら更新を発火 */
@@ -839,11 +844,13 @@ const start = async (): Promise<void> => {
                 lastRefreshRadius = followCamRadius;
                 lastTileUpdateTime = timestamp;
                 tileRefreshInFlight = true;
-                // タイルジャンプ検出のため refresh 前の terrain camera target を記録。
-                // refreshTerrainWithExternalFrustum の同期部分で centerTile が変化した
-                // 場合のみ target がタイルサイズ単位（〜1000m以上）で不連続にジャンプする。
-                const targetXBefore = target.x;
-                const targetZBefore = target.z;
+                // centerTile が変わるとき gridResidual がタイルサイズ単位でジャンプする。
+                // 事前に centerTile を比較して検出し、reset フラグを立てる。
+                const currentTile = toTileXY(pos.lat, pos.lon, TERRAIN_MAX_ZOOM);
+                if (currentTile.x !== lastCenterTile.x || currentTile.y !== lastCenterTile.y) {
+                    afterburnerResetNeeded = true;
+                }
+                lastCenterTile = currentTile;
                 // この呼び出しの同期部分で gridResidualX/Z が更新される。
                 void viewer
                     .refreshTerrainWithExternalFrustum(
@@ -856,15 +863,6 @@ const start = async (): Promise<void> => {
                     .finally(() => {
                         tileRefreshInFlight = false;
                     });
-                // centerTile が変化したフレームのみ target が大きく変化する。
-                // 通常の微小移動（最大 TILE_UPDATE_DISTANCE_M = 80m）は誤検知しない。
-                const TILE_JUMP_THRESHOLD_M = 200;
-                if (
-                    Math.abs(target.x - targetXBefore) > TILE_JUMP_THRESHOLD_M ||
-                    Math.abs(target.z - targetZBefore) > TILE_JUMP_THRESHOLD_M
-                ) {
-                    afterburnerResetNeeded = true;
-                }
             } else {
                 // 意味のある変化なし: 次回の判定を遅延させすぎないよう最終チェック時刻だけ進める
                 lastTileUpdateTime = timestamp;
