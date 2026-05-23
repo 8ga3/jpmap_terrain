@@ -628,11 +628,11 @@ const start = async (): Promise<void> => {
     }
 
     // アフターバーナー表示切替チェックボックス (Issue #276)
-    const contrailToggle = document.getElementById("contrail-toggle") as HTMLInputElement | null;
-    if (contrailToggle) {
-        contrailToggle.checked = showAfterburner;
-        contrailToggle.addEventListener("change", () => {
-            showAfterburner = contrailToggle.checked;
+    const afterburnerToggle = document.getElementById("afterburner-toggle") as HTMLInputElement | null;
+    if (afterburnerToggle) {
+        afterburnerToggle.checked = showAfterburner;
+        afterburnerToggle.addEventListener("change", () => {
+            showAfterburner = afterburnerToggle.checked;
             if (afterburner) {
                 afterburner.setVisible(showAfterburner);
             }
