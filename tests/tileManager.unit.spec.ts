@@ -1667,7 +1667,8 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         const initialCount = tm.activeTileCount;
         expect(initialCount).toBeGreaterThan(0);
 
-        // 中心を大きく移動（旧タイルが不要になるが、pending として保持される想定）
+        // 中心タイル座標を変えて、旧タイルが不要になる状況を再現
+        (gsiTileMock.toTileXY as jest.Mock).mockReturnValueOnce({ x: 14600, y: 6500 });
         await tm.setCenter(36.0, 140.0);
         // 新しい中心でもタイルがロードされること
         expect(tm.activeTileCount).toBeGreaterThan(0);
@@ -1689,7 +1690,8 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         await tm.setCenter(35.68, 139.77);
         expect(tm.activeTileCount).toBeGreaterThan(0);
 
-        // 大きく移動して旧タイルを pendingRelease に移す
+        // 中心タイル座標を変えて旧タイルを pendingRelease に移す
+        (gsiTileMock.toTileXY as jest.Mock).mockReturnValueOnce({ x: 14600, y: 6500 });
         await tm.setCenter(36.0, 140.0);
 
         // dispose が例外なく完了すること（タイマーのクリーンアップ含む）
