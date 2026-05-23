@@ -86,6 +86,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
     let rightTrail: TrailMesh | null = null;
     let running = false;
     let visible = true;
+    let disposed = false;
 
     const buildTrails = (ctx: AfterburnerContext): boolean => {
         const root = ctx.scene.getTransformNodeByName(ctx.modelNodeName);
@@ -170,7 +171,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
     };
 
     const start = (ctx: AfterburnerContext): void => {
-        if (running) return;
+        if (disposed || running) return;
         // 毎回作り直すことで、前回 Follow セッションの残骸軌跡を完全に排除する
         if (!buildTrails(ctx)) return;
         if (visible) {
@@ -220,17 +221,12 @@ export const createAfterburner = (scene: Scene): Afterburner => {
     };
 
     const dispose = (): void => {
-        leftTrail?.dispose();
-        rightTrail?.dispose();
-        leftGen?.dispose();
-        rightGen?.dispose();
-        glow?.dispose();
+        if (disposed) return;
+        disposed = true;
+        // stop() 相当の処理で running=false にしてから material を解放する。
+        // これにより dispose 後に start() が呼ばれても no-op になる。
+        stop();
         material.dispose();
-        leftTrail = null;
-        rightTrail = null;
-        leftGen = null;
-        rightGen = null;
-        glow = null;
     };
 
     return { start, stop, reset, setVisible, dispose };
