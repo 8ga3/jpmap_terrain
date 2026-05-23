@@ -468,14 +468,17 @@ const start = async (): Promise<void> => {
             }
 
             // コントレイル開始 (Issue #276)
+            // 常に start() して TrailMesh を構築し、表示は setVisible で制御する。
+            // これにより Follow 中にチェックボックスを ON にしても正しく表示される。
             if (!contrail && scene) {
                 contrail = createContrail(scene);
             }
-            if (contrail && showContrail) {
+            if (contrail) {
                 contrail.start({
                     scene,
                     modelNodeName: `model-${MODEL_ID}`,
                 });
+                contrail.setVisible(showContrail);
             }
         }
     };
