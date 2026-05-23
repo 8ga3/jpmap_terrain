@@ -211,6 +211,10 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         visible = v;
         leftTrail?.setEnabled(v);
         rightTrail?.setEnabled(v);
+        // GlowLayer も非表示時は intensity=0 にして描画コストを抑える
+        if (glow) {
+            glow.intensity = v ? 1.5 : 0;
+        }
         if (!v && running) {
             leftTrail?.stop();
             rightTrail?.stop();
