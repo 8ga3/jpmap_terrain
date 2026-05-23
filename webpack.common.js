@@ -159,6 +159,17 @@ module.exports = {
                     },
                 ],
             },
+            {
+                test: /\.mp3$/i,
+                use: [
+                    {
+                        loader: "file-loader",
+                        options: {
+                            name: "assets/[name].[ext]",
+                        },
+                    },
+                ],
+            },
         ],
     },
     plugins: [

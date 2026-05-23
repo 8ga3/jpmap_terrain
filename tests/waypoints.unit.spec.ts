@@ -250,4 +250,67 @@ describe("createWaypointManager", () => {
         expect(firstMesh.scaling.z).toBe(1);
         expect(firstMesh.enabled).toBe(true);
     });
+
+    // Issue #269: onPass コールバックが通過時に呼ばれること
+    it("calls onPass callback when waypoint is passed", () => {
+        CreateDiscMock.mockClear();
+        const scene = createMockScene();
+        const onPass = jest.fn();
+        const mgr = createWaypointManager(scene, { onPass });
+        const radiusM = 2000;
+        mgr.reset({
+            centerLat: 35.68,
+            centerLon: 139.77,
+            radiusM,
+            altitudeM: 2000,
+            angleDeg: 0,
+            modelNodeName: "model-plane",
+        });
+
+        // 先頭ウェイポイントの角度付近まで飛行機を進めて通過判定を発火
+        const passingAngle = 8.5;
+        mgr.update(
+            {
+                centerLat: 35.68,
+                centerLon: 139.77,
+                radiusM,
+                altitudeM: 2000,
+                angleDeg: passingAngle,
+                modelNodeName: "model-plane",
+            },
+            1000,
+        );
+
+        expect(onPass).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onPass if options not provided", () => {
+        CreateDiscMock.mockClear();
+        const scene = createMockScene();
+        const mgr = createWaypointManager(scene);
+        const radiusM = 2000;
+        mgr.reset({
+            centerLat: 35.68,
+            centerLon: 139.77,
+            radiusM,
+            altitudeM: 2000,
+            angleDeg: 0,
+            modelNodeName: "model-plane",
+        });
+
+        // 通過しても例外が発生しないこと（コールバックなし）
+        expect(() =>
+            mgr.update(
+                {
+                    centerLat: 35.68,
+                    centerLon: 139.77,
+                    radiusM,
+                    altitudeM: 2000,
+                    angleDeg: 8.5,
+                    modelNodeName: "model-plane",
+                },
+                1000,
+            ),
+        ).not.toThrow();
+    });
 });
