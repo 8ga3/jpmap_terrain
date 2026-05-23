@@ -1676,7 +1676,7 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         tm.dispose();
     });
 
-    it("dispose で pendingRelease のタイマーがクリーンアップされる", async () => {
+    it("dispose が例外なく完了し activeTileCount が 0 になる", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({
             scene: createMockScene() as never,
