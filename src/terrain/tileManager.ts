@@ -930,10 +930,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     if (targetZoom > minZoom) {
                         applyTexture(mesh, coord, targetZoom - 1);
                     } else {
-                        // 全 zoom で失敗 — 非表示待機中でなければメッシュは表示する
-                        if (!hiddenChildTiles.has(toTileKey(coord))) {
-                            mesh.setEnabled(true);
-                        }
+                        // 全 zoom で失敗 — hiddenChildTiles に入っていても解除して
+                        // テクスチャなしで表示する（穴を開けないため）。
+                        const tileKey = toTileKey(coord);
+                        hiddenChildTiles.delete(tileKey);
+                        mesh.setEnabled(true);
                     }
                 }
             );
