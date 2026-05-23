@@ -424,7 +424,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
         for (const dk of toRemove) {
             hiddenChildTiles.delete(dk);
-            activeTiles.get(dk)?.mesh.setEnabled(true);
+            const tile = activeTiles.get(dk);
+            if (tile && isMeshTextureReady(tile.mesh)) {
+                tile.mesh.setEnabled(true);
+            }
+            // テクスチャ未 ready の mesh は applyTexture の onLoad で setEnabled(true) される
         }
     };
 
