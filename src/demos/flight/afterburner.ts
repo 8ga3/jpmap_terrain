@@ -174,6 +174,10 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         if (disposed || running) return;
         // 毎回作り直すことで、前回 Follow セッションの残骸軌跡を完全に排除する
         if (!buildTrails(ctx)) return;
+        // 生成直後に reset() で全頂点を現在の generator 位置に揃える。
+        // root がまだ正しい座標に位置していないケースで「原点→機体」の折れ線を防ぐ。
+        leftTrail?.reset();
+        rightTrail?.reset();
         if (visible) {
             leftTrail?.start();
             rightTrail?.start();
