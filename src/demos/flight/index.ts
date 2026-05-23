@@ -186,6 +186,8 @@ const start = async (): Promise<void> => {
     // --- アフターバーナー (Issue #276) ---
     let afterburner: Afterburner | null = null;
     let showAfterburner = true;
+    /** Follow モードに入ったがモデル未ロードのため start() を保留中のフラグ */
+    let afterburnerStartPending = false;
 
     /** ウェイポイント再計算ヘルパー — パラメータ変更時に共通で呼ぶ */
     const resetWaypointsIfNeeded = (): void => {
@@ -473,16 +475,22 @@ const start = async (): Promise<void> => {
             }
 
             // アフターバーナー開始 (Issue #276)
-            // 常に start() して TrailMesh を構築し、表示は setVisible で制御する。
-            // これにより Follow 中にチェックボックスを ON にしても正しく表示される。
+            // モデルロード完了後に start() する。未ロードなら pending フラグを立て
+            // tick() 内でリトライすることで「原点→機体位置」の折れ線トレイルを防ぐ。
             if (!afterburner && scene) {
                 afterburner = createAfterburner(scene);
             }
             if (afterburner) {
-                afterburner.start({
-                    modelNodeName: `model-${MODEL_ID}`,
-                });
-                afterburner.setVisible(showAfterburner);
+                const handle = viewer.getModel(MODEL_ID);
+                if (handle?.loaded) {
+                    afterburner.start({
+                        modelNodeName: `model-${MODEL_ID}`,
+                    });
+                    afterburner.setVisible(showAfterburner);
+                } else {
+                    // 未ロード: tick() 内でモデルロード完了を検知してから start する
+                    afterburnerStartPending = true;
+                }
             }
         }
     };
@@ -510,6 +518,7 @@ const start = async (): Promise<void> => {
         flightAudio?.stopEngineSound();
 
         // アフターバーナー停止 (Issue #276)
+        afterburnerStartPending = false;
         afterburner?.stop();
     };
 
@@ -889,6 +898,17 @@ const start = async (): Promise<void> => {
             const root = scene?.getTransformNodeByName(`model-${MODEL_ID}`);
             root?.computeWorldMatrix(true);
             afterburner.reset();
+        }
+
+        // モデルロード完了後に afterburner を start するリトライ処理。
+        // activateFollowCamera() 時点で handle.loaded=false だった場合、ここで開始する。
+        // updateModel() 後に実行することで root.position が正しい座標に確定している。
+        if (afterburnerStartPending && afterburner && handle.loaded && currentCameraMode === "follow") {
+            afterburnerStartPending = false;
+            afterburner.start({
+                modelNodeName: `model-${MODEL_ID}`,
+            });
+            afterburner.setVisible(showAfterburner);
         }
 
         // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定 + コンパス同期
