@@ -73,6 +73,7 @@ export interface TileManager {
     detachCamera(): void;
     dispose(): void;
     readonly activeTileCount: number;
+    readonly pendingReleaseCount: number;
     readonly loadingCount: number;
     onStatusChange: ((status: string) => void) | null;
     /**
@@ -1778,6 +1779,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         get activeTileCount(): number {
             return activeTiles.size;
+        },
+
+        get pendingReleaseCount(): number {
+            return pendingRelease.size;
         },
 
         get loadingCount(): number {
