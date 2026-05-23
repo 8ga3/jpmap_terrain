@@ -327,30 +327,33 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const pending = pendingRelease.get(key);
         if (!pending) return;
         clearTimeout(pending.timerId);
-        // タイムアウト等で強制解放する場合、待機中の子孫タイルを一斉に表示する
-        // zoom が2段以上離れるケースに対応するため、再帰的に全子孫を表示。
+        // タイムアウト等で強制解放する場合、待機中の子孫タイルを一斉に表示する。
+        // hiddenChildTiles を走査して pending.coord の子孫だけを処理する（O(hiddenChildTiles)）。
         // ただしテクスチャ未 ready の mesh を setEnabled(true) すると null bind /
         // 描画穴の原因になるため、hiddenChildTiles から外すだけにとどめ、
         // テクスチャ onLoad 側で setEnabled(true) されるに委ねる。
-        const unhideDescendants = (z: number, x: number, y: number): void => {
-            const dk = toTileKey({ zoom: z, x, y });
-            if (hiddenChildTiles.has(dk)) {
-                hiddenChildTiles.delete(dk);
-                const tile = activeTiles.get(dk);
-                if (tile && isMeshTextureReady(tile.mesh)) {
-                    tile.mesh.setEnabled(true);
-                }
+        const pz = pending.coord.zoom;
+        const px = pending.coord.x;
+        const py = pending.coord.y;
+        const toRemove: TileKey[] = [];
+        for (const dk of hiddenChildTiles) {
+            const parts = dk.split("/");
+            const cz = Number(parts[0]);
+            if (cz <= pz) continue;
+            const diff = cz - pz;
+            const cx = Number(parts[1]);
+            const cy = Number(parts[2]);
+            if ((cx >> diff) === px && (cy >> diff) === py) {
+                toRemove.push(dk);
             }
-            if (z >= zoom) return;
-            unhideDescendants(z + 1, x * 2, y * 2);
-            unhideDescendants(z + 1, x * 2 + 1, y * 2);
-            unhideDescendants(z + 1, x * 2, y * 2 + 1);
-            unhideDescendants(z + 1, x * 2 + 1, y * 2 + 1);
-        };
-        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2, pending.coord.y * 2);
-        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2 + 1, pending.coord.y * 2);
-        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2, pending.coord.y * 2 + 1);
-        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2 + 1, pending.coord.y * 2 + 1);
+        }
+        for (const dk of toRemove) {
+            hiddenChildTiles.delete(dk);
+            const tile = activeTiles.get(dk);
+            if (tile && isMeshTextureReady(tile.mesh)) {
+                tile.mesh.setEnabled(true);
+            }
+        }
         textureRequestIds.delete(pending.mesh);
         meshPool.release(pending.mesh);
         removePendingRelease(key);
@@ -403,20 +406,26 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /**
-     * 指定した矩形領域内の hiddenChildTiles を全て表示状態にする（再帰的に探索）。
+     * 指定した矩形領域内の hiddenChildTiles を全て表示状態にする。
+     * hiddenChildTiles を1回走査して該当領域の子孫だけを処理する（O(hiddenChildTiles)）。
      */
-    const enableDescendants = (areaZoom: number, ax: number, ay: number, targetZoom: number): void => {
-        const areaKey = toTileKey({ zoom: areaZoom, x: ax, y: ay });
-        if (hiddenChildTiles.has(areaKey)) {
-            hiddenChildTiles.delete(areaKey);
-            activeTiles.get(areaKey)?.mesh.setEnabled(true);
+    const enableDescendants = (areaZoom: number, ax: number, ay: number): void => {
+        const toRemove: TileKey[] = [];
+        for (const dk of hiddenChildTiles) {
+            const parts = dk.split("/");
+            const cz = Number(parts[0]);
+            if (cz < areaZoom) continue;
+            const diff = cz - areaZoom;
+            const cx = Number(parts[1]);
+            const cy = Number(parts[2]);
+            if ((cx >> diff) === ax && (cy >> diff) === ay) {
+                toRemove.push(dk);
+            }
         }
-        if (areaZoom >= targetZoom) return;
-        const cz = areaZoom + 1;
-        enableDescendants(cz, ax * 2, ay * 2, targetZoom);
-        enableDescendants(cz, ax * 2 + 1, ay * 2, targetZoom);
-        enableDescendants(cz, ax * 2, ay * 2 + 1, targetZoom);
-        enableDescendants(cz, ax * 2 + 1, ay * 2 + 1, targetZoom);
+        for (const dk of toRemove) {
+            hiddenChildTiles.delete(dk);
+            activeTiles.get(dk)?.mesh.setEnabled(true);
+        }
     };
 
     /**
@@ -464,10 +473,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (coord.zoom < zoom) {
                 if (isAreaCovered(coord.zoom, coord.x, coord.y, zoom)) {
                     // 子孫タイルを一斉に表示してから親を解放
-                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2, zoom);
-                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2, zoom);
-                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2 + 1, zoom);
-                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2 + 1, zoom);
+                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2);
+                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2);
+                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2 + 1);
+                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2 + 1);
                     releasePendingTile(key);
                     continue;
                 }
