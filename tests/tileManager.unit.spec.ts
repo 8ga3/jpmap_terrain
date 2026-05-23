@@ -3,7 +3,7 @@
  * Babylon.js 依存をモックし、TileManager のロジックを検証する。
  */
 
-import { jest, describe, it, expect } from "@jest/globals";
+import { jest, describe, it, expect, afterEach } from "@jest/globals";
 
 const mockMeshInstance = () => ({
     material: {
@@ -34,6 +34,11 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
 }));
 
 const capturedTextureOnLoads: Array<() => void> = [];
+
+// テスト完了後に onLoad クロージャ参照を解放し、メモリリークを防ぐ
+afterEach(() => {
+    capturedTextureOnLoads.length = 0;
+});
 
 jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
     const TextureMock = jest.fn<(...args: unknown[]) => unknown>().mockImplementation(
