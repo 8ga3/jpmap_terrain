@@ -58,12 +58,18 @@ export const createFlightAudio = async (): Promise<FlightAudio> => {
 
     return {
         startEngineSound: (): void => {
-            if (engineSound.state !== SoundState.Started) {
+            if (
+                engineSound.state !== SoundState.Started &&
+                engineSound.state !== SoundState.Starting
+            ) {
                 engineSound.play();
             }
         },
         stopEngineSound: (): void => {
-            if (engineSound.state === SoundState.Started) {
+            if (
+                engineSound.state === SoundState.Started ||
+                engineSound.state === SoundState.Starting
+            ) {
                 engineSound.stop();
             }
         },
