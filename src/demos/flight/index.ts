@@ -839,11 +839,11 @@ const start = async (): Promise<void> => {
                 lastRefreshRadius = followCamRadius;
                 lastTileUpdateTime = timestamp;
                 tileRefreshInFlight = true;
-                // 位置移動によるリフレッシュのみ gridResidual がジャンプするため、
-                // 回転/高さ/半径変化だけの場合は reset 不要。
-                if (moved >= TILE_UPDATE_DISTANCE_M) {
-                    afterburnerResetNeeded = true;
-                }
+                // タイルジャンプ検出のため refresh 前の terrain camera target を記録。
+                // refreshTerrainWithExternalFrustum の同期部分で centerTile が変化した
+                // 場合のみ target がタイルサイズ単位（〜1000m以上）で不連続にジャンプする。
+                const targetXBefore = target.x;
+                const targetZBefore = target.z;
                 // この呼び出しの同期部分で gridResidualX/Z が更新される。
                 void viewer
                     .refreshTerrainWithExternalFrustum(
@@ -856,6 +856,15 @@ const start = async (): Promise<void> => {
                     .finally(() => {
                         tileRefreshInFlight = false;
                     });
+                // centerTile が変化したフレームのみ target が大きく変化する。
+                // 通常の微小移動（最大 TILE_UPDATE_DISTANCE_M = 80m）は誤検知しない。
+                const TILE_JUMP_THRESHOLD_M = 200;
+                if (
+                    Math.abs(target.x - targetXBefore) > TILE_JUMP_THRESHOLD_M ||
+                    Math.abs(target.z - targetZBefore) > TILE_JUMP_THRESHOLD_M
+                ) {
+                    afterburnerResetNeeded = true;
+                }
             } else {
                 // 意味のある変化なし: 次回の判定を遅延させすぎないよう最終チェック時刻だけ進める
                 lastTileUpdateTime = timestamp;
