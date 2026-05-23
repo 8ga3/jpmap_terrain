@@ -592,7 +592,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 applyTexture(mesh, coord);
 
                 // 標高適用（ステッチ＋NaN埋め）— Worker でオフロード
-                await applyStitchedElevation(mesh, entry.elevation, coord);
+                try {
+                    await applyStitchedElevation(mesh, entry.elevation, coord);
+                } catch (applyErr) {
+                    // 失敗時: hiddenChildTiles / textureRequestIds をクリーンアップし
+                    // mesh をプールへ戻す（状態残留によるリーク防止）
+                    hiddenChildTiles.delete(key);
+                    textureRequestIds.delete(mesh);
+                    meshPool.release(mesh);
+                    throw applyErr;
+                }
 
                 activeTiles.set(key, { key, coord, mesh, tileSize });
 
