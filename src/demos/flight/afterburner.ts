@@ -79,12 +79,7 @@ const createAfterburnerMaterial = (scene: Scene): StandardMaterial => {
 export const createAfterburner = (scene: Scene): Afterburner => {
     const material = createAfterburnerMaterial(scene);
 
-    // GlowLayer: TrailMesh のみに発光を適用（他メッシュに影響なし）
-    const glow = new GlowLayer("afterburner-glow", scene, {
-        blurKernelSize: 64,
-    });
-    glow.intensity = 1.5;
-
+    let glow: GlowLayer | null = null;
     let leftGen: TransformNode | null = null;
     let rightGen: TransformNode | null = null;
     let leftTrail: TrailMesh | null = null;
@@ -101,10 +96,19 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         rightTrail?.dispose();
         leftGen?.dispose();
         rightGen?.dispose();
+        glow?.dispose();
         leftTrail = null;
         rightTrail = null;
         leftGen = null;
         rightGen = null;
+        glow = null;
+
+        // GlowLayer: TrailMesh のみに発光を適用（他メッシュに影響なし）
+        // Trail と同じライフサイクルで生成し、stop 時に破棄する。
+        glow = new GlowLayer("afterburner-glow", ctx.scene, {
+            blurKernelSize: 64,
+        });
+        glow.intensity = 1.5;
 
         // generator となる TransformNode を **root** TransformNode に親付け。
         // root は updateModel() で明示的に lat/lon に従って位置・回転が更新されるため、
@@ -180,15 +184,18 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         if (!running) return;
         leftTrail?.stop();
         rightTrail?.stop();
-        // 停止時に TrailMesh と generator を破棄して、次回 start で完全に新規構築する
+        // 停止時に TrailMesh, generator, GlowLayer を破棄して、
+        // 次回 start で完全に新規構築する。Follow モード外ではポストプロセス不要。
         leftTrail?.dispose();
         rightTrail?.dispose();
         leftGen?.dispose();
         rightGen?.dispose();
+        glow?.dispose();
         leftTrail = null;
         rightTrail = null;
         leftGen = null;
         rightGen = null;
+        glow = null;
         running = false;
     };
 
@@ -217,12 +224,13 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         rightTrail?.dispose();
         leftGen?.dispose();
         rightGen?.dispose();
-        glow.dispose();
+        glow?.dispose();
         material.dispose();
         leftTrail = null;
         rightTrail = null;
         leftGen = null;
         rightGen = null;
+        glow = null;
     };
 
     return { start, stop, reset, setVisible, dispose };
