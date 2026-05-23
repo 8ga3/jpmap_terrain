@@ -9,7 +9,19 @@ import type { Scene } from "@babylonjs/core/scene";
 
 // --- Babylon.js モック ---
 
-const mockTrailMeshInstance = () => ({
+interface MockTrailInstance {
+    material: null;
+    isPickable: boolean;
+    alwaysSelectAsActiveMesh: boolean;
+    renderingGroupId: number;
+    start: jest.Mock;
+    stop: jest.Mock;
+    reset: jest.Mock;
+    dispose: jest.Mock;
+    setEnabled: jest.Mock;
+}
+
+const mockTrailMeshInstance = (): MockTrailInstance => ({
     material: null,
     isPickable: false,
     alwaysSelectAsActiveMesh: false,
@@ -108,7 +120,7 @@ describe("createAfterburner", () => {
         const ab = createAfterburner(scene);
         ab.start({ scene, modelNodeName: MODEL_NODE_NAME });
 
-        const trailInstances = TrailMeshMock.mock.results.map((r) => r.value);
+        const trailInstances = TrailMeshMock.mock.results.map((r) => r.value as MockTrailInstance);
 
         ab.setVisible(false);
 
@@ -127,10 +139,10 @@ describe("createAfterburner", () => {
 
         ab.setVisible(false);
         // clear mocks to check next call
-        const trailInstances = TrailMeshMock.mock.results.map((r) => r.value);
+        const trailInstances = TrailMeshMock.mock.results.map((r) => r.value as MockTrailInstance);
         for (const t of trailInstances) {
-            (t.start as jest.Mock).mockClear();
-            (t.setEnabled as jest.Mock).mockClear();
+            t.start.mockClear();
+            t.setEnabled.mockClear();
         }
 
         ab.setVisible(true);
