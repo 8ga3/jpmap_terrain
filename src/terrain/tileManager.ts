@@ -480,8 +480,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (!pending) continue;
             const { coord } = pending;
 
-            // Case 1: 旧タイルの領域が新タイルで完全カバーされたか（再帰判定）
-            if (coord.zoom < zoom) {
+            // Case 1: 旧タイル（粗）の領域が子孫新タイルで完全カバーされたか（zoom-up 用）。
+            // pending が現在の可視タイル群の祖先である場合のみ評価する。
+            // zoom-down 時に残った粗いタイルが子孫不在でも true と判定されるのを防ぐ。
+            if (coord.zoom < zoom && currentVisibleAncestorKeys.has(key)) {
                 if (isAreaCovered(coord.zoom, coord.x, coord.y, zoom)) {
                     // 子孫タイルを一斉に表示してから親を解放
                     enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2);
