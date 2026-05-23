@@ -1670,7 +1670,7 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         // 中心タイル座標を変えて、旧タイルが不要になる状況を再現
         (gsiTileMock.toTileXY as jest.Mock).mockReturnValueOnce({ x: 14600, y: 6500 });
         await tm.setCenter(36.0, 140.0);
-        // 新しい中心でもタイル数が変わっていないこと（维持）
+        // 新しい中心でもタイル数が変わっていないこと（維持）
         expect(tm.activeTileCount).toBe(initialCount);
 
         tm.dispose();
