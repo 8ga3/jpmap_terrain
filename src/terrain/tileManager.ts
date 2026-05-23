@@ -291,12 +291,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         if (!pending) return;
         clearTimeout(pending.timerId);
         // タイムアウト等で強制解放する場合、待機中の子孫タイルを一斉に表示する
-        // zoom が2段以上離れるケースに対応するため、再帰的に全子孫を表示
+        // zoom が2段以上離れるケースに対応するため、再帰的に全子孫を表示。
+        // ただしテクスチャ未 ready の mesh を setEnabled(true) すると null bind /
+        // 描画穴の原因になるため、hiddenChildTiles から外すだけにとどめ、
+        // テクスチャ onLoad 側で setEnabled(true) されるに委ねる。
         const unhideDescendants = (z: number, x: number, y: number): void => {
             const dk = toTileKey({ zoom: z, x, y });
             if (hiddenChildTiles.has(dk)) {
                 hiddenChildTiles.delete(dk);
-                activeTiles.get(dk)?.mesh.setEnabled(true);
+                const tile = activeTiles.get(dk);
+                if (tile && isMeshTextureReady(tile.mesh)) {
+                    tile.mesh.setEnabled(true);
+                }
             }
             if (z >= zoom) return;
             unhideDescendants(z + 1, x * 2, y * 2);
