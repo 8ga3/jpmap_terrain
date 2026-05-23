@@ -29,19 +29,31 @@ export const createFlightAudio = async (): Promise<FlightAudio> => {
     const engine: AudioEngineV2 = await CreateAudioEngineAsync();
     await engine.unlockAsync();
 
-    const engineSound: StaticSound = await CreateSoundAsync(
-        "plane-noise",
-        planeNoiseUrl,
-        { loop: true, volume: 0.4, autoplay: false },
-        engine,
-    );
+    let engineSound: StaticSound | null = null;
+    let wpSound: StaticSound | null = null;
 
-    const wpSound: StaticSound = await CreateSoundAsync(
-        "plane-wp",
-        planeWpUrl,
-        { loop: false, volume: 0.8, maxInstances: 4 },
-        engine,
-    );
+    try {
+        engineSound = await CreateSoundAsync(
+            "plane-noise",
+            planeNoiseUrl,
+            { loop: true, volume: 0.4, autoplay: false },
+            engine,
+        );
+
+        wpSound = await CreateSoundAsync(
+            "plane-wp",
+            planeWpUrl,
+            { loop: false, volume: 0.8, maxInstances: 4 },
+            engine,
+        );
+    } catch (err) {
+        engineSound?.stop();
+        engineSound?.dispose();
+        wpSound?.stop();
+        wpSound?.dispose();
+        engine.dispose();
+        throw err;
+    }
 
     return {
         startEngineSound: (): void => {
