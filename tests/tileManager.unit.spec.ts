@@ -33,15 +33,21 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
     })),
 }));
 
+const capturedTextureOnLoads: Array<() => void> = [];
+
 jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
     const TextureMock = jest.fn<(...args: unknown[]) => unknown>().mockImplementation(
-        () => ({
-            dispose: jest.fn(),
-            uScale: 1,
-            vScale: 1,
-            uOffset: 0,
-            vOffset: 0,
-        })
+        (...args: unknown[]) => {
+            const onLoad = args[5] as (() => void) | undefined;
+            if (onLoad) capturedTextureOnLoads.push(onLoad);
+            return {
+                dispose: jest.fn(),
+                uScale: 1,
+                vScale: 1,
+                uOffset: 0,
+                vOffset: 0,
+            };
+        }
     ) as jest.Mock & { TRILINEAR_SAMPLINGMODE: number };
     TextureMock.TRILINEAR_SAMPLINGMODE = 3;
     return { Texture: TextureMock };
@@ -1763,6 +1769,58 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         tm.dispose();
         // dispose 後は pendingRelease が空になること
         expect(tm.pendingReleaseCount).toBe(0);
+    });
+
+    it("zoom-down 遷移後に祖先タイルの Texture onLoad を発火すると pendingRelease が解放される", async () => {
+        // jest.useFakeTimers でテクスチャキュー（MAX_TEXTURE_PER_FRAME=2, 16ms間隔）を
+        // jest.advanceTimersByTime(200) で全件フラッシュする。
+        // PENDING_RELEASE_TIMEOUT_MS(5000ms) は発火させず、手動 onLoad 発火で
+        // checkAndReleaseCoveredTiles の解放経路を検証する。
+        jest.useFakeTimers();
+        try {
+            capturedTextureOnLoads.length = 0;
+
+            const cameraMock = createMockCamera() as { position: { x: number; y: number; z: number } };
+            const camera = cameraMock as never;
+            const tm = createTileManager({
+                scene: createMockScene() as never,
+                camera,
+                zoom: 14,
+                subdivisions: 128,
+                heightScale: 1.0,
+                maxTiles: 30,
+                rootSearchRadius: 0,
+            });
+
+            // 1st setCenter: カメラを地表付近（0.1）に置き zoom=14 タイルを採用
+            cameraMock.position = { ...cameraMock.position, y: 0.1 };
+            await tm.setCenter(35.68, 139.77);
+            // テクスチャキューを全件フラッシュ（16ms × 複数フレーム分）
+            // PENDING_RELEASE_TIMEOUT_MS(5000ms) は発火しない安全な範囲で進める
+            jest.advanceTimersByTime(200);
+
+            // 2nd setCenter: カメラを高空（1e6）に上げ zoom=12 タイルに移行
+            // 旧 zoom=14 タイルは pendingRelease に移動し、新 zoom=12 タイルがロードされる
+            capturedTextureOnLoads.length = 0;
+            cameraMock.position = { ...cameraMock.position, y: 1e6 };
+            await tm.setCenter(35.68, 139.77);
+            // 新 zoom=12 タイルのテクスチャジョブをフラッシュして onLoad をキャプチャ
+            jest.advanceTimersByTime(200);
+
+            expect(tm.pendingReleaseCount).toBeGreaterThan(0);
+            expect(capturedTextureOnLoads.length).toBeGreaterThan(0);
+
+            // zoom=12 祖先タイルの Texture onLoad を手動発火
+            // checkAndReleaseCoveredTiles が pendingRelease の zoom=14 タイル（子孫）を解放する
+            const onLoadsToFire = [...capturedTextureOnLoads];
+            onLoadsToFire.forEach(cb => cb());
+
+            expect(tm.pendingReleaseCount).toBe(0);
+
+            tm.dispose();
+        } finally {
+            jest.useRealTimers();
+        }
     });
 });
 
