@@ -358,7 +358,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 tile.mesh.setEnabled(true);
             }
         }
-        textureRequestIds.delete(pending.mesh);
+        // delete ではなく increment して in-flight コールバックを確実に無効化する。
+        // delete 後に同 mesh がプールから再利用されると texReqId が 1 から再開し、
+        // 残留していた古い onLoad（同じく texReqId=1）と衝突して誤テクスチャが適用される。
+        textureRequestIds.set(pending.mesh, (textureRequestIds.get(pending.mesh) ?? 0) + 1);
         meshPool.release(pending.mesh);
         removePendingRelease(key);
     };
@@ -655,7 +658,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     // 失敗時: hiddenChildTiles / textureRequestIds をクリーンアップし
                     // mesh をプールへ戻す（状態残留によるリーク防止）
                     hiddenChildTiles.delete(key);
-                    textureRequestIds.delete(mesh);
+                    textureRequestIds.set(mesh, (textureRequestIds.get(mesh) ?? 0) + 1);
                     meshPool.release(mesh);
                     throw applyErr;
                 }
@@ -1583,7 +1586,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     }
                 } else {
                     // 横パン外 or hiddenChildTiles タイル: 即座にメッシュ解放
-                    textureRequestIds.delete(tile.mesh);
+                    textureRequestIds.set(tile.mesh, (textureRequestIds.get(tile.mesh) ?? 0) + 1);
                     meshPool.release(tile.mesh);
                 }
                 activeTiles.delete(key);
