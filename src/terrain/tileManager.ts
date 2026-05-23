@@ -1596,6 +1596,15 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
+        // pendingRelease 内でもはや現在の可視タイル群と zoom 階層関係が無いものを即時解放する。
+        // 可視領域が連続して変わった場合、stale な pending がタイムアウトまで滞留して
+        // maxTiles 超過やメモリ圧迫の原因になるのを防ぐ。
+        for (const [key, pending] of pendingRelease) {
+            if (!hasZoomRelation(pending.coord)) {
+                releasePendingTile(key);
+            }
+        }
+
         if (reposition) {
             if (geomOnlyReposition) {
                 repositionActiveTilesGeom();
