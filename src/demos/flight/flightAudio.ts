@@ -26,13 +26,14 @@ export interface FlightAudio {
  * AudioEngine の初期化と unlockAsync を含むため、ユーザー操作起点で呼ぶこと。
  */
 export const createFlightAudio = async (): Promise<FlightAudio> => {
-    const engine: AudioEngineV2 = await CreateAudioEngineAsync();
-    await engine.unlockAsync();
-
+    let engine: AudioEngineV2 | null = null;
     let engineSound: StaticSound | null = null;
     let wpSound: StaticSound | null = null;
 
     try {
+        engine = await CreateAudioEngineAsync();
+        await engine.unlockAsync();
+
         engineSound = await CreateSoundAsync(
             "plane-noise",
             planeNoiseUrl,
@@ -51,7 +52,7 @@ export const createFlightAudio = async (): Promise<FlightAudio> => {
         engineSound?.dispose();
         wpSound?.stop();
         wpSound?.dispose();
-        engine.dispose();
+        engine?.dispose();
         throw err;
     }
 
