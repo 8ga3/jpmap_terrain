@@ -480,7 +480,6 @@ const start = async (): Promise<void> => {
             }
             if (afterburner) {
                 afterburner.start({
-                    scene,
                     modelNodeName: `model-${MODEL_ID}`,
                 });
                 afterburner.setVisible(showAfterburner);

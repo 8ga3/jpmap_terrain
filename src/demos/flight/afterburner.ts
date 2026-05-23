@@ -36,7 +36,6 @@ const TRAIL_SECTIONS = 8;
 
 // ─── 型 ─────────────────────────────────────────────────
 export interface AfterburnerContext {
-    scene: Scene;
     /** model の TransformNode 名（generator の親に使う） */
     modelNodeName: string;
 }
@@ -89,7 +88,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
     let disposed = false;
 
     const buildTrails = (ctx: AfterburnerContext): boolean => {
-        const root = ctx.scene.getTransformNodeByName(ctx.modelNodeName);
+        const root = scene.getTransformNodeByName(ctx.modelNodeName);
         if (!root) return false;
 
         // 既存があれば一度破棄してから作り直す（連続 start でのリーク防止）
@@ -106,7 +105,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
 
         // GlowLayer: TrailMesh のみに発光を適用（他メッシュに影響なし）
         // Trail と同じライフサイクルで生成し、stop 時に破棄する。
-        glow = new GlowLayer("afterburner-glow", ctx.scene, {
+        glow = new GlowLayer("afterburner-glow", scene, {
             blurKernelSize: 64,
         });
         glow.intensity = 1.5;
@@ -115,7 +114,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         // root は updateModel() で明示的に lat/lon に従って位置・回転が更新されるため、
         // 子メッシュ (childMesh) よりも安定して飛行機の動きに追従する。
         // Babylon.js 左手座標系: X=右, Y=上, Z=前方。後方は -Z。
-        leftGen = new TransformNode("afterburner-left-gen", ctx.scene);
+        leftGen = new TransformNode("afterburner-left-gen", scene);
         leftGen.parent = root;
         leftGen.position.set(
             -ENGINE_LATERAL_OFFSET_M,
@@ -123,7 +122,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
             -ENGINE_REAR_OFFSET_M,
         );
 
-        rightGen = new TransformNode("afterburner-right-gen", ctx.scene);
+        rightGen = new TransformNode("afterburner-right-gen", scene);
         rightGen.parent = root;
         rightGen.position.set(
             ENGINE_LATERAL_OFFSET_M,
@@ -136,7 +135,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         leftGen.computeWorldMatrix(true);
         rightGen.computeWorldMatrix(true);
 
-        leftTrail = new TrailMesh("afterburner-left", leftGen, ctx.scene, {
+        leftTrail = new TrailMesh("afterburner-left", leftGen, scene, {
             diameter: TRAIL_DIAMETER_M,
             length: TRAIL_LENGTH,
             sections: TRAIL_SECTIONS,
@@ -148,7 +147,7 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         leftTrail.alwaysSelectAsActiveMesh = true;
         leftTrail.renderingGroupId = 1;
 
-        rightTrail = new TrailMesh("afterburner-right", rightGen, ctx.scene, {
+        rightTrail = new TrailMesh("afterburner-right", rightGen, scene, {
             diameter: TRAIL_DIAMETER_M,
             length: TRAIL_LENGTH,
             sections: TRAIL_SECTIONS,

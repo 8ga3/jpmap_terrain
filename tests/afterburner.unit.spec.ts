@@ -105,7 +105,7 @@ describe("createAfterburner", () => {
         TrailMeshMock.mockClear();
         TransformNodeMock.mockClear();
 
-        ab.start({ scene, modelNodeName: MODEL_NODE_NAME });
+        ab.start({ modelNodeName: MODEL_NODE_NAME });
 
         // 左右2つの generator TransformNode が作成される
         expect(TransformNodeMock).toHaveBeenCalledTimes(2);
@@ -118,7 +118,7 @@ describe("createAfterburner", () => {
 
         const scene = createMockScene();
         const ab = createAfterburner(scene);
-        ab.start({ scene, modelNodeName: MODEL_NODE_NAME });
+        ab.start({ modelNodeName: MODEL_NODE_NAME });
 
         const trailInstances = TrailMeshMock.mock.results.map((r) => r.value as MockTrailInstance);
 
@@ -135,7 +135,7 @@ describe("createAfterburner", () => {
 
         const scene = createMockScene();
         const ab = createAfterburner(scene);
-        ab.start({ scene, modelNodeName: MODEL_NODE_NAME });
+        ab.start({ modelNodeName: MODEL_NODE_NAME });
 
         ab.setVisible(false);
         // clear mocks to check next call
@@ -156,7 +156,7 @@ describe("createAfterburner", () => {
     it("stop/dispose を二重呼び出ししてもエラーにならない", () => {
         const scene = createMockScene();
         const ab = createAfterburner(scene);
-        ab.start({ scene, modelNodeName: MODEL_NODE_NAME });
+        ab.start({ modelNodeName: MODEL_NODE_NAME });
 
         expect(() => {
             ab.stop();
