@@ -1647,3 +1647,76 @@ describe("同zoom タイル間ステッチの対称性", () => {
         tm.dispose();
     });
 });
+
+/* ================================================================
+ * LOD 遷移時の遅延解放テスト (Issue #268)
+ * ================================================================ */
+describe("LOD遷移時の遅延解放 (Issue #268)", () => {
+    it("setCenter 後に再 setCenter しても activeTileCount が 0 にならない", async () => {
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        const initialCount = tm.activeTileCount;
+        expect(initialCount).toBeGreaterThan(0);
+
+        // 中心を大きく移動（旧タイルが不要になるが、pending として保持される想定）
+        await tm.setCenter(36.0, 140.0);
+        // 新しい中心でもタイルがロードされること
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+
+        tm.dispose();
+    });
+
+    it("dispose で pendingRelease のタイマーがクリーンアップされる", async () => {
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 10,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        expect(tm.activeTileCount).toBeGreaterThan(0);
+
+        // 大きく移動して旧タイルを pendingRelease に移す
+        await tm.setCenter(36.0, 140.0);
+
+        // dispose が例外なく完了すること（タイマーのクリーンアップ含む）
+        expect(() => tm.dispose()).not.toThrow();
+        expect(tm.activeTileCount).toBe(0);
+    });
+
+    it("同じ位置で setCenter しても重複ロードが発生しない", async () => {
+        const camera = createMockCamera();
+        const tm = createTileManager({
+            scene: createMockScene() as never,
+            camera,
+            zoom: 14,
+            subdivisions: 128,
+            heightScale: 1.0,
+            maxTiles: 20,
+        });
+
+        await tm.setCenter(35.68, 139.77);
+        const count1 = tm.activeTileCount;
+
+        // 同じ中心で再度呼び出し → pendingRelease にあるタイルが復元されるため
+        // ロード数は増えない
+        await tm.setCenter(35.68, 139.77);
+        const count2 = tm.activeTileCount;
+        expect(count2).toBe(count1);
+
+        tm.dispose();
+    });
+});

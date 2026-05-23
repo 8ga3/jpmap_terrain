@@ -100,6 +100,16 @@ interface ActiveTile {
     tileSize: number;
 }
 
+/** LOD 遷移中に画面に残す旧タイル */
+interface PendingReleaseTile {
+    key: TileKey;
+    coord: TileCoord;
+    mesh: Mesh;
+    tileSize: number;
+    /** 強制解放用タイマーID */
+    timerId: ReturnType<typeof setTimeout>;
+}
+
 const DEFAULT_MAX_CONCURRENT = 4;
 const DEFAULT_MAX_TILES = 120;
 const DEFAULT_CACHE_CAPACITY = 192;
@@ -112,6 +122,8 @@ const MAX_BASE_ELEVATION = 4000;
  * 値が大きいほど縫い合わせ対象が広がる。遠方タイルは隙間が視認しにくいため、近傍のみに限定する。
  */
 const NEAR_DISTANCE_TILES_FACTOR = 3;
+/** 旧タイルの強制解放までのタイムアウト (ms) */
+const PENDING_RELEASE_TIMEOUT_MS = 5000;
 
 // 旧 applyElevation はインラインで使われていたが、Web Worker への移行に伴い
 // `elevationCompute.ts` の `applyElevationToPositions` に集約された。
@@ -226,6 +238,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     });
 
     const activeTiles = new Map<TileKey, ActiveTile>();
+    /**
+     * LOD 遷移中に画面に残す旧タイル。
+     * 新タイルが描画可能になるまで表示を維持し、カバー完了 or タイムアウトで解放する。
+     */
+    const pendingRelease = new Map<TileKey, PendingReleaseTile>();
+    /**
+     * 親タイルが pendingRelease 中のため非表示待機している子タイルのキー。
+     * 4枚揃ったタイミングで一斉に setEnabled(true) して親を解放する。
+     */
+    const hiddenChildTiles = new Set<TileKey>();
     /** テクスチャ適用の競合を防ぐためのリクエストID（mesh単位） */
     const textureRequestIds = new Map<Mesh, number>();
     let requestId = 0;
@@ -240,6 +262,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 再ステッチ待ちの隣接タイルキーを蓄積し、同一フレームで一括処理する */
     const pendingRestitch = new Set<TileKey>();
     let restitchRafId: number | null = null;
+
+    /** 最新の applyVisibleTiles で計算された必要タイルキー集合 */
+    let currentVisibleKeys = new Set<TileKey>();
 
     // 現在の中心情報
     let currentCenter: TileCoord | null = null;
@@ -257,6 +282,177 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             );
         } else {
             statusCallback(`表示中 ${active}/${maxTiles} タイル`);
+        }
+    };
+
+    /** pendingRelease から単一タイルを解放する */
+    const releasePendingTile = (key: TileKey): void => {
+        const pending = pendingRelease.get(key);
+        if (!pending) return;
+        clearTimeout(pending.timerId);
+        // タイムアウト等で強制解放する場合、待機中の子孫タイルを一斉に表示する
+        // zoom が2段以上離れるケースに対応するため、再帰的に全子孫を表示
+        const unhideDescendants = (z: number, x: number, y: number): void => {
+            const dk = toTileKey({ zoom: z, x, y });
+            if (hiddenChildTiles.has(dk)) {
+                hiddenChildTiles.delete(dk);
+                activeTiles.get(dk)?.mesh.setEnabled(true);
+            }
+            if (z >= zoom) return;
+            unhideDescendants(z + 1, x * 2, y * 2);
+            unhideDescendants(z + 1, x * 2 + 1, y * 2);
+            unhideDescendants(z + 1, x * 2, y * 2 + 1);
+            unhideDescendants(z + 1, x * 2 + 1, y * 2 + 1);
+        };
+        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2, pending.coord.y * 2);
+        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2 + 1, pending.coord.y * 2);
+        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2, pending.coord.y * 2 + 1);
+        unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2 + 1, pending.coord.y * 2 + 1);
+        textureRequestIds.delete(pending.mesh);
+        meshPool.release(pending.mesh);
+        pendingRelease.delete(key);
+    };
+
+    /** pendingRelease を全てクリアする */
+    const clearAllPendingRelease = (): void => {
+        for (const [key] of pendingRelease) {
+            releasePendingTile(key);
+        }
+    };
+
+    /** mesh のテクスチャが既にロード完了しているか */
+    const isMeshTextureReady = (mesh: Mesh): boolean => {
+        const mat = mesh.material as StandardMaterial | null;
+        const tex = mat?.diffuseTexture;
+        if (!tex) return false;
+        return typeof tex.isReady === "function" ? tex.isReady() : true;
+    };
+
+    /**
+     * 指定した矩形領域が activeTiles で完全にカバーされているか再帰的に判定する。
+     * LOD により可視タイルは複数の zoom 階層に分散するため、各階層で
+     *   - activeTiles に存在 かつテクスチャ ready → カバー済み
+     *   - activeTiles に存在するがテクスチャ未 ready → 未カバー（描画穴防止）
+     *   - currentVisibleKeys に存在する（=その階層で必要）が active でない → 未カバー
+     *   - currentVisibleKeys に存在しない → 子へ降りて判定
+     * 最深 (targetZoom) まで降りて visibleKeys に無ければ frustum 外 → カバー不要。
+     */
+    const isAreaCovered = (areaZoom: number, ax: number, ay: number, targetZoom: number): boolean => {
+        const areaKey = toTileKey({ zoom: areaZoom, x: ax, y: ay });
+        const active = activeTiles.get(areaKey);
+        if (active) {
+            return isMeshTextureReady(active.mesh);
+        }
+        // この階層で必要とされているのに active でない → 未カバー
+        if (currentVisibleKeys.has(areaKey)) return false;
+        if (areaZoom >= targetZoom) {
+            // 最深レベルでかつ visibleKeys に無い → frustum 外なのでカバー不要
+            return true;
+        }
+        // 4分割して再帰チェック
+        const cz = areaZoom + 1;
+        return (
+            isAreaCovered(cz, ax * 2, ay * 2, targetZoom) &&
+            isAreaCovered(cz, ax * 2 + 1, ay * 2, targetZoom) &&
+            isAreaCovered(cz, ax * 2, ay * 2 + 1, targetZoom) &&
+            isAreaCovered(cz, ax * 2 + 1, ay * 2 + 1, targetZoom)
+        );
+    };
+
+    /**
+     * 指定した矩形領域内の hiddenChildTiles を全て表示状態にする（再帰的に探索）。
+     */
+    const enableDescendants = (areaZoom: number, ax: number, ay: number, targetZoom: number): void => {
+        const areaKey = toTileKey({ zoom: areaZoom, x: ax, y: ay });
+        if (hiddenChildTiles.has(areaKey)) {
+            hiddenChildTiles.delete(areaKey);
+            activeTiles.get(areaKey)?.mesh.setEnabled(true);
+        }
+        if (areaZoom >= targetZoom) return;
+        const cz = areaZoom + 1;
+        enableDescendants(cz, ax * 2, ay * 2, targetZoom);
+        enableDescendants(cz, ax * 2 + 1, ay * 2, targetZoom);
+        enableDescendants(cz, ax * 2, ay * 2 + 1, targetZoom);
+        enableDescendants(cz, ax * 2 + 1, ay * 2 + 1, targetZoom);
+    };
+
+    /**
+     * 新タイルがロードされたとき、対応する旧タイルのカバレッジを判定して解放する。
+     *
+     * zoom アップ（細分化）: 旧タイル(Z) の領域が activeTiles で完全カバーされたら
+     *   子孫タイルを一斉に setEnabled(true) して親を解放する。
+     *   zoom が2段以上離れるケースも再帰的にカバー判定する。
+     * zoom ダウン（統合）: 旧タイル(Z) の親タイル(Z-1) が active なら解放。
+     *
+     * `loadedCoord` を指定すると、その新タイルに関係する pending のみ判定する（高速化）。
+     * 未指定時は全 pending を判定する（applyVisibleTiles 後の念のためチェック用）。
+     */
+    const checkAndReleaseCoveredTiles = (loadedCoord?: TileCoord): void => {
+        // 判定対象 pending を絞り込む
+        let candidateKeys: Iterable<TileKey>;
+        if (loadedCoord) {
+            const cands = new Set<TileKey>();
+            // 同一キー（Case 3）
+            cands.add(toTileKey(loadedCoord));
+            // 祖先（Case 1 候補：新タイルが pending の子孫）
+            for (let az = loadedCoord.zoom - 1; az >= minZoom; az--) {
+                const diff = loadedCoord.zoom - az;
+                const ak = toTileKey({ zoom: az, x: loadedCoord.x >> diff, y: loadedCoord.y >> diff });
+                if (pendingRelease.has(ak)) cands.add(ak);
+            }
+            // 子孫（Case 2 候補：新タイルが pending の祖先）
+            // pendingRelease を走査し、loadedCoord の子孫であるものを抽出
+            for (const [pk, p] of pendingRelease) {
+                if (p.coord.zoom > loadedCoord.zoom) {
+                    const diff = p.coord.zoom - loadedCoord.zoom;
+                    if ((p.coord.x >> diff) === loadedCoord.x && (p.coord.y >> diff) === loadedCoord.y) {
+                        cands.add(pk);
+                    }
+                }
+            }
+            candidateKeys = cands;
+        } else {
+            candidateKeys = Array.from(pendingRelease.keys());
+        }
+
+        for (const key of candidateKeys) {
+            const pending = pendingRelease.get(key);
+            if (!pending) continue;
+            const { coord } = pending;
+
+            // Case 1: 旧タイルの領域が新タイルで完全カバーされたか（再帰判定）
+            if (coord.zoom < zoom) {
+                if (isAreaCovered(coord.zoom, coord.x, coord.y, zoom)) {
+                    // 子孫タイルを一斉に表示してから親を解放
+                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2, zoom);
+                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2, zoom);
+                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2 + 1, zoom);
+                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2 + 1, zoom);
+                    releasePendingTile(key);
+                    continue;
+                }
+            }
+
+            // Case 2: 旧タイルが祖先タイルでカバーされたか（zoom-down 2段以上対応）
+            let ancestorFound = false;
+            for (let az = coord.zoom - 1; az >= minZoom; az--) {
+                const diff = coord.zoom - az;
+                const ancestorX = coord.x >> diff;
+                const ancestorY = coord.y >> diff;
+                if (activeTiles.has(toTileKey({ zoom: az, x: ancestorX, y: ancestorY }))) {
+                    ancestorFound = true;
+                    break;
+                }
+            }
+            if (ancestorFound) {
+                releasePendingTile(key);
+                continue;
+            }
+
+            // Case 3: 同 zoom の新タイルが同じキーで既に active なら不要
+            if (activeTiles.has(key)) {
+                releasePendingTile(key);
+            }
         }
     };
 
@@ -367,12 +563,32 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
                 // テクスチャを先に適用（Worker 待ちの applyStitchedElevation と無関係に
                 //  非同期 fetch を開始しておく）。標高反映後でも順序的には問題ない。
+                // 祖先タイルが pendingRelease 中の場合、この子タイルは非表示待機として登録する。
+                // applyTexture の onLoad が setEnabled(true) を呼ぶ前に hiddenChildTiles に
+                // 追加することで、テクスチャ onLoad での表示を抑止する（競合防止）。
+                // zoom が2段以上離れるケースに対応するため、全祖先をチェック。
+                let isHiddenChild = false;
+                for (let az = coord.zoom - 1; az >= minZoom; az--) {
+                    const diff = coord.zoom - az;
+                    const ancestorX = coord.x >> diff;
+                    const ancestorY = coord.y >> diff;
+                    if (pendingRelease.has(toTileKey({ zoom: az, x: ancestorX, y: ancestorY }))) {
+                        isHiddenChild = true;
+                        break;
+                    }
+                }
+                if (isHiddenChild) {
+                    hiddenChildTiles.add(key);
+                }
                 applyTexture(mesh, coord);
 
                 // 標高適用（ステッチ＋NaN埋め）— Worker でオフロード
                 await applyStitchedElevation(mesh, entry.elevation, coord);
 
                 activeTiles.set(key, { key, coord, mesh, tileSize });
+
+                // 新タイルが追加されたので、カバー完了した旧タイルを解放
+                checkAndReleaseCoveredTiles(coord);
 
                 // 隣接タイルのメッシュも再ステッチ
                 restitchNeighbors(coord);
@@ -424,6 +640,31 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
             const tileSize = tileSizeForZoom(coord.zoom);
             tile.tileSize = tileSize;
+
+            mesh.scaling.x = tileSize;
+            mesh.scaling.z = tileSize;
+            mesh.scaling.y = 1;
+
+            const center = convertTileZoom(currentCenter, coord.zoom);
+            const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+            const dx = coord.x - center.x;
+            const dy = coord.y - center.y;
+            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
+            mesh.position.x = wx;
+            mesh.position.z = wz;
+        }
+        // pendingRelease タイルも同じ座標系に再配置する（位置ずれ防止）
+        repositionPendingReleaseTiles();
+    };
+
+    /** pendingRelease タイルの position/scaling を currentCenter に合わせて再配置 */
+    const repositionPendingReleaseTiles = (): void => {
+        if (!currentCenter) return;
+        for (const [, pending] of pendingRelease) {
+            const { mesh, coord } = pending;
+
+            const tileSize = tileSizeForZoom(coord.zoom);
+            pending.tileSize = tileSize;
 
             mesh.scaling.x = tileSize;
             mesh.scaling.z = tileSize;
@@ -614,8 +855,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     // GPU テクスチャが確実に存在する onLoad 内で diffuseTexture を差し替え、
                     // null gpu texture bind エラーを防ぐ。
                     mat.diffuseTexture = tex;
-                    // テクスチャ準備完了後にメッシュを表示する（acquire 時は非表示）。
-                    mesh.setEnabled(true);
+                    // 非表示待機中の子タイルは親が解放されるまで表示しない
+                    if (!hiddenChildTiles.has(toTileKey(coord))) {
+                        mesh.setEnabled(true);
+                    }
+                    // テクスチャが ready になったので、このタイルが含まれる祖先 pending の
+                    // カバー判定を再評価して、まだ残っている親を解放する。
+                    checkAndReleaseCoveredTiles(coord);
                     if (prevTex && prevTex !== tex) {
                         // 旧テクスチャが同フレームの GPU コマンドバッファにまだ残っている場合、
                         // 即座に dispose すると WebGPU の "Destroyed texture used in a submit"
@@ -632,8 +878,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     if (targetZoom > minZoom) {
                         applyTexture(mesh, coord, targetZoom - 1);
                     } else {
-                        // 全 zoom で失敗 — テクスチャなしでもメッシュは表示する
-                        mesh.setEnabled(true);
+                        // 全 zoom で失敗 — 非表示待機中でなければメッシュは表示する
+                        if (!hiddenChildTiles.has(toTileKey(coord))) {
+                            mesh.setEnabled(true);
+                        }
                     }
                 }
             );
@@ -1183,13 +1431,84 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         geomOnlyReposition = false,
     ): Promise<void> => {
         const visibleKeys = new Set(visibleEntries.map((e) => toTileKey(e.coord)));
+        currentVisibleKeys = visibleKeys;
 
-        // 不要タイルを解放
+        // visibleKeys を zoom レベル別にインデックス化（zoom 階層関係の高速判定用）
+        const visibleByZoom = new Map<number, Set<TileKey>>();
+        for (const entry of visibleEntries) {
+            const z = entry.coord.zoom;
+            let s = visibleByZoom.get(z);
+            if (!s) { s = new Set(); visibleByZoom.set(z, s); }
+            s.add(toTileKey(entry.coord));
+        }
+
+        /**
+         * 旧タイル `coord` が新可視タイル群と zoom 階層関係にあるか判定。
+         * - 祖先が新可視に含まれる（zoom-down）
+         * - 子孫が新可視に含まれる（zoom-up）
+         * いずれでもなければ単なる横パン外なので即座解放する。
+         */
+        const hasZoomRelation = (coord: TileCoord): boolean => {
+            // 祖先チェック
+            for (let az = coord.zoom - 1; az >= minZoom; az--) {
+                const diff = coord.zoom - az;
+                const ak = toTileKey({ zoom: az, x: coord.x >> diff, y: coord.y >> diff });
+                if (visibleKeys.has(ak)) return true;
+            }
+            // 子孫チェック（visibleByZoom を活用）
+            for (const [z, keys] of visibleByZoom) {
+                if (z <= coord.zoom) continue;
+                const diff = z - coord.zoom;
+                // 簡易: visibleByZoom が空でなければ範囲内子孫が存在しうるか確認
+                // 厳密判定: keys を走査して prefix match
+                for (const k of keys) {
+                    const parts = k.split("/");
+                    const zx = Number(parts[1]);
+                    const zy = Number(parts[2]);
+                    if ((zx >> diff) === coord.x && (zy >> diff) === coord.y) return true;
+                }
+            }
+            return false;
+        };
+
+        // 不要タイルを処理: zoom 階層関係があれば pendingRelease、なければ即座解放
         for (const [key, tile] of activeTiles) {
             if (!visibleKeys.has(key)) {
-                textureRequestIds.delete(tile.mesh);
-                meshPool.release(tile.mesh);
+                if (hasZoomRelation(tile.coord)) {
+                    // 既に pendingRelease にある場合はタイマーリセット不要
+                    if (!pendingRelease.has(key)) {
+                        const timerId = setTimeout(() => {
+                            releasePendingTile(key);
+                        }, PENDING_RELEASE_TIMEOUT_MS);
+                        pendingRelease.set(key, {
+                            key: tile.key,
+                            coord: tile.coord,
+                            mesh: tile.mesh,
+                            tileSize: tile.tileSize,
+                            timerId,
+                        });
+                    }
+                } else {
+                    // 横パン外: 即座にメッシュ解放
+                    textureRequestIds.delete(tile.mesh);
+                    meshPool.release(tile.mesh);
+                }
                 activeTiles.delete(key);
+            }
+        }
+
+        // pendingRelease にあるタイルが再び可視になった場合、activeTiles に復元する
+        for (const key of visibleKeys) {
+            const pending = pendingRelease.get(key);
+            if (pending) {
+                clearTimeout(pending.timerId);
+                activeTiles.set(key, {
+                    key: pending.key,
+                    coord: pending.coord,
+                    mesh: pending.mesh,
+                    tileSize: pending.tileSize,
+                });
+                pendingRelease.delete(key);
             }
         }
 
@@ -1352,6 +1671,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 restitchRafId = null;
             }
             pendingRestitch.clear();
+            clearAllPendingRelease();
+            hiddenChildTiles.clear();
             for (const [, tile] of activeTiles) {
                 meshPool.release(tile.mesh);
             }
