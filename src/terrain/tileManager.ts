@@ -1452,13 +1452,17 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const visibleKeys = new Set(visibleEntries.map((e) => toTileKey(e.coord)));
         currentVisibleKeys = visibleKeys;
 
-        // visibleKeys を zoom レベル別にインデックス化（zoom 階層関係の高速判定用）
-        const visibleByZoom = new Map<number, Set<TileKey>>();
+        // 可視タイルの全祖先キーを事前構築（hasZoomRelation の子孫判定を O(1) 化）
+        const visibleAncestorKeys = new Set<TileKey>();
         for (const entry of visibleEntries) {
-            const z = entry.coord.zoom;
-            let s = visibleByZoom.get(z);
-            if (!s) { s = new Set(); visibleByZoom.set(z, s); }
-            s.add(toTileKey(entry.coord));
+            for (let az = entry.coord.zoom - 1; az >= minZoom; az--) {
+                const diff = entry.coord.zoom - az;
+                visibleAncestorKeys.add(toTileKey({
+                    zoom: az,
+                    x: entry.coord.x >> diff,
+                    y: entry.coord.y >> diff,
+                }));
+            }
         }
 
         /**
@@ -1468,25 +1472,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
          * いずれでもなければ単なる横パン外なので即座解放する。
          */
         const hasZoomRelation = (coord: TileCoord): boolean => {
-            // 祖先チェック
+            // 祖先チェック: coord の祖先が visibleKeys に含まれるか
             for (let az = coord.zoom - 1; az >= minZoom; az--) {
                 const diff = coord.zoom - az;
                 const ak = toTileKey({ zoom: az, x: coord.x >> diff, y: coord.y >> diff });
                 if (visibleKeys.has(ak)) return true;
             }
-            // 子孫チェック（visibleByZoom を活用）
-            for (const [z, keys] of visibleByZoom) {
-                if (z <= coord.zoom) continue;
-                const diff = z - coord.zoom;
-                // 簡易: visibleByZoom が空でなければ範囲内子孫が存在しうるか確認
-                // 厳密判定: keys を走査して prefix match
-                for (const k of keys) {
-                    const parts = k.split("/");
-                    const zx = Number(parts[1]);
-                    const zy = Number(parts[2]);
-                    if ((zx >> diff) === coord.x && (zy >> diff) === coord.y) return true;
-                }
-            }
+            // 子孫チェック: coord が可視タイルの祖先か（事前構築セットで O(1) 判定）
+            if (visibleAncestorKeys.has(toTileKey(coord))) return true;
             return false;
         };
 
