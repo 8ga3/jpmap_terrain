@@ -1547,10 +1547,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // 不要タイルを処理: zoom 階層関係があれば pendingRelease、なければ即座解放
         for (const [key, tile] of activeTiles) {
             if (!visibleKeys.has(key)) {
+                // hiddenChildTiles のタイルはメッシュが disabled 状態のため、
+                // pendingRelease に入れても穴を塞ぐ役割を果たせない。即座に解放する。
+                const wasHidden = hiddenChildTiles.has(key);
                 // activeTiles から外す際、hiddenChildTiles に残留すると
                 // 同 key 再ロード時に onLoad で setEnabled(true) されない問題を防ぐ。
                 hiddenChildTiles.delete(key);
-                if (hasZoomRelation(tile.coord)) {
+                if (!wasHidden && hasZoomRelation(tile.coord)) {
                     // 既に pendingRelease にある場合はタイマーリセット不要
                     if (!pendingRelease.has(key)) {
                         const timerId = setTimeout(() => {
@@ -1565,7 +1568,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         });
                     }
                 } else {
-                    // 横パン外: 即座にメッシュ解放
+                    // 横パン外 or hiddenChildTiles タイル: 即座にメッシュ解放
                     textureRequestIds.delete(tile.mesh);
                     meshPool.release(tile.mesh);
                 }
