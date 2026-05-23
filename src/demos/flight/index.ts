@@ -29,6 +29,7 @@ import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
 import { createRouteLine, type RouteLine } from "./routeLine";
 import { createWaypointManager, type WaypointManager } from "./waypoints";
 import { createFlightAudio, type FlightAudio } from "./flightAudio";
+import { createContrail, type Contrail } from "./contrail";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
@@ -129,6 +130,8 @@ const start = async (): Promise<void> => {
     // Follow モードでのタイル中心更新スロットル
     let lastTileUpdateTime = 0;
     let tileRefreshInFlight = false;
+    /** グリッド原点ジャンプが発生したフレームで1回だけ contrail.reset() を呼ぶためのフラグ */
+    let contrailResetNeeded = false;
     let lastRefreshLat = TOKYO_STATION.lat;
     let lastRefreshLon = TOKYO_STATION.lon;
     let lastRefreshRotationOffset = FOLLOW_CAMERA_ROTATION_OFFSET;
@@ -174,6 +177,10 @@ const start = async (): Promise<void> => {
     // --- SE (Issue #269) ---
     let flightAudio: FlightAudio | null = null;
     let audioInitializing = false;
+
+    // --- コントレイル (Issue #276) ---
+    let contrail: Contrail | null = null;
+    let showContrail = true;
 
     /** ウェイポイント再計算ヘルパー — パラメータ変更時に共通で呼ぶ */
     const resetWaypointsIfNeeded = (): void => {
@@ -459,6 +466,17 @@ const start = async (): Promise<void> => {
             } else if (flightAudio) {
                 flightAudio.startEngineSound();
             }
+
+            // コントレイル開始 (Issue #276)
+            if (!contrail && scene) {
+                contrail = createContrail(scene);
+            }
+            if (contrail && showContrail) {
+                contrail.start({
+                    scene,
+                    modelNodeName: `model-${MODEL_ID}`,
+                });
+            }
         }
     };
 
@@ -483,6 +501,9 @@ const start = async (): Promise<void> => {
 
         // SE 停止 (Issue #269)
         flightAudio?.stopEngineSound();
+
+        // コントレイル停止 (Issue #276)
+        contrail?.stop();
     };
 
     // --- UI 要素の取得 ---
@@ -599,6 +620,18 @@ const start = async (): Promise<void> => {
             showRibbon = ribbonToggle.checked;
             if (routeLine) {
                 routeLine.setVisible(showRibbon);
+            }
+        });
+    }
+
+    // コントレイル表示切替チェックボックス (Issue #276)
+    const contrailToggle = document.getElementById("contrail-toggle") as HTMLInputElement | null;
+    if (contrailToggle) {
+        contrailToggle.checked = showContrail;
+        contrailToggle.addEventListener("change", () => {
+            showContrail = contrailToggle.checked;
+            if (contrail) {
+                contrail.setVisible(showContrail);
             }
         });
     }
@@ -803,6 +836,7 @@ const start = async (): Promise<void> => {
                 lastRefreshRadius = followCamRadius;
                 lastTileUpdateTime = timestamp;
                 tileRefreshInFlight = true;
+                contrailResetNeeded = true;
                 // この呼び出しの同期部分で gridResidualX/Z が更新される。
                 void viewer
                     .refreshTerrainWithExternalFrustum(
@@ -832,6 +866,17 @@ const start = async (): Promise<void> => {
             rotation: { y: heading },
             gravity: false,
         });
+
+        // updateModel で root.position が確定した後にトレイルをリセットする。
+        // refreshTerrainWithExternalFrustum が走ったフレームでのみ1回だけ実行。
+        // gridResidual ジャンプで旧座標の頂点が残り折れ線になるのを防止する。
+        if (contrailResetNeeded && contrail) {
+            contrailResetNeeded = false;
+            const scene = viewer.__debugScene;
+            const root = scene?.getTransformNodeByName(`model-${MODEL_ID}`);
+            root?.computeWorldMatrix(true);
+            contrail.reset();
+        }
 
         // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定 + コンパス同期
         // plane.root.position 更新後に呼ぶことで、followCamera の注視点が
@@ -939,6 +984,9 @@ const start = async (): Promise<void> => {
         }
         if (flightAudio) {
             flightAudio.dispose();
+        }
+        if (contrail) {
+            contrail.dispose();
         }
         pipCleanups.forEach((fn) => fn());
         if (pipViewer) {
