@@ -662,6 +662,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
                 activeTiles.set(key, { key, coord, mesh, tileSize });
 
+                // hiddenChildTiles から既に外れている（親が先に解放済み）のに
+                // applyStitchedElevation を await していた間にテクスチャ onLoad も
+                // 通り過ぎていた場合、mesh は永久に disabled のまま残る。
+                // activeTiles に登録した時点で改めてガードをかける。
+                if (!hiddenChildTiles.has(key) && isMeshTextureReady(mesh)) {
+                    mesh.setEnabled(true);
+                }
+
                 // 新タイルが追加されたので、カバー完了した旧タイルを解放
                 checkAndReleaseCoveredTiles(coord);
 
