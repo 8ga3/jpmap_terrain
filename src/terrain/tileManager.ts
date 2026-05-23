@@ -244,6 +244,43 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      */
     const pendingRelease = new Map<TileKey, PendingReleaseTile>();
     /**
+     * pendingRelease の子孫候補を高速に引くためのインデックス。
+     * 祖先キー → そのキーを祖先に持つ pending タイルのキー集合。
+     * pendingRelease 追加/削除時に同期的にメンテナンスする。
+     */
+    const pendingAncestorIndex = new Map<TileKey, Set<TileKey>>();
+
+    /** pendingRelease に登録し、祖先インデックスも更新する */
+    const addPendingRelease = (key: TileKey, entry: PendingReleaseTile): void => {
+        pendingRelease.set(key, entry);
+        // 祖先キーをインデックスに追加
+        for (let az = entry.coord.zoom - 1; az >= minZoom; az--) {
+            const diff = entry.coord.zoom - az;
+            const ak = toTileKey({ zoom: az, x: entry.coord.x >> diff, y: entry.coord.y >> diff });
+            let s = pendingAncestorIndex.get(ak);
+            if (!s) { s = new Set(); pendingAncestorIndex.set(ak, s); }
+            s.add(key);
+        }
+    };
+
+    /** pendingRelease から削除し、祖先インデックスも更新する */
+    const removePendingRelease = (key: TileKey): PendingReleaseTile | undefined => {
+        const entry = pendingRelease.get(key);
+        if (!entry) return undefined;
+        pendingRelease.delete(key);
+        // 祖先キーをインデックスから削除
+        for (let az = entry.coord.zoom - 1; az >= minZoom; az--) {
+            const diff = entry.coord.zoom - az;
+            const ak = toTileKey({ zoom: az, x: entry.coord.x >> diff, y: entry.coord.y >> diff });
+            const s = pendingAncestorIndex.get(ak);
+            if (s) {
+                s.delete(key);
+                if (s.size === 0) pendingAncestorIndex.delete(ak);
+            }
+        }
+        return entry;
+    };
+    /**
      * 親タイルが pendingRelease 中のため非表示待機している子タイルのキー。
      * 4枚揃ったタイミングで一斉に setEnabled(true) して親を解放する。
      */
@@ -316,7 +353,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         unhideDescendants(pending.coord.zoom + 1, pending.coord.x * 2 + 1, pending.coord.y * 2 + 1);
         textureRequestIds.delete(pending.mesh);
         meshPool.release(pending.mesh);
-        pendingRelease.delete(key);
+        removePendingRelease(key);
     };
 
     /** pendingRelease を全てクリアする */
@@ -407,14 +444,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 if (pendingRelease.has(ak)) cands.add(ak);
             }
             // 子孫（Case 2 候補：新タイルが pending の祖先）
-            // pendingRelease を走査し、loadedCoord の子孫であるものを抽出
-            for (const [pk, p] of pendingRelease) {
-                if (p.coord.zoom > loadedCoord.zoom) {
-                    const diff = p.coord.zoom - loadedCoord.zoom;
-                    if ((p.coord.x >> diff) === loadedCoord.x && (p.coord.y >> diff) === loadedCoord.y) {
-                        cands.add(pk);
-                    }
-                }
+            // 祖先インデックスから O(1) で取得
+            const loadedKey = toTileKey(loadedCoord);
+            const descendants = pendingAncestorIndex.get(loadedKey);
+            if (descendants) {
+                for (const dk of descendants) cands.add(dk);
             }
             candidateKeys = cands;
         } else {
@@ -1498,7 +1532,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         const timerId = setTimeout(() => {
                             releasePendingTile(key);
                         }, PENDING_RELEASE_TIMEOUT_MS);
-                        pendingRelease.set(key, {
+                        addPendingRelease(key, {
                             key: tile.key,
                             coord: tile.coord,
                             mesh: tile.mesh,
@@ -1526,7 +1560,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     mesh: pending.mesh,
                     tileSize: pending.tileSize,
                 });
-                pendingRelease.delete(key);
+                removePendingRelease(key);
             }
         }
 
