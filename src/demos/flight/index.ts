@@ -839,7 +839,11 @@ const start = async (): Promise<void> => {
                 lastRefreshRadius = followCamRadius;
                 lastTileUpdateTime = timestamp;
                 tileRefreshInFlight = true;
-                afterburnerResetNeeded = true;
+                // 位置移動によるリフレッシュのみ gridResidual がジャンプするため、
+                // 回転/高さ/半径変化だけの場合は reset 不要。
+                if (moved >= TILE_UPDATE_DISTANCE_M) {
+                    afterburnerResetNeeded = true;
+                }
                 // この呼び出しの同期部分で gridResidualX/Z が更新される。
                 void viewer
                     .refreshTerrainWithExternalFrustum(
