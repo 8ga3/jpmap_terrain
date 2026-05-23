@@ -2,6 +2,9 @@
 
 export const TILE_SIZE = 256;
 
+/** 地理院タイルの最大ズームレベル */
+export const TILE_MAX_ZOOM = 18;
+
 export const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 } as const;
 
 const DEM_LAYERS = ["dem5a_png", "dem5b_png", "dem_png"] as const;

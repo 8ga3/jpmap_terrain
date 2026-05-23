@@ -13,7 +13,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { CreateSceneClass } from "../createScene";
-import { clamp, toTileXY, tileEdgeMeters, tileCenterLatLon, JAPAN_BOUNDS } from "../terrain/gsiTile";
+import { clamp, toTileXY, tileEdgeMeters, tileCenterLatLon, JAPAN_BOUNDS, TILE_MAX_ZOOM } from "../terrain/gsiTile";
 import { clampZoomLevel, radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
 import { createControlPanel, snapScale, formatScale, showToast } from "../terrain/controlPanel";
 import { attachResizeRefresh } from "../terrain/resizeRefresh";
@@ -39,7 +39,7 @@ import {
 } from "../lib/types";
 
 const TERRAIN_SUBDIVISIONS = 128;
-const MAX_ZOOM = 18;
+const MAX_ZOOM = TILE_MAX_ZOOM;
 const MAX_ELEVATION_ZOOM = 17;
 const MIN_ELEVATION_ZOOM = 10;
 const HEIGHT_SCALE = 1.0;
