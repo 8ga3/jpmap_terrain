@@ -975,6 +975,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         for (const [, tile] of activeTiles) {
             applyTexture(tile.mesh, tile.coord);
         }
+        // LOD 遷移中に表示を維持している pendingRelease タイルも再テクスチャする。
+        // 含めないと mapType 切替時に旧タイルだけが旧テクスチャで表示され続ける。
+        for (const [, pending] of pendingRelease) {
+            applyTexture(pending.mesh, pending.coord);
+        }
     };
 
     /**
