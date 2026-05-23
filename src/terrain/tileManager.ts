@@ -303,6 +303,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 最新の applyVisibleTiles で計算された必要タイルキー集合 */
     let currentVisibleKeys = new Set<TileKey>();
 
+    /** 最新の applyVisibleTiles で構築された可視タイルの全祖先キー集合（isAreaCovered 枝刈り用）*/
+    let currentVisibleAncestorKeys = new Set<TileKey>();
+
     // 現在の中心情報
     let currentCenter: TileCoord | null = null;
     let currentAltitudeOffset = 0;
@@ -393,6 +396,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         if (currentVisibleKeys.has(areaKey)) return false;
         if (areaZoom >= targetZoom) {
             // 最深レベルでかつ visibleKeys に無い → frustum 外なのでカバー不要
+            return true;
+        }
+        // このノードが可視タイルの祖先でなければ子孫に可視タイルは存在しない → カバー不要
+        if (!currentVisibleAncestorKeys.has(areaKey)) {
             return true;
         }
         // 4分割して再帰チェック
@@ -1515,6 +1522,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 }));
             }
         }
+        currentVisibleAncestorKeys = visibleAncestorKeys;
 
         /**
          * 旧タイル `coord` が新可視タイル群と zoom 階層関係にあるか判定。
