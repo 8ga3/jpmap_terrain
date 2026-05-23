@@ -1730,6 +1730,7 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         // SSE = (tileSize * viewportHeight) / (distance * 2 * tan(fov/2))
         // cameraHeight=1e6 → SSE 極小 → zoom=12 タイルが採用（過剰分割しない）
         // cameraHeight=0.1 → 距離 max(1,0.1)=1 → SSE 極大 → maxZoom=14 まで分割
+        // rootSearchRadius: 0 で root を 1 タイルに限定し、maxTiles を超過しない決定的なテストにする。
         // 旧実装（即時解放）では pendingReleaseCount=0 になり、このテストは失敗する。
         const cameraMock = createMockCamera() as { position: { x: number; y: number; z: number } };
         const camera = cameraMock as never;
@@ -1740,6 +1741,7 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
             subdivisions: 128,
             heightScale: 1.0,
             maxTiles: 30,
+            rootSearchRadius: 0,
         });
 
         // 1st setCenter: カメラを高空（1e6）に置き zoom=12 タイルのみを採用させる
@@ -1763,3 +1765,4 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
         expect(tm.pendingReleaseCount).toBe(0);
     });
 });
+
