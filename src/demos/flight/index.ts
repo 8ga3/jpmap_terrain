@@ -28,6 +28,7 @@ import {
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
 import { createRouteLine, type RouteLine } from "./routeLine";
 import { createWaypointManager, type WaypointManager } from "./waypoints";
+import { createFlightAudio, type FlightAudio } from "./flightAudio";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
@@ -169,6 +170,10 @@ const start = async (): Promise<void> => {
     let showWaypoints = true;
     /** リボン表示フラグ */
     let showRibbon = true;
+
+    // --- SE (Issue #269) ---
+    let flightAudio: FlightAudio | null = null;
+    let audioInitializing = false;
 
     /** ウェイポイント再計算ヘルパー — パラメータ変更時に共通で呼ぶ */
     const resetWaypointsIfNeeded = (): void => {
@@ -435,6 +440,25 @@ const start = async (): Promise<void> => {
             attachFollowPointerHandlers();
             showFollowCamInfo(true);
             updateFollowCamDisplay();
+
+            // SE 開始 (Issue #269)
+            if (!flightAudio && !audioInitializing) {
+                audioInitializing = true;
+                createFlightAudio()
+                    .then((audio) => {
+                        flightAudio = audio;
+                        audioInitializing = false;
+                        if (currentCameraMode === "follow") {
+                            flightAudio.startEngineSound();
+                        }
+                    })
+                    .catch((err) => {
+                        audioInitializing = false;
+                        console.warn("[flight-demo] Audio init failed:", err);
+                    });
+            } else if (flightAudio) {
+                flightAudio.startEngineSound();
+            }
         }
     };
 
@@ -456,6 +480,9 @@ const start = async (): Promise<void> => {
         // コンパスを通常モードに戻す
         viewer.setExternalCompassDegrees(null);
         showFollowCamInfo(false);
+
+        // SE 停止 (Issue #269)
+        flightAudio?.stopEngineSound();
     };
 
     // --- UI 要素の取得 ---
@@ -850,7 +877,9 @@ const start = async (): Promise<void> => {
             if (!waypointManager) {
                 const scene = viewer.__debugScene;
                 if (scene) {
-                    waypointManager = createWaypointManager(scene);
+                    waypointManager = createWaypointManager(scene, {
+                        onPass: () => flightAudio?.playWaypointPassSound(),
+                    });
                     resetWaypointsIfNeeded();
                 }
             }
@@ -907,6 +936,9 @@ const start = async (): Promise<void> => {
         }
         if (waypointManager) {
             waypointManager.dispose();
+        }
+        if (flightAudio) {
+            flightAudio.dispose();
         }
         pipCleanups.forEach((fn) => fn());
         if (pipViewer) {

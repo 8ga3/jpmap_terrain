@@ -50,6 +50,10 @@ export interface WaypointManager {
     dispose(): void;
 }
 
+export interface WaypointManagerOptions {
+    onPass?: () => void;
+}
+
 interface WaypointState {
     /** 円周上の角度 (度, 単調増加・ラップなし) */
     angleDeg: number;
@@ -84,7 +88,7 @@ const arcDistance = (angle1Deg: number, angle2Deg: number, radiusM: number): num
 
 // ─── メイン ──────────────────────────────────────────────
 
-export const createWaypointManager = (scene: Scene): WaypointManager => {
+export const createWaypointManager = (scene: Scene, options?: WaypointManagerOptions): WaypointManager => {
     let waypoints: WaypointState[] = [];
     let materials: ReturnType<typeof createWaypointMaterial>[] = [];
     let lastTime = 0;
@@ -185,6 +189,7 @@ export const createWaypointManager = (scene: Scene): WaypointManager => {
             if (!wp.passed && ahead && dist < PASS_THRESHOLD_M) {
                 wp.passed = true;
                 createPassEffect(scene, wp.mesh.position.clone());
+                options?.onPass?.();
             }
 
             // ─── フェードアウト + 拡大アニメーション ───
