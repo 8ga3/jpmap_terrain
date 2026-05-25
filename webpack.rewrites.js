@@ -24,6 +24,8 @@ module.exports = {
         { from: /^\/model\.html(?:\/?@.*)?\/?$/, to: '/model.html' },
         { from: /^\/avatar(?:\/@.*)?\/?$/, to: '/avatar.html' },
         { from: /^\/avatar\.html(?:\/?@.*)?\/?$/, to: '/avatar.html' },
+        { from: /^\/avatar-controller(?:\/@.*)?\/?$/, to: '/avatar-controller.html' },
+        { from: /^\/avatar-controller\.html(?:\/?@.*)?\/?$/, to: '/avatar-controller.html' },
         { from: /^\/boids(?:\/@.*)?\/?$/, to: '/boids.html' },
         { from: /^\/boids\.html(?:\/?@.*)?\/?$/, to: '/boids.html' },
         { from: /^\/flight(?:\/@.*)?\/?$/, to: '/flight.html' },

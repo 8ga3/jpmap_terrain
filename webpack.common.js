@@ -78,6 +78,13 @@ const ENTRY_DEFINITIONS = [
         title: "jpmap_terrain – アバターアニメーションデモ",
     },
     {
+        name: "avatar-controller",
+        entry: "src/demos/avatar-controller/index.ts",
+        template: "public/avatar-controller.html",
+        filename: "avatar-controller.html",
+        title: "jpmap_terrain – アバターアニメーション #02 (Game Controller)",
+    },
+    {
         name: "boids",
         entry: "src/demos/boids/index.ts",
         template: "public/boids.html",

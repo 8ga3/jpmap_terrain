@@ -67,6 +67,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "avatar",
     },
     {
+        title: "アバターアニメーション #02（Game Controller）",
+        description:
+            "キーボード（矢印キー / WASD）・Game Controller・Virtual Joystick でアバターを地形上で操作するデモ。地面クリックでスポーン位置を変更できます。",
+        href: "avatar-controller",
+    },
+    {
         title: "Boids フロッキング",
         description:
             "Boids アルゴリズム（分離・整列・結合）で複数のアバターが群衆行動するデモ。アバター数の変更やシミュレーションの一時停止・リスタートが可能です。",
