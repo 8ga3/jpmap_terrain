@@ -223,6 +223,9 @@ const start = async (): Promise<void> => {
     let rafId = 0;
     const tick = (timestamp: number): void => {
         const handle = viewer.getModel(MODEL_ID);
+        // モデルが既に破棄されている（ページ遷移途中など）場合は RAF を再スケジュール
+        // しないことで自然にループを終了させる。`addModel` の直後から `tick` を起動
+        // しているため、通常運用ではここに入るのは破棄後のフレームのみ。
         if (!handle) return;
 
         if (handle.loaded && !animationStarted) {
