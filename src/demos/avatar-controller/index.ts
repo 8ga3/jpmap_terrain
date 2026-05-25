@@ -233,7 +233,10 @@ const start = async (): Promise<void> => {
         }
 
         if (lastTimestamp === null) lastTimestamp = timestamp;
-        const dtSec = (timestamp - lastTimestamp) / 1000;
+        // タブが非アクティブから復帰した直後など dtSec が大きくなった場合に、
+        // 一気に巨大な距離を進めて地形外まで飛び出すのを防ぐため上限クランプ。
+        // boids デモ (src/demos/boids/index.ts) と同じ 0.1s を採用。
+        const dtSec = Math.min((timestamp - lastTimestamp) / 1000, 0.1);
         lastTimestamp = timestamp;
 
         const input = readInputs();
