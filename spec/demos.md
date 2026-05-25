@@ -225,6 +225,8 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 **URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
+### boids (`/boids.html`)
+
 Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレーションデモ（#251）。高尾山山頂付近の矩形リージョン内で複数のアバター（`assets/human_walk.glb`）が分離・整列・結合の 3 ルールに従い自律的に歩き回る。
 
 **仕様:**
