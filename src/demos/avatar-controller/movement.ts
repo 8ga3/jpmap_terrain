@@ -106,6 +106,25 @@ export const stepPosition = (
 };
 
 /**
+ * 入力ベクトルを画面（カメラ）方位角に従って回転し、ワールド (east, north) に変換する。
+ *
+ * `azimuthDeg` はカメラが向いている方位（北=0°, 時計回り）。
+ * 画面上の「上」がカメラ前方なので、入力 (vx, vy) を北基準に回転して返す。
+ */
+export const rotateByAzimuth = (
+    v: MoveVector,
+    azimuthDeg: number,
+): MoveVector => {
+    const rad = (azimuthDeg * Math.PI) / 180;
+    const c = Math.cos(rad);
+    const s = Math.sin(rad);
+    return {
+        vx: v.vx * c + v.vy * s,
+        vy: -v.vx * s + v.vy * c,
+    };
+};
+
+/**
  * 入力ベクトルから進行方向の方位角（北=0°, 時計回り, 度）を返す。
  * ベクトルが (0,0) のときは `null`（向きを更新しない目印）を返す。
  */
