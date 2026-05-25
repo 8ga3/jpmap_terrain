@@ -29,6 +29,7 @@ import {
     keyboardVector,
     moveVectorMagnitude,
     movementHeading,
+    rotateByAzimuth,
     stepPosition,
     type MoveVector,
 } from "./movement";
@@ -211,7 +212,9 @@ const start = async (): Promise<void> => {
         const js: MoveVector = joystick.pressed
             ? { vx: joystick.value.vx, vy: joystick.value.vy }
             : { vx: 0, vy: 0 };
-        return combineInputs([kb, gp, js]);
+        // 画面（カメラ）方位に合わせて回転: 入力の "up" = カメラ前方
+        const screen = combineInputs([kb, gp, js]);
+        return rotateByAzimuth(screen, viewer.azimuth);
     };
 
     let rafId = 0;

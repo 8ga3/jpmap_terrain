@@ -11,6 +11,7 @@ import {
     keyboardVector,
     moveVectorMagnitude,
     movementHeading,
+    rotateByAzimuth,
     stepPosition,
 } from "../src/demos/avatar-controller/movement";
 
@@ -148,5 +149,36 @@ describe("moveVectorMagnitude", () => {
     });
     it("(3,4) で 5", () => {
         expect(moveVectorMagnitude({ vx: 3, vy: 4 })).toBeCloseTo(5, 10);
+    });
+});
+
+describe("rotateByAzimuth", () => {
+    it("方位角 0°（北向き）では入力をそのまま返す", () => {
+        const v = rotateByAzimuth({ vx: 0, vy: 1 }, 0);
+        expect(v.vx).toBeCloseTo(0, 10);
+        expect(v.vy).toBeCloseTo(1, 10);
+    });
+
+    it("方位角 90°（東向き）でジョイスティック上は東方向になる", () => {
+        const v = rotateByAzimuth({ vx: 0, vy: 1 }, 90);
+        expect(v.vx).toBeCloseTo(1, 10);
+        expect(v.vy).toBeCloseTo(0, 10);
+    });
+
+    it("方位角 180°（南向き）でジョイスティック上は南方向になる", () => {
+        const v = rotateByAzimuth({ vx: 0, vy: 1 }, 180);
+        expect(v.vx).toBeCloseTo(0, 10);
+        expect(v.vy).toBeCloseTo(-1, 10);
+    });
+
+    it("方位角 270°（西向き）でジョイスティック上は西方向になる", () => {
+        const v = rotateByAzimuth({ vx: 0, vy: 1 }, 270);
+        expect(v.vx).toBeCloseTo(-1, 10);
+        expect(v.vy).toBeCloseTo(0, 10);
+    });
+
+    it("ベクトルの大きさは保存される", () => {
+        const v = rotateByAzimuth({ vx: 0.6, vy: 0.8 }, 37);
+        expect(Math.hypot(v.vx, v.vy)).toBeCloseTo(1, 10);
     });
 });
