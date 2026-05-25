@@ -23,7 +23,7 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
-import { VirtualJoystick } from "@babylonjs/core/Misc/virtualJoystick";
+import { createDomJoystick } from "./domJoystick";
 import {
     combineInputs,
     keyboardVector,
@@ -127,20 +127,17 @@ const start = async (): Promise<void> => {
         gamepadStick.y = 0;
     });
 
-    // --- 入力: Virtual Joystick（マウス/タッチ共通で常時表示） ---
-    // Babylon.js VirtualJoystick は pointer events を使うためマウスでも操作可能。
-    // 既存の Babylon canvas より手前に来るよう z-index を上書きする。
-    const joystick: VirtualJoystick = new VirtualJoystick(true, {
+    // --- 入力: Virtual Joystick（左下に常時表示） ---
+    // Babylon.js の VirtualJoystick は canvas が画面全体を覆ってしまうため、
+    // 操作領域を左下の円形 DOM 要素に限定した独自実装を使う。
+    const overlay = document.getElementById("avatar-overlay") as HTMLElement | null;
+    const joystick = createDomJoystick({
+        parent: overlay ?? document.body,
+        containerSize: 120,
+        puckSize: 50,
+        offset: 24,
         color: "#4af",
-        limitToContainer: true,
-        alwaysVisible: true,
-        puckSize: 40,
-        containerSize: 80,
     });
-    if (VirtualJoystick.Canvas) {
-        VirtualJoystick.Canvas.style.zIndex = "20";
-        VirtualJoystick.Canvas.style.pointerEvents = "auto";
-    }
 
     // --- UI ---
     const latDisplay = document.getElementById(
@@ -210,7 +207,7 @@ const start = async (): Promise<void> => {
         // Babylon の左スティック Y は下方向で正なので反転して北=+1 に揃える
         const gp: MoveVector = { vx: gamepadStick.x, vy: -gamepadStick.y };
         const js: MoveVector = joystick.pressed
-            ? { vx: joystick.deltaPosition.x, vy: joystick.deltaPosition.y }
+            ? { vx: joystick.value.vx, vy: joystick.value.vy }
             : { vx: 0, vy: 0 };
         return combineInputs([kb, gp, js]);
     };
@@ -268,7 +265,7 @@ const start = async (): Promise<void> => {
         window.removeEventListener("keydown", onKeyDown);
         window.removeEventListener("keyup", onKeyUp);
         gamepadManager.dispose();
-        joystick.releaseCanvas();
+        joystick.dispose();
     });
 };
 
