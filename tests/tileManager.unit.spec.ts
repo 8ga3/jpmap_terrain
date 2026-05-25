@@ -91,6 +91,10 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.frustum", () => ({
     },
 }));
 
+jest.unstable_mockModule("@babylonjs/core/Cameras/camera", () => ({
+    Camera: { ORTHOGRAPHIC_CAMERA: 1, PERSPECTIVE_CAMERA: 0 },
+}));
+
 jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => {
     class Vector3Mock {
         x: number;
@@ -165,7 +169,7 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
     fillInvalidPixels: jest.fn(),
 }));
 
-const { createTileManager, extractSubTileElevation, computeTextureUvParams } = await import("../src/terrain/tileManager");
+const { createTileManager, extractSubTileElevation, computeTextureUvParams, extractOrthoStableFrustumPlanes } = await import("../src/terrain/tileManager");
 const gsiTileMock = await import("../src/terrain/gsiTile");
 
 const createMockCamera = () => {
@@ -1829,3 +1833,63 @@ describe("LOD遷移時の遅延解放 (Issue #268)", () => {
     });
 });
 
+
+describe("extractOrthoStableFrustumPlanes (#286)", () => {
+    const makeCamera = (
+        orthoHalfW: number,
+        orthoHalfH: number,
+        targetX = 100,
+        targetZ = -50,
+    ) => ({
+        orthoLeft: -orthoHalfW,
+        orthoRight: orthoHalfW,
+        orthoTop: orthoHalfH,
+        orthoBottom: -orthoHalfH,
+        target: { x: targetX, z: targetZ },
+    });
+
+    it("正方形 ortho 矩形のとき、半辺は対角距離(=hypot(halfW,halfH))に拡張される", () => {
+        const cam = makeCamera(1000, 1000);
+        const planes = extractOrthoStableFrustumPlanes(cam);
+        // X+ 方向の平面: normal=(1,0,0), d = -(cx - radius)
+        // radius = hypot(1000, 1000) = 1000 * sqrt(2)
+        const expectedRadius = Math.hypot(1000, 1000);
+        const cx = 100;
+        const cz = -50;
+        expect(planes[0].normal).toEqual({ x: 1, y: 0, z: 0 });
+        expect(planes[0].d).toBeCloseTo(-(cx - expectedRadius), 6);
+        expect(planes[1].normal).toEqual({ x: -1, y: 0, z: 0 });
+        expect(planes[1].d).toBeCloseTo(cx + expectedRadius, 6);
+        expect(planes[2].normal).toEqual({ x: 0, y: 0, z: 1 });
+        expect(planes[2].d).toBeCloseTo(-(cz - expectedRadius), 6);
+        expect(planes[3].normal).toEqual({ x: 0, y: 0, z: -1 });
+        expect(planes[3].d).toBeCloseTo(cz + expectedRadius, 6);
+    });
+
+    it("camera.target を中心とする回転不変な平面である（alphaに依存しない）", () => {
+        // 関数引数に alpha は含まれないため、引数が同じなら結果は同一
+        const cam1 = makeCamera(800, 600, 0, 0);
+        const cam2 = makeCamera(800, 600, 0, 0);
+        expect(extractOrthoStableFrustumPlanes(cam1)).toEqual(
+            extractOrthoStableFrustumPlanes(cam2),
+        );
+    });
+
+    it("Y 方向は十分大きな上下平面（地形 ±数千m を完全カバー）", () => {
+        const cam = makeCamera(500, 500);
+        const planes = extractOrthoStableFrustumPlanes(cam);
+        expect(planes[4].normal).toEqual({ x: 0, y: 1, z: 0 });
+        expect(planes[5].normal).toEqual({ x: 0, y: -1, z: 0 });
+        expect(planes[4].d).toBeGreaterThan(1e6);
+        expect(planes[5].d).toBeGreaterThan(1e6);
+    });
+
+    it("ortho* が未設定（null/undefined）でも 0 として安全にフォールバックする", () => {
+        const planes = extractOrthoStableFrustumPlanes({
+            target: { x: 0, z: 0 },
+        });
+        expect(planes).toHaveLength(6);
+        // radius = hypot(0,0) = 0 → X+ 平面の d = ±0（Object.is で -0/+0 区別を避ける）
+        expect(planes[0].d).toBeCloseTo(0);
+    });
+});

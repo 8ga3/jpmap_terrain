@@ -9,6 +9,7 @@ import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { Camera } from "@babylonjs/core/Cameras/camera";
 
 import { TileCoord, TileKey, toTileKey, tileOffsetToWorld, convertTileZoom, computeSubTileOffset } from "./tileTypes";
 import { computeQuadtreeTiles, FrustumPlane, LodTileEntry } from "./visibleTiles";
@@ -197,6 +198,14 @@ export const extractSubTileElevation = (
 
 /** Babylon.js Frustum planes を FrustumPlane[] に変換 */
 const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
+    // 2D (ortho) では camera.alpha 変更（画面回転）に伴って AABB-frustum 交差が
+    // 拡大し、`computeQuadtreeTiles` の maxTiles / maxVisited に達して粗LODへの
+    // 強制フォールバックや遠方タイル切捨てが起き、回転中にタイルレベルが乱れる
+    // (#286)。タイル選択は地理的中心と orthoサイズだけで決めれば十分なので、
+    // ortho 時は回転に依存しない axis-aligned な frustum 平面を構築する。
+    if (camera.mode === Camera.ORTHOGRAPHIC_CAMERA) {
+        return extractOrthoStableFrustumPlanes(camera);
+    }
     const transform = Matrix.Identity();
     camera
         .getViewMatrix()
@@ -208,6 +217,45 @@ const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
         normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
         d: p.d,
     }));
+};
+
+/**
+ * 2D (ortho) 用の回転安定な frustum 平面を返す (#286)。
+ *
+ * orthoLeft/Right/Top/Bottom が定義する可視矩形を、`camera.alpha` がどの値でも
+ * 完全に内包する正方形（中心 `camera.target`、半辺 `hypot(halfW, halfH)`）
+ * に展開して X/Z 軸方向の4平面を構築する。Y 方向は地形の標高範囲を十分に
+ * カバーする大きな上下平面を返す。
+ * これにより、画面回転だけでタイル選択集合が変動するのを防ぐ。
+ */
+export const extractOrthoStableFrustumPlanes = (camera: {
+    orthoLeft?: number | null;
+    orthoRight?: number | null;
+    orthoTop?: number | null;
+    orthoBottom?: number | null;
+    target: { x: number; z: number };
+}): FrustumPlane[] => {
+    const left = camera.orthoLeft ?? 0;
+    const right = camera.orthoRight ?? 0;
+    const top = camera.orthoTop ?? 0;
+    const bottom = camera.orthoBottom ?? 0;
+    const halfW = (right - left) / 2;
+    const halfH = (top - bottom) / 2;
+    // 任意の回転角で可視矩形を内包する半辺（外接円半径）
+    const radius = Math.hypot(halfW, halfH);
+    const cx = camera.target.x;
+    const cz = camera.target.z;
+    // Y 方向は地形標高 ±数千m を大きく上回る値で常に内側判定にする。
+    // isAABBInFrustum は `n·p + d < 0` で外側判定するため、上下とも d を大きく取る。
+    const Y_HALF = 1e9;
+    return [
+        { normal: { x: 1, y: 0, z: 0 }, d: -(cx - radius) },
+        { normal: { x: -1, y: 0, z: 0 }, d: cx + radius },
+        { normal: { x: 0, y: 0, z: 1 }, d: -(cz - radius) },
+        { normal: { x: 0, y: 0, z: -1 }, d: cz + radius },
+        { normal: { x: 0, y: 1, z: 0 }, d: Y_HALF },
+        { normal: { x: 0, y: -1, z: 0 }, d: Y_HALF },
+    ];
 };
 
 export const createTileManager = (opts: TileManagerOptions): TileManager => {
