@@ -1682,6 +1682,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             await loadTilesInQueue(toLoad, rid);
         }
 
+        // 2D 回転や同一可視集合での再 refresh など、新規ロードが発生しないケースでは
+        // loadTile 経路の checkAndReleaseCoveredTiles が呼ばれないため、既に祖先タイルが
+        // ロード済みの pendingRelease タイルがタイムアウト (5s) まで滞留してしまう (#286)。
+        // ここで全 pending を対象に再判定し、カバー済みのものを即時解放する。
+        if (pendingRelease.size > 0) {
+            checkAndReleaseCoveredTiles();
+        }
+
         if (rid === requestId) {
             // all-NaN だったタイルを反復補間で埋める（湖中央等）
             await refineAllNaNTiles();
