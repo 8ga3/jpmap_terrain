@@ -105,14 +105,17 @@ const start = async (): Promise<void> => {
     const pressedKeys = new Set<string>();
     const onKeyDown = (e: KeyboardEvent): void => {
         pressedKeys.add(e.code);
-        pressedKeys.add(e.key);
     };
     const onKeyUp = (e: KeyboardEvent): void => {
         pressedKeys.delete(e.code);
-        pressedKeys.delete(e.key);
+    };
+    // ウィンドウフォーカスを失った際に keyup を取りこぼしてキーが押しっぱなしになるのを防ぐ
+    const onBlur = (): void => {
+        pressedKeys.clear();
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
 
     // --- 入力: Gamepad ---
     const gamepadManager = new GamepadManager();
@@ -269,6 +272,7 @@ const start = async (): Promise<void> => {
         cancelAnimationFrame(rafId);
         window.removeEventListener("keydown", onKeyDown);
         window.removeEventListener("keyup", onKeyUp);
+        window.removeEventListener("blur", onBlur);
         gamepadManager.dispose();
         joystick.dispose();
     });

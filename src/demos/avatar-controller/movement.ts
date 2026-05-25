@@ -5,9 +5,11 @@
  * (east = vx, north = vy, |v| <= 1) に変換し、移動後の緯度経度と進行方向の
  * 方位角を計算する純粋関数群。
  *
- * 座標系:
- * - 入力ベクトル: 平面ローカル (East, North)、-1..1 の単位ベクトル想定
- * - 方位角: 北を 0°、時計回りに増加（Babylon の Y 軸回転角と一致）
+ * 座標系・規約:
+ * - 入力ベクトル: 平面ローカル (East, North)、-1..1 の単位ベクトル想定。
+ * - `movementHeading` が返す方位角: 北 = 0°、時計回り (CW) に増加（Babylon の Y 軸回転角と一致）。
+ * - `rotateByAzimuth` が受け取る `azimuthDeg`: 本プロジェクトのカメラ方位規約に従い、
+ *   北 = 0°・反時計回り (CCW) 正方向（ArcRotateCamera の alpha 由来）。
  */
 
 /** WGS84 平均半径 (m)。`orbit.ts` と同値。 */
@@ -108,11 +110,9 @@ export const stepPosition = (
 /**
  * 入力ベクトルを画面（カメラ）方位角に従って回転し、ワールド (east, north) に変換する。
  *
- * `azimuthDeg` はカメラが向いている方位（北=0°, 時計回り）。
- * 画面上の「上」がカメラ前方なので、入力 (vx, vy) を北基準に回転して返す。
- *
- * Babylon ArcRotateCamera の alpha 由来の方位角は反時計回り正方向なので、
- * 画面の「右=+x」基準に合わせるには逆回転 (`-azimuthDeg`) を掛ける。
+ * `azimuthDeg` は本プロジェクト規約のカメラ方位（北=0°・反時計回り正、
+ * ArcRotateCamera の alpha 由来）。画面の「右=+x / 上=+y」入力をワールドの
+ * (east, north) に揃えるため、内部では `-azimuthDeg` で回転する。
  */
 export const rotateByAzimuth = (
     v: MoveVector,
