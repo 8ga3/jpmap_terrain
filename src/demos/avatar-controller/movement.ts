@@ -110,12 +110,15 @@ export const stepPosition = (
  *
  * `azimuthDeg` はカメラが向いている方位（北=0°, 時計回り）。
  * 画面上の「上」がカメラ前方なので、入力 (vx, vy) を北基準に回転して返す。
+ *
+ * Babylon ArcRotateCamera の alpha 由来の方位角は反時計回り正方向なので、
+ * 画面の「右=+x」基準に合わせるには逆回転 (`-azimuthDeg`) を掛ける。
  */
 export const rotateByAzimuth = (
     v: MoveVector,
     azimuthDeg: number,
 ): MoveVector => {
-    const rad = (azimuthDeg * Math.PI) / 180;
+    const rad = (-azimuthDeg * Math.PI) / 180;
     const c = Math.cos(rad);
     const s = Math.sin(rad);
     return {

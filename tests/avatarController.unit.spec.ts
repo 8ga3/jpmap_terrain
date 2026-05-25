@@ -159,9 +159,9 @@ describe("rotateByAzimuth", () => {
         expect(v.vy).toBeCloseTo(1, 10);
     });
 
-    it("方位角 90°（東向き）でジョイスティック上は東方向になる", () => {
+    it("方位角 90°（東向き）でジョイスティック上は西方向になる（azimuth は反時計回り正）", () => {
         const v = rotateByAzimuth({ vx: 0, vy: 1 }, 90);
-        expect(v.vx).toBeCloseTo(1, 10);
+        expect(v.vx).toBeCloseTo(-1, 10);
         expect(v.vy).toBeCloseTo(0, 10);
     });
 
@@ -171,9 +171,9 @@ describe("rotateByAzimuth", () => {
         expect(v.vy).toBeCloseTo(-1, 10);
     });
 
-    it("方位角 270°（西向き）でジョイスティック上は西方向になる", () => {
+    it("方位角 270°（西向き）でジョイスティック上は東方向になる（azimuth は反時計回り正）", () => {
         const v = rotateByAzimuth({ vx: 0, vy: 1 }, 270);
-        expect(v.vx).toBeCloseTo(-1, 10);
+        expect(v.vx).toBeCloseTo(1, 10);
         expect(v.vy).toBeCloseTo(0, 10);
     });
 
