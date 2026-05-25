@@ -17,8 +17,10 @@ export interface DomJoystickOptions {
     containerSize?: number;
     /** スティック（つまみ）の直径 px。default 50 */
     puckSize?: number;
-    /** 左下からのオフセット px。default 24 */
-    offset?: number;
+    /** 左端からのオフセット px。default 24 */
+    leftOffset?: number;
+    /** 下端からのオフセット px。default 24 */
+    bottomOffset?: number;
     /** 色 */
     color?: string;
 }
@@ -45,7 +47,8 @@ export const createDomJoystick = (
     const parent = opts.parent ?? document.body;
     const containerSize = opts.containerSize ?? 120;
     const puckSize = opts.puckSize ?? 50;
-    const offset = opts.offset ?? 24;
+    const leftOffset = opts.leftOffset ?? 24;
+    const bottomOffset = opts.bottomOffset ?? 24;
     const color = opts.color ?? "#4af";
     const maxOffset = (containerSize - puckSize) / 2;
 
@@ -53,8 +56,8 @@ export const createDomJoystick = (
     container.className = "dom-joystick";
     Object.assign(container.style, {
         position: "absolute",
-        left: `${offset}px`,
-        bottom: `${offset}px`,
+        left: `${leftOffset}px`,
+        bottom: `${bottomOffset}px`,
         width: `${containerSize}px`,
         height: `${containerSize}px`,
         borderRadius: "50%",

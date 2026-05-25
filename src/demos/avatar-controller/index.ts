@@ -135,7 +135,9 @@ const start = async (): Promise<void> => {
         parent: overlay ?? document.body,
         containerSize: 120,
         puckSize: 50,
-        offset: 24,
+        // Babylon.js の写真ボタン（左下 ~50px）の右隣に配置
+        leftOffset: 70,
+        bottomOffset: 10,
         color: "#4af",
     });
 
