@@ -26,16 +26,12 @@ export interface MoveVector {
     vy: number;
 }
 
-/** キーボード押下状態から (east, north) 方向の入力ベクトルを得る。 */
+/** キーボード押下状態 (`KeyboardEvent.code` のセット) から (east, north) 方向の入力ベクトルを得る。 */
 export const keyboardVector = (keys: ReadonlySet<string>): MoveVector => {
-    const up =
-        keys.has("ArrowUp") || keys.has("KeyW") || keys.has("w") || keys.has("W");
-    const down =
-        keys.has("ArrowDown") || keys.has("KeyS") || keys.has("s") || keys.has("S");
-    const left =
-        keys.has("ArrowLeft") || keys.has("KeyA") || keys.has("a") || keys.has("A");
-    const right =
-        keys.has("ArrowRight") || keys.has("KeyD") || keys.has("d") || keys.has("D");
+    const up = keys.has("ArrowUp") || keys.has("KeyW");
+    const down = keys.has("ArrowDown") || keys.has("KeyS");
+    const left = keys.has("ArrowLeft") || keys.has("KeyA");
+    const right = keys.has("ArrowRight") || keys.has("KeyD");
 
     const vy = (up ? 1 : 0) + (down ? -1 : 0);
     const vx = (right ? 1 : 0) + (left ? -1 : 0);
