@@ -51,6 +51,10 @@ async function waitForTerrainStable(
 ): Promise<void> {
     // debounce (200ms) 発火をまず保証する
     await page.waitForTimeout(300);
+    // 前回呼び出しのカウンタ残留を防ぐためリセット
+    await page.evaluate(() => {
+        (window as unknown as { _idleCount?: number })._idleCount = 0;
+    });
     // isIdle が 5 回連続 (各 200ms 間隔 = 約 1s 安定) で true になるまで待つ
     await page.waitForFunction(
         () => {
