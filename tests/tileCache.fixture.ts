@@ -115,7 +115,7 @@ export const test = base.extend({
             }
             // キャッシュミス: 実ネットワークへフォールスルーし、レスポンスを保存
             const response = await route.fetch();
-            const body = Buffer.from(await response.body());
+            const body = await response.body();
             const contentType =
                 response.headers()["content-type"] ?? "application/octet-stream";
             // 非2xx またはイメージ以外はキャッシュせずそのまま返す
