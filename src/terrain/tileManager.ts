@@ -1356,9 +1356,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
         restitchingCount++;
         void Promise.all(promises).then(() => {
+            if (disposed) return;
             restitchingCount--;
             terrainUpdatedCallback?.();
         }).catch(() => {
+            if (disposed) return;
             restitchingCount--;
             // Worker エラーや mesh dispose 時の reject は無視する。
             // 再ステッチ失敗は致命的ではなく、次回のタイル更新で再試行される。
