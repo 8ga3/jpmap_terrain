@@ -91,7 +91,7 @@ function setCache(url: string, entry: CacheEntry): void {
  * 各テストの page に対して `page.route()` を設定し、
  * GSI タイル URL をインターセプトする。
  */
-export const test = base.extend<Record<string, never>>({
+export const test = base.extend({
     page: async ({ page }, use) => {
         await page.route(GSI_TILE_PATTERN, async (route) => {
             const url = route.request().url();
