@@ -344,6 +344,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     let pendingTextureCount = 0;
     /** Follow モードでのロード中かどうか（フレーム単位スロットリング制御用） */
     let followModeLoading = false;
+    /**
+     * loadingCount が正→0 に遷移したとき呼ばれるコールバック。
+     * attachCamera 内で設定し、ロード中にカメラが移動した場合の再リフレッシュを行う。
+     */
+    let onLoadingComplete: (() => void) | null = null;
     let statusCallback: ((status: string) => void) | null = null;
     let terrainUpdatedCallback: (() => void) | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -744,6 +749,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             );
         } finally {
             loadingCount--;
+            if (loadingCount === 0) {
+                onLoadingComplete?.();
+            }
             emitStatus();
         }
     };
@@ -1886,6 +1894,22 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     void refreshFromCamera();
                 }, debounceMs);
             });
+            // ロード完了時にカメラが移動していたら再リフレッシュをスケジュールする。
+            // clampCameraAboveTerrain がロード中にカメラを調整するが、observer が
+            // loadingCount > 0 で早期リターンするため、ロード完了後にカメラが既に
+            // 収束していると onViewMatrixChanged が再発火せず再リフレッシュが漏れる。
+            onLoadingComplete = () => {
+                const cur = snapshot();
+                if (!changed(lastSnap, cur)) return;
+                lastSnap = cur;
+                if (debounceTimer !== null) {
+                    clearTimeout(debounceTimer);
+                }
+                debounceTimer = setTimeout(() => {
+                    debounceTimer = null;
+                    void refreshFromCamera();
+                }, debounceMs);
+            };
             // 再アタッチ直後はカメラが動いていなくても view matrix イベントが発火しないため、
             // 即時 refresh を1回発火させてタイルを確実に更新する。
             void refreshFromCamera();
@@ -1900,6 +1924,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 clearTimeout(debounceTimer);
                 debounceTimer = null;
             }
+            onLoadingComplete = null;
         },
 
         dispose(): void {
