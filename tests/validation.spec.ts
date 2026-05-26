@@ -41,7 +41,8 @@ async function waitForFrames(
  * カメラ変更後にタイルが完全に安定するまで待つヘルパー。
  *
  * `viewer.__debugTerrainIdle` (loadingCount === 0 && debounceTimer === null
- * && textureJobQueue.length === 0) が連続して安定するまでポーリングする。
+ * && textureJobQueue.length === 0 && pendingTextureCount === 0) が連続して
+ * 安定するまでポーリングする。
  * 連鎖リフレッシュ (terrain collision → camera adjust → new debounce) を
  * すべて待ちきるために、N 回連続で idle を確認してから安定とみなす。
  */
