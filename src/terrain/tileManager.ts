@@ -342,8 +342,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     let loadingCount = 0;
     /** テクスチャダウンロード中のカウンタ（isIdle 判定用） */
     let pendingTextureCount = 0;
+    /**
+     * Follow モードで実行中の loadTilesInQueue の数（フレーム単位スロットリング制御用）。
+     * 複数の loadTilesInQueue が並行して走っても正しく機能するようカウンタで管理する。
+     */
+    let followModeActiveCount = 0;
     /** Follow モードでのロード中かどうか（フレーム単位スロットリング制御用） */
-    let followModeLoading = false;
+    const followModeLoading = (): boolean => followModeActiveCount > 0;
     /**
      * loadingCount が正→0 に遷移したとき呼ばれるコールバック。
      * attachCamera 内で設定し、ロード中にカメラが移動した場合の再リフレッシュを行う。
@@ -884,7 +889,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         await prev;
         // Follow モードのみフレーム境界 yield でスパイクを分散する。
         // 通常リフレッシュでは yield を省略し、タイルを即座に連続適用する。
-        if (followModeLoading) await yieldToFrame();
+        if (followModeLoading()) await yieldToFrame();
         return release;
     };
 
@@ -909,27 +914,30 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         rid: number,
         followMode = false,
     ): Promise<void> => {
-        followModeLoading = followMode;
-        let idx = 0;
-        const concurrency = isTestEnv
-            ? Math.min(maxConcurrent, entries.length)
-            : followMode
-                ? Math.min(maxConcurrent, FOLLOW_FRIENDLY_CONCURRENT, entries.length)
-                : Math.min(maxConcurrent, entries.length);
-        const next = async (): Promise<void> => {
-            while (idx < entries.length && rid === requestId) {
-                const { coord, tileSize } = entries[idx++];
-                await loadTile(coord, tileSize, rid);
-                if (rid !== requestId) return;
-                // Follow モードでは次のタイル投入前にフレーム境界で 1 回 yield する
-                // → fetch 完了の同時揃いによるスパイクを分散
-                if (followMode && idx < entries.length) await yieldToFrame();
-            }
-        };
+        if (followMode) followModeActiveCount++;
+        try {
+            let idx = 0;
+            const concurrency = isTestEnv
+                ? Math.min(maxConcurrent, entries.length)
+                : followMode
+                    ? Math.min(maxConcurrent, FOLLOW_FRIENDLY_CONCURRENT, entries.length)
+                    : Math.min(maxConcurrent, entries.length);
+            const next = async (): Promise<void> => {
+                while (idx < entries.length && rid === requestId) {
+                    const { coord, tileSize } = entries[idx++];
+                    await loadTile(coord, tileSize, rid);
+                    if (rid !== requestId) return;
+                    // Follow モードでは次のタイル投入前にフレーム境界で 1 回 yield する
+                    // → fetch 完了の同時揃いによるスパイクを分散
+                    if (followMode && idx < entries.length) await yieldToFrame();
+                }
+            };
 
-        const workers = Array.from({ length: concurrency }, () => next());
-        await Promise.all(workers);
-        followModeLoading = false;
+            const workers = Array.from({ length: concurrency }, () => next());
+            await Promise.all(workers);
+        } finally {
+            if (followMode) followModeActiveCount--;
+        }
     };
 
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
@@ -954,7 +962,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const flushTextureJobs = (): void => {
         textureFlushScheduled = false;
         textureBudgetUsed = 0;
-        const limit = followModeLoading ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        const limit = followModeLoading() ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
         while (textureBudgetUsed < limit && textureJobQueue.length > 0) {
             const job = textureJobQueue.shift();
             if (!job) break;
@@ -973,7 +981,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
     const enqueueTextureJob = (job: () => void): void => {
-        const limit = followModeLoading ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        const limit = followModeLoading() ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
         if (textureBudgetUsed < limit) {
             textureBudgetUsed++;
             scheduleTextureFlush(); // 次フレームで budget をリセット
