@@ -48,6 +48,12 @@ function readFromDisk(url: string): CacheEntry | null {
     }
     try {
         const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+        if (typeof meta.contentType !== "string" || typeof meta.status !== "number") {
+            // 旧形式または壊れたメタを削除してキャッシュミス扱いにする
+            fs.unlinkSync(metaPath);
+            fs.unlinkSync(bodyPath);
+            return null;
+        }
         const body = fs.readFileSync(bodyPath);
         return { body, contentType: meta.contentType, status: meta.status };
     } catch {
