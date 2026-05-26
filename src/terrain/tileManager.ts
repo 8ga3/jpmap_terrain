@@ -76,6 +76,8 @@ export interface TileManager {
     readonly activeTileCount: number;
     readonly pendingReleaseCount: number;
     readonly loadingCount: number;
+    /** テスト用: タイルロード完了かつ debounce 待機なし */
+    readonly isIdle: boolean;
     onStatusChange: ((status: string) => void) | null;
     /**
      * キャッシュ済み標高データからワールド座標のY値を返す（ヒットしなければ null）。
@@ -338,6 +340,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const textureRequestIds = new Map<Mesh, number>();
     let requestId = 0;
     let loadingCount = 0;
+    /** テクスチャダウンロード中のカウンタ（isIdle 判定用） */
+    let pendingTextureCount = 0;
+    /** Follow モードでのロード中かどうか（フレーム単位スロットリング制御用） */
+    let followModeLoading = false;
     let statusCallback: ((status: string) => void) | null = null;
     let terrainUpdatedCallback: (() => void) | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -852,12 +858,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /**
-     * タイル sync 適用のフレーム単位排他ロック。
+     * タイル sync 適用の排他ロック。
      *
      * 並列フェッチ後の重い同期処理（applyStitchedElevation /
      * ComputeNormals / GPU upload / restitchNeighbors）を
-     * 1 フレームに 1 タイルだけ走らせるための Promise チェーン排他制御。
-     * 取得時に release 関数を返し、呼び出し側は finally で release する。
+     * シリアライズする Promise チェーン排他制御。
+     * Follow モードでは 1 フレームに 1 タイルだけ走らせて
+     * 飛行機アニメーションのちらつきを防ぐ (Issue #245)。
+     * 通常リフレッシュではフレーム yield を省略し高速に適用する。
      */
     let applyChain: Promise<void> = Promise.resolve();
     const acquireApplySlot = async (): Promise<() => void> => {
@@ -866,8 +874,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const slot = new Promise<void>((r) => { release = r; });
         applyChain = prev.then(() => slot);
         await prev;
-        // 直前の sync が完了したら、レンダーフレームを 1 つ挟んで自分の番に入る。
-        await yieldToFrame();
+        // Follow モードのみフレーム境界 yield でスパイクを分散する。
+        // 通常リフレッシュでは yield を省略し、タイルを即座に連続適用する。
+        if (followModeLoading) await yieldToFrame();
         return release;
     };
 
@@ -892,6 +901,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         rid: number,
         followMode = false,
     ): Promise<void> => {
+        followModeLoading = followMode;
         let idx = 0;
         const concurrency = isTestEnv
             ? Math.min(maxConcurrent, entries.length)
@@ -911,6 +921,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         const workers = Array.from({ length: concurrency }, () => next());
         await Promise.all(workers);
+        followModeLoading = false;
     };
 
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
@@ -918,22 +929,25 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
-     * - `new Texture` の発行を「1フレームあたり最大 {@link MAX_TEXTURE_PER_FRAME} 個」
+     * - `new Texture` の発行を「1フレームあたり最大 textureBudgetLimit 個」
      *   に制限することで GPU upload + mipmap 生成のスパイクを時間方向に分散する (Issue #245)
+     * - Follow モードでは 2/frame に制限し、通常リフレッシュでは 8/frame まで許容する
      * - スロット枠は requestAnimationFrame でフレーム境界ごとにリセットされるため、
      *   onLoad/onError が呼ばれないケース（tile unload による先 dispose、
      *   ネットワーク中断など）でも永久占有は発生しない
      * - キュー待ち中は `mat.diffuseTexture` が前のテクスチャのまま残るので、
      *   描画されないタイル（空が透ける症状）にはならない
      */
-    const MAX_TEXTURE_PER_FRAME = 2;
+    const TEXTURE_PER_FRAME_FOLLOW = 2;
+    const TEXTURE_PER_FRAME_NORMAL = 8;
     let textureBudgetUsed = 0;
     const textureJobQueue: (() => void)[] = [];
     let textureFlushScheduled = false;
     const flushTextureJobs = (): void => {
         textureFlushScheduled = false;
         textureBudgetUsed = 0;
-        while (textureBudgetUsed < MAX_TEXTURE_PER_FRAME && textureJobQueue.length > 0) {
+        const limit = followModeLoading ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        while (textureBudgetUsed < limit && textureJobQueue.length > 0) {
             const job = textureJobQueue.shift();
             if (!job) break;
             textureBudgetUsed++;
@@ -951,7 +965,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
     const enqueueTextureJob = (job: () => void): void => {
-        if (textureBudgetUsed < MAX_TEXTURE_PER_FRAME) {
+        const limit = followModeLoading ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        if (textureBudgetUsed < limit) {
             textureBudgetUsed++;
             scheduleTextureFlush(); // 次フレームで budget をリセット
             job();
@@ -979,6 +994,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const prevTex = mat.diffuseTexture;
             const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
 
+            pendingTextureCount++;
             const tex = new Texture(
                 url,
                 scene,
@@ -986,6 +1002,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 true,
                 Texture.TRILINEAR_SAMPLINGMODE,
                 () => {
+                    pendingTextureCount--;
                     // 既に別タイル用へ差し替わっていれば自身を破棄
                     if (textureRequestIds.get(mesh) !== texReqId
                         || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
@@ -1010,6 +1027,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     }
                 },
                 () => {
+                    pendingTextureCount--;
                     if (textureRequestIds.get(mesh) !== texReqId) {
                         tex.dispose();
                         return;
@@ -1864,6 +1882,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     clearTimeout(debounceTimer);
                 }
                 debounceTimer = setTimeout(() => {
+                    debounceTimer = null;
                     void refreshFromCamera();
                 }, debounceMs);
             });
@@ -1912,6 +1931,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         get loadingCount(): number {
             return loadingCount;
+        },
+
+        /** テスト用: タイルロード完了かつ debounce 待機なし かつ texture 適用完了 */
+        get isIdle(): boolean {
+            return loadingCount === 0
+                && debounceTimer === null
+                && textureJobQueue.length === 0
+                && pendingTextureCount === 0;
         },
 
         set onStatusChange(cb: ((status: string) => void) | null) {
