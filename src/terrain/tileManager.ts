@@ -993,6 +993,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
     const enqueueTextureJob = (job: () => void): void => {
+        if (disposed) return;
         const isFollow = followModeLoading();
         const limit = isFollow ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
         if (textureBudgetUsed < limit) {
@@ -1957,6 +1958,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         dispose(): void {
             disposed = true;
+            requestId++; // 進行中の loadTile（rid !== requestId チェック）を即キャンセル
             this.detachCamera();
             if (restitchRafId !== null) {
                 cancelAnimationFrame(restitchRafId);
