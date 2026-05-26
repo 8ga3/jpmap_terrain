@@ -1801,7 +1801,53 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         attachCamera(): void {
             if (cameraObserver) return;
+            // ArcRotateCamera の onViewMatrixChangedObservable は毎フレーム発火する
+            // 仕様のため、単純に debounce すると永遠に reset され refresh が走らない。
+            // 直近 refresh トリガ時のカメラ状態と比較し、実質的な変化があった場合のみ
+            // debounce タイマを再設定する (#286)。
+            const snapshot = (): {
+                alpha: number;
+                beta: number;
+                radius: number;
+                tx: number;
+                ty: number;
+                tz: number;
+                oL: number | null;
+                oR: number | null;
+                oT: number | null;
+                oB: number | null;
+            } => ({
+                alpha: camera.alpha,
+                beta: camera.beta,
+                radius: camera.radius,
+                tx: camera.target.x,
+                ty: camera.target.y,
+                tz: camera.target.z,
+                oL: camera.orthoLeft,
+                oR: camera.orthoRight,
+                oT: camera.orthoTop,
+                oB: camera.orthoBottom,
+            });
+            type Snap = ReturnType<typeof snapshot>;
+            const EPS_ANG = 1e-4; // ~0.006°
+            const EPS_LEN = 0.05; // 5cm
+            const EPS_ORTHO = 0.5; // 0.5m
+            const changed = (a: Snap, b: Snap): boolean =>
+                Math.abs(a.alpha - b.alpha) > EPS_ANG ||
+                Math.abs(a.beta - b.beta) > EPS_ANG ||
+                Math.abs(a.radius - b.radius) > EPS_LEN ||
+                Math.abs(a.tx - b.tx) > EPS_LEN ||
+                Math.abs(a.ty - b.ty) > EPS_LEN ||
+                Math.abs(a.tz - b.tz) > EPS_LEN ||
+                Math.abs((a.oL ?? 0) - (b.oL ?? 0)) > EPS_ORTHO ||
+                Math.abs((a.oR ?? 0) - (b.oR ?? 0)) > EPS_ORTHO ||
+                Math.abs((a.oT ?? 0) - (b.oT ?? 0)) > EPS_ORTHO ||
+                Math.abs((a.oB ?? 0) - (b.oB ?? 0)) > EPS_ORTHO;
+            let lastSnap: Snap = snapshot();
             cameraObserver = camera.onViewMatrixChangedObservable.add(() => {
+                const cur = snapshot();
+                if (!changed(lastSnap, cur)) return;
+                lastSnap = cur;
                 if (debounceTimer !== null) {
                     clearTimeout(debounceTimer);
                 }

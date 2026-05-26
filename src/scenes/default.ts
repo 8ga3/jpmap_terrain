@@ -1047,11 +1047,15 @@ export class DefaultScene implements CreateSceneClass {
                 );
                 if (centerPick?.hit && centerPick.pickedPoint) {
                     if (currentViewMode === "2d") {
-                        // 2D 中の setTarget も alpha 再計算で不安定化するため alpha/beta を保護する。
+                        // 2D 中の setTarget は alpha/radius も再計算され、
+                        // ズーム後の radius が回転開始時に巻き戻る (#286)。
+                        // alpha/beta/radius を保護する。
                         const prevAlpha = camera.alpha;
+                        const prevRadius = camera.radius;
                         camera.setTarget(centerPick.pickedPoint);
                         camera.alpha = prevAlpha;
                         camera.beta = BETA_2D;
+                        camera.radius = prevRadius;
                     } else {
                         camera.setTarget(centerPick.pickedPoint);
                     }
