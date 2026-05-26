@@ -71,24 +71,27 @@ function writeToDisk(url: string, entry: CacheEntry): void {
     fs.writeFileSync(bodyPath, entry.body);
 }
 
+function setMemoryCache(url: string, entry: CacheEntry): void {
+    if (memoryCache.size >= MEMORY_CACHE_MAX) {
+        const oldest = memoryCache.keys().next().value;
+        if (oldest !== undefined) memoryCache.delete(oldest);
+    }
+    memoryCache.set(url, entry);
+}
+
 function getCache(url: string): CacheEntry | null {
     const mem = memoryCache.get(url);
     if (mem) return mem;
     const disk = readFromDisk(url);
     if (disk) {
-        memoryCache.set(url, disk);
+        setMemoryCache(url, disk);
         return disk;
     }
     return null;
 }
 
 function setCache(url: string, entry: CacheEntry): void {
-    if (memoryCache.size >= MEMORY_CACHE_MAX) {
-        // 最も古いエントリを削除してメモリを確保
-        const oldest = memoryCache.keys().next().value;
-        if (oldest !== undefined) memoryCache.delete(oldest);
-    }
-    memoryCache.set(url, entry);
+    setMemoryCache(url, entry);
     writeToDisk(url, entry);
 }
 
