@@ -873,33 +873,39 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** 並列数制限付きのロードキュー */
     /**
-     * 新規タイル群を「並列度 {@link FOLLOW_FRIENDLY_CONCURRENT} で、かつ各 loadTile の後に
-     * `requestAnimationFrame` 1 回待つ」スケジューラで消化する。
+     * 新規タイル群を並列度制限付きで消化するスケジューラ。
      *
-     * 通常パスは debounce + ユーザー停止後の単発リフレッシュなので問題にならないが、
-     * Follow モードでは 300ms ごとに必ず新規タイル群を要求し、内部で fetch 完了が
-     * ほぼ同時に揃った瞬間に「ステッチ + Worker post + texture 構築」が同フレームに
-     * 集中してフレーム飛びを起こす。次タイル投入をフレーム境界で区切ることで
-     * GPU/メインスレッドのスパイクを時間方向に分散する (Issue #245)。
+     * 通常パス（debounce 後の単発リフレッシュ）では `maxConcurrent` ワーカーで
+     * 高速にタイルをロードする。
+     *
+     * Follow モード（`followMode = true`）では 300ms ごとに必ず新規タイル群を要求し、
+     * 内部で fetch 完了がほぼ同時に揃った瞬間に「ステッチ + Worker post + texture 構築」
+     * が同フレームに集中してフレーム飛びを起こす。並列度を
+     * {@link FOLLOW_FRIENDLY_CONCURRENT} に制限し、かつ各 loadTile の後に
+     * フレーム境界 yield を挟むことで GPU/メインスレッドのスパイクを
+     * 時間方向に分散する (Issue #245)。
      */
     const FOLLOW_FRIENDLY_CONCURRENT = 2;
 
     const loadTilesInQueue = async (
         entries: readonly LodTileEntry[],
-        rid: number
+        rid: number,
+        followMode = false,
     ): Promise<void> => {
         let idx = 0;
         const concurrency = isTestEnv
             ? Math.min(maxConcurrent, entries.length)
-            : Math.min(maxConcurrent, FOLLOW_FRIENDLY_CONCURRENT, entries.length);
+            : followMode
+                ? Math.min(maxConcurrent, FOLLOW_FRIENDLY_CONCURRENT, entries.length)
+                : Math.min(maxConcurrent, entries.length);
         const next = async (): Promise<void> => {
             while (idx < entries.length && rid === requestId) {
                 const { coord, tileSize } = entries[idx++];
                 await loadTile(coord, tileSize, rid);
                 if (rid !== requestId) return;
-                // 次のタイル投入前にフレーム境界で 1 回 yield する
+                // Follow モードでは次のタイル投入前にフレーム境界で 1 回 yield する
                 // → fetch 完了の同時揃いによるスパイクを分散
-                if (idx < entries.length) await yieldToFrame();
+                if (followMode && idx < entries.length) await yieldToFrame();
             }
         };
 
@@ -1573,6 +1579,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         reposition: boolean,
         /** true: 標高再 apply をスキップして position/scaling のみ更新する軽量モード */
         geomOnlyReposition = false,
+        /** true: Follow モード用スロットリング（低並列度 + フレーム yield） */
+        followMode = false,
     ): Promise<void> => {
         const visibleKeys = new Set(visibleEntries.map((e) => toTileKey(e.coord)));
         currentVisibleKeys = visibleKeys;
@@ -1679,7 +1687,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         );
 
         if (toLoad.length > 0) {
-            await loadTilesInQueue(toLoad, rid);
+            await loadTilesInQueue(toLoad, rid, followMode);
         }
 
         // 2D 回転や同一可視集合での再 refresh など、新規ロードが発生しないケースでは
@@ -1786,7 +1794,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // Follow パスでは中心タイルが変わっても各タイルの世界座標上の地形は
             // 不変なので、 elevation の再 apply はスキップして position/scaling
             // のみ更新する（フル再ステッチが毎秒走るとフラッシュ感の原因になる）。
-            await applyVisibleTiles(visibleEntries, rid, needsReposition, true);
+            await applyVisibleTiles(visibleEntries, rid, needsReposition, true, true);
         },
 
         setMapType(mapType: MapType): void {
@@ -1845,6 +1853,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 Math.abs((a.oB ?? 0) - (b.oB ?? 0)) > EPS_ORTHO;
             let lastSnap: Snap = snapshot();
             cameraObserver = camera.onViewMatrixChangedObservable.add(() => {
+                // タイル読み込み中はカメラ-地形衝突による微小 radius 変更で
+                // refreshFromCamera が再発火して現在の読み込みを中断（requestId++）するのを防ぐ。
+                // 読み込み完了後に onViewMatrixChanged が再度発火すれば正しく refresh される。
+                if (loadingCount > 0) return;
                 const cur = snapshot();
                 if (!changed(lastSnap, cur)) return;
                 lastSnap = cur;

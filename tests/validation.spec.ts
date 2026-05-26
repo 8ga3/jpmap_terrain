@@ -37,6 +37,26 @@ async function waitForFrames(
     );
 }
 
+/**
+ * カメラ変更後にタイルが完全に安定するまで待つヘルパー。
+ *
+ * カメラの azimuth/tilt 変更 → debounce (200ms) → refreshFromCamera → タイル読み込み
+ * → terrainUpdated → clampCameraAboveTerrain → radius 変更 → 再度 debounce → ...
+ * という連鎖リフレッシュを考慮し、複数ラウンドの networkidle を待つ。
+ */
+async function waitForTerrainStable(
+    page: import("@playwright/test").Page,
+): Promise<void> {
+    // debounce (200ms) + マージンを待ち、refreshFromCamera が発火するのを保証
+    await page.waitForTimeout(350);
+    await page.waitForLoadState("networkidle", { timeout: 60000 });
+    // 連鎖リフレッシュ（terrain collision → radius 変更 → debounce → 再refresh）対応
+    await page.waitForTimeout(350);
+    await page.waitForLoadState("networkidle", { timeout: 60000 });
+    // 描画安定待ち
+    await waitForFrames(page, 15);
+}
+
 const scenes: {
     name: string;
     url: string;
@@ -234,9 +254,8 @@ async function waitForSceneWithSkybox(
         (window as any).viewer.tilt = tiltValue;
     }, SKYBOX_TILT_DEG);
 
-    // タイル再評価 + 描画安定待ち
-    await page.waitForLoadState("networkidle", { timeout: 30000 });
-    await waitForFrames(page, 15);
+    // タイル再評価 + 連鎖リフレッシュ安定待ち
+    await waitForTerrainStable(page);
 }
 
 for (const engine of engines) {
@@ -292,8 +311,8 @@ for (const engine of engines) {
             { tilt: SKYBOX_TILT_DEG, azimuth: SUNRISE_AZIMUTH_DEG },
         );
 
-        await page.waitForLoadState("networkidle", { timeout: 30000 });
-        await waitForFrames(page, 15);
+        // タイル再評価 + 連鎖リフレッシュ安定待ち
+        await waitForTerrainStable(page);
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,
