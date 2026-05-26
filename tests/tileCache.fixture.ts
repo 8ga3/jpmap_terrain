@@ -57,6 +57,10 @@ function readFromDisk(url: string): CacheEntry | null {
         const body = fs.readFileSync(bodyPath);
         return { body, contentType: meta.contentType, status: meta.status };
     } catch {
+        // JSON 破損や読み取りエラーの場合は残存ファイルを best-effort で削除して
+        // 自己修復し、キャッシュミス扱いとする
+        try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
+        try { fs.unlinkSync(bodyPath); } catch { /* ignore */ }
         return null;
     }
 }
