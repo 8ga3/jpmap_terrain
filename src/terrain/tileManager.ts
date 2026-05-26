@@ -965,6 +965,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const textureJobQueue: { job: () => void; follow: boolean }[] = [];
     let textureFlushScheduled = false;
     const flushTextureJobs = (): void => {
+        if (disposed) {
+            textureFlushScheduled = false;
+            return;
+        }
         textureFlushScheduled = false;
         textureBudgetUsed = 0;
         // キュー先頭のジョブのモードで limit を決定し、follow ジョブが残っている限り
@@ -1967,6 +1971,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
             activeTiles.clear();
             textureRequestIds.clear();
+            textureJobQueue.length = 0;
+            textureFlushScheduled = false;
             pendingTextureCount = 0;
             cache.clear();
             meshPool.dispose();
