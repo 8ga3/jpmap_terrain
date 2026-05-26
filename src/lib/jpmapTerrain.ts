@@ -365,7 +365,7 @@ export class JpmapTerrain {
      * Playwright の `waitForTerrainStable` がポーリングする。
      */
     public get __debugTerrainIdle(): boolean {
-        return this._controller?.isTerrainIdle() ?? true;
+        return this._controller?.isTerrainIdle() ?? false;
     }
 
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
