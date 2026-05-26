@@ -55,9 +55,9 @@ function readFromDisk(url: string): CacheEntry | null {
     try {
         const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
         if (typeof meta.contentType !== "string" || typeof meta.status !== "number") {
-            // 旧形式または壊れたメタを削除してキャッシュミス扱いにする
-            fs.unlinkSync(metaPath);
-            fs.unlinkSync(bodyPath);
+            // 旧形式または壊れたメタを best-effort で削除してキャッシュミス扱いにする
+            try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
+            try { fs.unlinkSync(bodyPath); } catch { /* ignore */ }
             return null;
         }
         const body = fs.readFileSync(bodyPath);
