@@ -4,4 +4,5 @@ dist
 /tests/validation.spec.ts-snapshots
 /playwright-report/
 /playwright/.cache/
+/.tile-cache/
 /.tmp/
