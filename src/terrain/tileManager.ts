@@ -1991,7 +1991,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             return loadingCount;
         },
 
-        /** テスト用: タイルロード完了かつ debounce 待機なし かつ texture 適用完了 */
+        /** テスト用: タイルロード完了かつ debounce 待機なし かつ texture 適用完了 かつ 再ステッチ完了 */
         get isIdle(): boolean {
             return loadingCount === 0
                 && debounceTimer === null
