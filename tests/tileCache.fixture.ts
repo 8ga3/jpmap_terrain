@@ -22,7 +22,8 @@ interface CacheEntry {
     status: number;
 }
 
-/** メモリキャッシュ（ディスクから読み込み済みのエントリ） */
+/** メモリキャッシュ（ディスクから読み込み済みのエントリ）。OOM防止のため上限付き */
+const MEMORY_CACHE_MAX = 300;
 const memoryCache = new Map<string, CacheEntry>();
 
 function urlToFilename(url: string): string {
@@ -82,6 +83,11 @@ function getCache(url: string): CacheEntry | null {
 }
 
 function setCache(url: string, entry: CacheEntry): void {
+    if (memoryCache.size >= MEMORY_CACHE_MAX) {
+        // 最も古いエントリを削除してメモリを確保
+        const oldest = memoryCache.keys().next().value;
+        if (oldest !== undefined) memoryCache.delete(oldest);
+    }
     memoryCache.set(url, entry);
     writeToDisk(url, entry);
 }
