@@ -360,6 +360,14 @@ export class JpmapTerrain {
         return this._scene;
     }
 
+    /**
+     * @internal テスト用: タイルロード完了かつ debounce 待機なし。
+     * Playwright の `waitForTerrainStable` がポーリングする。
+     */
+    public get __debugTerrainIdle(): boolean {
+        return this._controller?.isTerrainIdle() ?? true;
+    }
+
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
 
     public get lat(): number {

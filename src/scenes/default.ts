@@ -256,6 +256,9 @@ export interface DefaultSceneController {
      */
     setSunShadows(enabled: boolean): void;
 
+    /** テスト用: タイルロード完了かつ debounce 待機なし */
+    isTerrainIdle(): boolean;
+
     /**
      * `JpmapTerrain.dispose()` から呼ばれる UI クリーンアップ (T7 / Issue #121)。
      *
@@ -2441,8 +2444,8 @@ export class DefaultScene implements CreateSceneClass {
                     disableSunShadows();
                 }
             },
+            isTerrainIdle: () => tileManager.isIdle,
             dispose: () => {
-                // ShadowGenerator が残っていれば確実に解放する (Issue #39)。
                 disableSunShadows();
                 // 視点モード追従の onBeforeRender observer を解除 (Issue #193)。
                 scene.onBeforeRenderObservable.remove(orthoFrustumObserver);
