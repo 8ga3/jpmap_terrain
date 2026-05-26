@@ -87,7 +87,7 @@ function writeToDisk(url: string, entry: CacheEntry): void {
         fs.renameSync(metaTmp, metaPath);
         fs.renameSync(bodyTmp, bodyPath);
     } catch (e) {
-        // 書き込み/rename 失敗時は tmp ファイルを削除して静かに失敗する
+        // 書き込み/rename 失敗時は tmp ファイルを削除して例外を伝播する
         try { fs.unlinkSync(metaTmp); } catch { /* ignore */ }
         try { fs.unlinkSync(bodyTmp); } catch { /* ignore */ }
         throw e;
