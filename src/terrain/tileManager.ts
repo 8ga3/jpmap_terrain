@@ -1941,6 +1941,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
             activeTiles.clear();
             textureRequestIds.clear();
+            pendingTextureCount = 0;
             cache.clear();
             meshPool.dispose();
             elevationWorkerPool.dispose();
