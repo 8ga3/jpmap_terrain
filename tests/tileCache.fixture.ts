@@ -66,15 +66,28 @@ function writeToDisk(url: string, entry: CacheEntry): void {
     const filename = urlToFilename(url);
     const metaPath = path.join(CACHE_DIR, `${filename}.json`);
     const bodyPath = path.join(CACHE_DIR, `${filename}.bin`);
-    fs.writeFileSync(
-        metaPath,
-        JSON.stringify({
-            url,
-            contentType: entry.contentType,
-            status: entry.status,
-        }),
-    );
-    fs.writeFileSync(bodyPath, entry.body);
+    // テンポラリファイルへ書き込んでから rename でアトミックに置き換える。
+    // 途中でプロセスが中断しても半壊ファイルが残らない。
+    const metaTmp = `${metaPath}.tmp`;
+    const bodyTmp = `${bodyPath}.tmp`;
+    try {
+        fs.writeFileSync(
+            metaTmp,
+            JSON.stringify({
+                url,
+                contentType: entry.contentType,
+                status: entry.status,
+            }),
+        );
+        fs.writeFileSync(bodyTmp, entry.body);
+        fs.renameSync(metaTmp, metaPath);
+        fs.renameSync(bodyTmp, bodyPath);
+    } catch (e) {
+        // 書き込み/rename 失敗時は tmp ファイルを削除して静かに失敗する
+        try { fs.unlinkSync(metaTmp); } catch { /* ignore */ }
+        try { fs.unlinkSync(bodyTmp); } catch { /* ignore */ }
+        throw e;
+    }
 }
 
 function setMemoryCache(url: string, entry: CacheEntry): void {
