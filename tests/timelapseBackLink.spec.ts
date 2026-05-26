@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./tileCache.fixture";
 
 /**
  * Issue #163: タイムラプスデモの戻るリンクからポータルへ戻れない不具合の回帰防止。

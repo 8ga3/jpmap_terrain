@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./tileCache.fixture";
 
 /**
  * Issue #157: `/viewer/@...` および `/timelapse/@...` のデモ識別子付きパスで
@@ -55,7 +55,7 @@ for (const target of targets) {
             },
             { timeout: 30000 },
         );
-        await page.waitForLoadState("networkidle", { timeout: 90000 });
+        await page.waitForLoadState("networkidle", { timeout: 60000 });
 
         expect(failedJsResponses).toEqual([]);
     });

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./tileCache.fixture";
 
 /**
  * VR テストを時刻依存から切り離すための固定クエリ (Issue #35)。
