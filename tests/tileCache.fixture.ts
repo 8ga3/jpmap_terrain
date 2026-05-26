@@ -43,7 +43,13 @@ function readFromDisk(url: string): CacheEntry | null {
     const filename = urlToFilename(url);
     const metaPath = path.join(CACHE_DIR, `${filename}.json`);
     const bodyPath = path.join(CACHE_DIR, `${filename}.bin`);
-    if (!fs.existsSync(metaPath) || !fs.existsSync(bodyPath)) {
+    const metaExists = fs.existsSync(metaPath);
+    const bodyExists = fs.existsSync(bodyPath);
+    if (!metaExists || !bodyExists) {
+        // meta がない場合は中断による孤立 body の可能性があるため削除して自己修復
+        if (bodyExists && !metaExists) {
+            try { fs.unlinkSync(bodyPath); } catch { /* ignore */ }
+        }
         return null;
     }
     try {
@@ -70,8 +76,9 @@ function writeToDisk(url: string, entry: CacheEntry): void {
     const filename = urlToFilename(url);
     const metaPath = path.join(CACHE_DIR, `${filename}.json`);
     const bodyPath = path.join(CACHE_DIR, `${filename}.bin`);
-    // テンポラリファイルへ書き込んでから rename でアトミックに置き換える。
-    // 途中でプロセスが中断しても半壊ファイルが残らない。
+    // body を先に、meta を最後に rename する。
+    // meta の存在を「完全なキャッシュ」のコミットマーカーとして扱い、
+    // 2つの rename の間でプロセスが中断しても readFromDisk で孤立 body を自己修復できる。
     const metaTmp = `${metaPath}.tmp`;
     const bodyTmp = `${bodyPath}.tmp`;
     try {
@@ -84,8 +91,8 @@ function writeToDisk(url: string, entry: CacheEntry): void {
             }),
         );
         fs.writeFileSync(bodyTmp, entry.body);
-        fs.renameSync(metaTmp, metaPath);
-        fs.renameSync(bodyTmp, bodyPath);
+        fs.renameSync(bodyTmp, bodyPath); // body を先に確定
+        fs.renameSync(metaTmp, metaPath); // meta を最後（コミットマーカー）
     } catch (e) {
         // 書き込み/rename 失敗時は tmp ファイルを削除して例外を伝播する
         try { fs.unlinkSync(metaTmp); } catch { /* ignore */ }
