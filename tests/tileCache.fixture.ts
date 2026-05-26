@@ -115,6 +115,15 @@ export const test = base.extend({
             const body = Buffer.from(await response.body());
             const contentType =
                 response.headers()["content-type"] ?? "application/octet-stream";
+            // 非2xx またはイメージ以外はキャッシュせずそのまま返す
+            if (!response.ok() || !contentType.startsWith("image/")) {
+                await route.fulfill({
+                    status: response.status(),
+                    contentType,
+                    body,
+                });
+                return;
+            }
             const entry: CacheEntry = { body, contentType, status: response.status() };
             setCache(url, entry);
             await route.fulfill({
