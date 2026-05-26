@@ -256,7 +256,7 @@ export interface DefaultSceneController {
      */
     setSunShadows(enabled: boolean): void;
 
-    /** テスト用: タイルロード完了かつ debounce 待機なし */
+    /** テスト用: タイルロード完了かつ debounce 待機なし かつ テクスチャ適用完了 */
     isTerrainIdle(): boolean;
 
     /**
