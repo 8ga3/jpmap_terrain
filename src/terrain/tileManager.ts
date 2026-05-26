@@ -76,7 +76,7 @@ export interface TileManager {
     readonly activeTileCount: number;
     readonly pendingReleaseCount: number;
     readonly loadingCount: number;
-    /** テスト用: タイルロード完了かつ debounce 待機なし */
+    /** テスト用: タイルロード完了かつ debounce 待機なし かつ テクスチャ適用完了 */
     readonly isIdle: boolean;
     onStatusChange: ((status: string) => void) | null;
     /**
