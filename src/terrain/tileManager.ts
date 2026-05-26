@@ -340,6 +340,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const textureRequestIds = new Map<Mesh, number>();
     let requestId = 0;
     let loadingCount = 0;
+    /** dispose() 後は true。in-flight コールバックがカウンタを負にするのを防ぐ */
+    let disposed = false;
     /** テクスチャダウンロード中のカウンタ（isIdle 判定用） */
     let pendingTextureCount = 0;
     /**
@@ -1025,6 +1027,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 true,
                 Texture.TRILINEAR_SAMPLINGMODE,
                 () => {
+                    if (disposed) return;
                     pendingTextureCount--;
                     // 既に別タイル用へ差し替わっていれば自身を破棄
                     if (textureRequestIds.get(mesh) !== texReqId
@@ -1050,6 +1053,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     }
                 },
                 () => {
+                    if (disposed) return;
                     pendingTextureCount--;
                     if (textureRequestIds.get(mesh) !== texReqId) {
                         tex.dispose();
@@ -1946,6 +1950,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         },
 
         dispose(): void {
+            disposed = true;
             this.detachCamera();
             if (restitchRafId !== null) {
                 cancelAnimationFrame(restitchRafId);
