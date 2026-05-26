@@ -957,17 +957,21 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const TEXTURE_PER_FRAME_FOLLOW = 2;
     const TEXTURE_PER_FRAME_NORMAL = 8;
     let textureBudgetUsed = 0;
-    const textureJobQueue: (() => void)[] = [];
+    /** キューに積まれたジョブ。enqueue 時のモード（follow/normal）を保持する */
+    const textureJobQueue: { job: () => void; follow: boolean }[] = [];
     let textureFlushScheduled = false;
     const flushTextureJobs = (): void => {
         textureFlushScheduled = false;
         textureBudgetUsed = 0;
-        const limit = followModeLoading() ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        // キュー先頭のジョブのモードで limit を決定し、follow ジョブが残っている限り
+        // follow 扱いの制限を維持する
+        const hasFollowJob = textureJobQueue.length > 0 && textureJobQueue[0].follow;
+        const limit = (followModeLoading() || hasFollowJob) ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
         while (textureBudgetUsed < limit && textureJobQueue.length > 0) {
-            const job = textureJobQueue.shift();
-            if (!job) break;
+            const entry = textureJobQueue.shift();
+            if (!entry) break;
             textureBudgetUsed++;
-            job();
+            entry.job();
         }
         if (textureJobQueue.length > 0) scheduleTextureFlush();
     };
@@ -981,14 +985,15 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
     const enqueueTextureJob = (job: () => void): void => {
-        const limit = followModeLoading() ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        const isFollow = followModeLoading();
+        const limit = isFollow ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
         if (textureBudgetUsed < limit) {
             textureBudgetUsed++;
             scheduleTextureFlush(); // 次フレームで budget をリセット
             job();
             return;
         }
-        textureJobQueue.push(job);
+        textureJobQueue.push({ job, follow: isFollow });
         scheduleTextureFlush();
     };
 
