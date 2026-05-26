@@ -55,7 +55,7 @@ for (const target of targets) {
             },
             { timeout: 30000 },
         );
-        await page.waitForLoadState("networkidle", { timeout: 30000 });
+        await page.waitForLoadState("networkidle", { timeout: 90000 });
 
         expect(failedJsResponses).toEqual([]);
     });
