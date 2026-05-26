@@ -472,8 +472,8 @@ export class DefaultScene implements CreateSceneClass {
             minZoom: MIN_ZOOM,
             maxElevationZoom: MAX_ELEVATION_ZOOM,
             minElevationZoom: MIN_ELEVATION_ZOOM,
-            maxTiles: 160,
-            cacheCapacity: 256,
+            maxTiles: 250,
+            cacheCapacity: 384,
             rootSearchRadius: ROOT_SEARCH_RADIUS,
         });
 

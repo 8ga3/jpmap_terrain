@@ -113,7 +113,7 @@ interface PendingReleaseTile {
 }
 
 const DEFAULT_MAX_CONCURRENT = 4;
-const DEFAULT_MAX_TILES = 120;
+const DEFAULT_MAX_TILES = 200;
 const DEFAULT_CACHE_CAPACITY = 192;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
