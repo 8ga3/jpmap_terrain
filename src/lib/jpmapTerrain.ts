@@ -361,7 +361,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * @internal テスト用: タイルロード完了かつ debounce 待機なし かつ テクスチャ適用完了。
+     * @internal テスト用: タイルロード完了かつ debounce 待機なし かつ テクスチャ適用完了 かつ 再ステッチ完了。
      * Playwright の `waitForTerrainStable` がポーリングする。
      */
     public get __debugTerrainIdle(): boolean {

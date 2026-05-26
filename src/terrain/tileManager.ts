@@ -76,7 +76,7 @@ export interface TileManager {
     readonly activeTileCount: number;
     readonly pendingReleaseCount: number;
     readonly loadingCount: number;
-    /** テスト用: タイルロード完了かつ debounce 待機なし かつ テクスチャ適用完了 */
+    /** テスト用: タイルロード完了かつ debounce 待機なし かつ テクスチャ適用完了 かつ 再ステッチ完了 */
     readonly isIdle: boolean;
     onStatusChange: ((status: string) => void) | null;
     /**
@@ -364,6 +364,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 再ステッチ待ちの隣接タイルキーを蓄積し、同一フレームで一括処理する */
     const pendingRestitch = new Set<TileKey>();
     let restitchRafId: number | null = null;
+    /** flushRestitch 内で実行中の applyStitchedElevation Promise 数 */
+    let restitchingCount = 0;
 
     /** 最新の applyVisibleTiles で計算された必要タイルキー集合 */
     let currentVisibleKeys = new Set<TileKey>();
@@ -1348,9 +1350,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             terrainUpdatedCallback?.();
             return;
         }
+        restitchingCount++;
         void Promise.all(promises).then(() => {
+            restitchingCount--;
             terrainUpdatedCallback?.();
         }).catch(() => {
+            restitchingCount--;
             // Worker エラーや mesh dispose 時の reject は無視する。
             // 再ステッチ失敗は致命的ではなく、次回のタイル更新で再試行される。
         });
@@ -1947,6 +1952,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 restitchRafId = null;
             }
             pendingRestitch.clear();
+            restitchingCount = 0;
             clearAllPendingRelease();
             hiddenChildTiles.clear();
             for (const [, tile] of activeTiles) {
@@ -1977,7 +1983,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             return loadingCount === 0
                 && debounceTimer === null
                 && textureJobQueue.length === 0
-                && pendingTextureCount === 0;
+                && pendingTextureCount === 0
+                && restitchRafId === null
+                && restitchingCount === 0;
         },
 
         set onStatusChange(cb: ((status: string) => void) | null) {
