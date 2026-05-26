@@ -78,13 +78,13 @@ async function waitForTerrainStable(
 const scenes: {
     name: string;
     url: string;
-    waitForNetworkIdle?: boolean;
+    waitForTerrainStable?: boolean;
     renderCount?: number;
 }[] = [
     {
         name: "Default",
         url: "/viewer.html?scene=default",
-        waitForNetworkIdle: true,
+        waitForTerrainStable: true,
     },
 ];
 
@@ -104,7 +104,7 @@ for (const scene of scenes) {
             await page.goto(
                 `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`
             );
-            if (scene.waitForNetworkIdle) {
+            if (scene.waitForTerrainStable) {
                 await page.waitForFunction(
                     () => (window as any).scene && (window as any).scene.isReady(),
                     { timeout: 30000 }
