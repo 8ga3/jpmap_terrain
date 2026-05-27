@@ -55,6 +55,9 @@ export const DEFAULT_DEADZONE_RATIO = 0.6;
 /** デフォルトの追従補間係数 */
 export const DEFAULT_SCROLL_LERP = 0.3;
 
+/** 緯度 1 度あたりのメートル数（地球の平均値） */
+const METERS_PER_DEGREE_LAT = 111320;
+
 /**
  * カメラの altitude と tilt から、画面に映る地表面の概算可視範囲（メートル）を返す。
  *
@@ -98,9 +101,9 @@ export const viewportOffset = (
     if (extent <= 0) return { rx: 0, ry: 0 };
 
     // 緯度経度差をメートルに変換
-    const dLatM = (avatarLat - cameraLat) * 111320;
+    const dLatM = (avatarLat - cameraLat) * METERS_PER_DEGREE_LAT;
     const cosLat = Math.cos((cameraLat * Math.PI) / 180);
-    const dLonM = (avatarLon - cameraLon) * 111320 * cosLat;
+    const dLonM = (avatarLon - cameraLon) * METERS_PER_DEGREE_LAT * cosLat;
 
     return {
         rx: dLonM / extent,
@@ -136,9 +139,9 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
         : estimateViewExtent(cameraAltitude, cameraTilt);
 
     // 緯度経度差をメートルに変換
-    const dLatM = (avatarLat - cameraLat) * 111320;
+    const dLatM = (avatarLat - cameraLat) * METERS_PER_DEGREE_LAT;
     const cosLat = Math.cos((cameraLat * Math.PI) / 180);
-    const dLonM = (avatarLon - cameraLon) * 111320 * cosLat;
+    const dLonM = (avatarLon - cameraLon) * METERS_PER_DEGREE_LAT * cosLat;
     const rx = extent > 0 ? dLonM / extent : 0;
     const ry = extent > 0 ? dLatM / extent : 0;
 
@@ -161,9 +164,9 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
     // はみ出し量をメートルに戻して lerp 分だけカメラを移動
     let dLonDeg =
         cosLat !== 0
-            ? (overflowX * extent * scrollLerp) / (111320 * cosLat)
+            ? (overflowX * extent * scrollLerp) / (METERS_PER_DEGREE_LAT * cosLat)
             : 0;
-    let dLatDeg = (overflowY * extent * scrollLerp) / 111320;
+    let dLatDeg = (overflowY * extent * scrollLerp) / METERS_PER_DEGREE_LAT;
 
     // ハードクランプ: アバターがビューポート境界（±EDGE_LIMIT）を超える場合、
     // 境界ちょうどに収まるようカメラを強制移動する。
@@ -175,7 +178,7 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
             const clampX = rx - Math.sign(rx) * EDGE_LIMIT;
             const clampDLon =
                 cosLat !== 0
-                    ? (clampX * extent) / (111320 * cosLat)
+                    ? (clampX * extent) / (METERS_PER_DEGREE_LAT * cosLat)
                     : 0;
             if (Math.abs(clampDLon) > Math.abs(dLonDeg)) {
                 dLonDeg = clampDLon;
@@ -183,7 +186,7 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
         }
         if (Math.abs(ry) > EDGE_LIMIT) {
             const clampY = ry - Math.sign(ry) * EDGE_LIMIT;
-            const clampDLat = (clampY * extent) / 111320;
+            const clampDLat = (clampY * extent) / METERS_PER_DEGREE_LAT;
             if (Math.abs(clampDLat) > Math.abs(dLatDeg)) {
                 dLatDeg = clampDLat;
             }
