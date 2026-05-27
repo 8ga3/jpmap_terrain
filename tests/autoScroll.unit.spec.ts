@@ -147,7 +147,7 @@ describe("computeAutoScroll", () => {
     });
 
     it("viewExtentOverride 指定時は estimateViewExtent を使わず指定値で判定する", () => {
-        // override=100m: アバターが 60m 離れているので |rx|=0.6 → halfDz=0.3 超→スクロール
+        // override=100m: アバターが 60m 離れているので |ry|=0.6 → halfDz=0.3 超→スクロール
         const withOverride = computeAutoScroll({
             ...baseParams,
             avatarLat: baseParams.cameraLat + 60 / 111320, // 約60m北
