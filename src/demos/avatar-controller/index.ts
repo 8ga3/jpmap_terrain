@@ -287,6 +287,11 @@ const start = async (): Promise<void> => {
         autoScrollCheckbox.checked = autoScrollEnabled;
         autoScrollCheckbox.addEventListener("change", () => {
             autoScrollEnabled = autoScrollCheckbox.checked;
+            // OFF にしたとき detach 済みなら通常のタイル監視を再開する
+            if (!autoScrollEnabled && tileCameraDetached) {
+                viewer.attachTileCamera();
+                tileCameraDetached = false;
+            }
         });
     }
 
