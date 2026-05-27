@@ -26,7 +26,7 @@ export const TILT_MAX_DEG = 75;
 
 /** カメラ制御の計算結果 */
 export interface CameraControlResult {
-    /** 方位角の変化量（度）。正=時計回り */
+    /** 方位角の変化量（度）。本プロジェクト規約に従い、正=反時計回り */
     deltaAzimuth: number;
     /** チルト角の変化量（度）。正=水平方向へ */
     deltaTilt: number;
