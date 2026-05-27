@@ -971,9 +971,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
         textureFlushScheduled = false;
         textureBudgetUsed = 0;
-        // キュー先頭のジョブのモードで limit を決定し、follow ジョブが残っている限り
-        // follow 扱いの制限を維持する
-        const hasFollowJob = textureJobQueue.length > 0 && textureJobQueue[0].follow;
+        // キュー内に follow ジョブが1つでも残っていれば follow 扱いの制限を維持する
+        const hasFollowJob = textureJobQueue.some(entry => entry.follow);
         const limit = (followModeLoading() || hasFollowJob) ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
         while (textureBudgetUsed < limit && textureJobQueue.length > 0) {
             const entry = textureJobQueue.shift();
