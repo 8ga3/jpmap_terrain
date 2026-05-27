@@ -535,24 +535,16 @@ const start = async (): Promise<void> => {
             viewer.tilt,
         );
         if (camDelta.deltaAzimuth !== 0 || camDelta.deltaTilt !== 0) {
-            if (tileCameraDetached && arcCamera) {
-                // detach 時は arcCamera を直接操作
-                if (camDelta.deltaAzimuth !== 0) {
-                    // 本プロジェクト azimuth 規約: 北=0°・反時計回り正 → alpha に変換
-                    arcCamera.alpha += (camDelta.deltaAzimuth * Math.PI) / 180;
-                }
-                if (camDelta.deltaTilt !== 0) {
-                    arcCamera.beta += (camDelta.deltaTilt * Math.PI) / 180;
-                }
+            // detach/通常 共通で viewer setter を使い内部状態を一貫させる
+            if (camDelta.deltaAzimuth !== 0) {
+                viewer.azimuth = viewer.azimuth + camDelta.deltaAzimuth;
+            }
+            if (camDelta.deltaTilt !== 0) {
+                viewer.tilt = viewer.tilt + camDelta.deltaTilt;
+            }
+            // detach 中は setter だけではタイル更新されないため手動 refresh
+            if (tileCameraDetached) {
                 triggerTileRefresh(timestamp);
-            } else {
-                // 通常時は viewer の setter を使う
-                if (camDelta.deltaAzimuth !== 0) {
-                    viewer.azimuth = viewer.azimuth + camDelta.deltaAzimuth;
-                }
-                if (camDelta.deltaTilt !== 0) {
-                    viewer.tilt = viewer.tilt + camDelta.deltaTilt;
-                }
             }
         }
 
