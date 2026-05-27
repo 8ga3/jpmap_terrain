@@ -380,10 +380,11 @@ const start = async (): Promise<void> => {
                 const cameraLatNow = viewer.lat;
                 const cameraLonNow = viewer.lon;
                 // 2D (ortho) モードでは altitude/tilt から可視範囲を推定できないため、
-                // ortho サイズ（near side = orthoTop）を直接 extent として渡す。
+                // ortho サイズを extent として渡す。
+                // 短辺側を使うことでアスペクト比に関わらず画面外に出ないことを保証する。
                 const is2D = viewer.viewMode === "2d";
                 const viewExtentOverride = is2D
-                    ? Math.max(
+                    ? Math.min(
                           arcCamera.orthoTop ?? 0,
                           arcCamera.orthoRight ?? 0,
                       ) || undefined
