@@ -133,12 +133,29 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
         viewExtentOverride,
     } = params;
 
-    // 入力パラメータを有効範囲にクランプ
-    const deadzoneRatio = Math.max(0, Math.min(1, params.deadzoneRatio));
-    const scrollLerp = Math.max(0, Math.min(1, params.scrollLerp));
+    // 座標値に非有限値が含まれる場合は安全のため不動を返す
+    if (
+        !Number.isFinite(avatarLat) || !Number.isFinite(avatarLon) ||
+        !Number.isFinite(cameraLat) || !Number.isFinite(cameraLon)
+    ) {
+        return { lat: Number.isFinite(cameraLat) ? cameraLat : 0, lon: Number.isFinite(cameraLon) ? cameraLon : 0, scrolled: false };
+    }
 
-    const extent = viewExtentOverride !== undefined && viewExtentOverride > 0
-        ? viewExtentOverride
+    // 入力パラメータを有効範囲にクランプ（NaN は isFinite チェック後なのでここでは有限数のみ）
+    const rawDeadzone = params.deadzoneRatio;
+    const rawLerp = params.scrollLerp;
+    const deadzoneRatio = Number.isFinite(rawDeadzone) ? Math.max(0, Math.min(1, rawDeadzone)) : 0;
+    const scrollLerp = Number.isFinite(rawLerp) ? Math.max(0, Math.min(1, rawLerp)) : 0;
+
+    // viewExtentOverride の非有限値は無視して estimateViewExtent にフォールバック
+    const safeOverride =
+        viewExtentOverride !== undefined &&
+        Number.isFinite(viewExtentOverride) &&
+        viewExtentOverride > 0
+            ? viewExtentOverride
+            : undefined;
+    const extent = safeOverride !== undefined
+        ? safeOverride
         : estimateViewExtent(cameraAltitude, cameraTilt);
 
     // 緯度経度差をメートルに変換
