@@ -177,16 +177,35 @@ describe("computeAutoScroll", () => {
     });
 
     it("EDGE_LIMIT 超え時はハードクランプで境界内に収まる", () => {
-        // viewExtentOverride=100: 96m 離れると |ry|=0.96 > EDGE_LIMIT=0.95
+        // viewExtentOverride=100: 200m 離れると |ry|=2.0 >> EDGE_LIMIT=0.95
+        // clampY = 2.0 - 0.95 = 1.05 > 通常 lerp なのでクランプが発動
         const result = computeAutoScroll({
             ...baseParams,
-            avatarLat: baseParams.cameraLat + 96 / 111320,
+            avatarLat: baseParams.cameraLat + 200 / 111320,
             viewExtentOverride: 100,
-            scrollLerp: 0.1, // 小さい lerp でもクランプが勝つ
+            scrollLerp: 0.1,
         });
         expect(result.scrolled).toBe(true);
-        // クランプ後: カメラが移動した結果、アバターのビューポート比率が ≤ 0.95 になるはず
-        const newRy = ((baseParams.cameraLat + 96 / 111320) - result.lat) * 111320 / 100;
-        expect(Math.abs(newRy)).toBeLessThanOrEqual(0.96); // 少なくとも大幅改善
+        // クランプ後: カメラが移動した結果、アバターのビューポート比率が EDGE_LIMIT(0.95) に収まる
+        const newRy = ((baseParams.cameraLat + 200 / 111320) - result.lat) * 111320 / 100;
+        expect(Math.abs(newRy)).toBeCloseTo(0.95, 2);
+    });
+
+    it("EDGE_LIMIT クランプ発動確認: 通常 lerp だけでは 0.95 まで下がらない入力", () => {
+        // |ry|=2.0, deadzoneRatio=0.6 → overflowY = 2.0 - 0.3 = 1.7
+        // 通常 lerp のみ: dLat = 1.7 * 100 * 0.1 / 111320 → newRy ≈ 2.0 - 0.17 = 1.83
+        // クランプあり: clampY = 2.0 - 0.95 = 1.05 → dLat = 1.05*100/111320 → newRy = 0.95
+        // clamp > lerp なので clamp が勝つ
+        const lerpOnly = 2.0 - (2.0 - 0.3) * 0.1; // ≈ 1.83
+        expect(lerpOnly).toBeGreaterThan(0.95);
+        // 実際の結果は 0.95 に収まる（クランプ発動の証拠）
+        const result = computeAutoScroll({
+            ...baseParams,
+            avatarLat: baseParams.cameraLat + 200 / 111320,
+            viewExtentOverride: 100,
+            scrollLerp: 0.1,
+        });
+        const newRy = ((baseParams.cameraLat + 200 / 111320) - result.lat) * 111320 / 100;
+        expect(Math.abs(newRy)).toBeCloseTo(0.95, 2);
     });
 });
