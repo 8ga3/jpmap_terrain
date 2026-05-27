@@ -130,20 +130,27 @@ describe("computeAutoScroll", () => {
     });
 
     it("deadzoneRatio が大きいほどカメラが動きにくい", () => {
+        // viewExtentOverride=200 で |ry| が halfDz超〜EDGE_LIMIT未満に収まる距離を使う
+        // 80m / 200m = 0.4 → deadzoneRatio=0.3 なら halfDz=0.15 超 / 0.9 なら halfDz=0.45 未満
         const narrow = computeAutoScroll({
             ...baseParams,
-            avatarLat: 35.005,
+            avatarLat: baseParams.cameraLat + 80 / 111320, // 80m北 → |ry|=0.4
             deadzoneRatio: 0.3,
+            viewExtentOverride: 200,
         });
         const wide = computeAutoScroll({
             ...baseParams,
-            avatarLat: 35.005,
+            avatarLat: baseParams.cameraLat + 80 / 111320,
             deadzoneRatio: 0.9,
+            viewExtentOverride: 200,
         });
-        // 広いデッドゾーンの方がスクロール量が少ない（or スクロールしない）
+        // deadzoneRatio=0.9 → halfDz=0.45 > |ry|=0.4 → デッドゾーン内でスクロールしない
+        expect(wide.scrolled).toBe(false);
+        // deadzoneRatio=0.3 → halfDz=0.15 < |ry|=0.4 → スクロールする
+        expect(narrow.scrolled).toBe(true);
         const narrowDelta = narrow.lat - baseParams.cameraLat;
         const wideDelta = wide.lat - baseParams.cameraLat;
-        expect(narrowDelta).toBeGreaterThanOrEqual(wideDelta);
+        expect(narrowDelta).toBeGreaterThan(wideDelta);
     });
 
     it("viewExtentOverride 指定時は estimateViewExtent を使わず指定値で判定する", () => {
