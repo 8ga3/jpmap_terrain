@@ -33,7 +33,18 @@ import {
     stepPosition,
     type MoveVector,
 } from "./movement";
+import {
+    computeAutoScroll,
+    DEFAULT_DEADZONE_RATIO,
+    DEFAULT_SCROLL_LERP,
+} from "./autoScroll";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum";
+import { Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import humanWalkGlbUrl from "../../../assets/human_walk.glb";
+
+const METERS_PER_DEGREE_LAT = 111320;
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "avatar";
@@ -89,6 +100,79 @@ const start = async (): Promise<void> => {
     let walking = false;
     let lastTimestamp: number | null = null;
     let animationStarted = false;
+    let autoScrollEnabled = true;
+
+    /**
+     * 自動スクロール — Flight demo Follow モードと同じ手法 (Issue #287):
+     * - `detachTileCamera()` で内部の自動タイル更新監視を停止
+     * - 毎フレーム `arcCamera.target.x/z` を直接動かして滑らかに追従
+     *   (setter 経由だと毎回 `refreshTerrain → requestId++` で in-flight が
+     *    キャンセルされ、スクロール中に新規タイルがロードされない)
+     * - 距離スロットル + in-flight ガード付きで
+     *   `refreshTerrainWithExternalFrustum` を発火し新規タイルをロード
+     */
+    const SCROLL_REFRESH_DISTANCE_M = 5;
+    const SCROLL_REFRESH_INTERVAL_MS = 100;
+    /** カメラ方位の変化がこれ以上で refresh 発火（度） */
+    const CAMERA_ROT_REFRESH_DEG = 3;
+    /** カメラ tilt の変化がこれ以上で refresh 発火（度） */
+    const CAMERA_TILT_REFRESH_DEG = 2;
+    let lastRefreshLat = viewer.lat;
+    let lastRefreshLon = viewer.lon;
+    let lastRefreshTime = 0;
+    let lastRefreshAzimuth = viewer.azimuth;
+    let lastRefreshTilt = viewer.tilt;
+    let scrollRefreshInFlight = false;
+    /** detach は初回移動時に遅延実行する（初期表示の境界タイル欠けを防ぐ） */
+    let tileCameraDetached = false;
+
+    // ArcRotateCamera への直接アクセス (Flight Follow モードと同じパターン)
+    const scene = viewer.__debugScene;
+    const arcCamera = scene?.getCameraByName("terrain-camera") as
+        | ArcRotateCamera
+        | undefined;
+
+    /** in-flight ガード付きでタイル refresh を発火する共通ヘルパー */
+    const triggerTileRefresh = (timestamp: number): void => {
+        if (!arcCamera || scrollRefreshInFlight) return;
+        if (timestamp - lastRefreshTime < SCROLL_REFRESH_INTERVAL_MS) return;
+        const refLatNow = viewer.lat;
+        const refLonNow = viewer.lon;
+        const viewMat = arcCamera.getViewMatrix();
+        const projMat = arcCamera.getProjectionMatrix();
+        const transform = Matrix.Identity();
+        viewMat.multiplyToRef(projMat, transform);
+        const rawPlanes: Plane[] = Array.from(
+            { length: 6 },
+            () => new Plane(0, 0, 0, 0),
+        );
+        Frustum.GetPlanesToRef(transform, rawPlanes);
+        const frustumPlanes = rawPlanes.map((p) => ({
+            normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+            d: p.d,
+        }));
+        const cameraPosition = {
+            x: arcCamera.position.x - arcCamera.target.x,
+            y: arcCamera.position.y - arcCamera.target.y,
+            z: arcCamera.position.z - arcCamera.target.z,
+        };
+        lastRefreshLat = refLatNow;
+        lastRefreshLon = refLonNow;
+        lastRefreshAzimuth = viewer.azimuth;
+        lastRefreshTilt = viewer.tilt;
+        lastRefreshTime = timestamp;
+        scrollRefreshInFlight = true;
+        void viewer
+            .refreshTerrainWithExternalFrustum(
+                refLatNow,
+                refLonNow,
+                frustumPlanes,
+                cameraPosition,
+            )
+            .finally(() => {
+                scrollRefreshInFlight = false;
+            });
+    };
 
     viewer.addModel(MODEL_ID, {
         url: humanWalkGlbUrl,
@@ -161,6 +245,9 @@ const start = async (): Promise<void> => {
     const flyToBtn = document.getElementById(
         "fly-to-avatar",
     ) as HTMLButtonElement | null;
+    const autoScrollCheckbox = document.getElementById(
+        "auto-scroll-toggle",
+    ) as HTMLInputElement | null;
 
     const updateDisplay = (): void => {
         if (latDisplay) latDisplay.textContent = avatarLat.toFixed(6);
@@ -181,6 +268,13 @@ const start = async (): Promise<void> => {
         flyToBtn.addEventListener("click", () => {
             viewer.lat = avatarLat;
             viewer.lon = avatarLon;
+        });
+    }
+
+    if (autoScrollCheckbox) {
+        autoScrollCheckbox.checked = autoScrollEnabled;
+        autoScrollCheckbox.addEventListener("change", () => {
+            autoScrollEnabled = autoScrollCheckbox.checked;
         });
     }
 
@@ -258,6 +352,77 @@ const start = async (): Promise<void> => {
                 gravity: true,
             });
             updateDisplay();
+
+            // 自動スクロール: アバターが画面端に近づいたらカメラを追従
+            // (Flight Follow モードと同じ二段構成: 滑らかな target 移動 + 距離スロットルされたタイル refresh)
+            if (autoScrollEnabled && arcCamera) {
+                const cameraLatNow = viewer.lat;
+                const cameraLonNow = viewer.lon;
+                // 2D (ortho) モードでは altitude/tilt から可視範囲を推定できないため、
+                // ortho サイズ（near side = orthoTop）を直接 extent として渡す。
+                const is2D = viewer.viewMode === "2d";
+                const viewExtentOverride = is2D
+                    ? Math.max(
+                          arcCamera.orthoTop ?? 0,
+                          arcCamera.orthoRight ?? 0,
+                      ) || undefined
+                    : undefined;
+                const scroll = computeAutoScroll({
+                    avatarLat,
+                    avatarLon,
+                    cameraLat: cameraLatNow,
+                    cameraLon: cameraLonNow,
+                    cameraAltitude: viewer.altitude,
+                    cameraTilt: viewer.tilt,
+                    deadzoneRatio: DEFAULT_DEADZONE_RATIO,
+                    scrollLerp: DEFAULT_SCROLL_LERP,
+                    viewExtentOverride,
+                });
+                if (scroll.scrolled) {
+                    // 初回スクロール時に detach する（初期表示の境界タイル欠けを防ぐ）
+                    if (!tileCameraDetached) {
+                        viewer.detachTileCamera();
+                        tileCameraDetached = true;
+                    }
+                    // (1) camera.target を直接動かして滑らかに追従 (setter は呼ばない)
+                    const dLat = scroll.lat - cameraLatNow;
+                    const dLon = scroll.lon - cameraLonNow;
+                    const metersPerDegLon =
+                        METERS_PER_DEGREE_LAT *
+                        Math.cos((cameraLatNow * Math.PI) / 180);
+                    arcCamera.target.x += dLon * metersPerDegLon;
+                    arcCamera.target.z += dLat * METERS_PER_DEGREE_LAT;
+
+                    // (2) 距離スロットル + in-flight ガード付きでタイル refresh
+                    const refLatNow = viewer.lat;
+                    const refLonNow = viewer.lon;
+                    const movedLat =
+                        (refLatNow - lastRefreshLat) * METERS_PER_DEGREE_LAT;
+                    const movedLon =
+                        (refLonNow - lastRefreshLon) *
+                        METERS_PER_DEGREE_LAT *
+                        Math.cos((refLatNow * Math.PI) / 180);
+                    const movedM = Math.hypot(movedLat, movedLon);
+                    if (movedM >= SCROLL_REFRESH_DISTANCE_M) {
+                        triggerTileRefresh(timestamp);
+                    }
+                }
+            }
+        }
+
+        // カメラのチルト・パン（横回転）変化に追従するタイル refresh。
+        // detach 後は内部 observer が無効なので、自前で角度変化を監視して発火する。
+        if (tileCameraDetached && arcCamera) {
+            const rotDelta = Math.abs(
+                ((viewer.azimuth - lastRefreshAzimuth + 540) % 360) - 180,
+            );
+            const tiltDelta = Math.abs(viewer.tilt - lastRefreshTilt);
+            if (
+                rotDelta >= CAMERA_ROT_REFRESH_DEG ||
+                tiltDelta >= CAMERA_TILT_REFRESH_DEG
+            ) {
+                triggerTileRefresh(timestamp);
+            }
         }
 
         if (animationStarted) {
