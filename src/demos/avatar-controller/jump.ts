@@ -5,7 +5,7 @@
  *
  * 物理モデル:
  * - 初速: v₀ = √(2 * g * h) — 指定高さ h に到達する鉛直初速
- * - 毎フレーム: altitude += velocity * dt, velocity -= gravity * dt
+ * - 毎フレーム: altitude += velocity * dt - 0.5 * g * dt² (等加速度の解析解), velocity -= gravity * dt
  * - 着地判定: altitude <= 0 → リセット
  *
  * 座標系:
@@ -82,8 +82,11 @@ export const tickJump = (
     if (dtSec <= 0) return state;
 
     const g = Math.max(gravity, 0.01);
+    // 等加速度の解析解: altitude += velocity * dt - 0.5 * g * dt²
+    // これにより任意の dt でも理論上の最高点 h = v₀²/(2g) を正確に再現できる。
+    // （velocity * dt のみだと peak で誤差が出る; newVelocity * dt は symplectic Euler で更に低くなる）
+    const newAltitude = state.altitude + state.velocity * dtSec - 0.5 * g * dtSec * dtSec;
     const newVelocity = state.velocity - g * dtSec;
-    const newAltitude = state.altitude + newVelocity * dtSec;
 
     // 着地判定
     if (newAltitude <= 0) {
