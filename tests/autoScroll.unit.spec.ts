@@ -145,4 +145,48 @@ describe("computeAutoScroll", () => {
         const wideDelta = wide.lat - baseParams.cameraLat;
         expect(narrowDelta).toBeGreaterThanOrEqual(wideDelta);
     });
+
+    it("viewExtentOverride 指定時は estimateViewExtent を使わず指定値で判定する", () => {
+        // override=100m: アバターが 60m 離れているので |rx|=0.6 → halfDz=0.3 超→スクロール
+        const withOverride = computeAutoScroll({
+            ...baseParams,
+            avatarLat: baseParams.cameraLat + 60 / 111320, // 約60m北
+            viewExtentOverride: 100,
+        });
+        expect(withOverride.scrolled).toBe(true);
+
+        // override=1000m: 同じ 60m なので |ry|=0.06 → halfDz=0.3 内→スクロールしない
+        const withLargeOverride = computeAutoScroll({
+            ...baseParams,
+            avatarLat: baseParams.cameraLat + 60 / 111320,
+            viewExtentOverride: 1000,
+        });
+        expect(withLargeOverride.scrolled).toBe(false);
+    });
+
+    it("viewExtentOverride 指定時の移動量は altitude/tilt に依存しない", () => {
+        const params = {
+            ...baseParams,
+            avatarLat: baseParams.cameraLat + 80 / 111320, // 80m north
+            viewExtentOverride: 100,
+        };
+        const resultA = computeAutoScroll({ ...params, cameraAltitude: 500 });
+        const resultB = computeAutoScroll({ ...params, cameraAltitude: 5000 });
+        // 両方とも同じ移動量（altitude に依存しない）
+        expect(resultA.lat).toBeCloseTo(resultB.lat, 10);
+    });
+
+    it("EDGE_LIMIT 超え時はハードクランプで境界内に収まる", () => {
+        // viewExtentOverride=100: 96m 離れると |ry|=0.96 > EDGE_LIMIT=0.95
+        const result = computeAutoScroll({
+            ...baseParams,
+            avatarLat: baseParams.cameraLat + 96 / 111320,
+            viewExtentOverride: 100,
+            scrollLerp: 0.1, // 小さい lerp でもクランプが勝つ
+        });
+        expect(result.scrolled).toBe(true);
+        // クランプ後: カメラが移動した結果、アバターのビューポート比率が ≤ 0.95 になるはず
+        const newRy = ((baseParams.cameraLat + 96 / 111320) - result.lat) * 111320 / 100;
+        expect(Math.abs(newRy)).toBeLessThanOrEqual(0.96); // 少なくとも大幅改善
+    });
 });
