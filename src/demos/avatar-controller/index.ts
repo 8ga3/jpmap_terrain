@@ -39,6 +39,7 @@ import {
     DEFAULT_DEADZONE_RATIO,
     DEFAULT_SCROLL_LERP,
 } from "./autoScroll";
+import { computeCameraControl } from "./cameraControl";
 import {
     DEFAULT_GRAVITY,
     DEFAULT_JUMP_HEIGHT,
@@ -113,6 +114,7 @@ const start = async (): Promise<void> => {
     let lastTimestamp: number | null = null;
     let animationStarted = false;
     let autoScrollEnabled = true;
+    let cameraReverseX = false;
     let jumpState: JumpState = JUMP_IDLE;
     let jumpHeight = DEFAULT_JUMP_HEIGHT;
     let jumpGravity = DEFAULT_GRAVITY;
@@ -245,11 +247,16 @@ const start = async (): Promise<void> => {
     // --- 入力: Gamepad ---
     const gamepadManager = new GamepadManager();
     const gamepadStick = { x: 0, y: 0 };
+    const gamepadRightStick = { x: 0, y: 0 };
     let gamepadJumpPressed = false;
     gamepadManager.onGamepadConnectedObservable.add((gp) => {
         gp.onleftstickchanged((values) => {
             gamepadStick.x = values.x;
             gamepadStick.y = values.y;
+        });
+        gp.onrightstickchanged((values) => {
+            gamepadRightStick.x = values.x;
+            gamepadRightStick.y = values.y;
         });
         (gp as GenericPad).onbuttondown((index: number) => {
             // A ボタン (Xbox: index 0) でジャンプ
@@ -259,6 +266,8 @@ const start = async (): Promise<void> => {
     gamepadManager.onGamepadDisconnectedObservable.add(() => {
         gamepadStick.x = 0;
         gamepadStick.y = 0;
+        gamepadRightStick.x = 0;
+        gamepadRightStick.y = 0;
     });
 
     // --- 入力: Virtual Joystick（左下に常時表示） ---
@@ -341,6 +350,16 @@ const start = async (): Promise<void> => {
                 viewer.attachTileCamera();
                 tileCameraDetached = false;
             }
+        });
+    }
+
+    const cameraReverseCheckbox = document.getElementById(
+        "camera-reverse-toggle",
+    ) as HTMLInputElement | null;
+    if (cameraReverseCheckbox) {
+        cameraReverseCheckbox.checked = cameraReverseX;
+        cameraReverseCheckbox.addEventListener("change", () => {
+            cameraReverseX = cameraReverseCheckbox.checked;
         });
     }
 
@@ -499,6 +518,40 @@ const start = async (): Promise<void> => {
                 } else if (!isMoving && walking) {
                     viewer.stopModelAnimation(MODEL_ID, WALK_ANIM);
                     walking = false;
+                }
+            }
+        }
+
+        // --- 右スティックによるカメラ制御 (Issue #289) ---
+        const rightStickInput = {
+            vx: cameraReverseX ? -gamepadRightStick.x : gamepadRightStick.x,
+            // Babylon のスティック Y は下方向正なので反転して前=+1 に揃える
+            vy: -gamepadRightStick.y,
+        };
+        const camDelta = computeCameraControl(
+            rightStickInput,
+            dtSec,
+            viewer.viewMode === "2d",
+            viewer.tilt,
+        );
+        if (camDelta.deltaAzimuth !== 0 || camDelta.deltaTilt !== 0) {
+            if (tileCameraDetached && arcCamera) {
+                // detach 時は arcCamera を直接操作
+                if (camDelta.deltaAzimuth !== 0) {
+                    // 本プロジェクト azimuth 規約: 北=0°・反時計回り正 → alpha に変換
+                    arcCamera.alpha += (camDelta.deltaAzimuth * Math.PI) / 180;
+                }
+                if (camDelta.deltaTilt !== 0) {
+                    arcCamera.beta += (camDelta.deltaTilt * Math.PI) / 180;
+                }
+                triggerTileRefresh(timestamp);
+            } else {
+                // 通常時は viewer の setter を使う
+                if (camDelta.deltaAzimuth !== 0) {
+                    viewer.azimuth = viewer.azimuth + camDelta.deltaAzimuth;
+                }
+                if (camDelta.deltaTilt !== 0) {
+                    viewer.tilt = viewer.tilt + camDelta.deltaTilt;
                 }
             }
         }
