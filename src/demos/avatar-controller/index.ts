@@ -228,6 +228,8 @@ const start = async (): Promise<void> => {
     const pressedKeys = new Set<string>();
     const onKeyDown = (e: KeyboardEvent): void => {
         pressedKeys.add(e.code);
+        // Space はエッジトリガー（押した瞬間のみ）：着地後の即再ジャンプを防ぐ
+        if (e.code === "Space" && !e.repeat) jumpRequested = true;
     };
     const onKeyUp = (e: KeyboardEvent): void => {
         pressedKeys.delete(e.code);
@@ -435,7 +437,7 @@ const start = async (): Promise<void> => {
         const mag = moveVectorMagnitude(input);
 
         // --- ジャンプ開始判定 ---
-        const jumpTrigger = jumpRequested || gamepadJumpPressed || pressedKeys.has("Space");
+        const jumpTrigger = jumpRequested || gamepadJumpPressed;
         jumpRequested = false;
         gamepadJumpPressed = false;
         if (jumpTrigger && !isJumping(jumpState)) {
