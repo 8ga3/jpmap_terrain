@@ -124,10 +124,12 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
         cameraLon,
         cameraAltitude,
         cameraTilt,
-        deadzoneRatio,
-        scrollLerp,
         viewExtentOverride,
     } = params;
+
+    // 入力パラメータを有効範囲にクランプ
+    const deadzoneRatio = Math.max(0, Math.min(1, params.deadzoneRatio));
+    const scrollLerp = Math.max(0, Math.min(1, params.scrollLerp));
 
     const extent = viewExtentOverride !== undefined && viewExtentOverride > 0
         ? viewExtentOverride
