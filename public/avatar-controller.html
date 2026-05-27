@@ -130,20 +130,56 @@
       <div>
         <div class="info-row">
           <label for="speed-slider" style="font-size: 11px; color: #e0e4ea;">速度 (m/s)</label>
-          <span class="value" id="speed-value">10</span>
+          <span class="value" id="speed-value">30</span>
         </div>
-        <input type="range" id="speed-slider" min="1" max="50" value="10" step="1">
+        <input type="range" id="speed-slider" min="1" max="50" value="30" step="1">
       </div>
       <button id="fly-to-avatar">アバターへカメラ移動</button>
       <div class="info-row" style="align-items: center;">
         <label for="auto-scroll-toggle" style="font-size: 11px; color: #e0e4ea;">自動スクロール</label>
         <input type="checkbox" id="auto-scroll-toggle" checked>
       </div>
+      <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.15); margin: 4px 0;">
+      <strong>ジャンプ</strong>
+      <div>
+        <div class="info-row">
+          <label for="jump-height-slider" style="font-size: 11px; color: #e0e4ea;">高さ</label>
+          <span class="value" id="jump-height-value">100</span>
+        </div>
+        <input type="range" id="jump-height-slider" min="20" max="200" value="100" step="10">
+      </div>
+      <div>
+        <div class="info-row">
+          <label for="jump-gravity-slider" style="font-size: 11px; color: #e0e4ea;">重力 (ワールドスケール)</label>
+          <span class="value" id="jump-gravity-value">490.5</span>
+        </div>
+        <input type="range" id="jump-gravity-slider" min="1" max="2000" value="490.5" step="0.1">
+      </div>
       <div class="hint">
         操作: 矢印キー / WASD / Gamepad 左スティック / Virtual Joystick<br>
+        ジャンプ: Space / Gamepad A / 画面右下ボタン<br>
         地面クリックでアバターの位置を変更します
       </div>
     </div>
+    <button id="jump-btn" style="
+      position: absolute;
+      right: 70px;
+      bottom: 40px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(255, 100, 50, 0.7);
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      color: #fff;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      pointer-events: auto;
+      z-index: 20;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    ">JUMP</button>
   </div>
 </body>
 </html>

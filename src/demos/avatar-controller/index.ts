@@ -23,6 +23,7 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
+import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad";
 import { createDomJoystick } from "./domJoystick";
 import {
     combineInputs,
@@ -38,6 +39,15 @@ import {
     DEFAULT_DEADZONE_RATIO,
     DEFAULT_SCROLL_LERP,
 } from "./autoScroll";
+import {
+    DEFAULT_GRAVITY,
+    DEFAULT_JUMP_HEIGHT,
+    isJumping,
+    JUMP_IDLE,
+    startJump,
+    tickJump,
+    type JumpState,
+} from "./jump";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
@@ -57,7 +67,7 @@ const TOKYO_STATION = { lat: 35.681236, lon: 139.767125 };
 /** モデルの表示スケール */
 const MODEL_SCALE = 50;
 /** デフォルト歩行速度 (m/s) */
-const DEFAULT_SPEED_MPS = 10;
+const DEFAULT_SPEED_MPS = 30;
 /** クリック可能距離 (m) */
 const MAX_CLICK_DISTANCE_M = 5000;
 /** 移動を「歩行中」とみなす入力強度の閾値 */
@@ -103,6 +113,11 @@ const start = async (): Promise<void> => {
     let lastTimestamp: number | null = null;
     let animationStarted = false;
     let autoScrollEnabled = true;
+    let jumpState: JumpState = JUMP_IDLE;
+    let jumpHeight = DEFAULT_JUMP_HEIGHT;
+    let jumpGravity = DEFAULT_GRAVITY;
+    /** ジャンプボタンが押された（次フレームで発動） */
+    let jumpRequested = false;
 
     /**
      * 自動スクロール — Flight demo Follow モードと同じ手法 (Issue #287):
@@ -192,7 +207,7 @@ const start = async (): Promise<void> => {
                     lat: avatarLat,
                     lon: avatarLon,
                     altitudeMode: "terrain",
-                    altitude: 0,
+                    altitude: jumpState.altitude,
                     gravity: true,
                 });
             });
@@ -213,6 +228,8 @@ const start = async (): Promise<void> => {
     const pressedKeys = new Set<string>();
     const onKeyDown = (e: KeyboardEvent): void => {
         pressedKeys.add(e.code);
+        // Space はエッジトリガー（押した瞬間のみ）：着地後の即再ジャンプを防ぐ
+        if (e.code === "Space" && !e.repeat) jumpRequested = true;
     };
     const onKeyUp = (e: KeyboardEvent): void => {
         pressedKeys.delete(e.code);
@@ -228,10 +245,15 @@ const start = async (): Promise<void> => {
     // --- 入力: Gamepad ---
     const gamepadManager = new GamepadManager();
     const gamepadStick = { x: 0, y: 0 };
+    let gamepadJumpPressed = false;
     gamepadManager.onGamepadConnectedObservable.add((gp) => {
         gp.onleftstickchanged((values) => {
             gamepadStick.x = values.x;
             gamepadStick.y = values.y;
+        });
+        (gp as GenericPad).onbuttondown((index: number) => {
+            // A ボタン (Xbox: index 0) でジャンプ
+            if (index === 0) gamepadJumpPressed = true;
         });
     });
     gamepadManager.onGamepadDisconnectedObservable.add(() => {
@@ -272,6 +294,21 @@ const start = async (): Promise<void> => {
     const autoScrollCheckbox = document.getElementById(
         "auto-scroll-toggle",
     ) as HTMLInputElement | null;
+    const jumpBtn = document.getElementById(
+        "jump-btn",
+    ) as HTMLButtonElement | null;
+    const jumpHeightSlider = document.getElementById(
+        "jump-height-slider",
+    ) as HTMLInputElement | null;
+    const jumpHeightDisplay = document.getElementById(
+        "jump-height-value",
+    ) as HTMLSpanElement | null;
+    const jumpGravitySlider = document.getElementById(
+        "jump-gravity-slider",
+    ) as HTMLInputElement | null;
+    const jumpGravityDisplay = document.getElementById(
+        "jump-gravity-value",
+    ) as HTMLSpanElement | null;
 
     const updateDisplay = (): void => {
         if (latDisplay) latDisplay.textContent = avatarLat.toFixed(6);
@@ -305,6 +342,40 @@ const start = async (): Promise<void> => {
                 tileCameraDetached = false;
             }
         });
+    }
+
+    if (jumpBtn) {
+        jumpBtn.addEventListener("pointerdown", () => {
+            jumpRequested = true;
+        });
+    }
+
+    if (jumpHeightSlider) {
+        jumpHeightSlider.value = String(jumpHeight);
+        if (jumpHeightDisplay) jumpHeightDisplay.textContent = `${jumpHeight}`;
+        jumpHeightSlider.addEventListener("input", () => {
+            jumpHeight = Number(jumpHeightSlider.value);
+            if (jumpHeightDisplay) jumpHeightDisplay.textContent = `${jumpHeight}`;
+        });
+    }
+
+    if (jumpGravitySlider) {
+        jumpGravitySlider.value = String(jumpGravity);
+        if (jumpGravityDisplay) jumpGravityDisplay.textContent = `${jumpGravity.toFixed(1)}`;
+        jumpGravitySlider.addEventListener("input", () => {
+            jumpGravity = Number(jumpGravitySlider.value);
+            if (jumpGravityDisplay) jumpGravityDisplay.textContent = `${jumpGravity.toFixed(1)}`;
+        });
+    }
+
+    // パネル操作後にキーボードフォーカスを canvas に戻す
+    const controlsPanel = document.getElementById("avatar-controls");
+    const canvas = mount.querySelector("canvas");
+    if (controlsPanel && canvas) {
+        canvas.tabIndex = 0;
+        const refocus = (): void => { canvas.focus(); };
+        controlsPanel.addEventListener("pointerup", refocus);
+        controlsPanel.addEventListener("change", refocus);
     }
 
     viewer.onTerrainClick((event: TerrainClickEvent) => {
@@ -364,78 +435,130 @@ const start = async (): Promise<void> => {
 
         const input = readInputs();
         const mag = moveVectorMagnitude(input);
-        const isMoving = mag > MOVING_THRESHOLD;
 
-        if (isMoving) {
-            const next = stepPosition(avatarLat, avatarLon, input, speedMps, dtSec);
-            avatarLat = next.lat;
-            avatarLon = next.lon;
-            const heading = movementHeading(input);
-            if (heading !== null) lastHeadingDeg = heading;
+        // --- ジャンプ開始判定 ---
+        const jumpTrigger = jumpRequested || gamepadJumpPressed;
+        jumpRequested = false;
+        gamepadJumpPressed = false;
+        if (jumpTrigger && !isJumping(jumpState)) {
+            jumpState = startJump(jumpHeight, jumpGravity, input);
+            // ジャンプ中は歩行アニメを停止
+            if (walking) {
+                viewer.stopModelAnimation(MODEL_ID, WALK_ANIM);
+                walking = false;
+            }
+        }
+
+        // --- ジャンプ中のフレーム更新 ---
+        if (isJumping(jumpState)) {
+            jumpState = tickJump(jumpState, jumpGravity, dtSec);
+            // ジャンプ中はロックされた方向で水平移動
+            const jumpDir = jumpState.active ? jumpState.lockedDirection : JUMP_IDLE.lockedDirection;
+            const jumpMag = moveVectorMagnitude(jumpDir);
+            if (jumpMag > MOVING_THRESHOLD) {
+                const next = stepPosition(avatarLat, avatarLon, jumpDir, speedMps, dtSec);
+                avatarLat = next.lat;
+                avatarLon = next.lon;
+                const heading = movementHeading(jumpDir);
+                if (heading !== null) lastHeadingDeg = heading;
+            }
             viewer.updateModel(MODEL_ID, {
                 lat: avatarLat,
                 lon: avatarLon,
                 altitudeMode: "terrain",
-                altitude: 0,
+                altitude: jumpState.altitude,
                 rotation: { y: lastHeadingDeg },
                 gravity: true,
             });
             updateDisplay();
+        } else {
+            // --- 通常移動 ---
+            const isMoving = mag > MOVING_THRESHOLD;
 
-            // 自動スクロール: アバターが画面端に近づいたらカメラを追従
-            // (Flight Follow モードと同じ二段構成: 滑らかな target 移動 + 距離スロットルされたタイル refresh)
-            if (autoScrollEnabled && arcCamera) {
-                const cameraLatNow = viewer.lat;
-                const cameraLonNow = viewer.lon;
-                // 2D (ortho) モードでは altitude/tilt から可視範囲を推定できないため、
-                // ortho サイズを extent として渡す。
-                // 短辺側を使うことでアスペクト比に関わらず画面外に出ないことを保証する。
-                const is2D = viewer.viewMode === "2d";
-                const viewExtentOverride = is2D
-                    ? Math.min(
-                          arcCamera.orthoTop ?? 0,
-                          arcCamera.orthoRight ?? 0,
-                      ) || undefined
-                    : undefined;
-                const scroll = computeAutoScroll({
-                    avatarLat,
-                    avatarLon,
-                    cameraLat: cameraLatNow,
-                    cameraLon: cameraLonNow,
-                    cameraAltitude: viewer.altitude,
-                    cameraTilt: viewer.tilt,
-                    deadzoneRatio: DEFAULT_DEADZONE_RATIO,
-                    scrollLerp: DEFAULT_SCROLL_LERP,
-                    viewExtentOverride,
+            if (isMoving) {
+                const next = stepPosition(avatarLat, avatarLon, input, speedMps, dtSec);
+                avatarLat = next.lat;
+                avatarLon = next.lon;
+                const heading = movementHeading(input);
+                if (heading !== null) lastHeadingDeg = heading;
+                viewer.updateModel(MODEL_ID, {
+                    lat: avatarLat,
+                    lon: avatarLon,
+                    altitudeMode: "terrain",
+                    altitude: 0,
+                    rotation: { y: lastHeadingDeg },
+                    gravity: true,
                 });
-                if (scroll.scrolled) {
-                    // 初回スクロール時に detach する（初期表示の境界タイル欠けを防ぐ）
-                    if (!tileCameraDetached) {
-                        viewer.detachTileCamera();
-                        tileCameraDetached = true;
-                    }
-                    // (1) camera.target を直接動かして滑らかに追従 (setter は呼ばない)
-                    const dLat = scroll.lat - cameraLatNow;
-                    const dLon = scroll.lon - cameraLonNow;
-                    const metersPerDegLon =
-                        METERS_PER_DEGREE_LAT *
-                        Math.cos((cameraLatNow * Math.PI) / 180);
-                    arcCamera.target.x += dLon * metersPerDegLon;
-                    arcCamera.target.z += dLat * METERS_PER_DEGREE_LAT;
+                updateDisplay();
+            }
 
-                    // (2) 距離スロットル + in-flight ガード付きでタイル refresh
-                    const refLatNow = viewer.lat;
-                    const refLonNow = viewer.lon;
-                    const movedLat =
-                        (refLatNow - lastRefreshLat) * METERS_PER_DEGREE_LAT;
-                    const movedLon =
-                        (refLonNow - lastRefreshLon) *
-                        METERS_PER_DEGREE_LAT *
-                        Math.cos((refLatNow * Math.PI) / 180);
-                    const movedM = Math.hypot(movedLat, movedLon);
-                    if (movedM >= SCROLL_REFRESH_DISTANCE_M) {
-                        triggerTileRefresh(timestamp);
-                    }
+            if (animationStarted) {
+                if (isMoving && !walking) {
+                    viewer.playModelAnimation(MODEL_ID, WALK_ANIM);
+                    walking = true;
+                } else if (!isMoving && walking) {
+                    viewer.stopModelAnimation(MODEL_ID, WALK_ANIM);
+                    walking = false;
+                }
+            }
+        }
+
+        // --- 自動スクロール ---
+        // ジャンプ中・通常移動どちらでも水平位置が変わるのでスクロール判定する
+        const isMovingForScroll = isJumping(jumpState)
+            ? moveVectorMagnitude(jumpState.lockedDirection) > MOVING_THRESHOLD
+            : mag > MOVING_THRESHOLD;
+        if (isMovingForScroll && autoScrollEnabled && arcCamera) {
+            const cameraLatNow = viewer.lat;
+            const cameraLonNow = viewer.lon;
+            // 2D (ortho) モードでは altitude/tilt から可視範囲を推定できないため、
+            // ortho サイズを extent として渡す。
+            // 短辺側を使うことでアスペクト比に関わらず画面外に出ないことを保証する。
+            const is2D = viewer.viewMode === "2d";
+            const viewExtentOverride = is2D
+                ? Math.min(
+                      arcCamera.orthoTop ?? 0,
+                      arcCamera.orthoRight ?? 0,
+                  ) || undefined
+                : undefined;
+            const scroll = computeAutoScroll({
+                avatarLat,
+                avatarLon,
+                cameraLat: cameraLatNow,
+                cameraLon: cameraLonNow,
+                cameraAltitude: viewer.altitude,
+                cameraTilt: viewer.tilt,
+                deadzoneRatio: DEFAULT_DEADZONE_RATIO,
+                scrollLerp: DEFAULT_SCROLL_LERP,
+                viewExtentOverride,
+            });
+            if (scroll.scrolled) {
+                // 初回スクロール時に detach する（初期表示の境界タイル欠けを防ぐ）
+                if (!tileCameraDetached) {
+                    viewer.detachTileCamera();
+                    tileCameraDetached = true;
+                }
+                // (1) camera.target を直接動かして滑らかに追従 (setter は呼ばない)
+                const dLat = scroll.lat - cameraLatNow;
+                const dLon = scroll.lon - cameraLonNow;
+                const metersPerDegLon =
+                    METERS_PER_DEGREE_LAT *
+                    Math.cos((cameraLatNow * Math.PI) / 180);
+                arcCamera.target.x += dLon * metersPerDegLon;
+                arcCamera.target.z += dLat * METERS_PER_DEGREE_LAT;
+
+                // (2) 距離スロットル + in-flight ガード付きでタイル refresh
+                const refLatNow = viewer.lat;
+                const refLonNow = viewer.lon;
+                const movedLat =
+                    (refLatNow - lastRefreshLat) * METERS_PER_DEGREE_LAT;
+                const movedLon =
+                    (refLonNow - lastRefreshLon) *
+                    METERS_PER_DEGREE_LAT *
+                    Math.cos((refLatNow * Math.PI) / 180);
+                const movedM = Math.hypot(movedLat, movedLon);
+                if (movedM >= SCROLL_REFRESH_DISTANCE_M) {
+                    triggerTileRefresh(timestamp);
                 }
             }
         }
@@ -469,16 +592,6 @@ const start = async (): Promise<void> => {
                 panM >= SCROLL_REFRESH_DISTANCE_M
             ) {
                 triggerTileRefresh(timestamp);
-            }
-        }
-
-        if (animationStarted) {
-            if (isMoving && !walking) {
-                viewer.playModelAnimation(MODEL_ID, WALK_ANIM);
-                walking = true;
-            } else if (!isMoving && walking) {
-                viewer.stopModelAnimation(MODEL_ID, WALK_ANIM);
-                walking = false;
             }
         }
 
