@@ -3,6 +3,8 @@
  *
  * 右ジョイスティックによるカメラ制御（azimuth/tilt）の純粋関数をテストする。
  */
+import { describe, it, expect } from "@jest/globals";
+
 import {
     computeCameraControl,
     AZIMUTH_SPEED_DPS,
