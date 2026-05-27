@@ -52,7 +52,7 @@ export const computeCameraControl = (
 
     const dz = applyDeadzone(stick);
 
-    // 方位: vx 正 → 時計回り（azimuth 増加方向）
+    // 方位: vx 正 → 右回転（時計回り）
     // 本プロジェクトの azimuth 規約は「北=0°・反時計回り正」なので、
     // 右スティック右 = 時計回り = azimuth 減少。
     const deltaAzimuth = dz.vx === 0 ? 0 : -dz.vx * AZIMUTH_SPEED_DPS * dtSec;
