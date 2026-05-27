@@ -124,6 +124,9 @@ const start = async (): Promise<void> => {
     let lastRefreshTime = 0;
     let lastRefreshAzimuth = viewer.azimuth;
     let lastRefreshTilt = viewer.tilt;
+    let lastRefreshAltitude = viewer.altitude;
+    /** 高度変化率がこれ以上で refresh 発火 */
+    const CAMERA_ALT_REFRESH_RATIO = 0.1;
     let scrollRefreshInFlight = false;
     /** detach は初回移動時に遅延実行する（初期表示の境界タイル欠けを防ぐ） */
     let tileCameraDetached = false;
@@ -172,6 +175,7 @@ const start = async (): Promise<void> => {
         lastRefreshLon = refLonNow;
         lastRefreshAzimuth = viewer.azimuth;
         lastRefreshTilt = viewer.tilt;
+        lastRefreshAltitude = viewer.altitude;
         lastRefreshTime = timestamp;
         scrollRefreshInFlight = true;
         void viewer
@@ -427,16 +431,33 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // カメラのチルト・パン（横回転）変化に追従するタイル refresh。
-        // detach 後は内部 observer が無効なので、自前で角度変化を監視して発火する。
+        // カメラのチルト・パン（横回転）・ズーム・ユーザー操作に追従するタイル refresh。
+        // detach 後は内部 observer が無効なので、自前で変化を監視して発火する。
         if (tileCameraDetached && arcCamera) {
             const rotDelta = Math.abs(
                 ((viewer.azimuth - lastRefreshAzimuth + 540) % 360) - 180,
             );
             const tiltDelta = Math.abs(viewer.tilt - lastRefreshTilt);
+            const altRatio =
+                lastRefreshAltitude > 0
+                    ? Math.abs(viewer.altitude - lastRefreshAltitude) /
+                      lastRefreshAltitude
+                    : 0;
+            // パン操作（lat/lon 変化）の検出
+            const refLatNow2 = viewer.lat;
+            const refLonNow2 = viewer.lon;
+            const panM = Math.sqrt(
+                ((refLatNow2 - lastRefreshLat) * METERS_PER_DEGREE_LAT) ** 2 +
+                    ((refLonNow2 - lastRefreshLon) *
+                        METERS_PER_DEGREE_LAT *
+                        Math.cos((refLatNow2 * Math.PI) / 180)) **
+                        2,
+            );
             if (
                 rotDelta >= CAMERA_ROT_REFRESH_DEG ||
-                tiltDelta >= CAMERA_TILT_REFRESH_DEG
+                tiltDelta >= CAMERA_TILT_REFRESH_DEG ||
+                altRatio >= CAMERA_ALT_REFRESH_RATIO ||
+                panM >= SCROLL_REFRESH_DISTANCE_M
             ) {
                 triggerTileRefresh(timestamp);
             }
