@@ -73,13 +73,16 @@ export const estimateViewExtent = (
     altitude: number,
     tilt: number,
 ): number => {
-    const alt = Math.max(altitude, 1);
+    // 非有限値は安全なデフォルトにフォールバック
+    const safeAltitude = Number.isFinite(altitude) ? altitude : 1;
+    const safeTilt = Number.isFinite(tilt) ? tilt : 0;
+    const alt = Math.max(safeAltitude, 1);
     // FOV ≈ 60° → half FOV = 30° → tan(30°) ≈ 0.577
     const halfFovTan = 0.577;
     // tilt=0: 真上から見下ろし。near/far 対称。extent = alt * tan(halfFov)
     // tilt>0: near side は alt * tan(halfFov - tilt) に近づく（狭くなる）
     // 保守的近似: cos(tilt) で near side の縮小を反映
-    const tiltRad = (Math.min(Math.max(tilt, 0), 85) * Math.PI) / 180;
+    const tiltRad = (Math.min(Math.max(safeTilt, 0), 85) * Math.PI) / 180;
     const nearFactor = Math.max(Math.cos(tiltRad), 0.3);
     return alt * halfFovTan * nearFactor;
 };
