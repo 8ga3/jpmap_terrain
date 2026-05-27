@@ -310,10 +310,10 @@ const start = async (): Promise<void> => {
     viewer.onTerrainClick((event: TerrainClickEvent) => {
         const cameraLat = viewer.lat;
         const cameraLon = viewer.lon;
-        const dLat = (event.lat - cameraLat) * 111320;
+        const dLat = (event.lat - cameraLat) * METERS_PER_DEGREE_LAT;
         const dLon =
             (event.lon - cameraLon) *
-            111320 *
+            METERS_PER_DEGREE_LAT *
             Math.cos((cameraLat * Math.PI) / 180);
         const dist = Math.sqrt(dLat * dLat + dLon * dLon);
         if (dist > MAX_CLICK_DISTANCE_M) return;
