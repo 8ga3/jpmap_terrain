@@ -41,7 +41,9 @@ import {
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { Camera } from "@babylonjs/core/Cameras/camera";
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { extractOrthoStableFrustumPlanes } from "../../terrain/tileManager";
 import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 
 const METERS_PER_DEGREE_LAT = 111320;
@@ -138,19 +140,29 @@ const start = async (): Promise<void> => {
         if (timestamp - lastRefreshTime < SCROLL_REFRESH_INTERVAL_MS) return;
         const refLatNow = viewer.lat;
         const refLonNow = viewer.lon;
-        const viewMat = arcCamera.getViewMatrix();
-        const projMat = arcCamera.getProjectionMatrix();
-        const transform = Matrix.Identity();
-        viewMat.multiplyToRef(projMat, transform);
-        const rawPlanes: Plane[] = Array.from(
-            { length: 6 },
-            () => new Plane(0, 0, 0, 0),
-        );
-        Frustum.GetPlanesToRef(transform, rawPlanes);
-        const frustumPlanes = rawPlanes.map((p) => ({
-            normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
-            d: p.d,
-        }));
+
+        // 2D (ortho) モードでは回転に依存しない安定 frustum planes を使う (#286)。
+        // 通常の view*proj から抽出すると alpha 回転でタイル選択が膨らみ
+        // maxTiles/maxVisited 到達や LOD 乱れが発生するため。
+        let frustumPlanes: { normal: { x: number; y: number; z: number }; d: number }[];
+        if (arcCamera.mode === Camera.ORTHOGRAPHIC_CAMERA) {
+            frustumPlanes = extractOrthoStableFrustumPlanes(arcCamera);
+        } else {
+            const viewMat = arcCamera.getViewMatrix();
+            const projMat = arcCamera.getProjectionMatrix();
+            const transform = Matrix.Identity();
+            viewMat.multiplyToRef(projMat, transform);
+            const rawPlanes: Plane[] = Array.from(
+                { length: 6 },
+                () => new Plane(0, 0, 0, 0),
+            );
+            Frustum.GetPlanesToRef(transform, rawPlanes);
+            frustumPlanes = rawPlanes.map((p) => ({
+                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+                d: p.d,
+            }));
+        }
+
         const cameraPosition = {
             x: arcCamera.position.x - arcCamera.target.x,
             y: arcCamera.position.y - arcCamera.target.y,
