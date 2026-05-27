@@ -187,6 +187,14 @@ const start = async (): Promise<void> => {
             )
             .finally(() => {
                 scrollRefreshInFlight = false;
+                // タイル reposition 後にアバターの world 座標を再計算し origin ズレを解消する
+                viewer.updateModel(MODEL_ID, {
+                    lat: avatarLat,
+                    lon: avatarLon,
+                    altitudeMode: "terrain",
+                    altitude: 0,
+                    gravity: true,
+                });
             });
     };
 
