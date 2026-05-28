@@ -13,17 +13,18 @@
 ```mermaid
 C4Context
   title jpmap_terrain - System Context
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 
   Person(user, "ユーザー", "ブラウザでデモを操作する人")
 
-  System(jpmap, "jpmap_terrain", "地理院標高タイルから 3D 地形を生成・表示する Web アプリ (デモ群 + npm パッケージ)")
+  System(jpmap, "jpmap_terrain", "地理院標高タイルから 3D 地形を<br/>生成・表示する Web アプリ<br/>(デモ群 + npm パッケージ)")
 
-  System_Ext(gsi, "地理院タイル API", "標高タイル・地図画像タイルを提供する外部 REST API")
+  System_Ext(gsi, "地理院タイル API", "標高タイル・地図画像タイルを<br/>提供する外部 REST API")
   System_Ext(browser, "Web ブラウザ", "WebGPU / WebGL2 レンダリング環境を提供")
 
-  Rel(user, jpmap, "デモページにアクセスし操作する", "HTTPS")
-  Rel(jpmap, gsi, "標高・地図タイルを取得する", "HTTPS / Fetch")
-  Rel(jpmap, browser, "3D シーンをレンダリングする", "WebGPU / WebGL2")
+  Rel_R(user, jpmap, " ", "HTTPS")
+  Rel_R(jpmap, gsi, " ", "HTTPS / Fetch")
+  Rel_D(jpmap, browser, " ", "WebGPU / WebGL2")
 ```
 
 ---
@@ -32,12 +33,13 @@ C4Context
 
 jpmap_terrain 内部の主要コンテナ（デプロイ・ビルド単位）を示します。
 
-> デモ 11 本は `splitChunks` でコードを共有するため、独立コンテナではなく  
+> デモ 11 本は `splitChunks` でコードを共有するため、独立コンテナではなく
 > **Demo Apps グループ** としてまとめます。
 
 ```mermaid
 C4Container
   title jpmap_terrain - Container
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 
   Person(user, "ユーザー")
 
@@ -45,30 +47,36 @@ C4Container
 
   Container_Boundary(web, "jpmap_terrain (Web アプリ)") {
 
-    Container(portal, "Demo Portal", "HTML / TS", "デモ一覧ページ (/index.html)。Babylon.js を読み込まない軽量ページ")
+    Container(portal, "Demo Portal", "HTML / TS", "デモ一覧ページ (/index.html)。<br/>Babylon.js を読み込まない軽量ページ")
 
-    Container(demos, "Demo Apps (11 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / polygon / circle / distance / plan / model / avatar / avatar-controller / boids / flight")
+    Container(demos, "Demo Apps (11 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / polygon / circle /<br/>distance / plan / model / avatar /<br/>avatar-controller / boids / flight")
 
-    Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "公開 API 層 (src/lib)。npm パッケージとして配布可能")
-    Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の内部実装 (src/terrain)")
+    Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "公開 API 層 (src/lib)。<br/>npm パッケージとして配布可能")
+    Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の<br/>内部実装 (src/terrain)")
   }
 
-  Rel(user, portal, "デモ一覧を閲覧する", "HTTPS")
-  Rel(user, demos, "各デモを操作する", "HTTPS")
-  Rel(demos, lib, "JpmapTerrain 公開 API を呼び出す", "ESM import")
-  Rel(lib, terrain, "内部実装に委譲する", "ESM import")
-  Rel(terrain, gsi, "標高・地図タイルを取得する", "Fetch API")
+  Rel_D(user, portal, " ", "HTTPS")
+  Rel_D(user, demos, " ", "HTTPS")
+  Rel_D(demos, lib, " ", "ESM import")
+  Rel_D(lib, terrain, " ", "ESM import")
+  Rel_R(terrain, gsi, " ", "Fetch API")
 ```
 
 ---
 
 ## L3 – Component（Terrain Core）
 
-Terrain Core（`src/terrain/`）内の主要コンポーネントと、各デモとの対応を示します。
+Terrain Core（`src/terrain/`）内の主要コンポーネントを示します。
+関心の異なる2つの図に分けて記述します。
+
+### L3a – Tile Pipeline
+
+タイル取得・地形生成のデータフローを示します。
 
 ```mermaid
 C4Component
-  title jpmap_terrain - Component (Terrain Core)
+  title jpmap_terrain - Component: Tile Pipeline (L3a)
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 
   Container_Boundary(lib_b, "JpmapTerrain Lib (src/lib)") {
     Component(jpmapTerrain, "JpmapTerrain", "TypeScript class", "公開 API のエントリポイント。各コンポーネントを組み合わせる")
@@ -79,31 +87,70 @@ C4Component
     Component(tileCache,      "TileCache",          "TypeScript",              "取得済みタイルのキャッシュ")
     Component(tileStitching,  "TileStitching",      "TypeScript",              "隣接タイルの継ぎ目処理")
     Component(elevationWorker,"ElevationWorkerPool","TypeScript / Web Worker", "標高計算を Worker で並列処理")
-    Component(modelManager,   "ModelManager",       "TypeScript",              "3D モデルの読み込み・配置・アニメーション")
-    Component(polygonManager, "PolygonManager",     "TypeScript",              "ポリゴン・ポリラインの描画管理")
-    Component(circleManager,  "CircleManager",      "TypeScript",              "円形オブジェクトの描画管理")
-    Component(markerManager,  "MarkerManager",      "TypeScript",              "マーカー (ピン等) の管理")
-    Component(sunPosition,    "SunPosition",        "TypeScript",              "太陽位置・陰影計算")
-    Component(urlState,       "UrlState",           "TypeScript",              "カメラ状態と URL の双方向同期")
-    Component(cameraCollision,"CameraCollision",    "TypeScript",              "地形とカメラの衝突処理")
-    Component(skybox,         "Skybox",             "TypeScript",              "天球の描画")
     Component(gsiTile,        "GsiTile",            "TypeScript",              "地理院タイル URL 生成・フェッチ")
     Component(meshPool,       "MeshPool",           "TypeScript",              "Mesh の再利用プール")
-    Component(controlPanel,   "ControlPanel",       "TypeScript",              "共通 UI コントロールパネル")
   }
 
-  Rel(jpmapTerrain, tileManager,     "タイル更新を指示")
-  Rel(jpmapTerrain, modelManager,    "モデル操作 API を提供")
-  Rel(jpmapTerrain, polygonManager,  "ポリゴン操作 API を提供")
-  Rel(jpmapTerrain, circleManager,   "サークル操作 API を提供")
-  Rel(jpmapTerrain, markerManager,   "マーカー操作 API を提供")
-  Rel(jpmapTerrain, sunPosition,     "太陽位置・日時を制御")
-  Rel(jpmapTerrain, urlState,        "URL 状態を同期")
-  Rel(tileManager,  tileCache,       "キャッシュを参照・更新")
-  Rel(tileManager,  tileStitching,   "タイル継ぎ目を補正")
-  Rel(tileManager,  gsiTile,         "タイルデータを取得")
-  Rel(tileManager,  meshPool,        "Mesh を再利用")
-  Rel(tileManager,  elevationWorker, "標高計算をオフロード")
+  Rel_D(jpmapTerrain,  tileManager,     "タイル更新を指示")
+  Rel_D(tileManager,   tileCache,       "キャッシュを参照・更新")
+  Rel_D(tileManager,   tileStitching,   "タイル継ぎ目を補正")
+  Rel_D(tileManager,   gsiTile,         "タイルデータを取得")
+  Rel_D(tileManager,   meshPool,        "Mesh を再利用")
+  Rel_D(tileManager,   elevationWorker, "標高計算をオフロード")
+```
+
+### L3b-1 – Overlay Features
+
+JpmapTerrain が制御する地図オーバーレイ描画系コンポーネントを示します。
+
+```mermaid
+C4Component
+  title jpmap_terrain - Component: Overlay Features (L3b-1)
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+
+  Container_Boundary(lib_b, "JpmapTerrain Lib (src/lib)") {
+    Component(jpmapTerrain, "JpmapTerrain", "TypeScript class", "公開 API のエントリポイント")
+  }
+
+  Container_Boundary(terrain_b, "Terrain Core (src/terrain)") {
+    Component(modelManager,   "ModelManager",   "TypeScript", "3D モデルの読み込み・配置・アニメーション")
+    Component(polygonManager, "PolygonManager", "TypeScript", "ポリゴン・ポリラインの描画管理")
+    Component(circleManager,  "CircleManager",  "TypeScript", "円形オブジェクトの描画管理")
+    Component(markerManager,  "MarkerManager",  "TypeScript", "マーカー (ピン等) の管理")
+  }
+
+  Rel_D(jpmapTerrain, modelManager,   " ")
+  Rel_D(jpmapTerrain, polygonManager, " ")
+  Rel_D(jpmapTerrain, circleManager,  " ")
+  Rel_D(jpmapTerrain, markerManager,  " ")
+```
+
+### L3b-2 – Scene & UI
+
+JpmapTerrain が制御するシーン環境・カメラ・UI 系コンポーネントを示します。
+
+```mermaid
+C4Component
+  title jpmap_terrain - Component: Scene & UI (L3b-2)
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+
+  Container_Boundary(lib_b, "JpmapTerrain Lib (src/lib)") {
+    Component(jpmapTerrain, "JpmapTerrain", "TypeScript class", "公開 API のエントリポイント")
+  }
+
+  Container_Boundary(terrain_b, "Terrain Core (src/terrain)") {
+    Component(sunPosition,    "SunPosition",    "TypeScript", "太陽位置・陰影計算")
+    Component(urlState,       "UrlState",       "TypeScript", "カメラ状態と URL の双方向同期")
+    Component(cameraCollision,"CameraCollision","TypeScript", "地形とカメラの衝突処理")
+    Component(skybox,         "Skybox",         "TypeScript", "天球の描画")
+    Component(controlPanel,   "ControlPanel",   "TypeScript", "共通 UI コントロールパネル")
+  }
+
+  Rel_D(jpmapTerrain, sunPosition,    " ")
+  Rel_D(jpmapTerrain, urlState,       " ")
+  Rel_D(jpmapTerrain, cameraCollision," ")
+  Rel_D(jpmapTerrain, skybox,         " ")
+  Rel_D(jpmapTerrain, controlPanel,   " ")
 ```
 
 ---
