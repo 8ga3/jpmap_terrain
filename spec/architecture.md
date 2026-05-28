@@ -67,7 +67,7 @@ C4Container
 ## L3 – Component（Terrain Core）
 
 Terrain Core（`src/terrain/`）内の主要コンポーネントを示します。
-関心の異なる2つの図に分けて記述します。
+関心の異なる3つの図に分けて記述します。
 
 ### L3a – Tile Pipeline
 
