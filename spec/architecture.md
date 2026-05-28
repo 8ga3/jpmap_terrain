@@ -22,9 +22,9 @@ C4Context
   System_Ext(gsi, "地理院タイル API", "標高タイル・地図画像タイルを<br/>提供する外部 REST API")
   System_Ext(browser, "Web ブラウザ", "WebGPU / WebGL2 レンダリング環境を提供")
 
-  Rel_R(user, jpmap, " ", "HTTPS")
-  Rel_R(jpmap, gsi, " ", "HTTPS / Fetch")
-  Rel_D(jpmap, browser, " ", "WebGPU / WebGL2")
+  Rel_R(user, jpmap, "", "HTTPS")
+  Rel_R(jpmap, gsi, "", "HTTPS / Fetch")
+  Rel_D(jpmap, browser, "", "WebGPU / WebGL2")
 ```
 
 ---
@@ -55,11 +55,11 @@ C4Container
     Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の<br/>内部実装 (src/terrain)")
   }
 
-  Rel_D(user, portal, " ", "HTTPS")
-  Rel_D(user, demos, " ", "HTTPS")
-  Rel_D(demos, lib, " ", "ESM import")
-  Rel_D(lib, terrain, " ", "ESM import")
-  Rel_R(terrain, gsi, " ", "Fetch API")
+  Rel_D(user, portal, "", "HTTPS")
+  Rel_D(user, demos, "", "HTTPS")
+  Rel_D(demos, lib, "", "ESM import")
+  Rel_D(lib, terrain, "", "ESM import")
+  Rel_R(terrain, gsi, "", "Fetch API")
 ```
 
 ---
@@ -119,10 +119,10 @@ C4Component
     Component(markerManager,  "MarkerManager",  "TypeScript", "マーカー (ピン等) の管理")
   }
 
-  Rel_D(jpmapTerrain, modelManager,   " ")
-  Rel_D(jpmapTerrain, polygonManager, " ")
-  Rel_D(jpmapTerrain, circleManager,  " ")
-  Rel_D(jpmapTerrain, markerManager,  " ")
+  Rel_D(jpmapTerrain, modelManager,   "")
+  Rel_D(jpmapTerrain, polygonManager, "")
+  Rel_D(jpmapTerrain, circleManager,  "")
+  Rel_D(jpmapTerrain, markerManager,  "")
 ```
 
 ### L3b-2 – Scene & UI
@@ -146,11 +146,11 @@ C4Component
     Component(controlPanel,   "ControlPanel",   "TypeScript", "共通 UI コントロールパネル")
   }
 
-  Rel_D(jpmapTerrain, sunPosition,    " ")
-  Rel_D(jpmapTerrain, urlState,       " ")
-  Rel_D(jpmapTerrain, cameraCollision," ")
-  Rel_D(jpmapTerrain, skybox,         " ")
-  Rel_D(jpmapTerrain, controlPanel,   " ")
+  Rel_D(jpmapTerrain, sunPosition,    "")
+  Rel_D(jpmapTerrain, urlState,       "")
+  Rel_D(jpmapTerrain, cameraCollision,"")
+  Rel_D(jpmapTerrain, skybox,         "")
+  Rel_D(jpmapTerrain, controlPanel,   "")
 ```
 
 ---
