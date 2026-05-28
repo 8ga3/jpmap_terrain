@@ -16,6 +16,7 @@
 
 - 開発フロー: `spec/development.md`
 - デモ一覧とポータル仕様: `spec/demos.md`
+- アーキテクチャ（C4 モデル）: `spec/architecture.md`
 - リポジトリ運用ガイド: `AGENTS.md`
 - プロジェクト概要: `README.md`
 
