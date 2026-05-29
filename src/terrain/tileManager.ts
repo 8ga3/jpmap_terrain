@@ -1669,6 +1669,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         }, PENDING_RELEASE_TIMEOUT_MS);
                         // cache が LRU 退避しても cross-level 縫い合わせから参照できるように
                         // elevation/filled を pending entry に保持する (Issue #290)。
+                        // entry が undefined（LRU 退避済み）の場合は NaN バッファを保持し、
+                        // wasAllNaN=true / unblocked=false で cross-level 候補から自動除外する。
                         const entry = cache.get(key);
                         addPendingRelease(key, {
                             key: tile.key,
@@ -1676,10 +1678,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                             mesh: tile.mesh,
                             tileSize: tile.tileSize,
                             timerId,
-                            elevation: entry?.elevation ?? new Float32Array(0),
+                            elevation: entry?.elevation ?? new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN),
                             filled: entry?.filled,
-                            wasAllNaN: entry?.wasAllNaN,
-                            unblocked: entry?.unblocked,
+                            wasAllNaN: entry?.wasAllNaN ?? true,
+                            unblocked: entry?.unblocked ?? false,
                         });
                         // pendingRelease に新規追加された粗タイルの境界に接する
                         // 既存細 active タイルを再ステッチキューに積む (Issue #290)。
