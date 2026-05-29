@@ -372,6 +372,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 再ステッチ待ちの隣接タイルキーを蓄積し、同一フレームで一括処理する */
     const pendingRestitch = new Set<TileKey>();
     let restitchRafId: number | null = null;
+    /** RAF 非対応環境（Node.js / SSR）用の setTimeout フォールバック ID */
+    let restitchTimerId: ReturnType<typeof setTimeout> | null = null;
     /** flushRestitch 内で実行中の applyStitchedElevation Promise 数 */
     let restitchingCount = 0;
 
@@ -1324,6 +1326,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 蓄積された再ステッチ対象タイルを一括処理する */
     const flushRestitch = (): void => {
         restitchRafId = null;
+        restitchTimerId = null;
         const promises: Promise<void>[] = [];
         for (const key of pendingRestitch) {
             const neighborTile = activeTiles.get(key);
@@ -1387,8 +1390,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
-        if (restitchRafId === null && typeof requestAnimationFrame === "function") {
-            restitchRafId = requestAnimationFrame(flushRestitch);
+        if (restitchRafId === null && restitchTimerId === null) {
+            if (typeof requestAnimationFrame === "function") {
+                restitchRafId = requestAnimationFrame(flushRestitch);
+            } else {
+                // RAF 非対応環境（SSR / Node.js / 一部テスト）向けフォールバック。
+                // scheduleTextureFlush と同様に setTimeout(..., 16) で次フレーム相当に遅延する。
+                restitchTimerId = setTimeout(flushRestitch, 16);
+            }
         }
     };
 
@@ -1956,6 +1965,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 cancelAnimationFrame(restitchRafId);
                 restitchRafId = null;
             }
+            if (restitchTimerId !== null) {
+                clearTimeout(restitchTimerId);
+                restitchTimerId = null;
+            }
             pendingRestitch.clear();
             restitchingCount = 0;
             clearAllPendingRelease();
@@ -1992,6 +2005,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 && textureJobQueue.length === 0
                 && pendingTextureCount === 0
                 && restitchRafId === null
+                && restitchTimerId === null
                 && restitchingCount === 0;
         },
 
