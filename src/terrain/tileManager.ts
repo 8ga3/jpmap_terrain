@@ -27,8 +27,8 @@ import {
     isInvalidElev,
     NO_DATA_SENTINEL,
 } from "./gsiTile";
-import { stitchTileEdges, stitchTileEdgesCrossLevel } from "./tileStitching";
-import type { CoarseEdgeNeighbor } from "./tileStitching";
+import { stitchTileEdges, stitchTileEdgesCrossLevel, selectCoarseEdgeNeighbors } from "./tileStitching";
+import type { CoarseEdgeNeighbor, CoarseTileSource } from "./tileStitching";
 import { createElevationWorkerPool, type ElevationWorkerPool } from "./elevationWorkerPool";
 
 export interface TileManagerOptions {
@@ -112,6 +112,15 @@ interface PendingReleaseTile {
     tileSize: number;
     /** 強制解放用タイマーID */
     timerId: ReturnType<typeof setTimeout>;
+    /**
+     * pendingRelease 中も隣接細タイルから cross-level 縫い合わせ参照されるため、
+     * cache が LRU で退避されても elevation を保持しておく (Issue #290)。
+     * filled が無い場合は raw elevation を利用する。
+     */
+    elevation: Float32Array;
+    filled?: Float32Array;
+    wasAllNaN?: boolean;
+    unblocked?: boolean;
 }
 
 const DEFAULT_MAX_CONCURRENT = 4;
@@ -120,12 +129,9 @@ const DEFAULT_CACHE_CAPACITY = 192;
 const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
-/**
- * クロスレベル縫い合わせを適用する「カメラ近傍」判定の距離係数。
- * タイル中心とカメラの 3D 距離が `tileSize × NEAR_DISTANCE_TILES_FACTOR` 以下なら近傍とみなす。
- * 値が大きいほど縫い合わせ対象が広がる。遠方タイルは隙間が視認しにくいため、近傍のみに限定する。
+/*
+ * 旧 NEAR_DISTANCE_TILES_FACTOR 定数は Issue #290 対応で isTileNearCamera と共に撤廃。
  */
-const NEAR_DISTANCE_TILES_FACTOR = 3;
 /** 旧タイルの強制解放までのタイムアウト (ms) */
 const PENDING_RELEASE_TIMEOUT_MS = 5000;
 
@@ -432,6 +438,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         textureRequestIds.set(pending.mesh, (textureRequestIds.get(pending.mesh) ?? 0) + 1);
         meshPool.release(pending.mesh);
         removePendingRelease(key);
+        // 解放した粗タイルにスナップしていた可能性のある隣接細 active タイルを
+        // 再ステッチして、スナップ元消失後の整合性を取り直す (Issue #290)。
+        restitchNeighbors(pending.coord);
     };
 
     /** pendingRelease を全てクリアする */
@@ -1128,28 +1137,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         };
     };
 
-    /**
-     * カメラがタイル中心に近いか判定する。
-     * タイル中心（XZ 平面上）とカメラ（target 原点ローカル）との 3D 距離が
-     * `tileSize × NEAR_DISTANCE_TILES_FACTOR` 以下なら true。
-     * クロスレベル縫い合わせを近傍に限定するために用いる。
+    /*
+     * 旧 isTileNearCamera ヘルパーは Issue #290 対応により撤廃。
+     * 高 zoom (例: 18) では tileSize が小さく、カメラ高度が少しでもあると
+     * 近傍判定が常に false になり cross-level 縫い合わせが走らず、zoom 17/18
+     * 混在境界で隙間が顕在化していた。現在は粗タイル隣接が存在する場合のみ
+     * `stitchTileEdgesCrossLevel` が実コストを発生させる no-op 安全な
+     * 設計のため、距離ゲートを撤廃して常時適用に切り替えている。
      */
-    const isTileNearCamera = (coord: TileCoord, tileSize: number): boolean => {
-        if (!currentCenter) return false;
-        const center = convertTileZoom(currentCenter, coord.zoom);
-        const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
-        const dx = coord.x - center.x;
-        const dy = coord.y - center.y;
-        const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
-        // camera position は target 原点ローカル。タイル中心は y=0 平面。
-        const cx = camera.position.x - camera.target.x;
-        const cy = camera.position.y - camera.target.y;
-        const cz = camera.position.z - camera.target.z;
-        const ex = wx - cx;
-        const ez = wz - cz;
-        const dist = Math.sqrt(ex * ex + cy * cy + ez * ez);
-        return dist <= tileSize * NEAR_DISTANCE_TILES_FACTOR;
-    };
 
     /**
      * target タイルの 4 辺それぞれについて、辺を共有する粗 zoom のアクティブタイルを
@@ -1157,55 +1152,39 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * 同 zoom の隣接タイルが存在する場合はその辺は対象外（同 zoom の縫い合わせに任せる）。
      */
     const getCoarseEdgeNeighbors = (coord: TileCoord): CoarseEdgeNeighbor[] => {
-        const result: CoarseEdgeNeighbor[] = [];
-        const { zoom: z, x, y } = coord;
-        const dirs = [
-            { dir: "top" as const, ndx: 0, ndy: -1 },
-            { dir: "bottom" as const, ndx: 0, ndy: 1 },
-            { dir: "left" as const, ndx: -1, ndy: 0 },
-            { dir: "right" as const, ndx: 1, ndy: 0 },
-        ];
-        for (const d of dirs) {
-            // 同 zoom 隣接が存在すればクロスレベル不要
-            const sameZoomKey = toTileKey({ zoom: z, x: x + d.ndx, y: y + d.ndy });
-            if (activeTiles.has(sameZoomKey)) continue;
-
-            // 粗 zoom を z-1 から minZoom まで降順で探索（細かい粗 zoom を優先）
-            for (let zp = z - 1; zp >= minZoom; zp--) {
-                const diff = z - zp;
-                const scale = 1 << diff;
-                const subX = x & (scale - 1);
-                const subY = y & (scale - 1);
-                // target の辺が親タイルの境界辺と一致する条件
-                let onParentEdge: boolean;
-                switch (d.dir) {
-                    case "top": onParentEdge = subY === 0; break;
-                    case "bottom": onParentEdge = subY === scale - 1; break;
-                    case "left": onParentEdge = subX === 0; break;
-                    case "right": onParentEdge = subX === scale - 1; break;
+        const isSameZoomVisible = (c: { zoom: number; x: number; y: number }): boolean => {
+            const k = toTileKey(c);
+            // hiddenChildTiles に入っている同 zoom 隣接は実画面上は未描画 (親 pendingRelease を表示中)
+            // のため、cross-level 探索を継続させる (Issue #290)。
+            return activeTiles.has(k) && !hiddenChildTiles.has(k);
+        };
+        const lookupCoarse = (c: { zoom: number; x: number; y: number }): CoarseTileSource | undefined => {
+            const k = toTileKey(c);
+            // 優先: active な粗タイル（cache から elevation を取得）
+            if (activeTiles.has(k)) {
+                const entry = cache.get(k);
+                if (entry) {
+                    return {
+                        elevation: entry.filled ?? entry.elevation,
+                        wasAllNaN: entry.wasAllNaN,
+                        unblocked: entry.unblocked,
+                    };
                 }
-                if (!onParentEdge) continue;
-
-                const px = x >> diff;
-                const py = y >> diff;
-                const ncx = px + d.ndx;
-                const ncy = py + d.ndy;
-                const nKey = toTileKey({ zoom: zp, x: ncx, y: ncy });
-                if (!activeTiles.has(nKey)) continue;
-                const entry = cache.get(nKey);
-                if (!entry) continue;
-                if (entry.wasAllNaN && !entry.unblocked) continue;
-                result.push({
-                    elevation: entry.filled ?? entry.elevation,
-                    direction: d.dir,
-                    subX,
-                    subY,
-                    scale,
-                });
-                break;
             }
-        }
-        return result;
+            // フォールバック: pendingRelease 中の旧粗タイル (Issue #290)
+            // cache が LRU 退避済みでも pending entry は elevation を保持している。
+            const pending = pendingRelease.get(k);
+            if (pending) {
+                const entry = cache.get(k);
+                return {
+                    elevation: entry?.filled ?? entry?.elevation ?? pending.filled ?? pending.elevation,
+                    wasAllNaN: entry?.wasAllNaN ?? pending.wasAllNaN,
+                    unblocked: entry?.unblocked ?? pending.unblocked,
+                };
+            }
+            return undefined;
+        };
+        return selectCoarseEdgeNeighbors(coord, minZoom, isSameZoomVisible, lookupCoarse);
     };
 
     /** Web Worker による標高 → 頂点 / 法線変換のオフロード用プール */
@@ -1292,12 +1271,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const cacheEntryPre = cache.get(toTileKey(coord));
 
         // 異 zoom 隣接（粗タイル）と縫い合わせ。
-        // - 通常タイルはカメラ近傍のみ対象（再適用時の計算コスト抑制）
-        // - all-NaN タイルは同 zoom 近傍からシードが得られない場合があるため
-        //   カメラ距離に関わらず常に試行する
-        const tileSize = tileSizeForZoom(coord.zoom);
-        const crossLevel = !!cacheEntryPre?.wasAllNaN || isTileNearCamera(coord, tileSize);
-        const { stitched, hasSeed } = stitchAndCheckSeed(elevation, coord, crossLevel);
+        // - 粗タイル隣接が存在する場合のみ実コストが発生する純粋な no-op 安全な処理。
+        //   高 zoom (例: 18) ではタイル辺長が小さく、旧 `isTileNearCamera` ゲートが
+        //   ほぼ常に false となり cross-level が走らず、zoom 17/18 混在境界で
+        //   隙間が顕在化していた (Issue #290)。よって候補が無ければ no-op になる
+        //   stitchAndCheckSeed に常に crossLevel=true を渡し、近傍距離ゲートは撤廃する。
+        // - all-NaN タイルは同 zoom 近傍からシードが得られない場合があるため、
+        //   こちらも従来通り cross-level でシードを取りに行く（true なので包含）。
+        const { stitched, hasSeed } = stitchAndCheckSeed(elevation, coord, true);
 
         // NaN を埋める（BFS）
         // wasAllNaN でシードなしの場合、フロンティアが空で BFS は進まず
@@ -1406,7 +1387,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             }
         }
 
-        if (restitchRafId === null) {
+        if (restitchRafId === null && typeof requestAnimationFrame === "function") {
             restitchRafId = requestAnimationFrame(flushRestitch);
         }
     };
@@ -1686,13 +1667,23 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         const timerId = setTimeout(() => {
                             releasePendingTile(key);
                         }, PENDING_RELEASE_TIMEOUT_MS);
+                        // cache が LRU 退避しても cross-level 縫い合わせから参照できるように
+                        // elevation/filled を pending entry に保持する (Issue #290)。
+                        const entry = cache.get(key);
                         addPendingRelease(key, {
                             key: tile.key,
                             coord: tile.coord,
                             mesh: tile.mesh,
                             tileSize: tile.tileSize,
                             timerId,
+                            elevation: entry?.elevation ?? new Float32Array(0),
+                            filled: entry?.filled,
+                            wasAllNaN: entry?.wasAllNaN,
+                            unblocked: entry?.unblocked,
                         });
+                        // pendingRelease に新規追加された粗タイルの境界に接する
+                        // 既存細 active タイルを再ステッチキューに積む (Issue #290)。
+                        restitchNeighbors(tile.coord);
                     }
                 } else {
                     // 横パン外 or hiddenChildTiles タイル: 即座にメッシュ解放

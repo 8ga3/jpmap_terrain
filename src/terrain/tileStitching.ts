@@ -127,6 +127,88 @@ export const stitchTileEdges = (
     }
 };
 
+/** タイル座標（zoom/x/y）。stitching ユーティリティ内では tileManager とは独立に扱う。 */
+export interface CoarseTileCoord {
+    zoom: number;
+    x: number;
+    y: number;
+}
+
+/**
+ * `selectCoarseEdgeNeighbors` のための粗タイル参照ソース。
+ * elevation はそのままクロスレベル縫い合わせに使われる（filled 優先）。
+ * - `wasAllNaN && !unblocked` の場合は誤伝搬防止のため候補から除外する。
+ */
+export interface CoarseTileSource {
+    elevation: Float32Array;
+    wasAllNaN?: boolean;
+    unblocked?: boolean;
+}
+
+/**
+ * クロスレベル縫い合わせ候補（粗タイル隣接）を選定する純関数。
+ *
+ * tileManager の active/pendingRelease/hidden 状態を抽象化したコールバックで受け取り、
+ * pure に判定する。Issue #290 の対応として:
+ *  - 同 zoom 隣接が「描画中（active かつ hidden でない）」場合のみクロスレベルを抑止する
+ *  - 粗 zoom 候補は active だけでなく `pendingRelease` 中の旧タイルも参照する
+ *
+ * @param coord 対象タイル座標
+ * @param minZoom 最小 zoom（粗 zoom 探索の下限）
+ * @param isSameZoomVisible 同 zoom 隣接が実画面に出ているかを判定（true なら cross-level 不要）
+ * @param lookupCoarse 粗 zoom 隣接の参照ソースを返す。存在しない場合は undefined
+ */
+export const selectCoarseEdgeNeighbors = (
+    coord: CoarseTileCoord,
+    minZoom: number,
+    isSameZoomVisible: (c: CoarseTileCoord) => boolean,
+    lookupCoarse: (c: CoarseTileCoord) => CoarseTileSource | undefined,
+): CoarseEdgeNeighbor[] => {
+    const result: CoarseEdgeNeighbor[] = [];
+    const { zoom: z, x, y } = coord;
+    const dirs = [
+        { dir: "top" as const, ndx: 0, ndy: -1 },
+        { dir: "bottom" as const, ndx: 0, ndy: 1 },
+        { dir: "left" as const, ndx: -1, ndy: 0 },
+        { dir: "right" as const, ndx: 1, ndy: 0 },
+    ];
+    for (const d of dirs) {
+        // 同 zoom 隣接が実画面に出ていればクロスレベル不要
+        if (isSameZoomVisible({ zoom: z, x: x + d.ndx, y: y + d.ndy })) continue;
+
+        // 粗 zoom を z-1 から minZoom まで降順で探索（細かい粗 zoom を優先）
+        for (let zp = z - 1; zp >= minZoom; zp--) {
+            const diff = z - zp;
+            const scale = 1 << diff;
+            const subX = x & (scale - 1);
+            const subY = y & (scale - 1);
+            let onParentEdge: boolean;
+            switch (d.dir) {
+                case "top": onParentEdge = subY === 0; break;
+                case "bottom": onParentEdge = subY === scale - 1; break;
+                case "left": onParentEdge = subX === 0; break;
+                case "right": onParentEdge = subX === scale - 1; break;
+            }
+            if (!onParentEdge) continue;
+
+            const px = x >> diff;
+            const py = y >> diff;
+            const src = lookupCoarse({ zoom: zp, x: px + d.ndx, y: py + d.ndy });
+            if (!src) continue;
+            if (src.wasAllNaN && !src.unblocked) continue;
+            result.push({
+                elevation: src.elevation,
+                direction: d.dir,
+                subX,
+                subY,
+                scale,
+            });
+            break;
+        }
+    }
+    return result;
+};
+
 /** クロスレベル縫い合わせで参照する粗タイル隣接情報 */
 export interface CoarseEdgeNeighbor {
     /** 粗タイルの標高データ（target と同じ tileSize 解像度） */

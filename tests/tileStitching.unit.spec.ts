@@ -3,10 +3,12 @@ import {
     nanMean,
     stitchTileEdges,
     stitchTileEdgesCrossLevel,
+    selectCoarseEdgeNeighbors,
 } from "../src/terrain/tileStitching";
 import type {
     StitchNeighbors,
     CoarseEdgeNeighbor,
+    CoarseTileSource,
 } from "../src/terrain/tileStitching";
 
 // --- nanMean ---
@@ -433,5 +435,124 @@ describe("stitchTileEdgesCrossLevel", () => {
         // 角は変わらない
         expect(target[0]).toBe(0);
         expect(target[SS - 1]).toBe(0);
+    });
+});
+
+// --- selectCoarseEdgeNeighbors (Issue #290) ---
+
+describe("selectCoarseEdgeNeighbors", () => {
+    const makeElev = (v: number, size = 4): Float32Array => new Float32Array(size * size).fill(v);
+
+    it("同 zoom 隣接が描画中のときは cross-level 候補に含めない", () => {
+        // 全方向の同 zoom 隣接が visible → 結果は空
+        const coord = { zoom: 14, x: 14546, y: 6450 };
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            12,
+            () => true,
+            () => ({ elevation: makeElev(100) }),
+        );
+        expect(result).toEqual([]);
+    });
+
+    it("同 zoom 隣接が hidden（描画されていない）扱いなら粗タイル探索を続行する", () => {
+        // isSameZoomVisible は常に false（hidden 相当）
+        // 親 zoom=13 の上辺（subY===0 の場合）にのみ粗タイルあり
+        const coord = { zoom: 14, x: 14546, y: 6450 }; // subX=0, subY=0 at scale=2 (zoom 13)
+        const coarseElev = makeElev(200);
+        const calls: Array<{ zoom: number; x: number; y: number }> = [];
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            13,
+            () => false,
+            (c) => {
+                calls.push(c);
+                // top 方向のみヒット (zoom=13 の上隣)
+                if (c.zoom === 13 && c.x === 7273 && c.y === 3224) {
+                    return { elevation: coarseElev };
+                }
+                return undefined;
+            },
+        );
+        // 少なくとも top 方向で粗タイルが見つかる
+        const top = result.find((r) => r.direction === "top");
+        expect(top).toBeDefined();
+        expect(top!.elevation).toBe(coarseElev);
+        expect(top!.scale).toBe(2);
+    });
+
+    it("pendingRelease 相当の粗タイルソースもクロスレベル候補として参照できる", () => {
+        // 「active には無いが pending には有る」状況を lookupCoarse 単一フックで表現
+        const coord = { zoom: 14, x: 14546, y: 6450 }; // top 辺で粗タイル(zoom=13)に接する
+        const pendingElev = makeElev(300);
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            13,
+            () => false, // 同 zoom 隣接は描画されていない
+            (c): CoarseTileSource | undefined => {
+                if (c.zoom === 13 && c.x === 7273 && c.y === 3224) {
+                    return { elevation: pendingElev };
+                }
+                return undefined;
+            },
+        );
+        const top = result.find((r) => r.direction === "top");
+        expect(top).toBeDefined();
+        expect(top!.elevation).toBe(pendingElev);
+    });
+
+    it("wasAllNaN && !unblocked の粗タイルは候補から除外される", () => {
+        const coord = { zoom: 14, x: 14546, y: 6450 };
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            13,
+            () => false,
+            () => ({ elevation: makeElev(0), wasAllNaN: true, unblocked: false }),
+        );
+        expect(result).toEqual([]);
+    });
+
+    it("wasAllNaN でも unblocked なら候補に含まれる", () => {
+        const coord = { zoom: 14, x: 14546, y: 6450 };
+        const elev = makeElev(50);
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            13,
+            () => false,
+            (c) => {
+                if (c.zoom === 13 && c.x === 7273 && c.y === 3224) {
+                    return { elevation: elev, wasAllNaN: true, unblocked: true };
+                }
+                return undefined;
+            },
+        );
+        const top = result.find((r) => r.direction === "top");
+        expect(top).toBeDefined();
+        expect(top!.elevation).toBe(elev);
+    });
+
+    it("lookupCoarse が全て undefined なら結果は空", () => {
+        const coord = { zoom: 14, x: 14546, y: 6450 };
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            12,
+            () => false,
+            () => undefined,
+        );
+        expect(result).toEqual([]);
+    });
+
+    it("親辺に位置する方向のみ候補を返す（subX=0, subY=0 は top/left のみ）", () => {
+        // scale=2 で subX=0, subY=0 → top と left が親辺、bottom と right は親内部
+        const coord = { zoom: 14, x: 14546, y: 6450 };
+        const elev = new Float32Array(4 * 4).fill(1);
+        const result = selectCoarseEdgeNeighbors(
+            coord,
+            13,
+            () => false,
+            () => ({ elevation: elev }),
+        );
+        const dirs = result.map((r) => r.direction).sort();
+        expect(dirs).toEqual(["left", "top"]);
     });
 });
