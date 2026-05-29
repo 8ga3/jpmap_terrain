@@ -474,6 +474,8 @@ describe("selectCoarseEdgeNeighbors", () => {
                 return undefined;
             },
         );
+        // hidden 扱いのときも coarse zoom=13 への lookupCoarse が実際に呼ばれている（探索継続の証明）
+        expect(calls).toContainEqual({ zoom: 13, x: 7273, y: 3224 });
         // 少なくとも top 方向で粗タイルが見つかる
         const top = result.find((r) => r.direction === "top");
         expect(top).toBeDefined();
