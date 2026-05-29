@@ -134,6 +134,14 @@ const MAX_BASE_ELEVATION = 4000;
  */
 /** 旧タイルの強制解放までのタイムアウト (ms) */
 const PENDING_RELEASE_TIMEOUT_MS = 5000;
+/**
+ * cache が LRU 退避済みで elevation を取得できない pendingRelease タイル向けの
+ * 共有センチネルバッファ。wasAllNaN=true / unblocked=false と組み合わせて使い、
+ * cross-level / queryLocalElevation の候補除外ゲートを通過させる目的のみに使う。
+ * 実際に標高値として読まれることはないため、全タイルで 1 インスタンスを共有して
+ * 毎回 new Float32Array(256*256) を確保するメモリスパイクを避ける。
+ */
+const EMPTY_NAN_ELEVATION = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
 
 // 旧 applyElevation はインラインで使われていたが、Web Worker への移行に伴い
 // `elevationCompute.ts` の `applyElevationToPositions` に集約された。
@@ -1697,7 +1705,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                             mesh: tile.mesh,
                             tileSize: tile.tileSize,
                             timerId,
-                            elevation: entry?.elevation ?? new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN),
+                            elevation: entry?.elevation ?? EMPTY_NAN_ELEVATION,
                             filled: entry?.filled,
                             wasAllNaN: entry?.wasAllNaN ?? true,
                             unblocked: entry?.unblocked ?? false,
