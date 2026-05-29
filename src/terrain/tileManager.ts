@@ -1357,6 +1357,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     /** 新タイルの隣接タイル（同zoom、アクティブなもの）を再ステッチキューに追加 */
     const restitchNeighbors = (coord: TileCoord): void => {
+        // dispose 後に clearAllPendingRelease → releasePendingTile 経由で呼ばれても
+        // スケジューリングしない（タイマー残留・dispose 後 callback 発火を防ぐ）。
+        if (disposed) return;
         const { zoom: z, x, y } = coord;
         const deltas = [
             [0, -1], [0, 1], [-1, 0], [1, 0],
