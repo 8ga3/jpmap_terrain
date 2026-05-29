@@ -1545,11 +1545,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // 表示メッシュと異なる標高データを返すとアバターが地面に潜る原因になる。
             if (hiddenChildTiles.has(key)) continue;
             if (!activeTiles.has(key) && !pendingRelease.has(key)) continue;
-            const entry = cache.get(key);
-            if (!entry) continue;
+            // cache が LRU 退避済みの pendingRelease タイルは PendingReleaseTile に保持した
+            // elevation/filled をフォールバックとして使う (Issue #290)。
+            const cacheEntry = cache.get(key);
+            const pendingEntry = cacheEntry ? undefined : pendingRelease.get(key);
+            if (!cacheEntry && !pendingEntry) continue;
+            const wasAllNaN = cacheEntry ? cacheEntry.wasAllNaN : pendingEntry!.wasAllNaN;
+            const unblocked = cacheEntry ? cacheEntry.unblocked : pendingEntry!.unblocked;
             // まだ解決できていない all-NaN タイルはスキップ
-            if (entry.wasAllNaN && !entry.unblocked) continue;
-            const data = entry.filled ?? entry.elevation;
+            if (wasAllNaN && !unblocked) continue;
+            const data = cacheEntry
+                ? (cacheEntry.filled ?? cacheEntry.elevation)
+                : (pendingEntry!.filled ?? pendingEntry!.elevation);
             const fx = tileXFloat - tileXInt;
             const fy = tileYFloat - tileYInt;
 
