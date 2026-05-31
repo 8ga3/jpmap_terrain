@@ -167,6 +167,79 @@
       height: 20px;
       background: rgba(255, 255, 255, 0.2);
     }
+
+    /* Center turn announce — フェードインで現れ、消えるときはブラー＋拡大で爆散する (#259) */
+    .turn-announce {
+      position: absolute;
+      top: 44%;
+      left: 50%;
+      pointer-events: none;
+      text-align: center;
+      opacity: 0;
+      visibility: hidden;
+      transform: translate(-50%, -50%) scale(0.7);
+      filter: blur(8px);
+      will-change: opacity, transform, filter;
+    }
+
+    .turn-announce .announce-stage {
+      font-size: clamp(40px, 8vw, 88px);
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      color: #fff;
+      line-height: 1.05;
+      text-shadow:
+        0 0 24px rgba(255, 255, 255, 0.65),
+        0 6px 18px rgba(0, 0, 0, 0.85);
+    }
+
+    .turn-announce .announce-turn {
+      margin-top: 10px;
+      font-size: clamp(24px, 4.5vw, 46px);
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      line-height: 1.1;
+      text-shadow:
+        0 0 18px currentColor,
+        0 4px 12px rgba(0, 0, 0, 0.85);
+    }
+
+    .turn-announce.team-red .announce-turn { color: #ff5b5b; }
+    .turn-announce.team-blue .announce-turn { color: #66a3ff; }
+
+    /* stage 名を持たない（ターン交代時）は stage 行を隠す */
+    .turn-announce.no-stage .announce-stage { display: none; }
+
+    /* フェードイン: 小さく・ぼやけた状態から原寸・くっきりへ */
+    .turn-announce.in {
+      visibility: visible;
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+      filter: blur(0px);
+      transition:
+        opacity 0.45s ease-out,
+        transform 0.45s cubic-bezier(0.18, 0.9, 0.3, 1.35),
+        filter 0.45s ease-out;
+    }
+
+    /* 退場: ブラーしながら爆発するように拡大して消える */
+    .turn-announce.out {
+      visibility: visible;
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(2.7);
+      filter: blur(26px);
+      transition:
+        opacity 0.6s ease-in,
+        transform 0.6s ease-in,
+        filter 0.6s ease-in;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .turn-announce.in,
+      .turn-announce.out {
+        transition-duration: 0.001s;
+      }
+    }
   </style>
 </head>
 <body>
@@ -179,6 +252,12 @@
       <span class="team team-red active" id="turn-indicator-red">RED <span id="score-red">0</span></span>
       <span class="separator">–</span>
       <span class="team team-blue" id="turn-indicator-blue"><span id="score-blue">0</span> BLUE</span>
+    </div>
+
+    <!-- Center turn announce (#259) -->
+    <div class="turn-announce" id="turn-announce">
+      <div class="announce-stage" id="announce-stage">HAKONE</div>
+      <div class="announce-turn" id="announce-turn">RED ATTACK</div>
     </div>
 
     <!-- Controls — bottom center -->

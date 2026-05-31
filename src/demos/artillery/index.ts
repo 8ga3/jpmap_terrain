@@ -44,6 +44,7 @@ import {
 } from "./gameLogic";
 import { createExplosion } from "./explosion";
 import { createArtilleryShadows } from "./shadows";
+import { createAnnounce } from "./announce";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -92,6 +93,10 @@ interface CannonGroup {
     pivot: TransformNode;
     barrel: Mesh;
     base: Mesh;
+    /** 砲身・台座で共有するマテリアル（発光ブリンク制御用 #259）。 */
+    material: StandardMaterial;
+    /** 所属チーム（発光色の決定用）。 */
+    team: Team;
 }
 
 /** 大砲メッシュ（ピボット + 砲身 + 台座）を作成 */
@@ -124,11 +129,13 @@ const createCannonMesh = (
     mat.diffuseColor =
         team === "red" ? new Color3(0.8, 0.2, 0.2) : new Color3(0.2, 0.3, 0.8);
     mat.specularColor = new Color3(0.3, 0.3, 0.3);
+    // 発光ブリンクの初期値（消灯）。発射前の攻撃側のみ render loop でパルスさせる。
+    mat.emissiveColor = new Color3(0, 0, 0);
 
     barrel.material = mat;
     base.material = mat;
 
-    return { pivot, barrel, base };
+    return { pivot, barrel, base, material: mat, team };
 };
 
 const start = async (): Promise<void> => {
@@ -216,6 +223,18 @@ const start = async (): Promise<void> => {
     const scoreBlueEl = document.getElementById("score-blue")!;
     const turnRedEl = document.getElementById("turn-indicator-red")!;
     const turnBlueEl = document.getElementById("turn-indicator-blue")!;
+
+    // --- 中央ターン告知（HAKONE / 攻撃ターン表示） ---
+    const announce = createAnnounce({
+        root: document.getElementById("turn-announce")!,
+        stage: document.getElementById("announce-stage")!,
+        turn: document.getElementById("announce-turn")!,
+    });
+    /** ステージ名（中央告知に表示）。 */
+    const STAGE_NAME = "HAKONE";
+    // 最初の発射までは内部処理（地形ロード・コリジョン構築）の完了待ちがある。
+    // その間、ステージ名と先攻（RED）を中央に表示し続け、準備完了時に爆散させる。
+    announce.show({ stage: STAGE_NAME, team: gameState.turn, hold: null });
 
     // --- 大砲メッシュ配置 ---
     const redCannon = createCannonMesh(scene, "red");
@@ -330,10 +349,12 @@ const start = async (): Promise<void> => {
         setTimeout(tryRun, 500);
     };
 
-    // 地形ロード後に大砲を配置し、地形コリジョンを構築
+    // 地形ロード後に大砲を配置し、地形コリジョンを構築。
+    // 準備完了で中央告知（HAKONE / RED）を爆散させて消す。
     waitTerrainIdleThen(() => {
         placeCannons();
         buildCollider();
+        announce.dismiss();
     });
 
     const updateUI = (): void => {
@@ -398,6 +419,8 @@ const start = async (): Promise<void> => {
         loadSettingsToUI(gameState.turn);
         updateCannonOrientation();
         updateUI();
+        // 交代したことを中央に約1秒告知する（ステージ名なし）。
+        announce.show({ team: gameState.turn, hold: 1000 });
     };
 
     // --- 発射ロジック ---
@@ -453,12 +476,37 @@ const start = async (): Promise<void> => {
         placeCannons();
         buildCollider();
         updateUI();
+        // リスタート時も先攻（RED）を中央に告知する。
+        announce.show({ stage: STAGE_NAME, team: gameState.turn, hold: 1000 });
     });
+
+    // 発射前の攻撃側砲台を発光（エミッシブ）でブリンクさせる。
+    const BLINK_RED = new Color3(1, 0.25, 0.25);
+    const BLINK_BLUE = new Color3(0.3, 0.5, 1);
+    const updateCannonBlink = (now: number): void => {
+        // 0..1 の sin パルス（約 0.55Hz）
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.0035);
+        for (const cannon of [redCannon, blueCannon]) {
+            const isActive = !firing && cannon.team === gameState.turn;
+            const mat = cannon.material;
+            if (isActive) {
+                const base = cannon.team === "red" ? BLINK_RED : BLINK_BLUE;
+                mat.emissiveColor.copyFrom(base).scaleInPlace(pulse);
+            } else if (
+                mat.emissiveColor.r !== 0 ||
+                mat.emissiveColor.g !== 0 ||
+                mat.emissiveColor.b !== 0
+            ) {
+                mat.emissiveColor.set(0, 0, 0);
+            }
+        }
+    };
 
     // --- 命中判定ループ（物理積分は Havok が自動で行う） ---
     scene.onBeforeRenderObservable.add(() => {
         const now = performance.now();
         pool.tick(now);
+        updateCannonBlink(now);
 
         // ストリーミングで増える地形タイルを影の受け手として随時設定する。
         shadows.registerTerrainReceivers();
