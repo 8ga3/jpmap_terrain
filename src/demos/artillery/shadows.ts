@@ -127,6 +127,12 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
     let lastScannedMeshCount = 0;
     const registerTerrainReceivers = (): void => {
         const meshes = scene.meshes;
+        // メッシュが dispose されて配列が縮むとインデックスがずれるため、
+        // 縮小を検知したらスキャン位置をリセットして全走査し直す。
+        // receivers(WeakSet) により登録済みメッシュの再処理は抑止される。
+        if (meshes.length < lastScannedMeshCount) {
+            lastScannedMeshCount = 0;
+        }
         if (meshes.length <= lastScannedMeshCount) return;
         for (let i = lastScannedMeshCount; i < meshes.length; i++) {
             const mesh = meshes[i];
