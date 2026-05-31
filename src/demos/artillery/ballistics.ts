@@ -51,7 +51,8 @@ export const computeLaunchVector = (
  *
  * デフォルメ物理: 重力180、大砲間距離1500を基準に
  * R = v^2 / g (θ=45°) → v = sqrt(R * g) = sqrt(1500 * 180) ≈ 520
- * 50%パワーで射程が大砲間距離に届くよう設定。
+ * 約80%パワー（v≈520）で射程が大砲間距離に届くよう設定。
+ * （50%パワーは v=400、R≈889m で未到達）
  */
 export const MAX_SPEED = 600;
 export const MIN_SPEED = 200;
