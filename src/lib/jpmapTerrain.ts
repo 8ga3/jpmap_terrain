@@ -379,6 +379,11 @@ export class JpmapTerrain {
         return this._controller?.isTerrainIdle() ?? false;
     }
 
+    /** 地形タイルのロード・ステッチが完了した状態かどうかを返す。 */
+    public get isTerrainIdle(): boolean {
+        return this._controller?.isTerrainIdle() ?? false;
+    }
+
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
 
     public get lat(): number {
