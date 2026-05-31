@@ -135,3 +135,48 @@ export const createAnnounce = (els: AnnounceElements): AnnounceController => {
 
     return { show, dismiss, dispose };
 };
+
+export interface HitBannerController {
+    /** HIT! バナーをアニメーション再生する。連続呼び出しでも再発火する。 */
+    flash: () => void;
+    /** アニメーション総時間 (ms)。後続演出の待ち時間に使う。 */
+    readonly durationMs: number;
+    /** 内部タイマーを破棄する。 */
+    dispose: () => void;
+}
+
+/** HIT! バナーのアニメーション総時間 (ms)。CSS の hit-pop と一致させる。 */
+const HIT_ANIM_MS = 1000;
+
+/**
+ * 命中時に表示する HIT! バナーのコントローラを生成する。
+ *
+ * `play` クラスの付け外しで CSS アニメーションを発火させる。
+ */
+export const createHitBanner = (el: HTMLElement): HitBannerController => {
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flash = (): void => {
+        if (hideTimer !== null) {
+            clearTimeout(hideTimer);
+            hideTimer = null;
+        }
+        // クラスを外しリフローを挟んで付け直すことでアニメーションを確実に再発火
+        el.classList.remove("play");
+        void el.offsetWidth;
+        el.classList.add("play");
+        hideTimer = setTimeout(() => {
+            el.classList.remove("play");
+            hideTimer = null;
+        }, HIT_ANIM_MS);
+    };
+
+    const dispose = (): void => {
+        if (hideTimer !== null) {
+            clearTimeout(hideTimer);
+            hideTimer = null;
+        }
+    };
+
+    return { flash, dispose, durationMs: HIT_ANIM_MS };
+};
