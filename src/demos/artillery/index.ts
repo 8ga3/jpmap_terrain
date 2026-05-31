@@ -274,7 +274,7 @@ const start = async (): Promise<void> => {
      */
     const CANNON_DISTANCE = 750; // 中心からの距離 (m)
 
-    /** レイキャストで地形表面の Y 座標を取得する。ヒットなしの場合 -1 を返す */
+    /** レイキャストで地形表面の Y 座標を取得する。ヒットなしの場合 NaN を返す */
     const getTerrainY = (x: number, z: number): number => {
         const pick = castTerrainRay(x, z);
         if (pick?.hit) return pick.pickedPoint!.y;
