@@ -123,11 +123,12 @@ export const createProjectilePool = (
         projectile.aggregate = aggregate;
 
         if (
+            process.env.NODE_ENV !== "production" &&
             typeof window !== "undefined" &&
             (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true
         ) {
             const applied = aggregate.body.getLinearVelocity();
-            console.log(
+            console.debug(
                 `[artillery] SET vel=(${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)}, ${velocity.z.toFixed(1)}) |v|=${velocity.length().toFixed(1)} ` +
                     `→ applied=(${applied.x.toFixed(1)}, ${applied.y.toFixed(1)}, ${applied.z.toFixed(1)}) |v|=${applied.length().toFixed(1)}`,
             );
@@ -138,13 +139,14 @@ export const createProjectilePool = (
 
     const release = (projectile: Projectile): void => {
         if (
+            process.env.NODE_ENV !== "production" &&
             typeof window !== "undefined" &&
             (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true
         ) {
             const dx = projectile.mesh.position.x - projectile.launchPos.x;
             const dz = projectile.mesh.position.z - projectile.launchPos.z;
             const range = Math.sqrt(dx * dx + dz * dz);
-            console.log(
+            console.debug(
                 `[artillery] LAND range=${range.toFixed(0)} ` +
                     `from=(${projectile.launchPos.x.toFixed(0)}, ${projectile.launchPos.z.toFixed(0)}) ` +
                     `to=(${projectile.mesh.position.x.toFixed(0)}, ${projectile.mesh.position.z.toFixed(0)})`,
