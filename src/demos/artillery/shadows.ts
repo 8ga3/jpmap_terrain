@@ -68,9 +68,13 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
     // これにより影領域は環境光のみ（暗い）、非影領域は環境光＋平行光（明るい）
     // となり、明確な輝度差で影が地面に現れる。
     const hemi = scene.getLightByName("sky-light") as HemisphericLight | null;
+    const competingSun = scene.getLightByName("sun-light");
+    // dispose 時にシーン側のライティングを汚染したまま残さないよう、
+    // 変更前の intensity を保存しておき復元する。
+    const prevHemiIntensity = hemi?.intensity ?? null;
+    const prevSunIntensity = competingSun?.intensity ?? null;
     if (hemi) hemi.intensity = 0.4;
     // 影を持たない真下向きの平行光は影をかき消すため無効化する。
-    const competingSun = scene.getLightByName("sun-light");
     if (competingSun) competingSun.intensity = 0;
 
     // 光源方向。ユーザー要望は「真上」だが、完全な鉛直 (0,-1,0) や極端に近い値
@@ -133,6 +137,14 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
         generator.dispose();
         light.dispose();
         casters.clear();
+        // createArtilleryShadows で変更した既存ライトの intensity を復元し、
+        // シーン側のライティングを元に戻す。
+        if (hemi && prevHemiIntensity !== null) {
+            hemi.intensity = prevHemiIntensity;
+        }
+        if (competingSun && prevSunIntensity !== null) {
+            competingSun.intensity = prevSunIntensity;
+        }
     };
 
     return { addCaster, registerTerrainReceivers, dispose };
