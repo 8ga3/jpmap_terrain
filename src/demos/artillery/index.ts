@@ -342,6 +342,7 @@ const start = async (): Promise<void> => {
     };
 
     const isDebug = (): boolean =>
+        process.env.NODE_ENV !== "production" &&
         typeof window !== "undefined" &&
         (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true;
 
@@ -352,7 +353,7 @@ const start = async (): Promise<void> => {
             return y >= 0 ? y : null;
         });
         if (isDebug()) {
-            console.log(
+            console.debug(
                 `[artillery] 地形コリジョン構築: サンプリング成功率 ${(rate * 100).toFixed(0)}%`,
             );
         }
@@ -490,7 +491,7 @@ const start = async (): Promise<void> => {
         pool.acquire(launchPos, velocity);
 
         if (isDebug()) {
-            console.log(
+            console.debug(
                 `[artillery] FIRE team=${gameState.turn} pos=(${launchPos.x.toFixed(1)}, ${launchPos.y.toFixed(1)}, ${launchPos.z.toFixed(1)}) ` +
                     `vel=(${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)}, ${velocity.z.toFixed(1)}) speed=${speed.toFixed(0)}`,
             );
