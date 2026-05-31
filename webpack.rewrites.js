@@ -30,5 +30,7 @@ module.exports = {
         { from: /^\/boids\.html(?:\/?@.*)?\/?$/, to: '/boids.html' },
         { from: /^\/flight(?:\/@.*)?\/?$/, to: '/flight.html' },
         { from: /^\/flight\.html(?:\/?@.*)?\/?$/, to: '/flight.html' },
+        { from: /^\/artillery(?:\/@.*)?\/?$/, to: '/artillery.html' },
+        { from: /^\/artillery\.html(?:\/?@.*)?\/?$/, to: '/artillery.html' },
     ],
 };

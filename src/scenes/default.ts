@@ -227,6 +227,7 @@ export interface DefaultSceneController {
         target:
             | "compass"
             | "zoomButtons"
+            | "locateMe"
             | "scaleBar"
             | "mapToggle"
             | "viewModeButton"
@@ -364,6 +365,12 @@ export interface DefaultSceneInitOptions {
      */
     onCameraInteractionEnd?: () => void;
     /**
+     * ドラッグによるマップのパン（平行移動）操作を有効にするかどうか (Issue #259)。
+     * 既定 `true`。`false` の場合、単純ドラッグでのパンを無効化する
+     * （Ctrl/Cmd+ドラッグの回転・チルト、ホイールズームは有効のまま）。
+     */
+    enablePan?: boolean;
+    /**
      * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
      */
@@ -379,6 +386,8 @@ export class DefaultScene implements CreateSceneClass {
         const azimuthDeg = options?.azimuth ?? 0;
         const tiltDeg = options?.tilt ?? 45;
         const altitude = options?.altitude ?? 2000;
+        // Issue #259: 既定はパン有効。false 指定時は単純ドラッグのパンを無効化する。
+        const panEnabled = options?.enablePan !== false;
 
         const scene = new Scene(engine);
         scene.clearColor.set(0.75, 0.86, 0.95, 1);
@@ -1070,6 +1079,11 @@ export class DefaultScene implements CreateSceneClass {
                 }
             } else {
                 // 単独ドラッグ
+                // Issue #259: パン無効時は dragAnchor/dragMeshMode を立てず、
+                // pointermove のパン処理を発火させない（戦場を中央へ固定する）。
+                if (!panEnabled) {
+                    return;
+                }
                 const rect = canvas.getBoundingClientRect();
                 const sx = e.clientX - rect.left;
                 const sy = e.clientY - rect.top;
@@ -1662,6 +1676,14 @@ export class DefaultScene implements CreateSceneClass {
             (e: WheelEvent) => {
                 if (e.deltaY === 0) return;
                 e.preventDefault();
+                // Issue #259: パン無効時はカーソル位置中心のズーム（target 移動）を禁止し、
+                // 画面中央基準のズームのみ行う。zoomFromCenter は画面中央の地形ピック→
+                // zoomTowardPoint(中央座標) となるため target がほぼ動かず地図移動を防ぐ。
+                if (!panEnabled) {
+                    const factor = computeWheelFactor(e.deltaY < 0);
+                    zoomFromCenter(factor);
+                    return;
+                }
                 const rect = canvas.getBoundingClientRect();
                 const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
                 if (hit && isPickNearTarget(hit)) {
@@ -1713,6 +1735,23 @@ export class DefaultScene implements CreateSceneClass {
         );
 
         canvas.addEventListener("dblclick", (e: MouseEvent) => {
+            // Issue #259: パン無効時はカーソル位置中心ズームを禁止し、ターゲット基準の半径ズームのみ。
+            if (!panEnabled) {
+                const lower = camera.lowerRadiusLimit ?? CAMERA_LOWER_RADIUS;
+                const effectiveLower = Math.max(lower, terrainMinRadius());
+                if (camera.radius <= effectiveLower) return;
+                camera.radius = clamp(
+                    camera.radius * 0.7,
+                    effectiveLower,
+                    camera.upperRadiusLimit ?? CAMERA_UPPER_RADIUS,
+                );
+                retargetAtCameraPosition(
+                    camera.position.x,
+                    camera.position.y,
+                    camera.position.z,
+                );
+                return;
+            }
             const rect = canvas.getBoundingClientRect();
             const hit = pickOrPlane(e.clientX - rect.left, e.clientY - rect.top);
             if (hit && isPickNearTarget(hit)) {

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – Artillery Game</title>
+  <meta name="description" content="ターン制対戦 Artillery Game デモ">
+  <meta name="author" content="8ga3">
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #artillery-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    }
+
+    /* Back link */
+    #artillery-overlay .back-link {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      pointer-events: auto;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      text-decoration: none;
+    }
+
+    #artillery-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    /* Score bar — top center */
+    .score-bar {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .score-bar .team {
+      padding: 3px 10px;
+      border-radius: 4px;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    .score-bar .team-red { color: #ff6b6b; }
+    .score-bar .team-blue { color: #74b9ff; }
+
+    .score-bar .team-red.active {
+      background: rgba(220, 50, 50, 0.35);
+      box-shadow: 0 0 6px rgba(255, 80, 80, 0.5);
+    }
+
+    .score-bar .team-blue.active {
+      background: rgba(50, 100, 220, 0.35);
+      box-shadow: 0 0 6px rgba(100, 150, 255, 0.5);
+    }
+
+    .score-bar .separator {
+      margin: 0 4px;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 12px;
+    }
+
+    /* Controls — bottom center（スケールバーと重ならないよう少し上に配置 #259） */
+    .controls-bar {
+      position: absolute;
+      bottom: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: #fff;
+      font-size: 11px;
+    }
+
+    .controls-bar .ctrl-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .controls-bar label {
+      font-size: 10px;
+      color: #ccc;
+      white-space: nowrap;
+    }
+
+    .controls-bar input[type="range"] {
+      width: 80px;
+      height: 14px;
+    }
+
+    .controls-bar .ctrl-value {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px;
+      min-width: 28px;
+      text-align: right;
+    }
+
+    .controls-bar button {
+      pointer-events: auto;
+      padding: 5px 10px;
+      font-size: 11px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .controls-bar button:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .controls-bar button.fire-btn {
+      background: rgba(220, 50, 50, 0.6);
+      border-color: rgba(255, 100, 100, 0.5);
+      font-weight: bold;
+      font-size: 12px;
+      padding: 5px 14px;
+    }
+
+    .controls-bar button.fire-btn:hover {
+      background: rgba(220, 50, 50, 0.8);
+    }
+
+    .controls-bar .divider {
+      width: 1px;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="artillery-overlay">
+    <a class="back-link" href="/">← Back</a>
+
+    <!-- Score — top center -->
+    <div class="score-bar">
+      <span class="team team-red active" id="turn-indicator-red">RED <span id="score-red">0</span></span>
+      <span class="separator">–</span>
+      <span class="team team-blue" id="turn-indicator-blue"><span id="score-blue">0</span> BLUE</span>
+    </div>
+
+    <!-- Controls — bottom center -->
+    <div class="controls-bar">
+      <div class="ctrl-group">
+        <label for="angle-slider">Angle</label>
+        <input type="range" id="angle-slider" min="5" max="85" value="45" step="1">
+        <span class="ctrl-value" id="angle-value">45°</span>
+      </div>
+      <div class="divider"></div>
+      <div class="ctrl-group">
+        <label for="heading-slider">Heading</label>
+        <input type="range" id="heading-slider" min="-45" max="45" value="0" step="1">
+        <span class="ctrl-value" id="heading-value">0°</span>
+      </div>
+      <div class="divider"></div>
+      <!-- ラベルは UI 省スペースのため "Power" と表記。内部的には powder（火薬量）。 -->
+      <div class="ctrl-group">
+        <label for="powder-slider">Power</label>
+        <input type="range" id="powder-slider" min="1" max="100" value="50" step="1">
+        <span class="ctrl-value" id="powder-value">50%</span>
+      </div>
+      <div class="divider"></div>
+      <button class="fire-btn" id="fire-btn">FIRE</button>
+      <button id="restart-btn">↺</button>
+    </div>
+  </div>
+</body>
+</html>

@@ -412,6 +412,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     type UiTarget =
         | "compass"
         | "zoomButtons"
+        | "locateMe"
         | "scaleBar"
         | "mapToggle"
         | "viewModeButton"
@@ -419,6 +420,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
     const uiVisibility: Record<UiTarget, boolean> = {
         compass: true,
         zoomButtons: true,
+        locateMe: true,
         scaleBar: true,
         mapToggle: true,
         viewModeButton: true,
@@ -614,6 +616,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         __resetUiVisibility: (): void => {
             uiVisibility.compass = true;
             uiVisibility.zoomButtons = true;
+            uiVisibility.locateMe = true;
             uiVisibility.scaleBar = true;
             uiVisibility.mapToggle = true;
             uiVisibility.viewModeButton = true;
@@ -707,6 +710,7 @@ const { JpmapTerrain } = await import("../src/lib/jpmapTerrain");
 type UiTarget =
     | "compass"
     | "zoomButtons"
+    | "locateMe"
     | "scaleBar"
     | "mapToggle"
     | "viewModeButton"
@@ -1151,6 +1155,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(sceneMockModule.__getUiVisibility()).toEqual({
                 compass: true,
                 zoomButtons: true,
+                locateMe: true,
                 scaleBar: true,
                 mapToggle: true,
                 viewModeButton: true,
@@ -1163,6 +1168,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
             viewer.showCompass = false;
             viewer.showZoomButtons = false;
+            viewer.showLocateMe = false;
             viewer.showScaleBar = false;
             viewer.showMapToggle = false;
             viewer.showViewModeButton = false;
@@ -1171,6 +1177,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(sceneMockModule.__getUiVisibility()).toEqual({
                 compass: false,
                 zoomButtons: false,
+                locateMe: false,
                 scaleBar: false,
                 mapToggle: false,
                 viewModeButton: false,

@@ -70,6 +70,7 @@ export class JpmapTerrain {
 
     private _showCompass = true;
     private _showZoomButtons = true;
+    private _showLocateMe = true;
     private _showScaleBar = true;
     private _showMapToggle = true;
     private _showViewModeButton = true;
@@ -86,6 +87,9 @@ export class JpmapTerrain {
 
     /** 太陽 DirectionalLight 影描画 (Issue #39)。既定 OFF */
     private _showSunShadows: boolean;
+
+    /** ドラッグによるマップのパン操作 (Issue #259)。既定 ON */
+    private _enablePan: boolean;
 
     private _canvas: HTMLCanvasElement | null = null;
     private _engine: AbstractEngine | null = null;
@@ -138,6 +142,8 @@ export class JpmapTerrain {
             options.autoSunPosition ?? JPMAP_TERRAIN_DEFAULTS.autoSunPosition;
         this._showSunShadows =
             options.showSunShadows ?? JPMAP_TERRAIN_DEFAULTS.showSunShadows;
+        this._enablePan =
+            options.enablePan ?? JPMAP_TERRAIN_DEFAULTS.enablePan;
     }
 
     /**
@@ -217,6 +223,7 @@ export class JpmapTerrain {
                 onMapTypeChange: (next) => this._handleMapTypeChange(next),
                 viewMode: this._viewMode,
                 onViewModeChange: (next) => this._handleViewModeChange(next),
+                enablePan: this._enablePan,
                 onCameraInteractionEnd: () => {
                     // #225: ドラッグリリース時にスナップショットを無効化し、
                     // 次フレームで新しいベースラインを取得させる。
@@ -234,6 +241,10 @@ export class JpmapTerrain {
                     controller.setUiVisibility(
                         "zoomButtons",
                         this._showZoomButtons,
+                    );
+                    controller.setUiVisibility(
+                        "locateMe",
+                        this._showLocateMe,
                     );
                     controller.setUiVisibility(
                         "scaleBar",
@@ -582,6 +593,14 @@ export class JpmapTerrain {
     public set showZoomButtons(value: boolean) {
         this._showZoomButtons = value;
         this._controller?.setUiVisibility("zoomButtons", value);
+    }
+
+    public get showLocateMe(): boolean {
+        return this._showLocateMe;
+    }
+    public set showLocateMe(value: boolean) {
+        this._showLocateMe = value;
+        this._controller?.setUiVisibility("locateMe", value);
     }
 
     public get showScaleBar(): boolean {

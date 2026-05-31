@@ -19,6 +19,7 @@
 | アバターアニメーション #02（Game Controller） | `/avatar-controller.html` | `src/demos/avatar-controller/index.ts` | キーボード（矢印キー / WASD）・Game Controller・Virtual Joystick で 3D アバターを地形上で操作するデモ。地面クリックでスポーン位置変更、速度スライダー、カメラ方位に応じた入力補正。Model API + Gamepad API + DOM ベース Virtual Joystick (#270) の動作確認 |
 | Boids フロッキング | `/boids.html` | `src/demos/boids/index.ts` | Boids アルゴリズム（分離・整列・結合）による群衆シミュレーション。高尾山山頂付近の矩形リージョン内で複数のアバターが自律的に歩き回る。アバター数スライダー・一時停止・リスタート。Model API + Polygon API (#251) の動作確認 |
 | フライトデモ | `/flight.html` | `src/demos/flight/index.ts` | 飛行機（`plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ。外部カメラ frustum API による地形タイル更新。3D/2D/Follow のカメラモード切替。Model API + 外部カメラ連携 API (#245) の動作確認 |
+| Artillery Game | `/artillery.html` | `src/demos/artillery/index.ts` | ターン制対戦ゲーム（紅 vs 青）。仰角・方位・火力を設定して砲弾を発射し相手に命中させる。Havok 物理で砲弾の重力・地形バウンドを再現 (#259) |
 
 ## 設計方針
 
@@ -290,5 +291,49 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 | 左右ドラッグ | カメラの水平回転（飛行機を中心に周回） |
 | 上下ドラッグ | カメラの高度オフセット変更 |
 | マウスホイール | カメラの距離変更 |
+
+**URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
+
+### artillery (`/artillery.html`)
+
+[Artillery Game](https://en.wikipedia.org/wiki/Artillery_game) に似たターン制対戦ゲームデモ（#259）。紅組 vs 青組で仰角・方位・火力を設定して砲弾を発射し、相手の大砲に命中させるゲーム。Havok 物理エンジンで砲弾の重力・地形バウンドを再現する（大きいスケールでも気持ちよく飛ぶようデフォルメ重力を採用）。
+
+**仕様:**
+
+- 紅組（Red）vs 青組（Blue）の 1 vs 1 ターン制
+- 攻撃ターンで Angle（仰角: 5°–85°）・Heading（方位: ±45°）・Power（火力: 1–100%）を設定し発射
+- 砲弾は Havok 物理で飛行（デフォルメ重力 Y=-150、初速 200–600）
+- 命中時は ParticleSystem による爆発エフェクトを表示
+- 命中した側の大砲はリスポーン（位置リセット）
+- 紅・青それぞれの命中数をスコア表示
+- 命中しなかった砲弾は寿命到達で消滅（メッシュプールで再利用）
+
+**ステージ:**
+
+- 箱根（芦ノ湖周辺）の起伏のある地形（場所は動作テストで最終決定）
+- 紅組は西側、青組は東側に配置
+
+**コントロール（ボトムバー）:**
+
+| UI | 操作 |
+|---|---|
+| スコア表示（トップ中央） | RED / BLUE のスコア。現在ターン側を強調表示 |
+| Angle スライダー | 仰角 5°–85°（既定 45°） |
+| Heading スライダー | 方位 ±45°（既定 0°、正面基準） |
+| Power スライダー | 火力 1–100%（既定 50%） |
+| FIRE ボタン | 砲弾を発射 |
+| ↺ ボタン | ゲームをリセット |
+| 📍 ボタン | カメラをステージ中心に移動 |
+
+**砲弾飛行（Havok 物理）:**
+
+- Havok 物理エンジン（`@babylonjs/havok`）を使用。重力・地形コリジョン・バウンドはすべて Havok が計算
+- 砲弾 = 動的 SPHERE 剛体（質量1、反発0.6、摩擦0.4）。発射時に `setLinearVelocity` で初速を付与
+- 地形コリジョン = `terrainCollider.ts` がプレイエリアの可視地形をサンプリングした不可視の静的メッシュボディ（反発0.5、摩擦0.6）
+  - 地形タイル（`tile-ground-*`）はストリーミングで動的更新されるため、専用のコリジョンメッシュを 1 枚生成してストリーミングから分離
+  - 衝突法線込みで計算されるため斜面でも自然なバウンド
+- デフォルメ重力（Y=-150）で大きい表示スケールでも気持ちよく飛ぶ
+- 物理ボディは発射ごとに生成・破棄（状態リセット漏れを防ぐ）。メッシュはプールで再利用
+- 砲弾寿命: 8 秒後に自動消滅
 
 **URL:** `engine` に加えてカメラ初期位置（`/@lat,lon[,...]` のパス形式）と `?mapType=standard|photo` を受け付ける（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
