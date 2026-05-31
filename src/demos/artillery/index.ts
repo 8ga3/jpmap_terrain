@@ -585,6 +585,14 @@ const start = async (): Promise<void> => {
                 hitBanner.flash();
                 pool.release(proj);
                 gameState = addScore(gameState, gameState.turn);
+                // 被弾側の大砲をリスポーン（仕様: 命中した側の大砲は位置リセット）
+                const hitXOffset =
+                    gameState.turn === "red" ? CANNON_DISTANCE : -CANNON_DISTANCE;
+                const hitCannonState =
+                    gameState.turn === "red"
+                        ? gameState.blueCannon
+                        : gameState.redCannon;
+                placeCannonAtOffset(targetCannon, hitCannonState, hitXOffset);
                 // ターン交代（turnTimer をキャンセルして二重交代を防ぐ）。
                 // HIT! 表示が終わってから ATTACK 告知を出して重なりを防ぐ。
                 endTurn(hitBanner.durationMs);
