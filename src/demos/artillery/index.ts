@@ -87,7 +87,9 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
 /**
  * 大砲構造体: pivot(付け根) を中心に砲身が回転する。
  * pivot.position = 大砲設置位置（地面）
- * pivot.rotation.z = 仰角
+ * pivot.rotation.z = elevSign * (π/2 - 仰角[rad])
+ *   Cylinder の初期方向が +Y 軸のため、仰角 θ での Z 回転量は π/2 - θ。
+ *   紅（東向き）は elevSign=-1、青（西向き）は elevSign=+1。
  */
 interface CannonGroup {
     pivot: TransformNode;
