@@ -300,6 +300,22 @@
         animation-duration: 0.4s;
       }
     }
+
+    /* Input blocker — 告知表示中は地図/ゲームへのマウス操作を全面遮断する (#259) */
+    .input-blocker {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      pointer-events: none;
+      cursor: default;
+      touch-action: none;
+      background: transparent;
+    }
+    .input-blocker.active {
+      display: block;
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body>
@@ -319,6 +335,9 @@
       <div class="announce-stage" id="announce-stage">HAKONE</div>
       <div class="announce-turn" id="announce-turn">RED ATTACK</div>
     </div>
+
+    <!-- Input blocker — 告知表示中は全マウス操作を遮断する (#259) -->
+    <div class="input-blocker" id="input-blocker"></div>
 
     <!-- Center HIT banner (#259) -->
     <div class="hit-banner" id="hit-banner">HIT!</div>
