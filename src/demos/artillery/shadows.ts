@@ -124,13 +124,18 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
     };
 
     const receivers = new WeakSet<AbstractMesh>();
+    let lastScannedMeshCount = 0;
     const registerTerrainReceivers = (): void => {
-        for (const mesh of scene.meshes) {
+        const meshes = scene.meshes;
+        if (meshes.length <= lastScannedMeshCount) return;
+        for (let i = lastScannedMeshCount; i < meshes.length; i++) {
+            const mesh = meshes[i];
             if (!mesh.name.startsWith("tile-ground-")) continue;
             if (receivers.has(mesh)) continue;
             mesh.receiveShadows = true;
             receivers.add(mesh);
         }
+        lastScannedMeshCount = meshes.length;
     };
 
     const dispose = (): void => {
