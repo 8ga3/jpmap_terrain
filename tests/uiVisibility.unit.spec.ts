@@ -72,6 +72,27 @@ describe("createUiVisibilityController (T6)", () => {
         expect(elements.zoomOut.style.display).toBe("flex");
     });
 
+    it("locateMe と zoomButtons は独立に制御でき、表示は両者の AND で合成される", () => {
+        // locateMe を個別に非表示 → zoomIn/zoomOut は影響を受けない
+        setUi("locateMe", false);
+        expect(elements.locateMe.style.display).toBe("none");
+        expect(elements.zoomIn.style.display).toBe("flex");
+        expect(elements.zoomOut.style.display).toBe("flex");
+
+        // この状態で zoomButtons を true に切り替えても、locateMe は再表示されない
+        setUi("zoomButtons", true);
+        expect(elements.locateMe.style.display).toBe("none");
+        expect(elements.zoomIn.style.display).toBe("flex");
+
+        // locateMe を true に戻すと表示される（両方 true）
+        setUi("locateMe", true);
+        expect(elements.locateMe.style.display).toBe("flex");
+
+        // zoomButtons を false にすると locateMe も一緒に隠れる
+        setUi("zoomButtons", false);
+        expect(elements.locateMe.style.display).toBe("none");
+    });
+
     it("scaleBar は bar / label の両方に適用される", () => {
         setUi("scaleBar", false);
         expect(elements.scaleBarBar.style.display).toBe("none");

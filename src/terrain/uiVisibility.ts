@@ -51,18 +51,30 @@ export const createUiVisibilityController = (
     const apply = (key: keyof UiVisibilityElements, visible: boolean): void => {
         elements[key].style.display = visible ? initial[key] : "none";
     };
+    // locateMe ボタンは視覚的にズーム操作群の一部であり、`zoomButtons` を
+    // 非表示にしたときは一緒に隠す必要がある。一方で `showLocateMe` による
+    // 個別制御も保ちたい。そこで両者の状態を別々に保持し、locateMe の実表示は
+    // 「zoomButtons と locateMe の両方が true のときだけ表示」に合成する。
+    // これにより、片方を切り替えてももう片方の意図が壊れない。
+    let zoomButtonsVisible = true;
+    let locateMeVisible = true;
+    const applyLocateMe = (): void => {
+        apply("locateMe", zoomButtonsVisible && locateMeVisible);
+    };
     return (target, visible) => {
         switch (target) {
             case "compass":
                 apply("compass", visible);
                 break;
             case "zoomButtons":
-                apply("locateMe", visible);
+                zoomButtonsVisible = visible;
                 apply("zoomIn", visible);
                 apply("zoomOut", visible);
+                applyLocateMe();
                 break;
             case "locateMe":
-                apply("locateMe", visible);
+                locateMeVisible = visible;
+                applyLocateMe();
                 break;
             case "scaleBar":
                 apply("scaleBarBar", visible);
