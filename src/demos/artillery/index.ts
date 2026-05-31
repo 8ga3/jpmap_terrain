@@ -289,7 +289,7 @@ const start = async (): Promise<void> => {
             const retry = castTerrainRay(x + dx, z + dz);
             if (retry?.hit) return retry.pickedPoint!.y;
         }
-        return -1;
+        return NaN;
     };
 
     const castTerrainRay = (x: number, z: number) => {
@@ -325,7 +325,7 @@ const start = async (): Promise<void> => {
         xOffset: number,
     ): void => {
         const rawY = getTerrainY(xOffset, 0);
-        const terrainY = rawY >= 0 ? rawY : 0;
+        const terrainY = Number.isNaN(rawY) ? 0 : rawY;
         cannon.pivot.position.set(xOffset, terrainY + CANNON_SCALE, 0);
         cannon.base.position.set(xOffset, terrainY, 0);
         setCannonOrientation(
@@ -350,7 +350,7 @@ const start = async (): Promise<void> => {
     const buildCollider = (): void => {
         const rate = collider.rebuild((x, z) => {
             const y = getTerrainY(x, z);
-            return y >= 0 ? y : null;
+            return Number.isNaN(y) ? null : y;
         });
         if (isDebug()) {
             console.debug(
