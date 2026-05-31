@@ -49,7 +49,7 @@ C4Container
 
     Container(portal, "Demo Portal", "HTML / TS", "デモ一覧ページ (/index.html)。<br/>Babylon.js を読み込まない軽量ページ")
 
-    Container(demos, "Demo Apps (11 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / polygon / circle /<br/>distance / plan / model / avatar /<br/>avatar-controller / boids / flight")
+    Container(demos, "Demo Apps (12 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / polygon / circle /<br/>distance / plan / model / avatar /<br/>avatar-controller / boids / flight / artillery")
 
     Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "公開 API 層 (src/lib)。<br/>npm パッケージとして配布可能")
     Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の<br/>内部実装 (src/terrain)")
@@ -172,3 +172,4 @@ C4Component
 | アバター #02       |     ✅      |      ✅      |                |               |             |    ✅    |
 | Boids フロッキング |     ✅      |      ✅      |       ✅       |               |             |          |
 | フライトデモ       |     ✅      |      ✅      |                |               |             |    ✅    |
+| Artillery Game     |     ✅      |              |                |               |             |    ✅    |

@@ -84,6 +84,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "飛行機が上空を大きな半径で高速旋回し、FollowCamera で追跡するデモ。3D / 2D / Follow のカメラモード切替が可能です。",
         href: "flight",
     },
+    {
+        title: "Artillery Game（大砲対戦）",
+        description:
+            "ターン制の対戦ゲーム。角度と火力を調整して砲弾を発射し、相手の大砲に命中させよう。Havok 物理エンジンでバウンド・転がりを再現。",
+        href: "artillery",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";

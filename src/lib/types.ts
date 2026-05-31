@@ -72,6 +72,13 @@ export interface JpmapTerrainOptions {
      * GPU 負荷が大きいため、必要時のみ有効化することを推奨する。
      */
     showSunShadows?: boolean;
+    /**
+     * ドラッグによるマップのパン（平行移動）操作を有効にするかどうか (Issue #259)。
+     * 既定 `true`。`false` を指定すると単純ドラッグでのパンを無効化し、地図中心を
+     * 固定したままにできる（Ctrl/Cmd+ドラッグの回転・チルト、ホイールズームは有効のまま）。
+     * 砲撃ゲームのように戦場を常に中央へ固定したいデモで使用する。
+     */
+    enablePan?: boolean;
 }
 
 /**
@@ -110,6 +117,7 @@ export const JPMAP_TERRAIN_DEFAULTS = {
     dateTime: null as Date | null,
     autoSunPosition: false as boolean,
     showSunShadows: false as boolean,
+    enablePan: true as boolean,
 } as const;
 
 /**

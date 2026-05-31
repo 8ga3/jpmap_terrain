@@ -11,6 +11,7 @@
 export type UiVisibilityTarget =
     | "compass"
     | "zoomButtons"
+    | "locateMe"
     | "scaleBar"
     | "mapToggle"
     | "viewModeButton"
@@ -59,6 +60,9 @@ export const createUiVisibilityController = (
                 apply("locateMe", visible);
                 apply("zoomIn", visible);
                 apply("zoomOut", visible);
+                break;
+            case "locateMe":
+                apply("locateMe", visible);
                 break;
             case "scaleBar":
                 apply("scaleBarBar", visible);

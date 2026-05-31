@@ -98,6 +98,13 @@ const ENTRY_DEFINITIONS = [
         filename: "flight.html",
         title: "jpmap_terrain – フライトデモ",
     },
+    {
+        name: "artillery",
+        entry: "src/demos/artillery/index.ts",
+        template: "public/artillery.html",
+        filename: "artillery.html",
+        title: "jpmap_terrain – Artillery Game",
+    },
 ];
 
 const entry = Object.fromEntries(
