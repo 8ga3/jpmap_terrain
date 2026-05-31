@@ -516,6 +516,8 @@ const start = async (): Promise<void> => {
             clearTimeout(announceTimer);
             announceTimer = null;
         }
+        // 進行中の砲弾を全て回収してから状態を初期化する。
+        for (const p of pool.getActive()) pool.release(p);
         gameState = createInitialState(RED_CANNON_POS, BLUE_CANNON_POS);
         firing = false;
         settings.red = { angle: 45, heading: 0, power: 50 };
