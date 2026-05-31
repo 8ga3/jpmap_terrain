@@ -17,6 +17,7 @@ const PARTICLE_TEXTURE_DATA =
 let sharedTexture: Texture | null = null;
 const getTexture = (scene: Scene): Texture => {
     if (!sharedTexture || sharedTexture.getScene() !== scene) {
+        sharedTexture?.dispose();
         sharedTexture = new Texture(PARTICLE_TEXTURE_DATA, scene);
     }
     return sharedTexture;
