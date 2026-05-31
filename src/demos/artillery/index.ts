@@ -605,4 +605,6 @@ const start = async (): Promise<void> => {
     updateUI();
 };
 
-start();
+start().catch((err: unknown) => {
+    console.error("[artillery-demo] Failed to start:", err);
+});
