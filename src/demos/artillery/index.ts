@@ -44,7 +44,7 @@ import {
 } from "./gameLogic";
 import { createExplosion } from "./explosion";
 import { createArtilleryShadows } from "./shadows";
-import { createAnnounce } from "./announce";
+import { createAnnounce, createHitBanner } from "./announce";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -236,6 +236,9 @@ const start = async (): Promise<void> => {
     // その間、ステージ名と先攻（RED）を中央に表示し続け、準備完了時に爆散させる。
     announce.show({ stage: STAGE_NAME, team: gameState.turn, hold: null });
 
+    // 命中時に表示する HIT! バナー
+    const hitBanner = createHitBanner(document.getElementById("hit-banner")!);
+
     // --- 大砲メッシュ配置 ---
     const redCannon = createCannonMesh(scene, "red");
     const blueCannon = createCannonMesh(scene, "blue");
@@ -408,8 +411,12 @@ const start = async (): Promise<void> => {
         powderValue.textContent = `${powderSlider.value}%`;
     });
 
-    /** ターンを終了して相手に交代する（1ショットにつき1回だけ実行） */
-    const endTurn = (): void => {
+    /**
+     * ターンを終了して相手に交代する（1ショットにつき1回だけ実行）。
+     * @param announceDelayMs 交代告知の表示を遅らせる時間 (ms)。命中時に HIT! 表示と
+     *   重ならないよう、HIT! アニメ終了後に告知する用途で使う。
+     */
+    const endTurn = (announceDelayMs = 0): void => {
         if (turnTimer !== null) {
             clearTimeout(turnTimer);
             turnTimer = null;
@@ -420,7 +427,13 @@ const start = async (): Promise<void> => {
         updateCannonOrientation();
         updateUI();
         // 交代したことを中央に約1秒告知する（ステージ名なし）。
-        announce.show({ team: gameState.turn, hold: 1000 });
+        // 命中時は HIT! 表示と重ならないよう、その分だけ遅延させて順番に出す。
+        const newTurn = gameState.turn;
+        if (announceDelayMs > 0) {
+            setTimeout(() => announce.show({ team: newTurn, hold: 1000 }), announceDelayMs);
+        } else {
+            announce.show({ team: newTurn, hold: 1000 });
+        }
     };
 
     // --- 発射ロジック ---
@@ -530,10 +543,12 @@ const start = async (): Promise<void> => {
             ) {
                 // 命中！
                 createExplosion(scene, pos.clone());
+                hitBanner.flash();
                 pool.release(proj);
                 gameState = addScore(gameState, gameState.turn);
-                // ターン交代（turnTimer をキャンセルして二重交代を防ぐ）
-                endTurn();
+                // ターン交代（turnTimer をキャンセルして二重交代を防ぐ）。
+                // HIT! 表示が終わってから ATTACK 告知を出して重なりを防ぐ。
+                endTurn(hitBanner.durationMs);
                 break;
             }
         }
