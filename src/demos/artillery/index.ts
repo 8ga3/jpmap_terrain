@@ -164,6 +164,21 @@ const start = async (): Promise<void> => {
     // Issue #259: 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
     viewer.showLocateMe = false;
 
+    // Issue #259: FIRE/Restart ボタン押下後にフォーカスがボタンへ残ると、
+    // 以降のキーボード操作（カメラ操作等）がボタンに奪われる。
+    // ボタンのフォーカスを外し、マップ canvas へフォーカスを移すためのヘルパー。
+    const mapCanvas = mount.querySelector("canvas");
+    if (mapCanvas && !mapCanvas.hasAttribute("tabindex")) {
+        // canvas は既定でフォーカス不可なので、プログラム的フォーカス用に tabindex を付与。
+        mapCanvas.tabIndex = -1;
+    }
+    const focusMap = (): void => {
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+        }
+        mapCanvas?.focus({ preventScroll: true });
+    };
+
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
         // 開発時(localhost)は砲弾の軌道デバッグログを自動で有効化する。
@@ -198,6 +213,8 @@ const start = async (): Promise<void> => {
     let firing = false;
     /** ターン切替タイマー（命中時にキャンセルするため保持） */
     let turnTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 命中時にHIT!表示後へ遅延させる交代告知タイマー（リスタート等でキャンセルするため保持） */
+    let announceTimer: ReturnType<typeof setTimeout> | null = null;
 
     /** チームごとの操作値（赤・青で独立） */
     interface ControlSettings {
@@ -229,6 +246,7 @@ const start = async (): Promise<void> => {
         root: document.getElementById("turn-announce")!,
         stage: document.getElementById("announce-stage")!,
         turn: document.getElementById("announce-turn")!,
+        blocker: document.getElementById("input-blocker")!,
     });
     /** ステージ名（中央告知に表示）。 */
     const STAGE_NAME = "HAKONE";
@@ -421,6 +439,11 @@ const start = async (): Promise<void> => {
             clearTimeout(turnTimer);
             turnTimer = null;
         }
+        // 前ターンの遅延告知が残っていればキャンセルする。
+        if (announceTimer !== null) {
+            clearTimeout(announceTimer);
+            announceTimer = null;
+        }
         gameState = nextTurn(gameState);
         firing = false;
         loadSettingsToUI(gameState.turn);
@@ -430,7 +453,10 @@ const start = async (): Promise<void> => {
         // 命中時は HIT! 表示と重ならないよう、その分だけ遅延させて順番に出す。
         const newTurn = gameState.turn;
         if (announceDelayMs > 0) {
-            setTimeout(() => announce.show({ team: newTurn, hold: 1000 }), announceDelayMs);
+            announceTimer = setTimeout(() => {
+                announceTimer = null;
+                announce.show({ team: newTurn, hold: 1000 });
+            }, announceDelayMs);
         } else {
             announce.show({ team: newTurn, hold: 1000 });
         }
@@ -474,12 +500,21 @@ const start = async (): Promise<void> => {
         turnTimer = setTimeout(endTurn, PROJECTILE_LIFETIME_SEC * 1000 + 500);
     };
 
-    fireBtn.addEventListener("click", fire);
+    fireBtn.addEventListener("click", () => {
+        fire();
+        // 発射後はフォーカスをマップへ戻し、ボタンに残らないようにする。
+        focusMap();
+    });
 
     restartBtn.addEventListener("click", () => {
         if (turnTimer !== null) {
             clearTimeout(turnTimer);
             turnTimer = null;
+        }
+        // 命中後の遅延告知が残っていればキャンセルし、誤チーム表示を防ぐ。
+        if (announceTimer !== null) {
+            clearTimeout(announceTimer);
+            announceTimer = null;
         }
         gameState = createInitialState(RED_CANNON_POS, BLUE_CANNON_POS);
         firing = false;
@@ -491,6 +526,8 @@ const start = async (): Promise<void> => {
         updateUI();
         // リスタート時も先攻（RED）を中央に告知する。
         announce.show({ stage: STAGE_NAME, team: gameState.turn, hold: 1000 });
+        // 押下後はフォーカスをマップへ戻す。
+        focusMap();
     });
 
     // 発射前の攻撃側砲台を発光（エミッシブ）でブリンクさせる。

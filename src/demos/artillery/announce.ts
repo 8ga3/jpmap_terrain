@@ -45,6 +45,11 @@ export interface AnnounceElements {
     stage: HTMLElement;
     /** ターン要素 (.announce-turn)。 */
     turn: HTMLElement;
+    /**
+     * 入力遮断オーバーレイ (.input-blocker)。指定すると、告知の表示中（登場〜退場アニメ
+     * 完了まで）`active` クラスを付与してマウス操作を全面的に遮断する。
+     */
+    blocker?: HTMLElement;
 }
 
 /** `hold: null` 表示時に保証する最低表示時間 (ms)。 */
@@ -56,13 +61,20 @@ const MIN_VISIBLE_MS = 600;
  * DOM 要素を受け取り、クラス付け替えとタイマーで登場・退場を制御する。
  */
 export const createAnnounce = (els: AnnounceElements): AnnounceController => {
-    const { root, stage, turn } = els;
+    const { root, stage, turn, blocker } = els;
 
     let outTimer: ReturnType<typeof setTimeout> | null = null;
     let resetTimer: ReturnType<typeof setTimeout> | null = null;
     /** `hold: null` 表示の自動退場待ち（最低表示時間経過後に dismiss する場合）用。 */
     let pendingDismiss = false;
     let shownAt = 0;
+
+    const enableBlocker = (): void => {
+        blocker?.classList.add("active");
+    };
+    const disableBlocker = (): void => {
+        blocker?.classList.remove("active");
+    };
 
     const clearTimers = (): void => {
         if (outTimer !== null) {
@@ -83,12 +95,16 @@ export const createAnnounce = (els: AnnounceElements): AnnounceController => {
         resetTimer = setTimeout(() => {
             root.classList.remove("out");
             resetTimer = null;
+            // 退場アニメ完了で入力遮断を解除する。
+            disableBlocker();
         }, OUT_MS);
     };
 
     const show = (opts: ShowOptions): void => {
         clearTimers();
         pendingDismiss = false;
+        // 表示中は入力を遮断する。
+        enableBlocker();
 
         // テキスト・チーム色・stage 有無を反映
         turn.textContent = `${opts.team.toUpperCase()} ATTACK`;
@@ -131,6 +147,7 @@ export const createAnnounce = (els: AnnounceElements): AnnounceController => {
 
     const dispose = (): void => {
         clearTimers();
+        disableBlocker();
     };
 
     return { show, dismiss, dispose };
