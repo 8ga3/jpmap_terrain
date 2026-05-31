@@ -50,7 +50,11 @@ export interface ProjectilePool {
     dispose: () => void;
 }
 
-export const createProjectilePool = (scene: Scene): ProjectilePool => {
+export const createProjectilePool = (
+    scene: Scene,
+    /** 砲弾メッシュ生成時のコールバック（影のキャスター登録などに使う） */
+    onMeshCreated?: (mesh: Mesh) => void,
+): ProjectilePool => {
     const pool: Projectile[] = [];
     const material = new StandardMaterial("projectile-mat", scene);
     material.diffuseColor = new Color3(0.2, 0.2, 0.2);
@@ -66,6 +70,7 @@ export const createProjectilePool = (scene: Scene): ProjectilePool => {
         );
         mesh.material = material;
         mesh.setEnabled(false);
+        onMeshCreated?.(mesh);
 
         const projectile: Projectile = {
             mesh,

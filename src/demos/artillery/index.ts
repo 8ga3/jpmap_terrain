@@ -43,6 +43,7 @@ import {
     type CannonState,
 } from "./gameLogic";
 import { createExplosion } from "./explosion";
+import { createArtilleryShadows } from "./shadows";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -174,8 +175,13 @@ const start = async (): Promise<void> => {
     // --- Havok 物理エンジン初期化（砲弾の生成より前に必須） ---
     await initPhysics(scene);
 
-    // --- 砲弾プール ---
-    const pool: ProjectilePool = createProjectilePool(scene);
+    // --- 影（砲台・砲弾 → 地形）: 真上からの平行光源 ---
+    const shadows = createArtilleryShadows(scene);
+
+    // --- 砲弾プール（生成時に影のキャスターとして登録） ---
+    const pool: ProjectilePool = createProjectilePool(scene, (mesh) =>
+        shadows.addCaster(mesh),
+    );
 
     // --- 地形コリジョン（不可視の静的メッシュ） ---
     const collider: TerrainCollider = createTerrainCollider(scene);
@@ -214,6 +220,12 @@ const start = async (): Promise<void> => {
     // --- 大砲メッシュ配置 ---
     const redCannon = createCannonMesh(scene, "red");
     const blueCannon = createCannonMesh(scene, "blue");
+
+    // 砲台メッシュを影のキャスターとして登録する。
+    for (const cannon of [redCannon, blueCannon]) {
+        shadows.addCaster(cannon.barrel);
+        shadows.addCaster(cannon.base);
+    }
 
     /**
      * 大砲を相対位置に配置する。
@@ -447,6 +459,9 @@ const start = async (): Promise<void> => {
     scene.onBeforeRenderObservable.add(() => {
         const now = performance.now();
         pool.tick(now);
+
+        // ストリーミングで増える地形タイルを影の受け手として随時設定する。
+        shadows.registerTerrainReceivers();
 
         const activeProjectiles = pool.getActive();
         for (const proj of activeProjectiles) {
