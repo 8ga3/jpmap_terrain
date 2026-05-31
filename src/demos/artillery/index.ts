@@ -359,13 +359,19 @@ const start = async (): Promise<void> => {
         }
     };
 
-    /** 地形ロード完了 (idle) を待ってから fn を実行する */
+    /** 地形ロード完了 (idle) を待ってから fn を実行する。タイムアウト時はベストエフォートで続行する */
     const waitTerrainIdleThen = (fn: () => void): void => {
+        const POLL_INTERVAL_MS = 300;
+        const TIMEOUT_MS = 30_000;
+        const startTime = performance.now();
         const tryRun = (): void => {
-            if (viewer.__debugTerrainIdle) {
+            if (viewer.isTerrainIdle) {
+                fn();
+            } else if (performance.now() - startTime >= TIMEOUT_MS) {
+                console.warn("[artillery] 地形ロードのタイムアウト: ベストエフォートで続行します");
                 fn();
             } else {
-                setTimeout(tryRun, 300);
+                setTimeout(tryRun, POLL_INTERVAL_MS);
             }
         };
         setTimeout(tryRun, 500);
