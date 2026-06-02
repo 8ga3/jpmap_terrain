@@ -37,6 +37,10 @@ version: 0.2
 ## アセットモック
 - 画像・3Dモデル等のアセットは `__mocks__/assetFileMock.js` で自動モックされる
 
+# 目視確認ゲート（3DCG）
+- Babylon.js の描画・地形生成に影響する変更では、`npm run test:visuals`（Visual Regression Test）を実行する。
+- 自動テストだけでは妥当性を担保できないため、最終判断としてユーザーの**目視確認（HITL承認）**を必須とする。承認が得られるまで実装完了としない。
+
 # 出力フォーマット
 - 追加テスト一覧（unit/integration/e2e）
 - 狙い（1行）
