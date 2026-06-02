@@ -7,6 +7,7 @@ AIエージェントと開発者が、このリポジトリで迷わず実装・
 - プロジェクト全体概要: [README.md](README.md)
 - 機能ドキュメント入口: [spec/README.md](spec/README.md)
 - 開発フロー（Issue → ブランチ → PR → マージ）の詳細: [spec/development.md](spec/development.md)
+- マルチエージェント運用フロー（ツール非依存の手順書）: [.github/agents/workflow.md](.github/agents/workflow.md)（各役割の定義は [.github/agents/](.github/agents/) 配下）
 
 ## 概要
 
@@ -50,7 +51,11 @@ npm run test:unit
 
 - Copilot などの AI エージェントがレビュー結果を出力する際は、日本語で記述すること。
 - レビューコメントは、本ファイルの Coding Rules に記載したチェック観点に沿って、日本語で簡潔かつ具体的に記録すること。
-- .github/copilot-instructions.md は英語行を正本とし、日本語行は補足として同義を維持すること。
+
+### 正本とドリフト防止
+
+- ルールの実体は本ファイル（AGENTS.md）を**単一の正本（single source of truth）**とする。
+- 各ツールの入口ファイル（[.github/copilot-instructions.md](.github/copilot-instructions.md) / [CLAUDE.md](CLAUDE.md) / [.claude/skills/](.claude/skills/) 配下）はルールを複製せず、本ファイルおよび [.github/agents/](.github/agents/) を参照すること。これにより Copilot CLI と Claude Code の運用が一致する。
 
 ### レビュー時チェック観点
 

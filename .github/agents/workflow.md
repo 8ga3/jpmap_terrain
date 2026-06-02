@@ -10,10 +10,16 @@ version: 0.1
 5) Reviewer
 6) Security（重要変更なら必須）
 
+# 実行形態（重要）
+- 本プロジェクトは 3DCG（Babylon.js）を扱い、描画・地形生成の結果は**人間の目視確認が必須**である。
+- そのため各役割は**自律的な並列サブエージェントには分割しない**。Orchestrator が単一コンテキストで役割を切り替えながら進行する（Copilot CLI / Claude Code 共通）。
+- 描画に影響する変更では Tester 工程に目視確認ゲートを設ける（[40_tester.md](40_tester.md) 参照）。
+
 # ルーティング規則
 - 仕様が曖昧：Plannerで確認質問→確定後に進む
 - 新規API/DB変更：Architectを必ず挟む
 - 重要フロー変更：Testerでe2e優先
+- 3DCG描画変更：Testerで `npm run test:visuals` 実行後、ユーザーの**目視確認（HITL）**を必須ゲートとする
 - 外部連携/権限/機密：Securityを必ず挟む
 - HITL条件：承認待ちで停止
 
