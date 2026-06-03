@@ -17,8 +17,8 @@ const PAGES_DIR = "public";
  * 多エントリ構成 (Issue #147 / #298)。
  * - portal は `/`（public/index.html）として配信する。
  * - その他のデモは `<name>.html` として配信する。
- * 各 HTML は `<script type="module" src="../src/demos/<name>/index.ts">` を読み込む
- *   （`root` が `public/` のため src への相対パスで参照する）。
+ * 各 HTML は `<script type="module" src="/src/demos/<name>/index.ts">` を読み込む
+ *   （`root` が `public/` のため、絶対パス `/src` は `resolve.alias` で実 src へ解決する）。
  */
 const HTML_ENTRIES = [
     "index", // portal
