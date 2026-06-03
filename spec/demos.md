@@ -24,8 +24,8 @@
 ## 設計方針
 
 - **公開ライブラリ層 (`src/lib/**`) は変更しない**。デモ層 (`src/demos/**`) は `JpmapTerrain` の公開 API 経由で機能を組み立てる。
-- 各デモは独立した webpack エントリ。`webpack.common.js` の `ENTRY_DEFINITIONS` に追加すれば自動で HTML が生成される。
-- デモ間で共通する Babylon.js 部分は `splitChunks` の `babylonBundle` / `webgpuShaders` / `webglShaders` 等に分割され、複数デモで共有される。
+- 各デモは独立した Vite エントリ。`public/<name>.html` を追加し、`vite.config.ts` の `HTML_ENTRIES` に登録すればビルド対象になる（エントリ HTML は `root` = `public/` に集約）。
+- デモ間で共通する Babylon.js 部分は `manualChunks` の `babylonBundle` / `webgpu-shaders` / `webgl-shaders` 等に分割され、複数デモで共有される。
 - ポータルは Babylon.js を読み込まない軽量ページ。バンドルサイズ最小化のため `JpmapTerrain` を import しない。
 
 ## URL 規約
@@ -143,17 +143,12 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
    - DOM のマウントポイント `#root` を取得。
    - 必要なら `JpmapTerrain.create(mount, opts)` を呼び出す。
    - `process.env.NODE_ENV !== "production"` のときは `window.scene` / `window.viewer` を露出する（Playwright 互換）。
-2. `public/<name>.html` を新規作成（`#root` 要素を含む）。
-3. `webpack.common.js` の `ENTRY_DEFINITIONS` に追記する：
-   ```js
-   {
-     name: "<name>",
-     entry: "src/demos/<name>/index.ts",
-     template: "public/<name>.html",
-     filename: "<name>.html",
-     title: "jpmap_terrain – <表示名>",
-   }
-   ```
+2. `public/<name>.html` を新規作成（`#root` 要素と
+   `<script type="module" src="/src/demos/<name>/index.ts"></script>` を含む）。
+   - エントリ HTML は Vite の `root`（`public/`）に集約している。
+3. `vite.config.ts` の `HTML_ENTRIES` に `"<name>"` を追記する。
+   - デモ識別子付きパス（`/<name>/@...`）の SPA fallback が必要な場合は、
+     `vite.rewrites.ts` の `DEMO_NAMES` にも追記する。
 4. `src/demos/portal/index.ts` の `DEMO_LIST` に項目を追加する。
 5. `npm run build:dev` で `dist/<name>.html` が生成されることを確認。
 6. ユニットテストを `tests/<name>.unit.spec.ts` に追加する（純粋関数を分離して書きやすくする）。
@@ -162,7 +157,7 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 ## 互換性メモ
 
 - 既存の VR スナップショット（`tests/validation.spec.ts-snapshots/`）は viewer の URL 変更（`/?scene=default` → `/viewer.html?scene=default`）後も同一の描画結果のため流用可能。
-- `splitChunks.cacheGroups` は変更していないため、バンドル分割の方針は従来どおり。
+- `manualChunks`（`vite.config.ts`）のバンドル分割方針は webpack 時代の `splitChunks.cacheGroups` を踏襲している。
 
 ### avatar (`/avatar.html`)
 
