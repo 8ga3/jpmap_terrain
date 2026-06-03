@@ -179,10 +179,10 @@ npm start
 │  ├─ terrain/           # 地形・UI 実装
 │  ├─ createScene.ts     # シーン生成インターフェース
 │  └─ scenes/default.ts  # デフォルトシーン
-├─ public/               # HtmlWebpackPlugin 用テンプレート（portal/viewer/timelapse）
+├─ public/               # Vite のエントリ HTML（root。index=portal / viewer / timelapse ...）
 ├─ tests/                # Playwright の Visual Regression Test と Unit テスト
 ├─ spec/                 # 仕様・開発フロー文書（demos.md を含む）
-└─ webpack*.js           # ビルド設定
+└─ vite.config.ts        # ビルド設定（vite.tests.config.ts / vite.rewrites.ts）
 ```
 
 ### 開発コマンド

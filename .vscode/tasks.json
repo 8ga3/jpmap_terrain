@@ -22,8 +22,8 @@
 				},
 				"background": {
 					"activeOnStart": true,
-                    "beginsPattern": "^asset index.html*$",
-                    "endsPattern": "^.* compiled successfully .*$"
+                    "beginsPattern": "^.*VITE v.*$",
+                    "endsPattern": "^.*(ready in|Local:).*$"
                 }
             }
         },

@@ -51,8 +51,13 @@ export const createElevationWorkerPool = (
 
     const createWorker = (): Worker | null => {
         try {
+            // `{ type: "module" }` は Vite の推奨パターン。dev では ESM のまま
+            // ワーカーを起動し（未指定だと classic worker 扱いで import 文が
+            // "Cannot use import statement outside a module" となる）、build では
+            // ESM ワーカーとしてバンドルされる。
             const w = new Worker(
                 new URL("./elevationWorker.ts", import.meta.url),
+                { type: "module" },
             );
             w.onmessage = (e: MessageEvent<ElevationComputeResponse>) => {
                 const task = pending.get(e.data.id);
