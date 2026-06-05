@@ -652,20 +652,6 @@ const start = async (): Promise<void> => {
         for (const t of tiles) loadTile(t);
         buildReadyTiles(tiles);
 
-        // orbit 中心を地形表面へ追従させる（中心を海面 alt=0 のままにすると、富士山等の
-        // 高標高地でズームインした際にカメラが地形下へ潜り、地表が背面カリングで消える）。
-        // 標高が読めたら中心高度を地形標高へイージングで寄せる（初回ロード時の段差を緩和）。
-        const elevAtCenter = terrainElevAt(camGeo.latDeg, camGeo.lonDeg);
-        if (elevAtCenter !== null) {
-            centerElevation = elevAtCenter; // 次 sync の SSE 基準標高に使う
-            EcefFromLatLonAltToRef(
-                { lat: camGeo.latDeg * DEG2RAD, lon: camGeo.lonDeg * DEG2RAD, alt: elevAtCenter },
-                Wgs84Ellipsoid,
-                seatCenter,
-            );
-            camera.center = Vector3.Lerp(camera.center, seatCenter, 0.35);
-        }
-
         // 統計表示。
         let minZ = Infinity;
         let maxZ = -Infinity;
@@ -696,10 +682,28 @@ const start = async (): Promise<void> => {
     };
 
     // 初回 + フレーム間引きで LOD を再評価する。
+    // orbit 中心を地形表面へ追従させる（高標高地でカメラが地形下へ潜るのを防ぐ）。
+    // 毎フレーム実行する。syncTiles（15 フレーム毎）でのみ補正すると、zoom-to-cursor が
+    // 毎フレーム中心を水平移動させる一方で高度補正が間引かれ、斜面でガタつくため。
+    const seatCenterOnTerrain = (): void => {
+        const g = ecefToGeodetic(camera.center);
+        const elev = terrainElevAt(g.latDeg, g.lonDeg);
+        if (elev === null) return;
+        centerElevation = elev; // SSE 距離評価の基準標高
+        EcefFromLatLonAltToRef(
+            { lat: g.latDeg * DEG2RAD, lon: g.lonDeg * DEG2RAD, alt: elev },
+            Wgs84Ellipsoid,
+            seatCenter,
+        );
+        // 同 lat/lon のまま高度だけ地形標高へ。残差を lerp で滑らかに（LOD 切替時の段差緩和）。
+        camera.center = Vector3.Lerp(camera.center, seatCenter, 0.5);
+    };
+
     syncTiles();
     let frame = 0;
     scene.onBeforeRenderObservable.add(() => {
         applyPan();
+        seatCenterOnTerrain();
         frame++;
         if (frame % DEFAULTS.syncIntervalFrames === 0) syncTiles();
     });
