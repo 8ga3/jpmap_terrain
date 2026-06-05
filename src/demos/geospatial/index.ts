@@ -203,7 +203,14 @@ const start = async (): Promise<void> => {
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     canvas.style.display = "block";
+    // キーボード入力（WASD/矢印）は scene.onKeyboardObservable 経由で、canvas が
+    // フォーカスを持つ必要がある。tabIndex を付与し、ポインタ操作時にフォーカスを当てる
+    // （pointer/wheel はフォーカス不要だがキーボードは必須）。
+    canvas.tabIndex = 0;
+    canvas.style.outline = "none";
+    canvas.addEventListener("pointerdown", () => canvas.focus());
     mount.appendChild(canvas);
+    canvas.focus();
 
     const engine = await createBabylonEngine(canvas, resolveEngine(search) ?? "webgpu");
 
@@ -233,6 +240,66 @@ const start = async (): Promise<void> => {
 
     // GeospatialCamera はコンストラクタで既定入力（pointers/wheel/keyboard）を備える。
     camera.attachControl(true);
+
+    // ---- WASD パン（picking に依存しない独自実装） ----
+    // 既定の pan（キーボード/左ドラッグ）は scene.pick でグローブをヒットしてドラッグ平面を
+    // 作るが、useFloatingOrigin 下ではレンダリング座標と真の ECEF メッシュ位置がずれ、
+    // ピックが外れて pan が機能しない。floating origin（#275 の精度要件）を維持するため、
+    // camera.center を地理的接線（北/東）方向へ高度比例で移動させる独自パンを実装する。
+    const pressed = new Set<string>();
+    const PAN_KEYS = new Set(["w", "a", "s", "d"]);
+    const onKeyDown = (e: KeyboardEvent): void => {
+        const k = e.key.toLowerCase();
+        if (PAN_KEYS.has(k)) {
+            pressed.add(k);
+            e.preventDefault();
+        }
+    };
+    const onKeyUp = (e: KeyboardEvent): void => {
+        pressed.delete(e.key.toLowerCase());
+    };
+    canvas.addEventListener("keydown", onKeyDown);
+    canvas.addEventListener("keyup", onKeyUp);
+
+    /** 1 秒あたりのパン距離 = radius（高度相当）× この係数。高度に比例した自然な速度。 */
+    const PAN_RATE_PER_SEC = 0.6;
+    const POLE = new Vector3(0, 0, 1); // ECEF 北極軸（EcefFromLatLonAltToRef 規約）
+    const eastV = new Vector3();
+    const northV = new Vector3();
+    const tangent = new Vector3();
+
+    const applyPan = (): void => {
+        if (pressed.size === 0) return;
+        const c = camera.center;
+        const r = c.length();
+        if (r < 1) return;
+        const upV = c.scale(1 / r);
+        // 地心 up と北極軸から東/北の接線基底を作る。
+        Vector3.CrossToRef(POLE, upV, eastV);
+        if (eastV.lengthSquared() < 1e-12) eastV.copyFromFloats(1, 0, 0);
+        eastV.normalize();
+        Vector3.CrossToRef(upV, eastV, northV); // 北
+        northV.normalize();
+
+        let fwd = 0;
+        let side = 0;
+        if (pressed.has("w")) fwd += 1;
+        if (pressed.has("s")) fwd -= 1;
+        if (pressed.has("d")) side += 1;
+        if (pressed.has("a")) side -= 1;
+        if (fwd === 0 && side === 0) return;
+
+        const dtSec = Math.min(0.05, engine.getDeltaTime() / 1000);
+        const step = camera.radius * PAN_RATE_PER_SEC * dtSec;
+        tangent.copyFromFloats(0, 0, 0);
+        tangent.addInPlace(northV.scale(fwd)).addInPlace(eastV.scale(side));
+        tangent.normalize().scaleInPlace(step);
+
+        // center を接線方向へ移動し、地心距離 r を保つように再正規化して球面上に戻す。
+        const moved = c.add(tangent);
+        moved.normalize().scaleInPlace(r);
+        camera.center = moved;
+    };
 
     // ライト: 地表の up（地心法線）を基準に環境光 + 斜め方向の指向性ライト。
     const up = centerEcef.clone().normalize();
@@ -343,6 +410,7 @@ const start = async (): Promise<void> => {
     syncTiles();
     let frame = 0;
     scene.onBeforeRenderObservable.add(() => {
+        applyPan();
         frame++;
         if (frame % DEFAULTS.syncIntervalFrames === 0) syncTiles();
     });
