@@ -46,6 +46,7 @@ import {
     type MapType,
 } from "../../terrain/gsiTile";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
+import { ecefToGeodetic, uiToYawPitch, yawPitchToUi, toAtPath } from "./geoMapping";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -59,6 +60,10 @@ const DEFAULTS = {
     maxZoom: 16,
     /** カメラ中心（地表）からの距離 [m]。 */
     radius: 60000,
+    /** 方位[deg]（0=北, +=東回り）→ yaw。 */
+    azimuth: 0,
+    /** チルト[deg]（0=直下, 90=水平）→ pitch。 */
+    tilt: 60,
     /** SSE 採用しきい値 [px]。 */
     sseThreshold: 256 * 2.5,
     /** 同時保持タイル数の上限。 */
@@ -276,6 +281,8 @@ const start = async (): Promise<void> => {
     const lon = resolveNumber(search, "lon", DEFAULTS.lon);
     const minZoom = Math.round(resolveNumber(search, "zoom", DEFAULTS.minZoom));
     const radius = resolveNumber(search, "radius", DEFAULTS.radius);
+    const azimuth = resolveNumber(search, "azimuth", DEFAULTS.azimuth);
+    const tilt = resolveNumber(search, "tilt", DEFAULTS.tilt);
     const mapType: MapType =
         new URLSearchParams(search).get("map") === "photo" ? "photo" : "std";
 
@@ -316,8 +323,10 @@ const start = async (): Promise<void> => {
     );
     camera.center = centerEcef;
     camera.radius = radius;
-    camera.yaw = 0; // 北向き
-    camera.pitch = 1.05; // 0=直下, π/2=水平。斜め見下ろしの俯瞰。
+    // 既存 UI の azimuth/tilt[deg] を yaw/pitch[rad] にマッピングして初期化。
+    const initYP = uiToYawPitch(azimuth, tilt);
+    camera.yaw = initYP.yaw;
+    camera.pitch = initYP.pitch;
 
     // near/far の自動調整（高度に応じた depth 精度最適化）。
     camera.addBehavior(new GeospatialClippingBehavior());
@@ -473,11 +482,23 @@ const start = async (): Promise<void> => {
             if (t.zoom < minZ) minZ = t.zoom;
             if (t.zoom > maxZ) maxZ = t.zoom;
         }
+
+        // ---- カメラ状態 ⇄ 既存 UI/URL のマッピングを実演 ----
+        // GeospatialCamera(yaw/pitch/radius/center) から既存 UI 表現(azimuth/tilt/altitude/lat,lon)を逆算。
+        const { azimuthDeg, tiltDeg } = yawPitchToUi(camera.yaw, camera.pitch);
+        const geo = ecefToGeodetic(camera.center); // center(ECEF) → 測地 lat/lon
+        const atPath = toAtPath(geo.latDeg, geo.lonDeg, camera.radius, azimuthDeg, tiltDeg);
+        // 既存と同じ共有 URL 形式を hash に反映（往復可能であることの実証）。
+        history.replaceState(null, "", `#${atPath}`);
+
         updateInfo(
-            `Geospatial PoC (#321) — 動的 LOD\n` +
+            `Geospatial PoC (#321) — 動的 LOD + UI/URL マッピング\n` +
                 `ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
                 `engine: ${engine.constructor.name} / floatingOrigin: ${scene.floatingOriginMode}\n` +
-                `fps: ${engine.getFps().toFixed(0)} / radius: ${(camera.radius / 1000).toFixed(1)}km\n` +
+                `fps: ${engine.getFps().toFixed(0)}\n` +
+                `lat,lon: ${geo.latDeg.toFixed(4)}, ${geo.lonDeg.toFixed(4)}\n` +
+                `azimuth: ${azimuthDeg.toFixed(1)}° / tilt: ${tiltDeg.toFixed(1)}° / ` +
+                `altitude: ${Math.round(camera.radius)}m\n` +
                 `LOD zoom: ${Number.isFinite(minZ) ? `${minZ}–${maxZ}` : "-"} / ` +
                 `selected: ${tiles.length} / loaded: ${loaded.size} / loading: ${loading.size}`,
         );
