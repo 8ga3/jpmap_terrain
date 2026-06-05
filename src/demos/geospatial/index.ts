@@ -297,6 +297,10 @@ const start = async (): Promise<void> => {
     // Large World Rendering: 真の ECEF（百万 m オーダー）でも精度を保つため floating origin を有効化。
     const scene = new Scene(engine, { useFloatingOrigin: true });
     scene.clearColor = new Color4(0.75, 0.86, 0.95, 1);
+    // EcefFromLatLonAltToRef は常に右手系 ECEF（X→経度0, Y→東経90°, Z→北極）を出力し、
+    // GeospatialCamera も scene.useRightHandedSystem を前提に視点を組む。既定の左手系の
+    // ままだと右手系データを鏡像で見るため東西が反転する。右手系に揃える。
+    scene.useRightHandedSystem = true;
 
     // GeospatialCamera: world 原点中心の球体惑星を周回する。
     const camera = new GeospatialCamera("geo-camera", scene, {
