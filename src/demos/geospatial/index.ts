@@ -401,6 +401,68 @@ const start = async (): Promise<void> => {
         camera.center = moved;
     };
 
+    // ---- 左ドラッグパン（picking 非依存） ----
+    // 既定の左ドラッグパンは scene.pick 依存で floating origin 下では no-op のため、
+    // WASD と同様に camera.center を地表接線へ動かす独自実装で「マップを掴む」操作を提供する。
+    // ドラッグのピクセル移動量を、注視点距離での地表 m/px に換算してパン量とする。
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+    const dragLookAt = new Vector3();
+    const dragUp = new Vector3();
+    const dragRight = new Vector3();
+    const dragFwd = new Vector3();
+    canvas.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        canvas.setPointerCapture?.(e.pointerId);
+    });
+    const endDrag = (): void => {
+        dragging = false;
+    };
+    canvas.addEventListener("pointerup", (e) => {
+        if (e.button === 0) endDrag();
+    });
+    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        if (dx === 0 && dy === 0) return;
+
+        const c = camera.center;
+        const r = c.length();
+        if (r < 1) return;
+        c.scaleToRef(1 / r, dragUp); // 地心 up
+        // カメラ→center 方向（lookAt）から地表接線の右・前方向を作る。
+        ComputeLookAtFromYawPitchToRef(
+            camera.yaw,
+            camera.pitch,
+            c,
+            scene.useRightHandedSystem,
+            dragLookAt,
+        );
+        Vector3.CrossToRef(dragLookAt, dragUp, dragRight);
+        if (dragRight.lengthSquared() < 1e-12) return; // 真下視点の特異点
+        dragRight.normalize();
+        Vector3.CrossToRef(dragUp, dragRight, dragFwd); // 地表に沿ったカメラ前方
+        dragFwd.normalize();
+
+        // 注視点距離での地表 m/px（掴んだ点がほぼカーソル追従する縮尺）。
+        const fovHeightM = 2 * camera.radius * Math.tan(camera.fov / 2);
+        const mpp = fovHeightM / Math.max(1, canvas.clientHeight);
+        // マップを掴んで引く挙動: 掴んだ地点がカーソルに追従する向き。
+        // 右ドラッグ→center 西（content 右へ）、下ドラッグ→center 前方=北（content 下へ）。
+        const move = dragRight.scale(-dx * mpp).addInPlace(dragFwd.scale(dy * mpp));
+        const moved = c.add(move);
+        moved.normalize().scaleInPlace(r);
+        camera.center = moved;
+    });
+
     // ライト: 地表の up（地心法線）を基準に環境光 + 斜め方向の指向性ライト。
     const up = centerEcef.clone().normalize();
     const hemi = new HemisphericLight("hemi", up, scene);
@@ -532,7 +594,7 @@ const start = async (): Promise<void> => {
 
         updateInfo(
             `Geospatial PoC (#321) — 動的 LOD + UI/URL マッピング\n` +
-                `ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
+                `左ドラッグ=パン / 右ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
                 `engine: ${engine.constructor.name} / floatingOrigin: ${scene.floatingOriginMode}\n` +
                 `fps: ${engine.getFps().toFixed(0)}\n` +
                 `lat,lon: ${geo.latDeg.toFixed(4)}, ${geo.lonDeg.toFixed(4)}\n` +
