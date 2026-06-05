@@ -24,6 +24,7 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import {
     GeospatialCamera,
     ComputeLookAtFromYawPitchToRef,
@@ -37,7 +38,13 @@ import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial";
 
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
-import { loadElevationTile, tileEdgeMeters, TILE_SIZE } from "../../terrain/gsiTile";
+import {
+    loadElevationTile,
+    tileEdgeMeters,
+    textureUrl,
+    TILE_SIZE,
+    type MapType,
+} from "../../terrain/gsiTile";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
 
 const DEMO_MOUNT_ID = "root";
@@ -114,6 +121,7 @@ const buildTileMesh = (
     ty: number,
     elevation: Float32Array,
     segments: number,
+    mapType: MapType,
 ): Mesh => {
     const totalPixels = TILE_SIZE * 2 ** zoom;
     const latLonAlt: ILatLonAltLike = { lat: 0, lon: 0, alt: 0 };
@@ -132,6 +140,7 @@ const buildTileMesh = (
 
     const vertsPerSide = segments + 1;
     const positions: number[] = [];
+    const uvs: number[] = [];
     const ecef = new Vector3();
     const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
 
@@ -157,6 +166,11 @@ const buildTileMesh = (
 
             // アンカー相対（小さな値）で格納する。
             positions.push(ecef.x - anchor.x, ecef.y - anchor.y, ecef.z - anchor.z);
+
+            // UV: タイル画像に対応。col→u（西→東）、row=0 は北端。
+            // 地理院タイル画像は row=0 が北。Babylon は invertY=true で texture を
+            // 上下反転して読むため、v は row/segments（北端 row0 → v0）でそのまま整合する。
+            uvs.push(col / segments, row / segments);
         }
     }
 
@@ -188,6 +202,8 @@ const buildTileMesh = (
             positions[base + 1] + down.y,
             positions[base + 2] + down.z,
         );
+        // スカート頂点の UV は元の周縁頂点と同じ（辺のテクセルを縦に引き延ばす）。
+        uvs.push(uvs[gi * 2], uvs[gi * 2 + 1]);
         skirtOf.set(gi, si);
         return si;
     };
@@ -220,10 +236,24 @@ const buildTileMesh = (
     vertexData.positions = positions;
     vertexData.indices = surfaceIndices.concat(wallIndices);
     vertexData.normals = normals;
+    vertexData.uvs = uvs;
 
     const mesh = new Mesh(`tile-${tileKey(zoom, tx, ty)}`, scene);
     vertexData.applyToMesh(mesh);
     mesh.position.copyFrom(anchor);
+
+    // 地理院タイル画像を diffuseTexture として適用（同一 z/x/y）。地形の陰影は
+    // ライティングで残しつつ、テクスチャで地図表現にする。タイルごとに専有し、
+    // アンロード時に mesh.dispose(_, true) でテクスチャごと破棄する。
+    const mat = new StandardMaterial(`tile-mat-${tileKey(zoom, tx, ty)}`, scene);
+    const tex = new Texture(textureUrl(mapType, zoom, tx, ty), scene);
+    tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+    tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    mat.diffuseTexture = tex;
+    mat.specularColor = new Color3(0.02, 0.02, 0.02);
+    mat.backFaceCulling = false;
+    mat.twoSidedLighting = true;
+    mesh.material = mat;
     return mesh;
 };
 
@@ -241,6 +271,8 @@ const start = async (): Promise<void> => {
     const lon = resolveNumber(search, "lon", DEFAULTS.lon);
     const minZoom = Math.round(resolveNumber(search, "zoom", DEFAULTS.minZoom));
     const radius = resolveNumber(search, "radius", DEFAULTS.radius);
+    const mapType: MapType =
+        new URLSearchParams(search).get("map") === "photo" ? "photo" : "std";
 
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
@@ -355,12 +387,6 @@ const start = async (): Promise<void> => {
     const sun = new DirectionalLight("sun", sunDir, scene);
     sun.intensity = 0.7;
 
-    const material = new StandardMaterial("terrain-mat", scene);
-    material.diffuseColor = new Color3(0.55, 0.62, 0.5);
-    material.specularColor = new Color3(0.05, 0.05, 0.05);
-    material.backFaceCulling = false;
-    material.twoSidedLighting = true;
-
     engine.runRenderLoop(() => scene.render());
     window.addEventListener("resize", () => engine.resize());
 
@@ -396,8 +422,7 @@ const start = async (): Promise<void> => {
                 loading.delete(key);
                 // 取得完了までにアンロード対象になっていなければメッシュ化する。
                 if (!desiredKeys.has(key)) return;
-                const mesh = buildTileMesh(scene, t.zoom, t.x, t.y, elev, DEFAULTS.segments);
-                mesh.material = material;
+                const mesh = buildTileMesh(scene, t.zoom, t.x, t.y, elev, DEFAULTS.segments, mapType);
                 loaded.set(key, mesh);
             })
             .catch((e) => {
@@ -425,7 +450,7 @@ const start = async (): Promise<void> => {
         // 不要になったタイルを破棄。
         for (const [key, mesh] of loaded) {
             if (!desiredKeys.has(key)) {
-                mesh.dispose();
+                mesh.dispose(false, true); // マテリアル・テクスチャごと破棄
                 loaded.delete(key);
             }
         }
