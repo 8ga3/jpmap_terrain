@@ -167,10 +167,11 @@ const buildTileMesh = (
             // アンカー相対（小さな値）で格納する。
             positions.push(ecef.x - anchor.x, ecef.y - anchor.y, ecef.z - anchor.z);
 
-            // UV: タイル画像に対応。col→u（西→東）、row=0 は北端。
-            // 地理院タイル画像は row=0 が北。Babylon は invertY=true で texture を
-            // 上下反転して読むため、v は row/segments（北端 row0 → v0）でそのまま整合する。
-            uvs.push(col / segments, row / segments);
+            // UV: col→u（西→東）。地理院タイル画像は row=0（pyF=0）が北端。
+            // Babylon の既定 Texture は invertY=true で、v=1 が画像上端（=北）、
+            // v=0 が下端（=南）に対応する。よって北端頂点(row=0)は v=1 にする必要があり、
+            // v = 1 - row/segments とする（row/segments だと per-tile で南北が反転する）。
+            uvs.push(col / segments, 1 - row / segments);
         }
     }
 
