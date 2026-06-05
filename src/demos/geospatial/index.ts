@@ -42,6 +42,7 @@ import {
     loadElevationTile,
     tileEdgeMeters,
     textureUrl,
+    toTileXY,
     TILE_SIZE,
     type MapType,
 } from "../../terrain/gsiTile";
@@ -57,8 +58,11 @@ const DEFAULTS = {
     lon: 138.7274,
     /** root（最低）ズーム。 */
     minZoom: 11,
-    /** 最高ズーム（分割上限）。 */
-    maxZoom: 16,
+    /** 最高ズーム（分割上限）。テクスチャ（std/photo）は z18 まで対応。 */
+    maxZoom: 18,
+    /** ジオメトリ（標高）の最高ズーム。GSI DEM(dem5a/5b) は z15 まで。
+     *  z16-18 は z15 祖先の標高をサブサンプルして使う（テクスチャのみ高解像度）。 */
+    geomMaxZoom: 15,
     /** カメラ中心（地表）からの距離 [m]。 */
     radius: 60000,
     /** 方位[deg]（0=北, +=東回り）→ yaw。 */
@@ -120,16 +124,41 @@ const pixelToLatLon = (
  * （垂直フランジ）を付与する。隣接タイルの LOD を知らずに隙間を隠せる方式で、
  * Cesium / Google Earth 等のグローブ地形レンダラーで標準的に使われる。
  */
+/** 標高ラスタ（TILE_SIZE 角）をローカルピクセル座標で bilinear サンプル（無効値は 0）。 */
+const sampleElevBilinear = (elev: Float32Array, px: number, py: number): number => {
+    const cx = Math.max(0, Math.min(TILE_SIZE - 1, px));
+    const cy = Math.max(0, Math.min(TILE_SIZE - 1, py));
+    const x0 = Math.floor(cx);
+    const y0 = Math.floor(cy);
+    const x1 = Math.min(x0 + 1, TILE_SIZE - 1);
+    const y1 = Math.min(y0 + 1, TILE_SIZE - 1);
+    const fx = cx - x0;
+    const fy = cy - y0;
+    const g = (x: number, y: number): number => {
+        const v = elev[y * TILE_SIZE + x];
+        return Number.isFinite(v) ? v : 0;
+    };
+    const a = g(x0, y0) * (1 - fx) + g(x1, y0) * fx;
+    const b = g(x0, y1) * (1 - fx) + g(x1, y1) * fx;
+    return a * (1 - fy) + b * fy;
+};
+
 const buildTileMesh = (
     scene: Scene,
     zoom: number,
     tx: number,
     ty: number,
-    elevation: Float32Array,
+    // ジオメトリ用標高タイル（DEM 上限 z15 まで。z16-18 タイルは z15 祖先を使う）。
+    geomElev: Float32Array,
+    geomZoom: number,
+    geomX: number,
+    geomY: number,
     segments: number,
     mapType: MapType,
     edges: readonly CoarseEdge[],
 ): Mesh => {
+    // この描画タイル(zoom)の 1 ピクセルが geom タイルの 1/geomScale ピクセルに対応。
+    const geomScale = 2 ** (zoom - geomZoom);
     const totalPixels = TILE_SIZE * 2 ** zoom;
     const latLonAlt: ILatLonAltLike = { lat: 0, lon: 0, alt: 0 };
 
@@ -153,14 +182,15 @@ const buildTileMesh = (
 
     for (let row = 0; row < vertsPerSide; row++) {
         for (let col = 0; col < vertsPerSide; col++) {
-            // タイル内ピクセル位置（0..TILE_SIZE）。最終頂点は端 (255) にクランプ。
+            // タイル内ピクセル位置（0..TILE_SIZE）。
             const pxF = (col / segments) * TILE_SIZE;
             const pyF = (row / segments) * TILE_SIZE;
-            const sx = Math.min(TILE_SIZE - 1, Math.round(pxF));
-            const sy = Math.min(TILE_SIZE - 1, Math.round(pyF));
-            let elev = elevation[sy * TILE_SIZE + sx];
-            if (!Number.isFinite(elev)) elev = 0;
-            // クロスレベル: 境界辺なら粗タイル表面へ標高をスナップ（陰影シーム解消）。
+            // この頂点のグローバルピクセル(zoom)→ geom タイルのローカルピクセルへ写像し、
+            // geom 標高（z16-18 は z15 祖先）を bilinear サンプル。
+            const glx = (tx * TILE_SIZE + pxF) / geomScale - geomX * TILE_SIZE;
+            const gly = (ty * TILE_SIZE + pyF) / geomScale - geomY * TILE_SIZE;
+            let elev = sampleElevBilinear(geomElev, glx, gly);
+            // クロスレベル: 境界辺なら粗タイル表面へ標高をスナップ（陰影シーム解消、z<=15 のみ）。
             const snapped = snapEdgeElevation(edges, row, col, segments, tx, ty, pxF, pyF);
             if (snapped !== null) elev = snapped;
 
@@ -503,54 +533,93 @@ const start = async (): Promise<void> => {
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
 
-    // 標高取得はキャッシュに溜めるだけ（メッシュ化は建築パスで行う）。
+    // 描画タイル(zoom 最大18) → ジオメトリ用標高タイル(最大 geomMaxZoom=15)の対応。
+    const geomCoordOf = (t: GlobeTile): { gz: number; gx: number; gy: number } => {
+        const gz = Math.min(t.zoom, DEFAULTS.geomMaxZoom);
+        const d = t.zoom - gz;
+        return { gz, gx: t.x >> d, gy: t.y >> d };
+    };
+
+    /**
+     * 緯度経度の地形標高[m]を、読み込み済みの「最も詳細な」geom タイルから bilinear 取得。
+     * z15→minZoom を探索し最初に見つかったものを使う（無ければ null）。
+     * 遠景では粗い標高で中心を地形へ持ち上げ、近づくほど精細化してブートストラップする
+     * （高標高地で中心を海面のままにするとカメラが地形下へ潜るのを防ぐ）。
+     */
+    const terrainElevAt = (latDeg: number, lonDeg: number): number | null => {
+        const latRad = latDeg * DEG2RAD;
+        for (let gz = DEFAULTS.geomMaxZoom; gz >= minZoom; gz--) {
+            const { x, y } = toTileXY(latDeg, lonDeg, gz);
+            const e = elevCache.get(tileKey(gz, x, y));
+            if (!e) continue;
+            const total = TILE_SIZE * 2 ** gz;
+            const gpx = ((lonDeg + 180) / 360) * total;
+            const gpy = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * total;
+            return sampleElevBilinear(e, gpx - x * TILE_SIZE, gpy - y * TILE_SIZE);
+        }
+        return null;
+    };
+    const seatCenter = new Vector3();
+    // SSE 距離評価の基準標高（中心付近の地形標高）。前 sync の値を次 sync で使う。
+    let centerElevation = 0;
+
+    // 標高取得（geom タイル単位）はキャッシュに溜めるだけ。z16-18 は z15 を共有しデデュプされる。
     const loadTile = (t: GlobeTile): void => {
-        const key = tileKey(t.zoom, t.x, t.y);
-        if (elevCache.has(key) || loading.has(key) || failed.has(key)) return;
-        loading.add(key);
-        loadElevationTile(t.zoom, t.x, t.y)
+        const { gz, gx, gy } = geomCoordOf(t);
+        const gk = tileKey(gz, gx, gy);
+        if (elevCache.has(gk) || loading.has(gk) || failed.has(gk)) return;
+        loading.add(gk);
+        loadElevationTile(gz, gx, gy)
             .then((elev) => {
-                loading.delete(key);
-                elevCache.set(key, elev);
+                loading.delete(gk);
+                elevCache.set(gk, elev);
             })
             .catch((e) => {
-                loading.delete(key);
-                failed.add(key);
-                console.warn(`[geospatial-poc] tile ${key} failed:`, e);
+                loading.delete(gk);
+                failed.add(gk);
+                console.warn(`[geospatial-poc] geom tile ${gk} failed:`, e);
             });
     };
 
     /**
-     * 建築パス: 標高が揃った desired タイルをメッシュ化する。
-     * クロスレベルスナップに必要な粗タイル標高が未ロードなら遅延（次回 sync で再試行）。
+     * 建築パス: geom 標高が揃った desired タイルをメッシュ化する。
+     * - ジオメトリは geom タイル(<=z15)からサブサンプル。テクスチャは描画 zoom(<=z18)。
+     * - クロスレベルスナップは zoom<=geomMaxZoom の境界でのみ適用（z16-18 は z15 を共有し連続）。
      */
     const buildReadyTiles = (tiles: readonly GlobeTile[]): void => {
         for (const t of tiles) {
             const k = tileKey(t.zoom, t.x, t.y);
             if (loaded.has(k)) continue;
-            const elev = elevCache.get(k);
-            if (!elev) continue; // 自身の標高が未ロード
-            const { edges, pending } = selectCoarseEdges(
-                t,
-                (kk) => desiredKeys.has(kk),
-                (kk) => elevCache.get(kk),
-                (kk) => failed.has(kk),
-                minZoom,
-            );
-            if (pending) continue; // 粗隣接の標高待ち
+            const { gz, gx, gy } = geomCoordOf(t);
+            const geomElev = elevCache.get(tileKey(gz, gx, gy));
+            if (!geomElev) continue; // geom 標高が未ロード（または no-data 失敗）
+
+            let edges: readonly CoarseEdge[] = [];
+            if (snapEnabled && t.zoom <= DEFAULTS.geomMaxZoom) {
+                const r = selectCoarseEdges(
+                    t,
+                    (kk) => desiredKeys.has(kk),
+                    (kk) => elevCache.get(kk),
+                    (kk) => failed.has(kk),
+                    minZoom,
+                );
+                if (r.pending) continue; // 粗隣接の標高待ち
+                edges = r.edges;
+            }
             const mesh = buildTileMesh(
-                scene, t.zoom, t.x, t.y, elev, DEFAULTS.segments, mapType,
-                snapEnabled ? edges : [],
+                scene, t.zoom, t.x, t.y, geomElev, gz, gx, gy, DEFAULTS.segments, mapType, edges,
             );
             loaded.set(k, mesh);
         }
     };
 
     const syncTiles = (): void => {
+        // root 探索はカメラの現在の注視点(center)を追従する（パン後もカメラ直下を選択）。
+        const camGeo = ecefToGeodetic(camera.center);
         const tiles = selectGlobeTiles({
             cameraEcef: computeCameraEcef(),
-            centerLat: lat,
-            centerLon: lon,
+            centerLat: camGeo.latDeg,
+            centerLon: camGeo.lonDeg,
             minZoom,
             maxZoom: DEFAULTS.maxZoom,
             viewportHeight: engine.getRenderHeight(),
@@ -559,22 +628,43 @@ const start = async (): Promise<void> => {
             maxTiles: DEFAULTS.maxTiles,
             rootSearchRadius: DEFAULTS.rootSearchRadius,
             horizonDotThreshold: DEFAULTS.horizonDotThreshold,
+            referenceAltitude: centerElevation,
         });
         desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
+        // 必要な geom 標高タイルのキー集合（z16-18 は z15 祖先を共有）。
+        const neededGeom = new Set(tiles.map((t) => {
+            const { gz, gx, gy } = geomCoordOf(t);
+            return tileKey(gz, gx, gy);
+        }));
 
-        // 不要になったタイルを破棄（メッシュ・標高キャッシュとも）。
+        // 不要になったメッシュを破棄。
         for (const [key, mesh] of loaded) {
             if (!desiredKeys.has(key)) {
                 mesh.dispose(false, true); // マテリアル・テクスチャごと破棄
                 loaded.delete(key);
             }
         }
+        // 不要になった geom 標高キャッシュを破棄（必要 geom キー集合で判定）。
         for (const key of elevCache.keys()) {
-            if (!desiredKeys.has(key)) elevCache.delete(key);
+            if (!neededGeom.has(key)) elevCache.delete(key);
         }
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
         buildReadyTiles(tiles);
+
+        // orbit 中心を地形表面へ追従させる（中心を海面 alt=0 のままにすると、富士山等の
+        // 高標高地でズームインした際にカメラが地形下へ潜り、地表が背面カリングで消える）。
+        // 標高が読めたら中心高度を地形標高へイージングで寄せる（初回ロード時の段差を緩和）。
+        const elevAtCenter = terrainElevAt(camGeo.latDeg, camGeo.lonDeg);
+        if (elevAtCenter !== null) {
+            centerElevation = elevAtCenter; // 次 sync の SSE 基準標高に使う
+            EcefFromLatLonAltToRef(
+                { lat: camGeo.latDeg * DEG2RAD, lon: camGeo.lonDeg * DEG2RAD, alt: elevAtCenter },
+                Wgs84Ellipsoid,
+                seatCenter,
+            );
+            camera.center = Vector3.Lerp(camera.center, seatCenter, 0.35);
+        }
 
         // 統計表示。
         let minZ = Infinity;

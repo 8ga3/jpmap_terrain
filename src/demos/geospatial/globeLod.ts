@@ -62,18 +62,26 @@ export interface GlobeLodOptions {
      * 0 で半球、負値で地平線の少し裏まで許容。
      */
     horizonDotThreshold: number;
+    /**
+     * SSE 距離評価に使うタイル中心の基準標高[m]。
+     * 高標高地（富士山等）では実地表が海面より高く、タイル中心を alt=0 で評価すると
+     * カメラ↔タイルの距離が過大になり LOD が上がらない。中心付近の地形標高を渡すことで
+     * 距離が地表基準になり、近接時に高 zoom が選択される。省略時 0。
+     */
+    referenceAltitude?: number;
 }
 
-/** タイル中心の ECEF（標高 0）を ref に書き込む。 */
+/** タイル中心の ECEF（基準標高 alt）を ref に書き込む。 */
 const tileCenterEcefToRef = (
     zoom: number,
     x: number,
     y: number,
+    alt: number,
     ref: Vector3,
 ): { lat: number; lon: number } => {
     const { lat, lon } = tileCenterLatLon(x, y, zoom);
     EcefFromLatLonAltToRef(
-        { lat: lat * DEG2RAD, lon: lon * DEG2RAD, alt: 0 },
+        { lat: lat * DEG2RAD, lon: lon * DEG2RAD, alt },
         Wgs84Ellipsoid,
         ref,
     );
@@ -100,6 +108,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         maxTiles,
         rootSearchRadius,
         horizonDotThreshold,
+        referenceAltitude = 0,
     } = opts;
 
     if (maxZoom < minZoom) return [];
@@ -121,7 +130,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const limit = 1 << zoom;
         if (x < 0 || x >= limit || y < 0 || y >= limit) return;
 
-        const { lat } = tileCenterEcefToRef(zoom, x, y, tileEcef);
+        const { lat } = tileCenterEcefToRef(zoom, x, y, referenceAltitude, tileEcef);
 
         // 地平線カリング: タイルの地心法線（= normalize(tileEcef)）とカメラ方向の内積。
         // 裏側（地球の向こう側）のタイルを除外する。
