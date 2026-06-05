@@ -183,7 +183,8 @@ const buildTileMesh = (
             const b = a + 1;
             const c = a + vertsPerSide;
             const d = c + 1;
-            surfaceIndices.push(a, c, b, b, c, d);
+            // 巻き順は法線が外向き（地心と反対）になる向き。表面が外を向く。
+            surfaceIndices.push(a, b, c, b, d, c);
         }
     }
 
@@ -208,12 +209,14 @@ const buildTileMesh = (
         return si;
     };
     // 連続する 2 周縁頂点とそのスカート頂点で壁（2 三角形）を張る。
-    // material は両面ライティング・backFaceCulling=false のため巻き順は問わない。
+    // 壁の表裏（外周のどちら向きが外か）を厳密に決めず両面分の三角形を出すことで、
+    // backFaceCulling=true でもスカートが常に見えるようにする（隙間隠しを確実にする）。
     const wallIndices: number[] = [];
     const addWall = (gA: number, gB: number): void => {
         const sA = addSkirtVertex(gA);
         const sB = addSkirtVertex(gB);
-        wallIndices.push(gA, gB, sA, gB, sB, sA);
+        wallIndices.push(gA, gB, sA, gB, sB, sA); // 表
+        wallIndices.push(gA, sA, gB, gB, sA, sB); // 裏（両面化）
     };
     for (let i = 0; i < segments; i++) {
         addWall(gridIndex(0, i), gridIndex(0, i + 1)); // 上辺
@@ -251,8 +254,9 @@ const buildTileMesh = (
     tex.wrapV = Texture.CLAMP_ADDRESSMODE;
     mat.diffuseTexture = tex;
     mat.specularColor = new Color3(0.02, 0.02, 0.02);
-    mat.backFaceCulling = false;
-    mat.twoSidedLighting = true;
+    // 巻き順を外向きに揃えたので片面描画（backFaceCulling=true）で正しく表が見える。
+    // スカート壁は両面分の三角形を出しているため culling 下でも見える。
+    mat.backFaceCulling = true;
     mesh.material = mat;
     return mesh;
 };
