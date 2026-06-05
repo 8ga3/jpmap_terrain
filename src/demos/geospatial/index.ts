@@ -47,6 +47,7 @@ import {
 } from "../../terrain/gsiTile";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
 import { ecefToGeodetic, uiToYawPitch, yawPitchToUi, toAtPath } from "./geoMapping";
+import { selectCoarseEdges, snapEdgeElevation, type CoarseEdge } from "./crossLevel";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -127,6 +128,7 @@ const buildTileMesh = (
     elevation: Float32Array,
     segments: number,
     mapType: MapType,
+    edges: readonly CoarseEdge[],
 ): Mesh => {
     const totalPixels = TILE_SIZE * 2 ** zoom;
     const latLonAlt: ILatLonAltLike = { lat: 0, lon: 0, alt: 0 };
@@ -158,6 +160,9 @@ const buildTileMesh = (
             const sy = Math.min(TILE_SIZE - 1, Math.round(pyF));
             let elev = elevation[sy * TILE_SIZE + sx];
             if (!Number.isFinite(elev)) elev = 0;
+            // クロスレベル: 境界辺なら粗タイル表面へ標高をスナップ（陰影シーム解消）。
+            const snapped = snapEdgeElevation(edges, row, col, segments, tx, ty, pxF, pyF);
+            if (snapped !== null) elev = snapped;
 
             const { lat, lon } = pixelToLatLon(
                 tx * TILE_SIZE + pxF,
@@ -285,6 +290,8 @@ const start = async (): Promise<void> => {
     const tilt = resolveNumber(search, "tilt", DEFAULTS.tilt);
     const mapType: MapType =
         new URLSearchParams(search).get("map") === "photo" ? "photo" : "std";
+    // クロスレベル標高スナップの有効/無効（?snap=off で比較用に無効化）。
+    const snapEnabled = new URLSearchParams(search).get("snap") !== "off";
 
     const canvas = document.createElement("canvas");
     canvas.style.width = "100%";
@@ -411,6 +418,9 @@ const start = async (): Promise<void> => {
     // ---- 動的 LOD: カメラ ECEF を算出し、地心距離ベース SSE quadtree でタイルを選択 ----
     const loaded = new Map<string, Mesh>();
     const loading = new Set<string>();
+    // クロスレベルスナップのため、ビルド後も標高配列を保持する（隣接細タイルが参照）。
+    const elevCache = new Map<string, Float32Array>();
+    const failed = new Set<string>();
     const lookAt = new Vector3();
     const cameraEcef = new Vector3();
 
@@ -431,22 +441,47 @@ const start = async (): Promise<void> => {
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
 
+    // 標高取得はキャッシュに溜めるだけ（メッシュ化は建築パスで行う）。
     const loadTile = (t: GlobeTile): void => {
         const key = tileKey(t.zoom, t.x, t.y);
-        if (loaded.has(key) || loading.has(key)) return;
+        if (elevCache.has(key) || loading.has(key) || failed.has(key)) return;
         loading.add(key);
         loadElevationTile(t.zoom, t.x, t.y)
             .then((elev) => {
                 loading.delete(key);
-                // 取得完了までにアンロード対象になっていなければメッシュ化する。
-                if (!desiredKeys.has(key)) return;
-                const mesh = buildTileMesh(scene, t.zoom, t.x, t.y, elev, DEFAULTS.segments, mapType);
-                loaded.set(key, mesh);
+                elevCache.set(key, elev);
             })
             .catch((e) => {
                 loading.delete(key);
+                failed.add(key);
                 console.warn(`[geospatial-poc] tile ${key} failed:`, e);
             });
+    };
+
+    /**
+     * 建築パス: 標高が揃った desired タイルをメッシュ化する。
+     * クロスレベルスナップに必要な粗タイル標高が未ロードなら遅延（次回 sync で再試行）。
+     */
+    const buildReadyTiles = (tiles: readonly GlobeTile[]): void => {
+        for (const t of tiles) {
+            const k = tileKey(t.zoom, t.x, t.y);
+            if (loaded.has(k)) continue;
+            const elev = elevCache.get(k);
+            if (!elev) continue; // 自身の標高が未ロード
+            const { edges, pending } = selectCoarseEdges(
+                t,
+                (kk) => desiredKeys.has(kk),
+                (kk) => elevCache.get(kk),
+                (kk) => failed.has(kk),
+                minZoom,
+            );
+            if (pending) continue; // 粗隣接の標高待ち
+            const mesh = buildTileMesh(
+                scene, t.zoom, t.x, t.y, elev, DEFAULTS.segments, mapType,
+                snapEnabled ? edges : [],
+            );
+            loaded.set(k, mesh);
+        }
     };
 
     const syncTiles = (): void => {
@@ -465,15 +500,19 @@ const start = async (): Promise<void> => {
         });
         desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
 
-        // 不要になったタイルを破棄。
+        // 不要になったタイルを破棄（メッシュ・標高キャッシュとも）。
         for (const [key, mesh] of loaded) {
             if (!desiredKeys.has(key)) {
                 mesh.dispose(false, true); // マテリアル・テクスチャごと破棄
                 loaded.delete(key);
             }
         }
-        // 新規タイルをロード。
+        for (const key of elevCache.keys()) {
+            if (!desiredKeys.has(key)) elevCache.delete(key);
+        }
+        // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
+        buildReadyTiles(tiles);
 
         // 統計表示。
         let minZ = Infinity;
