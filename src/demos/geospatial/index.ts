@@ -37,7 +37,7 @@ import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial";
 
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
-import { loadElevationTile, TILE_SIZE } from "../../terrain/gsiTile";
+import { loadElevationTile, tileEdgeMeters, TILE_SIZE } from "../../terrain/gsiTile";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
 
 const DEMO_MOUNT_ID = "root";
@@ -102,6 +102,10 @@ const pixelToLatLon = (
  * floating origin 下での Float32 頂点バッファ精度を担保するため、頂点はタイル中心の
  * ECEF アンカーからの **相対座標**（タイル内なので数百 m オーダー）で格納し、真の
  * ECEF（大きな値）は `mesh.position`（double 精度の world matrix 経由）に載せる。
+ *
+ * LOD 境界の T 字クラック対策として、タイル周縁から地心方向へ垂らす **スカート**
+ * （垂直フランジ）を付与する。隣接タイルの LOD を知らずに隙間を隠せる方式で、
+ * Cesium / Google Earth 等のグローブ地形レンダラーで標準的に使われる。
  */
 const buildTileMesh = (
     scene: Scene,
@@ -127,8 +131,9 @@ const buildTileMesh = (
     EcefFromLatLonAltToRef(latLonAlt, Wgs84Ellipsoid, anchor);
 
     const vertsPerSide = segments + 1;
-    const positions = new Float32Array(vertsPerSide * vertsPerSide * 3);
+    const positions: number[] = [];
     const ecef = new Vector3();
+    const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
 
     for (let row = 0; row < vertsPerSide; row++) {
         for (let col = 0; col < vertsPerSide; col++) {
@@ -150,32 +155,70 @@ const buildTileMesh = (
             latLonAlt.alt = elev;
             EcefFromLatLonAltToRef(latLonAlt, Wgs84Ellipsoid, ecef);
 
-            const vi = (row * vertsPerSide + col) * 3;
             // アンカー相対（小さな値）で格納する。
-            positions[vi] = ecef.x - anchor.x;
-            positions[vi + 1] = ecef.y - anchor.y;
-            positions[vi + 2] = ecef.z - anchor.z;
+            positions.push(ecef.x - anchor.x, ecef.y - anchor.y, ecef.z - anchor.z);
         }
     }
 
-    // インデックス（2 三角形 / セル）。
-    const indices: number[] = [];
+    // 地表メッシュのインデックス（2 三角形 / セル）。法線はこの地表面のみで計算する
+    // （スカート壁を含めるとエッジ頂点の法線が壁に引っ張られ、境界が暗い帯になる）。
+    const surfaceIndices: number[] = [];
     for (let row = 0; row < segments; row++) {
         for (let col = 0; col < segments; col++) {
-            const a = row * vertsPerSide + col;
+            const a = gridIndex(row, col);
             const b = a + 1;
             const c = a + vertsPerSide;
             const d = c + 1;
-            indices.push(a, c, b, b, c, d);
+            surfaceIndices.push(a, c, b, b, c, d);
         }
     }
 
+    // ---- スカート: 周縁頂点を地心方向へ押し下げた壁を追加して T 字クラックを隠す ----
+    // 深さはタイル辺長に比例（LOD 段差を吸収する程度）。粗タイルほど深く、上限あり。
+    const skirtDepth = Math.min(1500, Math.max(150, tileEdgeMeters(center.lat, zoom) * 0.05));
+    const down = anchor.clone().normalize().scaleInPlace(-skirtDepth); // 地心方向（タイル内ほぼ一定）
+    const skirtOf = new Map<number, number>();
+    const addSkirtVertex = (gi: number): number => {
+        const existing = skirtOf.get(gi);
+        if (existing !== undefined) return existing;
+        const base = gi * 3;
+        const si = positions.length / 3;
+        positions.push(
+            positions[base] + down.x,
+            positions[base + 1] + down.y,
+            positions[base + 2] + down.z,
+        );
+        skirtOf.set(gi, si);
+        return si;
+    };
+    // 連続する 2 周縁頂点とそのスカート頂点で壁（2 三角形）を張る。
+    // material は両面ライティング・backFaceCulling=false のため巻き順は問わない。
+    const wallIndices: number[] = [];
+    const addWall = (gA: number, gB: number): void => {
+        const sA = addSkirtVertex(gA);
+        const sB = addSkirtVertex(gB);
+        wallIndices.push(gA, gB, sA, gB, sB, sA);
+    };
+    for (let i = 0; i < segments; i++) {
+        addWall(gridIndex(0, i), gridIndex(0, i + 1)); // 上辺
+        addWall(gridIndex(segments, i), gridIndex(segments, i + 1)); // 下辺
+        addWall(gridIndex(i, 0), gridIndex(i + 1, 0)); // 左辺
+        addWall(gridIndex(i, segments), gridIndex(i + 1, segments)); // 右辺
+    }
+
+    // 法線は地表面のみで計算（スカート壁を除外）。スカート頂点の法線は元の周縁頂点に
+    // 揃え、壁が地表と同じ陰影になるようにする（暗い帯を防ぐ）。
     const normals: number[] = [];
-    VertexData.ComputeNormals(positions, indices, normals);
+    VertexData.ComputeNormals(positions, surfaceIndices, normals);
+    for (const [gi, si] of skirtOf) {
+        normals[si * 3] = normals[gi * 3];
+        normals[si * 3 + 1] = normals[gi * 3 + 1];
+        normals[si * 3 + 2] = normals[gi * 3 + 2];
+    }
 
     const vertexData = new VertexData();
     vertexData.positions = positions;
-    vertexData.indices = indices;
+    vertexData.indices = surfaceIndices.concat(wallIndices);
     vertexData.normals = normals;
 
     const mesh = new Mesh(`tile-${tileKey(zoom, tx, ty)}`, scene);
