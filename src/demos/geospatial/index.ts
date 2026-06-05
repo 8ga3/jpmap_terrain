@@ -5,17 +5,16 @@
  * Large World Rendering の floating origin）を最小構成で実機検証する **スタンドアロン** PoC。
  *
  * 重要: これは全面リライト着手前のフィージビリティ確認であり、既存の平面ワールド
- * スタック（`JpmapTerrain` / `scenes/default.ts` / `tileManager` 等）には一切依存・改修しない。
- * 流用するのは標高タイル取得 (`gsiTile.loadElevationTile`) のみ。
+ * スタック（`JpmapTerrain` / `scenes/default.ts` / `tileManager` / `visibleTiles` 等）には
+ * 一切依存・改修しない。流用するのは標高タイル取得 (`gsiTile.loadElevationTile`) と
+ * GSI 座標ヘルパのみ。
  *
- * 検証する判断材料:
- * - floating origin 下でのタイル精度（ジッタの有無）
- * - lat/lon/標高 → ECEF の頂点生成コストと既存取得層の流用度
- * - GeospatialCamera 入力でのパン/回転/ズームの操作感
+ * 第2反復: カメラ位置に応じた **動的 LOD（地心距離ベース SSE quadtree）** による
+ * タイルのロード/アンロードを `globeLod.selectGlobeTiles` で検証する。
  *
  * URL クエリ:
  * - `?engine=webgpu|webgl|webgl2`（既定: 自動。webgl/webgl2 は webgl2 に正規化）
- * - `?lat=&lon=&zoom=&radius=`（既定: 富士山周辺 / zoom 13 / radius 12000m）
+ * - `?lat=&lon=&zoom=&radius=`（既定: 富士山周辺 / center zoom 11 / radius 60000m）
  */
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -25,7 +24,10 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera";
+import {
+    GeospatialCamera,
+    ComputeLookAtFromYawPitchToRef,
+} from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import {
     Wgs84Ellipsoid,
@@ -35,21 +37,33 @@ import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial";
 
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
-import { loadElevationTile, toTileXY, TILE_SIZE } from "../../terrain/gsiTile";
+import { loadElevationTile, TILE_SIZE } from "../../terrain/gsiTile";
+import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
 
 const DEMO_MOUNT_ID = "root";
 
-/** PoC の既定表示パラメータ（富士山周辺）。 */
+/** PoC の既定表示・LOD パラメータ（富士山周辺）。 */
 const DEFAULTS = {
     lat: 35.3606,
     lon: 138.7274,
-    zoom: 13,
+    /** root（最低）ズーム。 */
+    minZoom: 11,
+    /** 最高ズーム（分割上限）。 */
+    maxZoom: 16,
     /** カメラ中心（地表）からの距離 [m]。 */
-    radius: 20000,
-    /** 中心タイルの周囲に何タイル読み込むか（片側）。3 → 7x7。 */
-    ring: 3,
-    /** タイルあたりの分割数（頂点は (seg+1)^2）。256px を間引いてグリッド化する。 */
-    segments: 48,
+    radius: 60000,
+    /** SSE 採用しきい値 [px]。 */
+    sseThreshold: 256 * 2.5,
+    /** 同時保持タイル数の上限。 */
+    maxTiles: 140,
+    /** root 探索半径（±N 格子）。 */
+    rootSearchRadius: 2,
+    /** 地平線カリングの内積しきい値。 */
+    horizonDotThreshold: 0.1,
+    /** タイルあたりの分割数（頂点は (seg+1)^2）。 */
+    segments: 32,
+    /** LOD 再評価の間隔（フレーム）。 */
+    syncIntervalFrames: 15,
 } as const;
 
 /** `?engine=` を解決する（viewer デモと同じ正規化）。 */
@@ -164,7 +178,7 @@ const buildTileMesh = (
     vertexData.indices = indices;
     vertexData.normals = normals;
 
-    const mesh = new Mesh(`tile-${zoom}-${tx}-${ty}`, scene);
+    const mesh = new Mesh(`tile-${tileKey(zoom, tx, ty)}`, scene);
     vertexData.applyToMesh(mesh);
     mesh.position.copyFrom(anchor);
     return mesh;
@@ -182,7 +196,7 @@ const start = async (): Promise<void> => {
     const search = location.search;
     const lat = resolveNumber(search, "lat", DEFAULTS.lat);
     const lon = resolveNumber(search, "lon", DEFAULTS.lon);
-    const zoom = Math.round(resolveNumber(search, "zoom", DEFAULTS.zoom));
+    const minZoom = Math.round(resolveNumber(search, "zoom", DEFAULTS.minZoom));
     const radius = resolveNumber(search, "radius", DEFAULTS.radius);
 
     const canvas = document.createElement("canvas");
@@ -218,7 +232,6 @@ const start = async (): Promise<void> => {
     camera.addBehavior(new GeospatialClippingBehavior());
 
     // GeospatialCamera はコンストラクタで既定入力（pointers/wheel/keyboard）を備える。
-    // 追加登録は不要で、attachControl だけ行う。
     camera.attachControl(true);
 
     // ライト: 地表の up（地心法線）を基準に環境光 + 斜め方向の指向性ライト。
@@ -226,7 +239,6 @@ const start = async (): Promise<void> => {
     const hemi = new HemisphericLight("hemi", up, scene);
     hemi.intensity = 0.55;
     hemi.groundColor = new Color3(0.3, 0.32, 0.3);
-    // up に直交する接線（東方向相当）を作り、太陽を斜め上から当てて起伏の陰影を出す。
     const ref = Math.abs(up.y) < 0.99 ? Vector3.Up() : Vector3.Right();
     const east = Vector3.Cross(ref, up).normalize();
     const sunDir = up.scale(-0.85).add(east.scale(0.5)).normalize();
@@ -236,45 +248,104 @@ const start = async (): Promise<void> => {
     const material = new StandardMaterial("terrain-mat", scene);
     material.diffuseColor = new Color3(0.55, 0.62, 0.5);
     material.specularColor = new Color3(0.05, 0.05, 0.05);
-    // メッシュの巻き順（法線の向き）に依存せず両面を正しく陰影付けする。
     material.backFaceCulling = false;
     material.twoSidedLighting = true;
 
     engine.runRenderLoop(() => scene.render());
     window.addEventListener("resize", () => engine.resize());
 
-    // 中心タイルとその周囲（ring）の標高タイルを取得して曲面メッシュ化する。
-    const { x: cx, y: cy } = toTileXY(lat, lon, zoom);
-    const ring = DEFAULTS.ring;
-    const coords: { x: number; y: number }[] = [];
-    for (let dy = -ring; dy <= ring; dy++) {
-        for (let dx = -ring; dx <= ring; dx++) {
-            coords.push({ x: cx + dx, y: cy + dy });
-        }
-    }
+    // ---- 動的 LOD: カメラ ECEF を算出し、地心距離ベース SSE quadtree でタイルを選択 ----
+    const loaded = new Map<string, Mesh>();
+    const loading = new Set<string>();
+    const lookAt = new Vector3();
+    const cameraEcef = new Vector3();
 
-    let loaded = 0;
-    let failed = 0;
-    await Promise.all(
-        coords.map(async ({ x, y }) => {
-            try {
-                const elev = await loadElevationTile(zoom, x, y);
-                const mesh = buildTileMesh(scene, zoom, x, y, elev, DEFAULTS.segments);
+    /** GeospatialCamera の center/yaw/pitch/radius から真の ECEF 位置を復元する。 */
+    const computeCameraEcef = (): Vector3 => {
+        ComputeLookAtFromYawPitchToRef(
+            camera.yaw,
+            camera.pitch,
+            camera.center,
+            scene.useRightHandedSystem,
+            lookAt,
+        );
+        // lookAt はカメラ→center 方向。カメラ位置 = center - lookAt * radius。
+        cameraEcef.copyFrom(camera.center).subtractInPlace(lookAt.scale(camera.radius));
+        return cameraEcef;
+    };
+
+    // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
+    let desiredKeys = new Set<string>();
+
+    const loadTile = (t: GlobeTile): void => {
+        const key = tileKey(t.zoom, t.x, t.y);
+        if (loaded.has(key) || loading.has(key)) return;
+        loading.add(key);
+        loadElevationTile(t.zoom, t.x, t.y)
+            .then((elev) => {
+                loading.delete(key);
+                // 取得完了までにアンロード対象になっていなければメッシュ化する。
+                if (!desiredKeys.has(key)) return;
+                const mesh = buildTileMesh(scene, t.zoom, t.x, t.y, elev, DEFAULTS.segments);
                 mesh.material = material;
-                loaded++;
-            } catch (e) {
-                failed++;
-                console.warn(`[geospatial-poc] tile z${zoom}/${x}/${y} failed:`, e);
+                loaded.set(key, mesh);
+            })
+            .catch((e) => {
+                loading.delete(key);
+                console.warn(`[geospatial-poc] tile ${key} failed:`, e);
+            });
+    };
+
+    const syncTiles = (): void => {
+        const tiles = selectGlobeTiles({
+            cameraEcef: computeCameraEcef(),
+            centerLat: lat,
+            centerLon: lon,
+            minZoom,
+            maxZoom: DEFAULTS.maxZoom,
+            viewportHeight: engine.getRenderHeight(),
+            verticalFov: camera.fov,
+            sseThreshold: DEFAULTS.sseThreshold,
+            maxTiles: DEFAULTS.maxTiles,
+            rootSearchRadius: DEFAULTS.rootSearchRadius,
+            horizonDotThreshold: DEFAULTS.horizonDotThreshold,
+        });
+        desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
+
+        // 不要になったタイルを破棄。
+        for (const [key, mesh] of loaded) {
+            if (!desiredKeys.has(key)) {
+                mesh.dispose();
+                loaded.delete(key);
             }
-            updateInfo(
-                `Geospatial PoC (#321)\n` +
-                    `ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
-                    `engine: ${engine.constructor.name} / floatingOrigin: ${scene.floatingOriginMode}\n` +
-                    `center: ${lat.toFixed(4)}, ${lon.toFixed(4)} (zoom ${zoom})\n` +
-                    `tiles: ${loaded}/${coords.length} 読み込み${failed ? ` (失敗 ${failed})` : ""}`,
-            );
-        }),
-    );
+        }
+        // 新規タイルをロード。
+        for (const t of tiles) loadTile(t);
+
+        // 統計表示。
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+        for (const t of tiles) {
+            if (t.zoom < minZ) minZ = t.zoom;
+            if (t.zoom > maxZ) maxZ = t.zoom;
+        }
+        updateInfo(
+            `Geospatial PoC (#321) — 動的 LOD\n` +
+                `ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
+                `engine: ${engine.constructor.name} / floatingOrigin: ${scene.floatingOriginMode}\n` +
+                `fps: ${engine.getFps().toFixed(0)} / radius: ${(camera.radius / 1000).toFixed(1)}km\n` +
+                `LOD zoom: ${Number.isFinite(minZ) ? `${minZ}–${maxZ}` : "-"} / ` +
+                `selected: ${tiles.length} / loaded: ${loaded.size} / loading: ${loading.size}`,
+        );
+    };
+
+    // 初回 + フレーム間引きで LOD を再評価する。
+    syncTiles();
+    let frame = 0;
+    scene.onBeforeRenderObservable.add(() => {
+        frame++;
+        if (frame % DEFAULTS.syncIntervalFrames === 0) syncTiles();
+    });
 
     // デバッグ用に内部状態を露出（公開 API ではない）。
     if (process.env.NODE_ENV !== "production") {
