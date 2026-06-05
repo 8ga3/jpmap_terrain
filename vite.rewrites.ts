@@ -29,6 +29,7 @@ const DEMO_NAMES = [
     "boids",
     "flight",
     "artillery",
+    "geospatial", // PoC: Babylon.js Geospatial 検証 (#321)
 ];
 
 export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.flatMap((name) => [

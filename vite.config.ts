@@ -34,6 +34,7 @@ const HTML_ENTRIES = [
     "boids",
     "flight",
     "artillery",
+    "geospatial", // PoC: Babylon.js Geospatial 検証 (#321)
 ];
 
 const input = Object.fromEntries(
