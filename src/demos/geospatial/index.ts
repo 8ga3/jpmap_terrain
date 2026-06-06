@@ -371,6 +371,11 @@ const start = async (): Promise<void> => {
     // GeospatialCamera はコンストラクタで既定入力（pointers/wheel/keyboard）を備える。
     camera.attachControl(true);
 
+    // ズームはカーソル追従(zoom-to-cursor)を無効化し、注視点(center=画面中心)へ寄る
+    // 半径のみのズームにする。zoom-to-cursor は毎フレーム中心をカーソル方向へ動かすため
+    // ズーム中に位置がずれて見える（floating origin 下のピック誤差も相まってガタつく）。
+    camera.movement.zoomToCursor = false;
+
     // ---- WASD パン（picking に依存しない独自実装） ----
     // 既定の pan（キーボード/左ドラッグ）は scene.pick でグローブをヒットしてドラッグ平面を
     // 作るが、useFloatingOrigin 下ではレンダリング座標と真の ECEF メッシュ位置がずれ、
