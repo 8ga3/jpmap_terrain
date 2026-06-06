@@ -686,6 +686,11 @@ const start = async (): Promise<void> => {
     // 毎フレーム実行する。syncTiles（15 フレーム毎）でのみ補正すると、zoom-to-cursor が
     // 毎フレーム中心を水平移動させる一方で高度補正が間引かれ、斜面でガタつくため。
     const seatCenterOnTerrain = (): void => {
+        // ズーム中は seat を止める。wheel zoom(zoom-to-cursor)は毎フレーム「カーソル下の
+        // メッシュをピックした点」へ中心を 3D で寄せており、それ自体が地形追従している。
+        // ここでラスタ標高(terrainElevAt)へ寄せると、メッシュ pick 点とラスタ標高の食い違いで
+        // 毎フレーム引っ張り合い、揺れの原因になる。ズーム中は zoom 側に任せる。
+        if (camera.movement.computedPerFrameZoomPickPoint) return;
         const g = ecefToGeodetic(camera.center);
         const elev = terrainElevAt(g.latDeg, g.lonDeg);
         if (elev === null) return;
