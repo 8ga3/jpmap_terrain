@@ -114,6 +114,10 @@ export const createGlobeTileManager = (
     // クロスレベルスナップのため、ビルド後も標高配列を保持する（隣接細タイルが参照）。
     const elevCache = new Map<string, Float32Array>();
     const failed = new Set<string>();
+    // sync ごとにまとめてログするための、新たに取得失敗した geom タイルキー。
+    // GSI 側に標高データが無い箇所（no-data/404）は珍しくなく、per-tile 警告だとログが
+    // 溢れるため、sync 時に 1 行へ間引いて出力する。
+    const newlyFailed: string[] = [];
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
 
@@ -147,10 +151,12 @@ export const createGlobeTileManager = (
                 loading.delete(gk);
                 elevCache.set(gk, elev);
             })
-            .catch((e) => {
+            .catch(() => {
+                // 取得不可（GSI に標高データが無い no-data/404 を含む）。per-tile では警告せず、
+                // sync 時にまとめて間引いて出力する。
                 loading.delete(gk);
                 failed.add(gk);
-                console.warn(`[globeTileManager] geom tile ${gk} failed:`, e);
+                newlyFailed.push(gk);
             });
     };
 
@@ -255,6 +261,18 @@ export const createGlobeTileManager = (
         for (const t of tiles) loadTile(t);
         buildReadyTiles(tiles);
 
+        // 新規取得失敗を 1 行へ間引いて出力（no-data/404 の per-tile 警告の氾濫を防ぐ）。
+        if (newlyFailed.length > 0) {
+            if (process.env.NODE_ENV !== "production") {
+                const sample = newlyFailed.slice(0, 3).join(", ");
+                const more = newlyFailed.length > 3 ? " …" : "";
+                console.debug(
+                    `[globeTileManager] geom タイル ${newlyFailed.length} 件が取得不可（no-data/404）: ${sample}${more}`,
+                );
+            }
+            newlyFailed.length = 0;
+        }
+
         let minZ = Infinity;
         let maxZ = -Infinity;
         for (const t of tiles) {
@@ -277,6 +295,7 @@ export const createGlobeTileManager = (
         loading.clear();
         elevCache.clear();
         failed.clear();
+        newlyFailed.length = 0;
         desiredKeys = new Set<string>();
     };
 
