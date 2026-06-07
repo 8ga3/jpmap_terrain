@@ -134,6 +134,13 @@ describe("CRUD", () => {
         expect(createdCylinders.length).toBe(2);
     });
 
+    it("add 直後に初期配置され、原点 (0,0,0) のままにならない", () => {
+        const { mgr } = makeManager();
+        mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        // update を呼ぶ前でも placeNode により地表へ配置済み（チラつき防止）。
+        expect(createdCylinders[0].position.length()).toBeGreaterThan(6_000_000);
+    });
+
     it("ポールは isPickable=false / renderingGroupId=1", () => {
         const { mgr } = makeManager();
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
@@ -172,30 +179,32 @@ describe("update", () => {
         expect(createdCylinders[0].position.length()).toBeGreaterThan(0);
     });
 
-    it("無効マーカーは更新しない", () => {
+    it("無効マーカーは update で変化しない（add の初期配置のまま）", () => {
         const { mgr } = makeManager();
         const id = mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        const yAfterAdd = createdCylinders[0].scaling.y; // add の初期配置で設定済み
         mgr.setEnabled(id, false);
         mgr.update(new Vector3(7_000_000, 0, 0));
-        // scaling.y は初期 1 のまま（update でいじられない）。
-        expect(createdCylinders[0].scaling.y).toBe(1);
+        // 無効なので update では更新されない（初期配置の値のまま）。
+        expect(createdCylinders[0].scaling.y).toBe(yAfterAdd);
     });
 
     it("terrainElevAt が null のときは直前標高を保持する（楕円体へ落とさない）", () => {
-        // 1 回目は 5000m、2 回目は null（前景タイル未ロード相当）。
-        const terrainElevAt = jest
-            .fn<(lat: number, lon: number) => number | null>()
-            .mockReturnValueOnce(5000)
-            .mockReturnValueOnce(null);
+        // 標高 5000m → 途中で null（前景タイル未ロード相当）に変化させる。
+        let elevReturn: number | null = 5000;
+        const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(
+            () => elevReturn,
+        );
         const mgr = createGlobeMarkerManager({ scene: {} as never, terrainElevAt });
-        mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        mgr.add({ lat: 35, lon: 139, text: { value: "A" } }); // lastElev=5000
         const cam = new Vector3(7_000_000, 0, 0);
-        mgr.update(cam); // elev=5000 を保持
+        mgr.update(cam); // elev=5000
         const after5000 = createdCylinders[0].position.clone();
+        elevReturn = null;
         mgr.update(cam); // null → 直前 5000 を維持
-        // 2 回目の位置が 1 回目とほぼ同じ（楕円体面へ落ちて位置が大きく変わらない）。
+        // 位置がほぼ同じ（楕円体面へ落ちて大きく変わらない）。
         expect(Vector3.Distance(createdCylinders[0].position, after5000)).toBeLessThan(1);
-        // 5000m 接地は楕円体面(elev=0)より地心距離が ~5000m 大きいことの傍証として、十分大きい。
+        // 5000m 接地は楕円体面(elev=0)より地心距離が大きいことの傍証として十分大きい。
         expect(createdCylinders[0].position.length()).toBeGreaterThan(6_300_000);
     });
 });

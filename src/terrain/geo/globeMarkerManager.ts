@@ -32,6 +32,7 @@ import {
     groundPlacementToRef,
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
+    OVERLAY_REF_DISTANCE_M,
 } from "./overlayPlacement";
 
 /** グローブマーカーの既定値（線の色・基準ポール径[m]）。 */
@@ -131,6 +132,43 @@ export const createGlobeMarkerManager = (
     const tmp = new Vector3();
     const quat = new Quaternion();
 
+    /**
+     * 1 マーカーを地形へ接地し、ポール（高さ/径/向き）とラベル位置を更新する。
+     * `camEcef` 省略時（add の初期配置）は基準距離でスケール/高さを仮置きし、原点 (0,0,0)
+     * 表示のチラつきを防ぐ（次フレームの update で camEcef ベースに補正される）。
+     */
+    const placeNode = (node: GlobeMarkerNode, camEcef?: Vector3): void => {
+        // 取得できた標高は保持し、null（前景タイル未ロード等）は直前値へフォールバック
+        // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。被覆の根本改善は #329。
+        const queried = terrainElevAt(node.lat, node.lon);
+        if (queried !== null) node.lastElev = queried;
+        const elev = node.lastElev ?? 0;
+        // 地表 ECEF と地心 up。
+        groundPlacementToRef(node.lat, node.lon, elev, pos, up);
+        // 距離は 1 回だけ算出し、スケールと線高さで再利用（sqrt の二重計算を避ける）。
+        // camEcef なし（初期配置）は基準距離で仮置き。
+        const dist = camEcef ? Vector3.Distance(camEcef, pos) : OVERLAY_REF_DISTANCE_M;
+        const distScale = computeOverlayDistanceScaleFromDistance(dist);
+        const lineHeight = computeOverlayLineHeight(dist);
+
+        // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
+        orientYToUpToRef(up, quat);
+        node.lineMesh.rotationQuaternion!.copyFrom(quat);
+        const diameter = node.poleBaseDiameter * distScale;
+        node.lineMesh.scaling.set(diameter, lineHeight, diameter);
+        // 中点 = 地表 + up*(lineHeight/2)。
+        tmp.copyFrom(up).scaleInPlace(lineHeight / 2);
+        node.lineMesh.position.copyFrom(pos).addInPlace(tmp);
+
+        // アイコン/ラベル: ポール上端の少し上。BILLBOARDMODE_ALL なので向きは自動。
+        if (node.iconText) {
+            node.iconText.mesh.scaling.set(distScale, distScale, distScale);
+            const textHalf = (node.iconText.heightWorld * distScale) / 2;
+            tmp.copyFrom(up).scaleInPlace(lineHeight + textHalf);
+            node.iconText.mesh.position.copyFrom(pos).addInPlace(tmp);
+        }
+    };
+
     const add = (opts: GlobeMarkerOptions): string => {
         if (disposed) throw new Error("GlobeMarkerManager.add: called after dispose");
         const id = `globe-marker-${seq++}`;
@@ -189,6 +227,8 @@ export const createGlobeMarkerManager = (
             enabled,
             lastElev: null,
         };
+        // 初期配置（camEcef なし）。update が走る前の原点 (0,0,0) 表示チラつきを防ぐ。
+        placeNode(node);
         lineMesh.setEnabled(enabled);
         iconText?.mesh.setEnabled(enabled);
         nodes.set(id, node);
@@ -221,34 +261,7 @@ export const createGlobeMarkerManager = (
         if (nodes.size === 0) return;
         for (const node of nodes.values()) {
             if (!node.enabled) continue;
-            // 取得できた標高は保持し、null（前景タイル未ロード等）のときは直前値へフォールバック
-            // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。被覆の根本改善は #329。
-            const queried = terrainElevAt(node.lat, node.lon);
-            if (queried !== null) node.lastElev = queried;
-            const elev = node.lastElev ?? 0;
-            // 地表 ECEF と地心 up。
-            groundPlacementToRef(node.lat, node.lon, elev, pos, up);
-            // 距離は 1 回だけ算出し、スケールと線高さで再利用（sqrt の二重計算を避ける）。
-            const dist = Vector3.Distance(camEcef, pos);
-            const distScale = computeOverlayDistanceScaleFromDistance(dist);
-            const lineHeight = computeOverlayLineHeight(dist);
-
-            // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
-            orientYToUpToRef(up, quat);
-            node.lineMesh.rotationQuaternion!.copyFrom(quat);
-            const diameter = node.poleBaseDiameter * distScale;
-            node.lineMesh.scaling.set(diameter, lineHeight, diameter);
-            // 中点 = 地表 + up*(lineHeight/2)。
-            tmp.copyFrom(up).scaleInPlace(lineHeight / 2);
-            node.lineMesh.position.copyFrom(pos).addInPlace(tmp);
-
-            // アイコン/ラベル: ポール上端の少し上。BILLBOARDMODE_ALL なので向きは自動。
-            if (node.iconText) {
-                node.iconText.mesh.scaling.set(distScale, distScale, distScale);
-                const textHalf = (node.iconText.heightWorld * distScale) / 2;
-                tmp.copyFrom(up).scaleInPlace(lineHeight + textHalf);
-                node.iconText.mesh.position.copyFrom(pos).addInPlace(tmp);
-            }
+            placeNode(node, camEcef);
         }
     };
 
