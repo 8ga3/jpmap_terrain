@@ -148,7 +148,11 @@ export const createGlobeTileManager = (
     };
 
     const terrainElevAt = (latDeg: number, lonDeg: number): number | null => {
-        for (let gz = geomMaxZoom; gz >= minZoom; gz--) {
+        // 探索は geomMaxZoom から下る。minZoom > geomMaxZoom（例: ?zoom=18）でもループが
+        // 1 回は回るよう下限を min(minZoom, geomMaxZoom) とする（さもないと常に null を返し
+        // seat-on-terrain / referenceAltitude が機能しなくなる）。
+        const lowerGz = Math.min(minZoom, geomMaxZoom);
+        for (let gz = geomMaxZoom; gz >= lowerGz; gz--) {
             const { x, y } = toTileXY(latDeg, lonDeg, gz);
             const e = elevCache.get(tileKey(gz, x, y));
             if (!e) continue;
@@ -218,6 +222,12 @@ export const createGlobeTileManager = (
             const geomElev = elevCache.get(tileKey(gz, gx, gy));
             if (!geomElev) continue; // geom 標高が未ロード（または no-data 失敗）
 
+            // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
+            // crossLevel は細タイル zoom == その geom zoom を前提に、細グローバルピクセルを
+            // 粗ラスタへ写像するため。z16-18 は z15 をサブサンプルして共有するので intra-level
+            // は連続で、LOD 境界の「亀裂/穴」自体はスカート（垂直フランジ）が全境界で隠す。
+            // 残る z16-18×粗 境界の「陰影シーム」除去（geom 座標へ写像した粗表面評価）は
+            // 後続フェーズの磨き込み対象（#275）。
             let edges: readonly CoarseEdge[] = [];
             if (snapEnabled && t.zoom <= geomMaxZoom) {
                 const r = selectCoarseEdges(
@@ -266,14 +276,31 @@ export const createGlobeTileManager = (
             // 地理院タイル画像を diffuseTexture として適用（同一 z/x/y）。タイルごとに専有し、
             // アンロード時に mesh.dispose(_, true) でテクスチャごと破棄する。
             const mat = new StandardMaterial(`tile-mat-${k}`, scene);
-            const tex = new Texture(textureUrl(mapType, t.zoom, t.x, t.y), scene);
-            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
-            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
-            mat.diffuseTexture = tex;
             mat.specularColor = TILE_SPECULAR;
             // 巻き順を外向きに揃えたので片面描画。スカート壁は両面三角形で culling 下でも見える。
             mat.backFaceCulling = true;
             mesh.material = mat;
+
+            // GPU テクスチャが確実に生成された onLoad 内で diffuseTexture を設定する
+            // （WebGPU の "null gpu texture bind" を避ける。平面版 tileManager と同様）。
+            // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
+            // 孤立テクスチャを破棄する。
+            const tex = new Texture(
+                textureUrl(mapType, t.zoom, t.x, t.y),
+                scene,
+                false,
+                true,
+                Texture.TRILINEAR_SAMPLINGMODE,
+                () => {
+                    if (mesh.isDisposed()) {
+                        tex.dispose();
+                        return;
+                    }
+                    mat.diffuseTexture = tex;
+                },
+            );
+            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
 
             loaded.set(k, mesh);
             builtEdgeSig.set(k, sig);

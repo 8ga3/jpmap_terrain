@@ -247,12 +247,12 @@ export class GlobeScene {
             camera.center = seatLerp;
         };
 
-        // dispose で停止できるよう、render コールバックを保持する。
-        const renderLoop = (): void => scene.render();
-        engine.runRenderLoop(renderLoop);
-
-        // 初回同期はレンダーループ（= 本メソッド return 後）へ遅延させる。構築中に
-        // 同期実行すると、呼び出し側の onSyncStats が「createSceneWithController の
+        // render ループは開始しない。DefaultScene と同じく、シーン生成と render ループ管理の
+        // 責務を分離し、ループ開始は呼び出し側（デモ / 将来の JpmapTerrain 等）に委ねる
+        // （二重起動・上書きを防ぐ）。本シーンのタイル同期は onBeforeRenderObservable で動く。
+        //
+        // 初回同期は構築中ではなく onBeforeRender（= 呼び出し側がループ開始した後）に遅延する。
+        // 構築中に同期実行すると、呼び出し側の onSyncStats が「createSceneWithController の
         // 戻り値から代入される controller」をまだ初期化前に参照し TDZ エラーになるため。
         // frame=0 の最初のフレームで即同期し、以降は syncIntervalFrames ごとに再評価する。
         let frame = 0;
@@ -263,8 +263,7 @@ export class GlobeScene {
         });
 
         const dispose = (): void => {
-            // render ループを止めてから破棄する（dispose 済み Scene の render を防ぐ）。
-            engine.stopRenderLoop(renderLoop);
+            // render ループは呼び出し側の所有なので停止しない（呼び出し側が停止する）。
             scene.onBeforeRenderObservable.remove(observer);
             tileManager.dispose();
             scene.dispose();

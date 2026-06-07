@@ -115,6 +115,10 @@ const start = async (): Promise<void> => {
     });
     infoScene = controller.scene;
 
+    // render ループはシーン生成側ではなく呼び出し側（本デモ）で開始する
+    // （GlobeScene は責務分離のためループを開始しない）。
+    engine.runRenderLoop(() => controller.scene.render());
+
     window.addEventListener("resize", () => engine.resize());
 
     // デバッグ用に内部状態を露出（公開 API ではない）。
