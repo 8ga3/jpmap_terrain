@@ -372,7 +372,8 @@ export const createGlobeTileManager = (
                 const sample = newlyFailed.slice(0, 3).join(", ");
                 const more = newlyFailed.length > 3 ? " …" : "";
                 console.debug(
-                    `[globeTileManager] geom タイル ${newlyFailed.length} 件の取得に失敗（no-data や一時障害を含む。バックオフ再試行する）: ${sample}${more}`,
+                    `[globeTileManager] ${newlyFailed.length} geom tile(s) failed to load ` +
+                        `(no-data or transient errors; will retry with backoff): ${sample}${more}`,
                 );
             }
             newlyFailed.length = 0;
