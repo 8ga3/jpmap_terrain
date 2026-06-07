@@ -25,7 +25,6 @@ import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions"
 import type { MapType } from "../terrain/gsiTile";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic } from "../terrain/geo/ecef";
 import {
-    geographicTangentBasisToRef,
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     clampRadiusForGroundClearance,
@@ -228,8 +227,6 @@ export class GlobeScene {
             if (e.button === 0) endDrag();
         };
         // パン用の再利用バッファ（毎フレーム/毎 move 呼び出しでの割当を避ける）。
-        const eastV = new Vector3();
-        const northV = new Vector3();
         const dragRight = new Vector3();
         const dragFwd = new Vector3();
         const dragLookAt = new Vector3();
@@ -268,7 +265,11 @@ export class GlobeScene {
         canvas.addEventListener("pointercancel", endDrag);
         canvas.addEventListener("pointermove", onPointerMove);
 
-        /** 押下中の WASD に応じて center を地理接線（北/東）方向へ高度比例で動かす。 */
+        /**
+         * 押下中の WASD に応じて center を **カメラの向き（前/右）基準** で高度比例移動する。
+         * 視点を回転（yaw 変更）すると前方向も追従し、左ドラッグパンと一貫した操作になる
+         * （北固定ではなく「画面で奥が W」）。真下視点では前後左右が定義できないためスキップ。
+         */
         const applyKeyboardPan = (): void => {
             if (pressed.size === 0) return;
             let fwd = 0;
@@ -278,12 +279,22 @@ export class GlobeScene {
             if (pressed.has("d")) side += 1;
             if (pressed.has("a")) side -= 1;
             if (fwd === 0 && side === 0) return;
-            if (!geographicTangentBasisToRef(camera.center, eastV, northV)) return; // 極
+            // カメラ→center 方向(lookAt)から地表接線の右・前を作り、視点回転に追従させる。
+            ComputeLookAtFromYawPitchToRef(
+                camera.yaw,
+                camera.pitch,
+                camera.center,
+                scene.useRightHandedSystem,
+                dragLookAt,
+            );
+            if (!cameraTangentBasisToRef(camera.center, dragLookAt, dragRight, dragFwd)) {
+                return; // 真下視点の特異点
+            }
 
             const dtSec = Math.min(0.05, engine.getDeltaTime() / 1000);
             const step = camera.radius * PAN_RATE_PER_SEC * dtSec;
-            tangent.copyFrom(northV).scaleInPlace(fwd);
-            tangent.addInPlace(eastV.scaleInPlace(side));
+            tangent.copyFrom(dragFwd).scaleInPlace(fwd);
+            tangent.addInPlace(dragRight.scaleInPlace(side));
             if (tangent.lengthSquared() < 1e-12) return;
             tangent.normalize().scaleInPlace(step);
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
