@@ -68,6 +68,12 @@ interface GlobeMarkerNode {
     lineMesh: Mesh;
     lineMat: StandardMaterial;
     enabled: boolean;
+    /**
+     * 直近に取得できた地形標高[m]（未取得は null）。前景タイルが一時的に未ロードで
+     * `terrainElevAt` が null を返したとき、これを保持してマーカーが楕円体表面（elev=0）へ
+     * 落ちるのを防ぐ（被覆の根本改善は #329）。
+     */
+    lastElev: number | null;
 }
 
 export interface GlobeMarkerManager {
@@ -181,6 +187,7 @@ export const createGlobeMarkerManager = (
             lineMesh,
             lineMat,
             enabled,
+            lastElev: null,
         };
         lineMesh.setEnabled(enabled);
         iconText?.mesh.setEnabled(enabled);
@@ -214,7 +221,11 @@ export const createGlobeMarkerManager = (
         if (nodes.size === 0) return;
         for (const node of nodes.values()) {
             if (!node.enabled) continue;
-            const elev = terrainElevAt(node.lat, node.lon) ?? 0;
+            // 取得できた標高は保持し、null（前景タイル未ロード等）のときは直前値へフォールバック
+            // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。被覆の根本改善は #329。
+            const queried = terrainElevAt(node.lat, node.lon);
+            if (queried !== null) node.lastElev = queried;
+            const elev = node.lastElev ?? 0;
             // 地表 ECEF と地心 up。
             groundPlacementToRef(node.lat, node.lon, elev, pos, up);
             // 距離は 1 回だけ算出し、スケールと線高さで再利用（sqrt の二重計算を避ける）。
