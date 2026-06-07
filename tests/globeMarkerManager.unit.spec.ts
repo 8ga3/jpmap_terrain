@@ -163,6 +163,19 @@ describe("CRUD", () => {
         mgr.setEnabled(id, true);
         expect(createdCylinders[0].enabled).toBe(true);
     });
+
+    it("remove は未存在 id で warn + no-op（throw しない）", () => {
+        const { mgr } = makeManager();
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        expect(() => mgr.remove("nope")).not.toThrow();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
+        warn.mockRestore();
+    });
+
+    it("setEnabled は未存在 id で throw する", () => {
+        const { mgr } = makeManager();
+        expect(() => mgr.setEnabled("nope", false)).toThrow(/not found/);
+    });
 });
 
 describe("update", () => {
@@ -223,6 +236,13 @@ describe("dispose 後ガード", () => {
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
         mgr.dispose();
         expect(() => mgr.dispose()).not.toThrow();
+    });
+
+    it("dispose 後の setEnabled は throw する", () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        mgr.dispose();
+        expect(() => mgr.setEnabled(id, false)).toThrow(/after dispose/);
     });
 });
 

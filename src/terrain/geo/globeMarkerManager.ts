@@ -237,7 +237,12 @@ export const createGlobeMarkerManager = (
 
     const remove = (id: string): void => {
         const node = nodes.get(id);
-        if (!node) return;
+        if (!node) {
+            // 平面版 MarkerManager/CircleManager と同様、未存在 id は warn + no-op にして
+            // 呼び出し側のバグを検知しやすくする。
+            console.warn(`[globe-marker] remove: id "${id}" not found`);
+            return;
+        }
         node.lineMesh.dispose();
         node.lineMat.dispose();
         if (node.iconText && !node.iconText.disposed) {
@@ -250,8 +255,10 @@ export const createGlobeMarkerManager = (
     };
 
     const setEnabled = (id: string, enabled: boolean): void => {
+        // 平面版と同様、dispose 後・未存在 id は throw して呼び出しミスを早期検出する。
+        if (disposed) throw new Error("GlobeMarkerManager.setEnabled: called after dispose");
         const node = nodes.get(id);
-        if (!node) return;
+        if (!node) throw new Error(`GlobeMarkerManager.setEnabled: id "${id}" not found`);
         node.enabled = enabled;
         node.lineMesh.setEnabled(enabled);
         node.iconText?.mesh.setEnabled(enabled);
