@@ -298,6 +298,11 @@ export const createGlobeTileManager = (
                     }
                     mat.diffuseTexture = tex;
                 },
+                // onError: ロード失敗（404/ネットワーク断等）時は scene に登録された
+                // Texture を必ず破棄してリークを防ぐ（平面版 tileManager と同様）。
+                () => {
+                    tex.dispose();
+                },
             );
             tex.wrapU = Texture.CLAMP_ADDRESSMODE;
             tex.wrapV = Texture.CLAMP_ADDRESSMODE;
