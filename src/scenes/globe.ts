@@ -25,7 +25,7 @@ import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/ge
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
 import type { MapType } from "../terrain/gsiTile";
-import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic } from "../terrain/geo/ecef";
+import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
 import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
@@ -386,14 +386,14 @@ export class GlobeScene {
         // 追従強度はカメラの対地クリアランスでフェードし、十分高い位置では追従しない（高高度の
         // パンで地形の起伏に沿ってカメラ高度がばたつくのを防ぐ）。`zoomToCursor=false` のため
         // ズームは radius のみを変え center を動かさず、seat と競合しないので zoom 中もそのまま動く。
-        const seatCenterOnTerrain = (): void => {
+        // camAltMeters はカメラの楕円体高度（observer で 1 回だけ計算した値を共有）。
+        const seatCenterOnTerrain = (camAltMeters: number): void => {
             const g = ecefToGeodetic(camera.center);
             const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
             if (elev === null) return;
             centerElevation = elev; // SSE 距離評価の基準標高（追従の有無に関わらず最新化）
             // カメラの対地クリアランスで追従強度をフェード（FULL 以下で完全追従、ZERO 以上で停止）。
-            const camAlt = ecefToGeodetic(computeCameraEcef()).altMeters;
-            const clearance = camAlt - elev;
+            const clearance = camAltMeters - elev;
             const seatFactor = Math.max(
                 0,
                 Math.min(
@@ -412,9 +412,9 @@ export class GlobeScene {
         // カメラ地形衝突: カメラ位置が地形 + 最小クリアランスより低くなったら radius を増やして
         // 潜り込みを防ぐ。seat は注視点を地表へ載せるだけでカメラ自身の潜りは防がないため、
         // 近接ズーム/低高度パンの保険として明示実装する（PoC は seat による実用回避のみ）。
-        const enforceGroundClearance = (): void => {
-            const camEcef = computeCameraEcef(); // lookAt バッファも更新される
-            const camGeo = ecefToGeodetic(camEcef);
+        // camEcef / camGeo / lookAt は observer で 1 回だけ計算したものを共有する
+        // （seat → 衝突で computeCameraEcef / ecefToGeodetic を二重実行しないため）。
+        const enforceGroundClearance = (camEcef: Vector3, camGeo: Geodetic): void => {
             const terrain = tileManager.terrainElevAt(camGeo.latDeg, camGeo.lonDeg);
             if (terrain === null) return;
             // radius あたりのカメラ高度増加率 = カメラ地心 up・(center→camera 単位方向)。
@@ -445,8 +445,13 @@ export class GlobeScene {
         let frame = 0;
         const observer = scene.onBeforeRenderObservable.add(() => {
             applyKeyboardPan();
-            seatCenterOnTerrain();
-            enforceGroundClearance();
+            // カメラ ECEF と測地座標・lookAt を 1 フレーム 1 回だけ計算し、seat と衝突で共有する
+            // （ComputeLookAtFromYawPitchToRef と測地変換の二重実行を避ける）。seat は center を
+            // わずかに動かすため衝突はその直前のスナップショットを使うが、毎フレーム補正のため実用上問題ない。
+            const camEcef = computeCameraEcef(); // lookAt バッファも更新される
+            const camGeo = ecefToGeodetic(camEcef);
+            seatCenterOnTerrain(camGeo.altMeters);
+            enforceGroundClearance(camEcef, camGeo);
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             frame++;
         });
