@@ -2,8 +2,8 @@
  * グローブ（ECEF）向け LOD/SSE タイル選択 (Issue #275 Phase 1)。
  *
  * 平面ワールド前提の `src/terrain/visibleTiles.ts`（Quadtree+SSE）を、グローブ
- * （地心 ECEF）向けに再定義したもの。PoC (#321 `globeLod.ts`) を本体共有モジュールへ
- * 昇格し、ECEF 変換を Phase 0 の `geo/ecef` に委譲する。
+ * （地心 ECEF）向けに再定義したもの。PoC (#321) を本体共有モジュールへ昇格し、
+ * ECEF 変換を Phase 0 の `geo/ecef` に委譲する。
  *
  * 平面版との差分:
  * - タイル距離は AABB との XZ 最短距離＋カメラ高度の合成ではなく、タイル中心 ECEF と
