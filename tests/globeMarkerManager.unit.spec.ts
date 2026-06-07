@@ -180,6 +180,24 @@ describe("update", () => {
         // scaling.y は初期 1 のまま（update でいじられない）。
         expect(createdCylinders[0].scaling.y).toBe(1);
     });
+
+    it("terrainElevAt が null のときは直前標高を保持する（楕円体へ落とさない）", () => {
+        // 1 回目は 5000m、2 回目は null（前景タイル未ロード相当）。
+        const terrainElevAt = jest
+            .fn<(lat: number, lon: number) => number | null>()
+            .mockReturnValueOnce(5000)
+            .mockReturnValueOnce(null);
+        const mgr = createGlobeMarkerManager({ scene: {} as never, terrainElevAt });
+        mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        const cam = new Vector3(7_000_000, 0, 0);
+        mgr.update(cam); // elev=5000 を保持
+        const after5000 = createdCylinders[0].position.clone();
+        mgr.update(cam); // null → 直前 5000 を維持
+        // 2 回目の位置が 1 回目とほぼ同じ（楕円体面へ落ちて位置が大きく変わらない）。
+        expect(Vector3.Distance(createdCylinders[0].position, after5000)).toBeLessThan(1);
+        // 5000m 接地は楕円体面(elev=0)より地心距離が ~5000m 大きいことの傍証として、十分大きい。
+        expect(createdCylinders[0].position.length()).toBeGreaterThan(6_300_000);
+    });
 });
 
 describe("dispose 後ガード", () => {
