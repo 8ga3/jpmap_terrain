@@ -184,6 +184,7 @@ export class GlobeScene {
         const lookAt = new Vector3();
         const cameraEcef = new Vector3();
         const seatCenter = new Vector3();
+        const seatLerp = new Vector3();
         // SSE 距離評価の基準標高（中心付近の地形標高）。前 sync の値を次 sync で使う。
         let centerElevation = 0;
 
@@ -238,7 +239,9 @@ export class GlobeScene {
             centerElevation = elev; // SSE 距離評価の基準標高
             geodeticToEcefToRef(g.latDeg, g.lonDeg, elev, seatCenter);
             // 同 lat/lon のまま高度だけ地形標高へ。残差を lerp で滑らかに（LOD 切替時の段差緩和）。
-            camera.center = Vector3.Lerp(camera.center, seatCenter, SEAT_LERP);
+            // 毎フレーム呼ばれるため、LerpToRef で再利用バッファに書き割り当てを避ける。
+            Vector3.LerpToRef(camera.center, seatCenter, SEAT_LERP, seatLerp);
+            camera.center = seatLerp;
         };
 
         engine.runRenderLoop(() => scene.render());

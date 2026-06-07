@@ -123,9 +123,13 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const { lat } = tileCenterEcefToRef(zoom, x, y, referenceAltitude, tileEcef);
 
         // 地平線カリング: タイルの地心法線（= normalize(tileEcef)）とカメラ方向の内積。
-        // 裏側（地球の向こう側）のタイルを除外する。
-        const tileDir = tileEcef.clone().normalize();
-        if (Vector3.Dot(tileDir, camDir) < horizonDotThreshold) return;
+        // 裏側（地球の向こう側）のタイルを除外する。camDir は正規化済みなので
+        // dot(normalize(tileEcef), camDir) = dot(tileEcef, camDir) / |tileEcef| として
+        // 計算し、ホットパスでの Vector3 割り当て（clone/normalize）を避ける。
+        const tileLen = tileEcef.length();
+        const horizonDot =
+            tileLen > 0 ? Vector3.Dot(tileEcef, camDir) / tileLen : 0;
+        if (horizonDot < horizonDotThreshold) return;
 
         const distance = Vector3.Distance(cameraEcef, tileEcef);
         const tileSizeMeters = tileEdgeMeters(lat, zoom);

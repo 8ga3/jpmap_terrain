@@ -148,12 +148,16 @@ export const createGlobeTileManager = (
         loading.add(gk);
         loadElevationTile(gz, gx, gy)
             .then((elev) => {
+                // dispose() や sync() で loading から外された後の遅延 resolve は無視する
+                // （不要・dispose 済みマネージャの状態を書き戻さない）。
+                if (!loading.has(gk)) return;
                 loading.delete(gk);
                 elevCache.set(gk, elev);
             })
             .catch(() => {
                 // 取得不可（GSI に標高データが無い no-data/404 を含む）。per-tile では警告せず、
-                // sync 時にまとめて間引いて出力する。
+                // sync 時にまとめて間引いて出力する。遅延 reject も同様にゲートする。
+                if (!loading.has(gk)) return;
                 loading.delete(gk);
                 failed.add(gk);
                 newlyFailed.push(gk);
@@ -256,6 +260,12 @@ export const createGlobeTileManager = (
         // 不要になった geom 標高キャッシュを破棄（必要 geom キー集合で判定）。
         for (const key of elevCache.keys()) {
             if (!neededGeom.has(key)) elevCache.delete(key);
+        }
+        // 不要になった in-flight ロードを loading から外す。これにより、その後 resolve した
+        // 結果は loadTile の then/catch ゲート（loading.has）で無視され、不要な geom が
+        // elevCache に入ってメモリを占有するのを防ぐ。再度必要になれば次 sync で再取得する。
+        for (const key of loading) {
+            if (!neededGeom.has(key)) loading.delete(key);
         }
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
