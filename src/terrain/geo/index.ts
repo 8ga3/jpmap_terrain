@@ -13,6 +13,10 @@
  *
  * Phase 2（カメラ・UX・URL）:
  * - `cameraMapping`: UI/URL ⇄ GeospatialCamera マッピング・接線パン・地形衝突の純関数。
+ *
+ * Phase 3（オーバーレイ）:
+ * - `overlayPlacement`: ECEF + 地心 up の配置・距離スケール・線高さの純関数。
+ * - `globeMarkerManager`: グローブ用マーカー（接地・地心 up ポール・カメラ正対ラベル）。
  */
 export * from "./ecef";
 export * from "./mapping";
@@ -21,3 +25,5 @@ export * from "./globeLod";
 export * from "./crossLevel";
 export * from "./globeMesh";
 export * from "./cameraMapping";
+export * from "./overlayPlacement";
+export * from "./globeMarkerManager";

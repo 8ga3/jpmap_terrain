@@ -32,6 +32,7 @@ import {
     clampRadiusForGroundClearance,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
+import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 
 /** グローブシーンの既定パラメータ（富士山周辺）。 */
 export const GLOBE_SCENE_DEFAULTS = {
@@ -123,6 +124,8 @@ export interface GlobeSceneController {
     scene: Scene;
     camera: GeospatialCamera;
     tileManager: GlobeTileManager;
+    /** グローブ用マーカー（Phase 3）。接地・地心 up ポール・カメラ正対ラベル。 */
+    markerManager: GlobeMarkerManager;
     dispose: () => void;
 }
 
@@ -332,6 +335,12 @@ export class GlobeScene {
             snapEnabled,
         });
 
+        // ---- グローブマーカー（Phase 3） ----
+        const markerManager = createGlobeMarkerManager({
+            scene,
+            terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+        });
+
         const lookAt = new Vector3();
         const cameraEcef = new Vector3();
         const seatCenter = new Vector3();
@@ -452,6 +461,8 @@ export class GlobeScene {
             const camGeo = ecefToGeodetic(camEcef);
             seatCenterOnTerrain(camGeo.altMeters);
             enforceGroundClearance(camEcef, camGeo);
+            // マーカーの接地・距離スケール更新（フレーム共有の camEcef を渡す）。
+            markerManager.update(camEcef);
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             frame++;
         });
@@ -468,10 +479,11 @@ export class GlobeScene {
             canvas.removeEventListener("pointerup", onPointerUp);
             canvas.removeEventListener("pointercancel", endDrag);
             canvas.removeEventListener("pointermove", onPointerMove);
+            markerManager.dispose();
             tileManager.dispose();
             scene.dispose();
         };
 
-        return { scene, camera, tileManager, dispose };
+        return { scene, camera, tileManager, markerManager, dispose };
     }
 }
