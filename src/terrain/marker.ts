@@ -68,7 +68,9 @@ const resolveLine = (line: MarkerLineOptions | undefined): Required<MarkerLineOp
     height: line?.height ?? MARKER_DEFAULTS.line.height,
 });
 
-const resolveIcon = (
+// グローブ版オーバーレイ（#275 Phase 3, geo/globeMarkerManager）が同じアイコン/ラベル描画を
+// 再利用するため export する（座標系非依存のビルボード描画。平面版の挙動は不変）。
+export const resolveIcon = (
     icon: MarkerIconOptions | undefined,
 ): Required<MarkerIconOptions> | null => {
     if (!icon) return null;
@@ -79,7 +81,7 @@ const resolveIcon = (
     };
 };
 
-const resolveText = (
+export const resolveText = (
     text: MarkerTextOptions | undefined,
 ): Required<MarkerTextOptions> | null => {
     if (!text) return null;
@@ -172,7 +174,7 @@ const createLineMesh = (
     return { mesh, material, texture };
 };
 
-interface IconTextMeshes {
+export interface IconTextMeshes {
     mesh: Mesh;
     material: StandardMaterial;
     texture: DynamicTexture;
@@ -197,7 +199,7 @@ interface IconTextMeshes {
  * - 板の幅は max(textWidth, iconWidth) に揃え、両領域とも水平中央に配置する。
  * - 板の左右はアスペクト維持のためテクスチャと同サイズ（dpr 換算）。
  */
-const createIconTextMesh = (
+export const createIconTextMesh = (
     scene: Scene,
     id: string,
     icon: Required<MarkerIconOptions> | null,

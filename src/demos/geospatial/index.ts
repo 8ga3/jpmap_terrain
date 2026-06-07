@@ -176,6 +176,16 @@ const start = async (): Promise<void> => {
         );
     }
 
+    // グローブマーカー（Phase 3）のデモ表示。`?marker=off` で無効化できる。既定は富士山頂に
+    // ラベル付きマーカーを 1 つ置き、接地・地心 up ポール・カメラ正対ラベルを実機確認する。
+    if (params.get("marker") !== "off") {
+        controller.markerManager.add({
+            lat: 35.360625,
+            lon: 138.727363,
+            text: { value: "富士山" },
+        });
+    }
+
     // render ループはシーン生成側ではなく呼び出し側（本デモ）で開始する
     // （GlobeScene は責務分離のためループを開始しない）。
     engine.runRenderLoop(() => controller.scene.render());

@@ -1,0 +1,76 @@
+/**
+ * geo/overlayPlacement の単体テスト (Issue #275 Phase 3)。
+ *
+ * - groundPlacementToRef: 位置が球面上（地心距離≈標高+曲率半径）・up が地心方向の単位ベクトル
+ * - computeOverlayDistanceScale: 距離比例・下限 0.1
+ * - computeOverlayLineHeight: 距離比例・[100,10000] クランプ
+ */
+
+import { describe, it, expect } from "@jest/globals";
+
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+
+import { geodeticToEcef } from "../src/terrain/geo/ecef";
+import {
+    groundPlacementToRef,
+    computeOverlayDistanceScale,
+    computeOverlayLineHeight,
+    OVERLAY_REF_DISTANCE_M,
+} from "../src/terrain/geo/overlayPlacement";
+
+describe("groundPlacementToRef", () => {
+    it("位置は geodeticToEcef と一致し、up は地心方向の単位ベクトル", () => {
+        const pos = new Vector3();
+        const up = new Vector3();
+        groundPlacementToRef(35.3606, 138.7274, 3776, pos, up);
+        const expected = geodeticToEcef(35.3606, 138.7274, 3776);
+        expect(pos.x).toBeCloseTo(expected.x, 3);
+        expect(pos.y).toBeCloseTo(expected.y, 3);
+        expect(pos.z).toBeCloseTo(expected.z, 3);
+        // up は単位ベクトルで position と同方向（地心 up）。
+        expect(up.length()).toBeCloseTo(1, 9);
+        const posDir = pos.clone().normalize();
+        expect(Vector3.Dot(up, posDir)).toBeCloseTo(1, 9);
+    });
+
+    it("赤道本初子午線・標高0 では +X 方向、up=+X", () => {
+        const pos = new Vector3();
+        const up = new Vector3();
+        groundPlacementToRef(0, 0, 0, pos, up);
+        expect(up.x).toBeCloseTo(1, 9);
+        expect(up.y).toBeCloseTo(0, 9);
+        expect(up.z).toBeCloseTo(0, 9);
+    });
+});
+
+describe("computeOverlayDistanceScale", () => {
+    it("距離 = 基準距離 で scale=1", () => {
+        const cam = new Vector3(0, 0, 0);
+        const pos = new Vector3(OVERLAY_REF_DISTANCE_M, 0, 0);
+        expect(computeOverlayDistanceScale(cam, pos)).toBeCloseTo(1, 9);
+    });
+
+    it("距離 2倍 で scale=2", () => {
+        const cam = new Vector3(0, 0, 0);
+        const pos = new Vector3(2 * OVERLAY_REF_DISTANCE_M, 0, 0);
+        expect(computeOverlayDistanceScale(cam, pos)).toBeCloseTo(2, 9);
+    });
+
+    it("近距離は下限 0.1 にクランプ", () => {
+        const cam = new Vector3(0, 0, 0);
+        const pos = new Vector3(1, 0, 0); // 1m
+        expect(computeOverlayDistanceScale(cam, pos)).toBe(0.1);
+    });
+});
+
+describe("computeOverlayLineHeight", () => {
+    it("距離比例（×0.1）", () => {
+        expect(computeOverlayLineHeight(20000)).toBeCloseTo(2000, 6);
+    });
+    it("下限 100m", () => {
+        expect(computeOverlayLineHeight(100)).toBe(100); // 100*0.1=10 → 下限 100
+    });
+    it("上限 10000m", () => {
+        expect(computeOverlayLineHeight(1_000_000)).toBe(10000); // 100000 → 上限
+    });
+});
