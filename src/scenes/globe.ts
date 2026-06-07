@@ -193,14 +193,28 @@ export class GlobeScene {
         const onKeyUp = (e: KeyboardEvent): void => {
             pressed.delete(e.key.toLowerCase());
         };
+        // 押下状態のリセット。フォーカス喪失/タブ切替中は keyup が届かず押下が残り続け、
+        // 復帰後に意図せずパンし続けるのを防ぐ（blur / 非表示で全解除）。
+        const clearPressed = (): void => pressed.clear();
+        const onVisibilityChange = (): void => {
+            if (document.hidden) pressed.clear();
+        };
+        // keydown/keyup は canvas に付ける（グローバルなキー入力の横取りを避ける）。canvas が
+        // フォーカス可能でない/未フォーカスだとキーを拾えないため、tabIndex を確保し pointerdown
+        // 時にフォーカスする（呼び出し側の設定に依存せずシーン単体でも WASD が機能する）。
+        if (canvas.tabIndex < 0) canvas.tabIndex = 0;
         canvas.addEventListener("keydown", onKeyDown);
         canvas.addEventListener("keyup", onKeyUp);
+        canvas.addEventListener("blur", clearPressed);
+        window.addEventListener("blur", clearPressed);
+        document.addEventListener("visibilitychange", onVisibilityChange);
 
         // 左ドラッグ状態。
         let dragging = false;
         let lastX = 0;
         let lastY = 0;
         const onPointerDown = (e: PointerEvent): void => {
+            canvas.focus(); // WASD のためにフォーカスを確保（右/左/中ボタンいずれでも）
             if (e.button !== 0) return;
             dragging = true;
             lastX = e.clientX;
@@ -409,6 +423,9 @@ export class GlobeScene {
             scene.onBeforeRenderObservable.remove(observer);
             canvas.removeEventListener("keydown", onKeyDown);
             canvas.removeEventListener("keyup", onKeyUp);
+            canvas.removeEventListener("blur", clearPressed);
+            window.removeEventListener("blur", clearPressed);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
             canvas.removeEventListener("pointerdown", onPointerDown);
             canvas.removeEventListener("pointerup", onPointerUp);
             canvas.removeEventListener("pointercancel", endDrag);
