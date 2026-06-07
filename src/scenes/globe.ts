@@ -64,6 +64,15 @@ export const GLOBE_SCENE_DEFAULTS = {
 /** seat-on-terrain の追従残差 lerp 係数（LOD 切替時の段差緩和）。 */
 const SEAT_LERP = 0.5;
 
+/**
+ * seat-on-terrain（注視点の地形追従）を効かせるカメラ対地クリアランス[m]の範囲。
+ * カメラが地形から十分高い位置にあるときは追従させない（高高度のパンで地形の起伏に沿って
+ * カメラ高度がばたつくのを防ぐ）。`FULL` 以下で完全追従、`ZERO` 以上で追従停止、その間は線形に
+ * フェード（しきい値で急に切り替えるとズーム時に段差が出るため）。
+ */
+const SEAT_FULL_CLEARANCE = 3000;
+const SEAT_ZERO_CLEARANCE = 10000;
+
 /** 1 秒あたりの WASD パン距離 = radius（高度相当）× この係数。高度比例で自然な速度。 */
 const PAN_RATE_PER_SEC = 0.6;
 
@@ -371,19 +380,30 @@ export class GlobeScene {
             }
         };
 
-        // 注視点を地形表面へ追従させる（高標高地でカメラが地形下へ潜るのを防ぐ）。毎フレーム
-        // 実行する。zoom 中は zoom-to-point 側が 3D で地形追従するため seat を止める
-        // （ラスタ標高と pick 点の食い違いで引っ張り合うのを避ける）。
+        // 注視点を地形表面へ追従させる（地表付近でカメラが地形下へ潜るのを防ぐ）。毎フレーム実行。
+        // 追従強度はカメラの対地クリアランスでフェードし、十分高い位置では追従しない（高高度の
+        // パンで地形の起伏に沿ってカメラ高度がばたつくのを防ぐ）。`zoomToCursor=false` のため
+        // ズームは radius のみを変え center を動かさず、seat と競合しないので zoom 中もそのまま動く。
         const seatCenterOnTerrain = (): void => {
-            if (camera.movement.computedPerFrameZoomPickPoint) return;
             const g = ecefToGeodetic(camera.center);
             const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
             if (elev === null) return;
-            centerElevation = elev; // SSE 距離評価の基準標高
+            centerElevation = elev; // SSE 距離評価の基準標高（追従の有無に関わらず最新化）
+            // カメラの対地クリアランスで追従強度をフェード（FULL 以下で完全追従、ZERO 以上で停止）。
+            const camAlt = ecefToGeodetic(computeCameraEcef()).altMeters;
+            const clearance = camAlt - elev;
+            const seatFactor = Math.max(
+                0,
+                Math.min(
+                    1,
+                    (SEAT_ZERO_CLEARANCE - clearance) / (SEAT_ZERO_CLEARANCE - SEAT_FULL_CLEARANCE),
+                ),
+            );
+            if (seatFactor <= 0) return; // 十分高い → 地形に追従せず高度一定でパン
             geodeticToEcefToRef(g.latDeg, g.lonDeg, elev, seatCenter);
-            // 同 lat/lon のまま高度だけ地形標高へ。残差を lerp で滑らかに（LOD 切替時の段差緩和）。
+            // 同 lat/lon のまま高度だけ地形標高へ。残差を lerp で滑らかに（高度依存で強度を絞る）。
             // 毎フレーム呼ばれるため、LerpToRef で再利用バッファに書き割り当てを避ける。
-            Vector3.LerpToRef(camera.center, seatCenter, SEAT_LERP, seatLerp);
+            Vector3.LerpToRef(camera.center, seatCenter, SEAT_LERP * seatFactor, seatLerp);
             camera.center = seatLerp;
         };
 
