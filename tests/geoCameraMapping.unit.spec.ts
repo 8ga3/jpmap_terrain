@@ -151,4 +151,10 @@ describe("clampRadiusForGroundClearance", () => {
     it("水平視（dAltPerRadius≈0）では radius を増やさない（発散回避）", () => {
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, 0)).toBe(1000);
     });
+
+    it("dAltPerRadius が非有限（NaN/Infinity）でも radius を破壊しない", () => {
+        // NaN は < 1e-3 判定を素通りするため明示ガードが必要（camera.radius=NaN 防止）。
+        expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, NaN)).toBe(1000);
+        expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, Infinity)).toBe(1000);
+    });
 });

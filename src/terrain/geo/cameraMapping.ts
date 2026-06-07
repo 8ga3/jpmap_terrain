@@ -136,7 +136,9 @@ export const clampRadiusForGroundClearance = (
 ): number => {
     const deficit = terrainElevMeters + minClearance - camAltMeters;
     if (deficit <= 0) return radius; // 既にクリアランスを満たす
-    // 水平視（dAltPerRadius≈0）では radius を増やしても高度が上がらないので諦める（発散回避）。
-    if (dAltPerRadius < 1e-3) return radius;
-    return radius + deficit / dAltPerRadius;
+    // 水平視（dAltPerRadius≈0）や非有限値（NaN/Infinity）では radius を増やしても高度が
+    // 上がらない/壊れるので入力 radius を返す（NaN は比較が常に false のため明示判定する）。
+    if (!Number.isFinite(dAltPerRadius) || dAltPerRadius < 1e-3) return radius;
+    const next = radius + deficit / dAltPerRadius;
+    return Number.isFinite(next) ? next : radius;
 };
