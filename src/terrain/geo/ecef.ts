@@ -3,8 +3,8 @@
  *
  * グローブ地形（Issue #275）の座標基盤。Babylon.js の `EcefFromLatLonAltToRef`
  * （測地→ECEF）に対し、本モジュールは度数入力のラッパと、ECEF→測地の逆変換
- * （Bowring 閉形式）を提供する。PoC（Issue #321 / `geoMapping.ts`）の純関数を
- * 本体共有モジュールへ昇格したもの。
+ * （Bowring 閉形式）を提供する。PoC（Issue #321）の純関数を本体共有モジュールへ
+ * 昇格したもの。
  *
  * 軸の規約は Babylon の `EcefFromLatLonAltToRef` と同一:
  * - X 軸 → 経度 0°（本初子午線）
