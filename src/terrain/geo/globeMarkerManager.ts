@@ -30,7 +30,7 @@ import {
 } from "../marker";
 import {
     groundPlacementToRef,
-    computeOverlayDistanceScale,
+    computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
 } from "./overlayPlacement";
 
@@ -63,7 +63,6 @@ interface GlobeMarkerNode {
     id: string;
     lat: number;
     lon: number;
-    lineColor: string;
     poleBaseDiameter: number;
     iconText: IconTextMeshes | null;
     lineMesh: Mesh;
@@ -128,7 +127,17 @@ export const createGlobeMarkerManager = (
         const id = `globe-marker-${seq++}`;
         const icon = resolveIcon(opts.icon);
         // 平面版 addMarker と同様、icon.url の危険なスキーム（javascript: 等）を拒否する。
-        if (icon) validateIconUrl(icon.url);
+        // validateIconUrl は "addMarker:" 始まりのメッセージで投げるため、発生箇所（このマネージャ
+        // と marker id）を含めて投げ直し、デバッグしやすくする。
+        if (icon) {
+            try {
+                validateIconUrl(icon.url);
+            } catch (e) {
+                throw new Error(
+                    `GlobeMarkerManager.add (${id}): ${e instanceof Error ? e.message : String(e)}`,
+                );
+            }
+        }
         const text = resolveText(opts.text);
         const iconText = createIconTextMesh(scene, id, icon, text);
         // ラベルもピック対象から外す（地形ピック等の妨げにしない）。
@@ -164,7 +173,6 @@ export const createGlobeMarkerManager = (
             id,
             lat: opts.lat,
             lon: opts.lon,
-            lineColor,
             poleBaseDiameter: opts.line?.width ?? GLOBE_MARKER_DEFAULTS.poleBaseDiameter,
             iconText,
             lineMesh,
@@ -206,8 +214,9 @@ export const createGlobeMarkerManager = (
             const elev = terrainElevAt(node.lat, node.lon) ?? 0;
             // 地表 ECEF と地心 up。
             groundPlacementToRef(node.lat, node.lon, elev, pos, up);
+            // 距離は 1 回だけ算出し、スケールと線高さで再利用（sqrt の二重計算を避ける）。
             const dist = Vector3.Distance(camEcef, pos);
-            const distScale = computeOverlayDistanceScale(camEcef, pos);
+            const distScale = computeOverlayDistanceScaleFromDistance(dist);
             const lineHeight = computeOverlayLineHeight(dist);
 
             // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
