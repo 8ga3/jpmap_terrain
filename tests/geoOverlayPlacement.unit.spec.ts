@@ -61,6 +61,15 @@ describe("computeOverlayDistanceScale", () => {
         const pos = new Vector3(1, 0, 0); // 1m
         expect(computeOverlayDistanceScale(cam, pos)).toBe(0.1);
     });
+
+    it("refDistanceM が 0 以下なら既定値へフォールバック（Infinity 防止）", () => {
+        const cam = new Vector3(0, 0, 0);
+        const pos = new Vector3(OVERLAY_REF_DISTANCE_M, 0, 0);
+        // ref=0 / 負値 → 既定 OVERLAY_REF_DISTANCE_M 扱いで scale=1（Infinity にならない）。
+        expect(computeOverlayDistanceScale(cam, pos, 0)).toBeCloseTo(1, 9);
+        expect(computeOverlayDistanceScale(cam, pos, -100)).toBeCloseTo(1, 9);
+        expect(Number.isFinite(computeOverlayDistanceScale(cam, pos, 0))).toBe(true);
+    });
 });
 
 describe("computeOverlayLineHeight", () => {

@@ -23,7 +23,8 @@ import {
     type MarkerUpdate,
 } from "../lib/types";
 
-const RENDERING_GROUP_ID = 1;
+// グローブ版オーバーレイ（#275 Phase 3）が同じ描画レイヤーに揃えるため export する。
+export const RENDERING_GROUP_ID = 1;
 const MAX_DT_SIZE = 1024;
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);/**

@@ -49,8 +49,10 @@ export const computeOverlayDistanceScale = (
     posEcef: Vector3,
     refDistanceM: number = OVERLAY_REF_DISTANCE_M,
 ): number => {
+    // 0 以下の基準距離は不正（Infinity/-Infinity を防ぐ）。既定値へフォールバックする。
+    const ref = refDistanceM > 0 ? refDistanceM : OVERLAY_REF_DISTANCE_M;
     const dist = Vector3.Distance(cameraEcef, posEcef);
-    return Math.max(dist / refDistanceM, MIN_SCALE);
+    return Math.max(dist / ref, MIN_SCALE);
 };
 
 /**
