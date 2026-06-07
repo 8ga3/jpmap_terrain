@@ -116,6 +116,8 @@ export const createGlobeMarkerManager = (
     const { scene, terrainElevAt } = deps;
     const nodes = new Map<string, GlobeMarkerNode>();
     let seq = 0;
+    // dispose 後の use-after-dispose を防ぐフラグ（平面版 MarkerManager と同様）。
+    let disposed = false;
 
     // 毎フレーム再利用するスクラッチ。
     const pos = new Vector3();
@@ -124,6 +126,7 @@ export const createGlobeMarkerManager = (
     const quat = new Quaternion();
 
     const add = (opts: GlobeMarkerOptions): string => {
+        if (disposed) throw new Error("GlobeMarkerManager.add: called after dispose");
         const id = `globe-marker-${seq++}`;
         const icon = resolveIcon(opts.icon);
         // 平面版 addMarker と同様、icon.url の危険なスキーム（javascript: 等）を拒否する。
@@ -239,6 +242,8 @@ export const createGlobeMarkerManager = (
     };
 
     const dispose = (): void => {
+        if (disposed) return; // 二重 dispose を安全に無視する
+        disposed = true;
         for (const id of [...nodes.keys()]) remove(id);
     };
 
