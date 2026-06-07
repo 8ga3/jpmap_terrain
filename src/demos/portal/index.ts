@@ -90,6 +90,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "ターン制の対戦ゲーム。角度と火力を調整して砲弾を発射し、相手の大砲に命中させよう。Havok 物理エンジンでバウンド・転がりを再現。",
         href: "artillery",
     },
+    {
+        title: "Geospatial Globe（実験的・#275 Phase 1）",
+        description:
+            "Babylon.js 9.x の GeospatialCamera + ECEF 楕円体 + floating origin によるグローブ地形。平面ビューアと併存する移行中の新スタックです。右ドラッグ=回転 / ホイール=ズーム。",
+        href: "geospatial",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
