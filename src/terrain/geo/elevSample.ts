@@ -8,7 +8,13 @@
  */
 import { TILE_SIZE } from "../gsiTile";
 
-/** 標高ラスタ（TILE_SIZE 角）をローカルピクセル座標で bilinear サンプル（無効値は 0）。 */
+/**
+ * 標高ラスタ（TILE_SIZE 角）をローカルピクセル座標で bilinear サンプルする。
+ *
+ * 無効値（NaN/Infinity）は重み計算から除外し、有効な隅だけで重みを正規化して加重平均する
+ * （平面版 tileManager と同じ方式）。NaN を 0 として混ぜると、4 隅の一部だけ無効な
+ * 湖面・欠測境界で結果が 0 側へ強く引っ張られ不自然に沈むため。4 隅すべて無効なら 0 を返す。
+ */
 export const sampleElevBilinear = (
     elev: Float32Array,
     px: number,
@@ -22,11 +28,20 @@ export const sampleElevBilinear = (
     const y1 = Math.min(y0 + 1, TILE_SIZE - 1);
     const fx = cx - x0;
     const fy = cy - y0;
-    const g = (x: number, y: number): number => {
+
+    let wSum = 0;
+    let valSum = 0;
+    const addCorner = (x: number, y: number, w: number): void => {
         const v = elev[y * TILE_SIZE + x];
-        return Number.isFinite(v) ? v : 0;
+        if (Number.isFinite(v)) {
+            wSum += w;
+            valSum += w * v;
+        }
     };
-    const a = g(x0, y0) * (1 - fx) + g(x1, y0) * fx;
-    const b = g(x0, y1) * (1 - fx) + g(x1, y1) * fx;
-    return a * (1 - fy) + b * fy;
+    addCorner(x0, y0, (1 - fx) * (1 - fy));
+    addCorner(x1, y0, fx * (1 - fy));
+    addCorner(x0, y1, (1 - fx) * fy);
+    addCorner(x1, y1, fx * fy);
+
+    return wSum > 0 ? valSum / wSum : 0;
 };

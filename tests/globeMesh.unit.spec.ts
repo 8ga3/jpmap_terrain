@@ -28,9 +28,25 @@ describe("sampleElevBilinear", () => {
         expect(sampleElevBilinear(elev, 10.25, 5)).toBeCloseTo(10.25, 6);
     });
 
-    it("無効値(NaN)は 0 として扱う", () => {
+    it("4隅すべて無効(NaN)なら 0 を返す", () => {
         const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
         expect(sampleElevBilinear(elev, 3, 3)).toBe(0);
+    });
+
+    it("4隅の一部が NaN でも有効値のみで補間（0 に引っ張られない）", () => {
+        const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
+        elev[0] = 100; // (x=0,y=0) のみ有効
+        // 中心(0.5,0.5) は 4隅 (0,0)/(1,0)/(0,1)/(1,1) を参照。有効は (0,0) のみ。
+        // 旧実装（NaN→0 混入）では 25 に沈むが、重み正規化では有効値 100 を返す。
+        expect(sampleElevBilinear(elev, 0.5, 0.5)).toBeCloseTo(100, 6);
+    });
+
+    it("有効な2隅の加重平均（無効隅を除外して正規化）", () => {
+        const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
+        elev[0] = 100; // (x=0,y=0)
+        elev[1] = 200; // (x=1,y=0)
+        // (px=0.5,py=0): 上辺の 2隅のみ有効、重み 0.5/0.5 → 150。
+        expect(sampleElevBilinear(elev, 0.5, 0)).toBeCloseTo(150, 6);
     });
 });
 
