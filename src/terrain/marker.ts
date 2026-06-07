@@ -27,7 +27,9 @@ import {
 export const RENDERING_GROUP_ID = 1;
 const MAX_DT_SIZE = 1024;
 
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);/**
+const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);
+
+/**
  * `icon.url` を検証する。`javascript:` / `vbscript:` 等の危険スキームを拒否する。
  *
  * - 空文字: 例外
