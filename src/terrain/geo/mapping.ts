@@ -57,11 +57,16 @@ export const pixelToLatLon = (
 
 /**
  * 緯度経度[deg] → グローバルピクセル座標（Web メルカトル順変換）。
- * `pixelToLatLon` の逆関数。
+ * 域内入力に対しては `pixelToLatLon` の逆関数。
  *
  * `gsiTile.toTileXY` と挙動を揃えるため、緯度を ±{@link MERCATOR_MAX_LAT} にクランプし
  * （`Math.log(tan+sec)` の発散 → `Infinity/NaN` を防ぐ）、経度を [-180, 180) に正規化してから
  * 変換する。
+ *
+ * NOTE: 経度を [-180, 180) に正規化するため、境界では厳密な逆にならない。`pixelToLatLon` が
+ * 返し得る lon=180°（globalPx=totalPixels）は本関数では -180°（px=0）として扱う。球面上は
+ * 同一経線で幾何学的に等価なので問題ないが、この 1 点では `latLonToPixel(pixelToLatLon(p)) === p`
+ * が px について成り立たない。
  *
  * @param latDeg 緯度[deg]。
  * @param lonDeg 経度[deg]。
