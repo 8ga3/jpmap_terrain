@@ -1,13 +1,15 @@
 /**
- * グローブ地形シーン (Issue #275 Phase 1)。
+ * グローブ地形シーン (Issue #275 Phase 1 + Phase 2)。
  *
  * 平面ワールドの `scenes/default.ts` に対する **並行構築** のグローブ（ECEF 楕円体 +
  * Large World Rendering の floating origin）シーン。`GeospatialCamera` を中核に、
  * `geo/globeTileManager` で動的 LOD タイルを描画し、注視点を地形表面へ追従させる。
  *
- * Phase 1 のスコープは「座標系・メッシュ生成・カメラ基盤・配置・LOD」の地形エンジン。
- * 注視点ズーム・seat-on-terrain・地心距離 LOD までを含む。picking 非依存パン / WASD /
- * zoom-to-cursor 再構成 / URL 等価性などのリッチなカメラ UX は Phase 2 で追加する。
+ * Phase 1: 「座標系・メッシュ生成・カメラ基盤・配置・LOD」の地形エンジン（注視点ズーム・
+ * seat-on-terrain・地心距離 LOD）。
+ * Phase 2: picking 非依存パン（左ドラッグ / WASD）・カメラ地形衝突・seat の対地クリアランス
+ * フェードを追加。zoom-to-cursor は seat との鉛直結合で揺れるため無効維持（中心ズーム。
+ * 再実装は Issue #327）。URL 等価性はデモ（`demos/geospatial/index.ts`）側で実装。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
