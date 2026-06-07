@@ -63,7 +63,8 @@ describe("往復精度 geodetic → ecef → geodetic", () => {
         it(`${s.name} が mm 級で往復する`, () => {
             const ecef = geodeticToEcef(s.lat, s.lon, s.alt);
             const g = ecefToGeodetic(ecef);
-            // 緯度経度は 1e-9 度（≒0.1mm）級、高度は 1e-3 m（mm）級。
+            // toBeCloseTo(x, 8) の許容誤差は |Δ| < 0.5e-8 度。緯度では ≒0.5mm 級
+            // （0.5e-8 度 × 111320 m/度）、高度は toBeCloseTo(x, 3) で 0.5e-3 m（sub-mm）級。
             expect(g.latDeg).toBeCloseTo(s.lat, 8);
             expect(g.lonDeg).toBeCloseTo(s.lon, 8);
             expect(g.altMeters).toBeCloseTo(s.alt, 3);
