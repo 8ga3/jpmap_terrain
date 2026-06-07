@@ -5,9 +5,11 @@
  * ECEF 楕円体 + floating origin）の地形エンジンを `/geospatial` で起動し、旧（平面）と
  * 新（グローブ）を一時併存させて実機比較できるようにする。
  *
- * URL クエリ:
+ * URL（既存共有形式と後方互換, Issue #275 Phase 2 / #64 / #254）:
+ * - パス/ハッシュ `@lat,lon,altitude,azimuth,tilt`（3D 共有形式。altitude ⇄ radius）
+ * - パス/ハッシュ `@lat,lon,Xz`（2D 互換ズームレベル形式。zoomLevel → radius へ換算して受理）
  * - `?engine=webgpu|webgl|webgl2`（既定: 自動。webgl/webgl2 は webgl2 に正規化）
- * - `?lat=&lon=&zoom=&radius=&azimuth=&tilt=`（既定: 富士山周辺）
+ * - `?lat=&lon=&zoom=&radius=&azimuth=&tilt=`（`@` パスが無い場合のフォールバック）
  * - `?map=photo`（航空写真。既定: 標準地図）
  * - `?snap=off`（クロスレベル標高スナップを無効化。比較用）
  */
@@ -17,7 +19,12 @@ import type { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera"
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { clamp, type MapType } from "../../terrain/gsiTile";
-import { RAD2DEG } from "../../terrain/geo/ecef";
+import { yawPitchToUi } from "../../terrain/geo/cameraMapping";
+import {
+    parseCameraStateFromUrl,
+    createUrlUpdater,
+    zoomLevelToRadius,
+} from "../../terrain/urlState";
 import {
     GlobeScene,
     GLOBE_SCENE_DEFAULTS,
@@ -53,8 +60,12 @@ const start = async (): Promise<void> => {
 
     const search = location.search;
     const params = new URLSearchParams(search);
-    const lat = resolveNumber(search, "lat", GLOBE_SCENE_DEFAULTS.lat);
-    const lon = resolveNumber(search, "lon", GLOBE_SCENE_DEFAULTS.lon);
+    // 既存共有形式 `@lat,lon,...` がパス/ハッシュにあれば最優先で復元（後方互換）。
+    // なければ `?lat=&lon=&radius=&azimuth=&tilt=` のクエリにフォールバックする。
+    const hasAtPath = location.pathname.includes("/@") || location.hash.includes("@");
+    const atState = hasAtPath ? parseCameraStateFromUrl(location.href) : null;
+    const lat = atState?.lat ?? resolveNumber(search, "lat", GLOBE_SCENE_DEFAULTS.lat);
+    const lon = atState?.lon ?? resolveNumber(search, "lon", GLOBE_SCENE_DEFAULTS.lon);
     // URL 由来の minZoom は安全な範囲 [0, maxZoom] にクランプする
     // （負値・極端値だと toTileXY / 1<<zoom が壊れ、タイル選択が空になる）。
     const minZoom = clamp(
@@ -62,9 +73,14 @@ const start = async (): Promise<void> => {
         0,
         GLOBE_SCENE_DEFAULTS.maxZoom,
     );
-    const radius = resolveNumber(search, "radius", GLOBE_SCENE_DEFAULTS.radius);
-    const azimuth = resolveNumber(search, "azimuth", GLOBE_SCENE_DEFAULTS.azimuth);
-    const tilt = resolveNumber(search, "tilt", GLOBE_SCENE_DEFAULTS.tilt);
+    // altitude ⇄ radius は PoC で確認した等価関係。`@lat,lon,Xz`（zoomLevel）はカメラ生成後に
+    // canvasHeight/fov を使って radius へ換算する（zoomLevelToRadius）。
+    const radius =
+        atState?.zoomLevel !== undefined
+            ? GLOBE_SCENE_DEFAULTS.radius // zoomLevel はカメラ生成後に再設定（後段）
+            : (atState?.altitude ?? resolveNumber(search, "radius", GLOBE_SCENE_DEFAULTS.radius));
+    const azimuth = atState?.azimuth ?? resolveNumber(search, "azimuth", GLOBE_SCENE_DEFAULTS.azimuth);
+    const tilt = atState?.tilt ?? resolveNumber(search, "tilt", GLOBE_SCENE_DEFAULTS.tilt);
     const mapType: MapType = params.get("map") === "photo" ? "photo" : "std";
     const snapEnabled = params.get("snap") !== "off";
 
@@ -84,6 +100,30 @@ const start = async (): Promise<void> => {
     // onSyncStats はレンダーループ（createSceneWithController return 後）でのみ呼ばれるが、
     // controller への依存を避け floatingOriginMode は確定後の scene 参照から読む。
     let infoScene: Scene | undefined;
+    // カメラ状態を共有 URL（`@lat,lon,altitude,azimuth,tilt`）へ反映するデバウンス更新器。
+    // 既存デモ（viewer/timelapse）と同じ createUrlUpdater を使い、`/geospatial/@...` 形式で
+    // 出力する（vite.rewrites に geospatial 登録済みのためリロードでも復元できる）。
+    const urlUpdater = createUrlUpdater(1000);
+    // onSyncStats は毎 sync（数百 ms 間隔）で呼ばれるため、毎回 urlUpdater を呼ぶとデバウンスが
+    // 確定しない（タイマーが常にリセットされる）。カメラ状態が変化した時のみ更新を投げる。
+    let lastUrlState: { lat: number; lon: number; radius: number; yaw: number; pitch: number } | null = null;
+    const urlStateChanged = (
+        latDeg: number, lonDeg: number, radius: number, yaw: number, pitch: number,
+    ): boolean => {
+        const p = lastUrlState;
+        if (
+            p === null ||
+            Math.abs(latDeg - p.lat) > 1e-5 ||
+            Math.abs(lonDeg - p.lon) > 1e-5 ||
+            Math.abs(radius - p.radius) > 1 ||
+            Math.abs(yaw - p.yaw) > 1e-4 ||
+            Math.abs(pitch - p.pitch) > 1e-4
+        ) {
+            lastUrlState = { lat: latDeg, lon: lonDeg, radius, yaw, pitch };
+            return true;
+        }
+        return false;
+    };
     const controller = sceneFactory.createSceneWithController(engine, canvas, {
         lat,
         lon,
@@ -97,23 +137,44 @@ const start = async (): Promise<void> => {
             const zoomLabel =
                 s.minZoom !== null && s.maxZoom !== null ? `${s.minZoom}–${s.maxZoom}` : "-";
             const floatingOrigin = infoScene?.floatingOriginMode ?? "-";
-            // azimuth は 0–360 に正規化（JS の % は負値を返すため）。radius は注視点(center)
-            // からのカメラ距離で、鉛直高度(altitude)とは一致しないためラベルは radius とする。
-            const azimuthDeg = (((s.yaw * RAD2DEG) % 360) + 360) % 360;
+            // yaw/pitch[rad] → azimuth/tilt[deg]（azimuth は [0,360) 正規化）。
+            const { azimuthDeg, tiltDeg } = yawPitchToUi(s.yaw, s.pitch);
+            // 共有 URL を更新（altitude ⇄ radius 等価。3D 形式 `@lat,lon,altitude,azimuth,tilt`）。
+            // 状態が動いた時のみ投げ、停止後にデバウンスが確定するようにする。
+            if (urlStateChanged(s.latDeg, s.lonDeg, s.radius, s.yaw, s.pitch)) {
+                urlUpdater({
+                    lat: s.latDeg,
+                    lon: s.lonDeg,
+                    altitude: s.radius,
+                    azimuth: azimuthDeg,
+                    tilt: tiltDeg,
+                });
+            }
             updateInfo(
-                `Geospatial Globe (#275 Phase 1)\n` +
-                    `右ドラッグ=回転 / ホイール=ズーム\n` +
+                `Geospatial Globe (#275 Phase 2)\n` +
+                    `左ドラッグ=パン / 右ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
                     `engine: ${engine.constructor.name} / floatingOrigin: ${floatingOrigin}\n` +
                     `fps: ${engine.getFps().toFixed(0)}\n` +
                     `lat,lon: ${s.latDeg.toFixed(4)}, ${s.lonDeg.toFixed(4)}\n` +
                     `azimuth: ${azimuthDeg.toFixed(1)}° / ` +
-                    `tilt: ${(s.pitch * RAD2DEG).toFixed(1)}° / radius: ${Math.round(s.radius)}m\n` +
+                    `tilt: ${tiltDeg.toFixed(1)}° / radius: ${Math.round(s.radius)}m\n` +
                     `LOD zoom: ${zoomLabel} / selected: ${s.selected.length} / ` +
                     `loaded: ${s.loadedCount} / loading: ${s.loadingCount}`,
             );
         },
     });
     infoScene = controller.scene;
+
+    // `@lat,lon,Xz`（2D 互換ズームレベル）指定時は、実 canvas 高さとカメラ fov を使って
+    // radius へ換算しカメラへ反映する（生成後でないと fov / clientHeight が確定しないため後段）。
+    if (atState?.zoomLevel !== undefined) {
+        controller.camera.radius = zoomLevelToRadius(
+            atState.zoomLevel,
+            Math.max(1, canvas.clientHeight),
+            lat,
+            controller.camera.fov,
+        );
+    }
 
     // render ループはシーン生成側ではなく呼び出し側（本デモ）で開始する
     // （GlobeScene は責務分離のためループを開始しない）。

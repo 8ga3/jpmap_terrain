@@ -24,6 +24,12 @@ import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions"
 
 import type { MapType } from "../terrain/gsiTile";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic } from "../terrain/geo/ecef";
+import {
+    geographicTangentBasisToRef,
+    cameraTangentBasisToRef,
+    panCenterOnSphereToRef,
+    clampRadiusForGroundClearance,
+} from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 
 /** グローブシーンの既定パラメータ（富士山周辺）。 */
@@ -58,6 +64,15 @@ export const GLOBE_SCENE_DEFAULTS = {
 
 /** seat-on-terrain の追従残差 lerp 係数（LOD 切替時の段差緩和）。 */
 const SEAT_LERP = 0.5;
+
+/** 1 秒あたりの WASD パン距離 = radius（高度相当）× この係数。高度比例で自然な速度。 */
+const PAN_RATE_PER_SEC = 0.6;
+
+/** カメラ地形衝突: 地表からの最小クリアランス[m]（URL altitude 下限と整合）。 */
+const MIN_GROUND_CLEARANCE = 50;
+
+/** WASD パン対象キー。 */
+const PAN_KEYS = new Set(["w", "a", "s", "d"]);
 
 export interface GlobeSceneInitOptions {
     /** 初期注視点の緯度 [deg]。 */
@@ -158,7 +173,107 @@ export class GlobeScene {
 
         // ズームは注視点(画面中心)へ寄る半径のみのズームにする。zoom-to-cursor は毎フレーム
         // 中心をカーソル方向へ動かすため、floating origin 下のピック誤差と相まってガタつく。
+        // zoom-to-cursor のレイ再構成は floating origin 維持と両立が難しく、Phase 2 では無効維持
+        // とする（PoC の判断踏襲）。
         camera.movement.zoomToCursor = false;
+
+        // ---- picking 非依存パン（左ドラッグ / WASD） ----
+        // 既定の pan（左ドラッグ/キーボード）は scene.pick でグローブをヒットしてドラッグ平面を
+        // 作るが、useFloatingOrigin 下ではレンダリング座標と真の ECEF メッシュ位置がずれて
+        // ピックが外れ機能しない。floating origin（#275 の精度要件）を維持するため、
+        // camera.center を地表接線方向へ動かす独自パンを実装する。
+        const pressed = new Set<string>();
+        const onKeyDown = (e: KeyboardEvent): void => {
+            const k = e.key.toLowerCase();
+            if (PAN_KEYS.has(k)) {
+                pressed.add(k);
+                e.preventDefault();
+            }
+        };
+        const onKeyUp = (e: KeyboardEvent): void => {
+            pressed.delete(e.key.toLowerCase());
+        };
+        canvas.addEventListener("keydown", onKeyDown);
+        canvas.addEventListener("keyup", onKeyUp);
+
+        // 左ドラッグ状態。
+        let dragging = false;
+        let lastX = 0;
+        let lastY = 0;
+        const onPointerDown = (e: PointerEvent): void => {
+            if (e.button !== 0) return;
+            dragging = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            canvas.setPointerCapture?.(e.pointerId);
+        };
+        const endDrag = (): void => {
+            dragging = false;
+        };
+        const onPointerUp = (e: PointerEvent): void => {
+            if (e.button === 0) endDrag();
+        };
+        // パン用の再利用バッファ（毎フレーム/毎 move 呼び出しでの割当を避ける）。
+        const eastV = new Vector3();
+        const northV = new Vector3();
+        const dragRight = new Vector3();
+        const dragFwd = new Vector3();
+        const dragLookAt = new Vector3();
+        const tangent = new Vector3();
+        const panned = new Vector3();
+
+        const onPointerMove = (e: PointerEvent): void => {
+            if (!dragging) return;
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            if (dx === 0 && dy === 0) return;
+
+            // カメラ→center 方向(lookAt)から地表接線の右・前方向を作る。
+            ComputeLookAtFromYawPitchToRef(
+                camera.yaw,
+                camera.pitch,
+                camera.center,
+                scene.useRightHandedSystem,
+                dragLookAt,
+            );
+            if (!cameraTangentBasisToRef(camera.center, dragLookAt, dragRight, dragFwd)) {
+                return; // 真下視点の特異点
+            }
+            // 注視点距離での地表 m/px（掴んだ点がほぼカーソル追従する縮尺）。
+            const fovHeightM = 2 * camera.radius * Math.tan(camera.fov / 2);
+            const mpp = fovHeightM / Math.max(1, canvas.clientHeight);
+            // マップを掴んで引く挙動: 右ドラッグ→center 西（content 右へ）、下ドラッグ→center 北（前方）。
+            tangent.copyFrom(dragRight).scaleInPlace(-dx * mpp);
+            tangent.addInPlace(dragFwd.scaleInPlace(dy * mpp));
+            camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
+        };
+        canvas.addEventListener("pointerdown", onPointerDown);
+        canvas.addEventListener("pointerup", onPointerUp);
+        canvas.addEventListener("pointercancel", endDrag);
+        canvas.addEventListener("pointermove", onPointerMove);
+
+        /** 押下中の WASD に応じて center を地理接線（北/東）方向へ高度比例で動かす。 */
+        const applyKeyboardPan = (): void => {
+            if (pressed.size === 0) return;
+            let fwd = 0;
+            let side = 0;
+            if (pressed.has("w")) fwd += 1;
+            if (pressed.has("s")) fwd -= 1;
+            if (pressed.has("d")) side += 1;
+            if (pressed.has("a")) side -= 1;
+            if (fwd === 0 && side === 0) return;
+            if (!geographicTangentBasisToRef(camera.center, eastV, northV)) return; // 極
+
+            const dtSec = Math.min(0.05, engine.getDeltaTime() / 1000);
+            const step = camera.radius * PAN_RATE_PER_SEC * dtSec;
+            tangent.copyFrom(northV).scaleInPlace(fwd);
+            tangent.addInPlace(eastV.scaleInPlace(side));
+            if (tangent.lengthSquared() < 1e-12) return;
+            tangent.normalize().scaleInPlace(step);
+            camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
+        };
 
         // ライト: 地表の up（地心法線）を基準に環境光 + 斜め方向の指向性ライト。
         const up = centerEcef.clone().normalize();
@@ -247,6 +362,31 @@ export class GlobeScene {
             camera.center = seatLerp;
         };
 
+        // カメラ地形衝突: カメラ位置が地形 + 最小クリアランスより低くなったら radius を増やして
+        // 潜り込みを防ぐ。seat は注視点を地表へ載せるだけでカメラ自身の潜りは防がないため、
+        // 近接ズーム/低高度パンの保険として明示実装する（PoC は seat による実用回避のみ）。
+        const enforceGroundClearance = (): void => {
+            const camEcef = computeCameraEcef(); // lookAt バッファも更新される
+            const camGeo = ecefToGeodetic(camEcef);
+            const terrain = tileManager.terrainElevAt(camGeo.latDeg, camGeo.lonDeg);
+            if (terrain === null) return;
+            // radius あたりのカメラ高度増加率 = カメラ地心 up・(center→camera 単位方向)。
+            // center→camera 単位方向は -lookAt/|lookAt|。computeCameraEcef は lookAt を
+            // radius 倍にスケール済み（|lookAt|=radius）なので、内積を |camEcef|·radius で割って
+            // 単位ベクトル同士の内積へ正規化する。
+            const denom = Math.max(1, camEcef.length()) * Math.max(1, camera.radius);
+            const dAltPerRadius =
+                -(camEcef.x * lookAt.x + camEcef.y * lookAt.y + camEcef.z * lookAt.z) / denom;
+            const newRadius = clampRadiusForGroundClearance(
+                camera.radius,
+                camGeo.altMeters,
+                terrain,
+                MIN_GROUND_CLEARANCE,
+                dAltPerRadius,
+            );
+            if (newRadius !== camera.radius) camera.radius = newRadius;
+        };
+
         // render ループは開始しない。DefaultScene と同じく、シーン生成と render ループ管理の
         // 責務を分離し、ループ開始は呼び出し側（デモ / 将来の JpmapTerrain 等）に委ねる
         // （二重起動・上書きを防ぐ）。本シーンのタイル同期は onBeforeRenderObservable で動く。
@@ -257,7 +397,9 @@ export class GlobeScene {
         // frame=0 の最初のフレームで即同期し、以降は syncIntervalFrames ごとに再評価する。
         let frame = 0;
         const observer = scene.onBeforeRenderObservable.add(() => {
+            applyKeyboardPan();
             seatCenterOnTerrain();
+            enforceGroundClearance();
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             frame++;
         });
@@ -265,6 +407,12 @@ export class GlobeScene {
         const dispose = (): void => {
             // render ループは呼び出し側の所有なので停止しない（呼び出し側が停止する）。
             scene.onBeforeRenderObservable.remove(observer);
+            canvas.removeEventListener("keydown", onKeyDown);
+            canvas.removeEventListener("keyup", onKeyUp);
+            canvas.removeEventListener("pointerdown", onPointerDown);
+            canvas.removeEventListener("pointerup", onPointerUp);
+            canvas.removeEventListener("pointercancel", endDrag);
+            canvas.removeEventListener("pointermove", onPointerMove);
             tileManager.dispose();
             scene.dispose();
         };

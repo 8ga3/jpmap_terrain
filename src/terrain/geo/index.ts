@@ -10,6 +10,9 @@
  * - `globeLod`: 地心距離ベース Quadtree+SSE の可視タイル選択。
  * - `crossLevel`: LOD 境界のクロスレベル標高スナップ。
  * - `globeMesh`: 曲面タイルメッシュのジオメトリ生成（純粋関数）。
+ *
+ * Phase 2（カメラ・UX・URL）:
+ * - `cameraMapping`: UI/URL ⇄ GeospatialCamera マッピング・接線パン・地形衝突の純関数。
  */
 export * from "./ecef";
 export * from "./mapping";
@@ -17,3 +20,4 @@ export * from "./elevSample";
 export * from "./globeLod";
 export * from "./crossLevel";
 export * from "./globeMesh";
+export * from "./cameraMapping";
