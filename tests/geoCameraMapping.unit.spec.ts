@@ -20,6 +20,7 @@ import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     clampRadiusForGroundClearance,
+    raySphereNearHitToRef,
 } from "../src/terrain/geo/cameraMapping";
 
 describe("uiToYawPitch / yawPitchToUi", () => {
@@ -156,5 +157,38 @@ describe("clampRadiusForGroundClearance", () => {
         // NaN は < 1e-3 判定を素通りするため明示ガードが必要（camera.radius=NaN 防止）。
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, NaN)).toBe(1000);
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, Infinity)).toBe(1000);
+    });
+});
+
+describe("raySphereNearHitToRef", () => {
+    it("球の真上から直下視で半径上の点に当たる", () => {
+        const R = 6378137;
+        const origin = new Vector3(0, 0, R + 1000); // 球面の 1000m 上空
+        const dir = new Vector3(0, 0, -1); // 直下
+        const ref = new Vector3();
+        expect(raySphereNearHitToRef(origin, dir, R, ref)).toBe(true);
+        expect(ref.z).toBeCloseTo(R, 3); // 手前側（上面）= +Z 側の半径
+        expect(ref.x).toBeCloseTo(0, 3);
+        expect(ref.y).toBeCloseTo(0, 3);
+    });
+
+    it("斜めレイでも手前側の交点を返す（origin に近い方）", () => {
+        const R = 100;
+        const origin = new Vector3(0, 0, 200);
+        const dir = new Vector3(0.3, 0, -1).normalize();
+        const ref = new Vector3();
+        expect(raySphereNearHitToRef(origin, dir, R, ref)).toBe(true);
+        // 交点は球面上（半径 R）。
+        expect(ref.length()).toBeCloseTo(R, 3);
+        // 手前側＝ origin により近い（z>0 側）。
+        expect(ref.z).toBeGreaterThan(0);
+    });
+
+    it("球を外す方向（空を指す）は false", () => {
+        const R = 100;
+        const origin = new Vector3(0, 0, 200);
+        const dir = new Vector3(0, 0, 1); // 球から離れる向き
+        const ref = new Vector3();
+        expect(raySphereNearHitToRef(origin, dir, R, ref)).toBe(false);
     });
 });

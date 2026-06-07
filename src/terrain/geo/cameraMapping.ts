@@ -114,6 +114,35 @@ export const panCenterOnSphereToRef = (
 };
 
 /**
+ * 原点 `origin` から単位方向 `dir` のレイと、**世界原点中心・半径 `sphereRadius` の球** との
+ * 手前側交点を `ref` に書き込む。zoom-to-cursor のカーソル下の目標点を `scene.pick` 非依存で
+ * 求める用途（floating origin 下では scene.pick が誤差を生み、毎回点がブレてズームが揺れるため、
+ * 真の ECEF カメラ位置とレイ方向から幾何的に交点を解く）。
+ *
+ * `dir` は単位ベクトル前提。カメラが球外（通常）なら手前の交点、球内（地中）なら奥側を返す。
+ *
+ * @returns 交点があり t>0 なら true（`ref` に交点）、レイが球を外す/背面なら false。
+ */
+export const raySphereNearHitToRef = (
+    origin: Vector3,
+    dir: Vector3,
+    sphereRadius: number,
+    ref: Vector3,
+): boolean => {
+    // |origin + t·dir|² = R²（dir は単位） → t² + b·t + c = 0, a=1。
+    const b = 2 * Vector3.Dot(origin, dir);
+    const c = origin.lengthSquared() - sphereRadius * sphereRadius;
+    const disc = b * b - 4 * c;
+    if (disc < 0) return false; // レイが球と交わらない（空を指している等）
+    const sq = Math.sqrt(disc);
+    let t = (-b - sq) / 2; // 手前側
+    if (t < 0) t = (-b + sq) / 2; // 手前が背面なら奥側（カメラが球内＝地中の保険）
+    if (t < 0) return false; // 両交点とも背面
+    ref.copyFrom(dir).scaleInPlace(t).addInPlace(origin);
+    return true;
+};
+
+/**
  * カメラが地形に潜らないための最小クリアランスを満たす `radius` を返す（カメラ地形衝突）。
  *
  * `GeospatialCamera` のカメラ位置は center/yaw/pitch/radius から導出されるため、潜り込みは
