@@ -1,5 +1,5 @@
 /**
- * グローブ地形デモエントリ (Issue #275 Phase 1)。
+ * グローブ地形デモエントリ (Issue #275 Phase 2)。
  *
  * 平面ワールドの各デモと併存する **並行スタック**。`scenes/globe.ts`（`GeospatialCamera` +
  * ECEF 楕円体 + floating origin）の地形エンジンを `/geospatial` で起動し、旧（平面）と
@@ -195,6 +195,6 @@ if (
 ) {
     start().catch((err) => {
         console.error("[geospatial] failed to start:", err);
-        updateInfo(`Geospatial Globe (#275 Phase 1)\n起動に失敗しました: ${String(err)}`);
+        updateInfo(`Geospatial Globe (#275 Phase 2)\n起動に失敗しました: ${String(err)}`);
     });
 }
