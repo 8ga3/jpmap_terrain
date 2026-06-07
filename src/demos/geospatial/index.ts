@@ -49,6 +49,33 @@ const resolveNumber = (search: string, key: string, fallback: number): number =>
     return Number.isFinite(n) ? n : fallback;
 };
 
+/**
+ * デモ用マーカーアイコンの PNG data URL を生成する（赤丸＋白縁＋中央の白ドット）。
+ * WebGPU の ImageBitmap デコーダは SVG を扱えないため、Canvas で描いて PNG data URL にする
+ * （viewer デモの buildCircleIconUrl と同方針）。
+ */
+const buildMarkerIconUrl = (): string => {
+    const size = 64;
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext("2d");
+    if (!ctx) return "";
+    ctx.beginPath();
+    ctx.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = "#e53935";
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(32, 32, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    return c.toDataURL("image/png");
+};
+
 const updateInfo = (text: string): void => {
     const el = document.getElementById("globe-info");
     if (el) el.textContent = text;
@@ -182,6 +209,7 @@ const start = async (): Promise<void> => {
         controller.markerManager.add({
             lat: 35.360625,
             lon: 138.727363,
+            icon: { url: buildMarkerIconUrl() },
             text: { value: "富士山" },
         });
     }
