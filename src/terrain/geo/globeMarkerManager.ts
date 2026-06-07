@@ -24,6 +24,8 @@ import {
     createIconTextMesh,
     resolveIcon,
     resolveText,
+    validateIconUrl,
+    RENDERING_GROUP_ID,
     type IconTextMeshes,
 } from "../marker";
 import {
@@ -85,20 +87,25 @@ export interface GlobeMarkerManager {
     dispose(): void;
 }
 
-/** local +Y（シリンダ軸）を up へ向ける回転を ref に書き込む。 */
+/** local +Y（シリンダ軸）/ 180°フォールバック軸の定数（再利用・不変）。 */
 const LOCAL_Y = new Vector3(0, 1, 0);
+const FLIP_AXIS = new Vector3(1, 0, 0);
+/** orientYToUpToRef の回転軸スクラッチ（毎フレーム・マーカー数ぶん呼ばれるため割当回避）。 */
+const orientAxis = new Vector3();
+
+/** local +Y（シリンダ軸）を up へ向ける回転を ref に書き込む。割当なし（CrossToRef + 再利用軸）。 */
 const orientYToUpToRef = (up: Vector3, ref: Quaternion): void => {
     const cos = Vector3.Dot(LOCAL_Y, up);
-    const axis = Vector3.Cross(LOCAL_Y, up);
-    const sin = axis.length();
+    Vector3.CrossToRef(LOCAL_Y, up, orientAxis);
+    const sin = orientAxis.length();
     if (sin < 1e-9) {
         // up が +Y とほぼ平行。同方向なら無回転、逆向きなら 180°（任意軸 X）。
         if (cos >= 0) ref.copyFromFloats(0, 0, 0, 1);
-        else Quaternion.RotationAxisToRef(new Vector3(1, 0, 0), Math.PI, ref);
+        else Quaternion.RotationAxisToRef(FLIP_AXIS, Math.PI, ref);
         return;
     }
-    axis.scaleInPlace(1 / sin);
-    Quaternion.RotationAxisToRef(axis, Math.atan2(sin, cos), ref);
+    orientAxis.scaleInPlace(1 / sin);
+    Quaternion.RotationAxisToRef(orientAxis, Math.atan2(sin, cos), ref);
 };
 
 /**
@@ -120,8 +127,12 @@ export const createGlobeMarkerManager = (
     const add = (opts: GlobeMarkerOptions): string => {
         const id = `globe-marker-${seq++}`;
         const icon = resolveIcon(opts.icon);
+        // 平面版 addMarker と同様、icon.url の危険なスキーム（javascript: 等）を拒否する。
+        if (icon) validateIconUrl(icon.url);
         const text = resolveText(opts.text);
         const iconText = createIconTextMesh(scene, id, icon, text);
+        // ラベルもピック対象から外す（地形ピック等の妨げにしない）。
+        if (iconText) iconText.mesh.isPickable = false;
 
         const lineColor = opts.line?.color ?? GLOBE_MARKER_DEFAULTS.lineColor;
         // ドロップ線は地心 up 沿いの細いシリンダ（ポール）。高さ/径は update で毎フレーム決める。
@@ -131,8 +142,20 @@ export const createGlobeMarkerManager = (
             scene,
         );
         lineMesh.rotationQuaternion = new Quaternion();
+        // ポールはピック対象外＋ラベル/平面マーカーと同じ描画レイヤーに揃える。
+        lineMesh.isPickable = false;
+        lineMesh.renderingGroupId = RENDERING_GROUP_ID;
         const lineMat = new StandardMaterial(`${id}-line-mat`, scene);
-        lineMat.emissiveColor = Color3.FromHexString(lineColor);
+        // MarkerLineOptions.color は CSS color も許容するが Color3.FromHexString は hex 専用。
+        // 非 hex 指定では例外になるため try/catch で既定色にフォールバックする
+        // （将来的に CSS color → Color3 変換を追加予定）。
+        let lineColor3: Color3;
+        try {
+            lineColor3 = Color3.FromHexString(lineColor);
+        } catch {
+            lineColor3 = Color3.FromHexString(GLOBE_MARKER_DEFAULTS.lineColor);
+        }
+        lineMat.emissiveColor = lineColor3;
         lineMat.disableLighting = true;
         lineMesh.material = lineMat;
 
