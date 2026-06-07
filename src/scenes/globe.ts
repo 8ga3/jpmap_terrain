@@ -247,7 +247,9 @@ export class GlobeScene {
             camera.center = seatLerp;
         };
 
-        engine.runRenderLoop(() => scene.render());
+        // dispose で停止できるよう、render コールバックを保持する。
+        const renderLoop = (): void => scene.render();
+        engine.runRenderLoop(renderLoop);
 
         // 初回同期はレンダーループ（= 本メソッド return 後）へ遅延させる。構築中に
         // 同期実行すると、呼び出し側の onSyncStats が「createSceneWithController の
@@ -261,6 +263,8 @@ export class GlobeScene {
         });
 
         const dispose = (): void => {
+            // render ループを止めてから破棄する（dispose 済み Scene の render を防ぐ）。
+            engine.stopRenderLoop(renderLoop);
             scene.onBeforeRenderObservable.remove(observer);
             tileManager.dispose();
             scene.dispose();

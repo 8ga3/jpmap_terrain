@@ -97,14 +97,17 @@ const start = async (): Promise<void> => {
             const zoomLabel =
                 s.minZoom !== null && s.maxZoom !== null ? `${s.minZoom}–${s.maxZoom}` : "-";
             const floatingOrigin = infoScene?.floatingOriginMode ?? "-";
+            // azimuth は 0–360 に正規化（JS の % は負値を返すため）。radius は注視点(center)
+            // からのカメラ距離で、鉛直高度(altitude)とは一致しないためラベルは radius とする。
+            const azimuthDeg = (((s.yaw * RAD2DEG) % 360) + 360) % 360;
             updateInfo(
                 `Geospatial Globe (#275 Phase 1)\n` +
                     `右ドラッグ=回転 / ホイール=ズーム\n` +
                     `engine: ${engine.constructor.name} / floatingOrigin: ${floatingOrigin}\n` +
                     `fps: ${engine.getFps().toFixed(0)}\n` +
                     `lat,lon: ${s.latDeg.toFixed(4)}, ${s.lonDeg.toFixed(4)}\n` +
-                    `azimuth: ${((s.yaw * RAD2DEG) % 360).toFixed(1)}° / ` +
-                    `tilt: ${(s.pitch * RAD2DEG).toFixed(1)}° / altitude: ${Math.round(s.radius)}m\n` +
+                    `azimuth: ${azimuthDeg.toFixed(1)}° / ` +
+                    `tilt: ${(s.pitch * RAD2DEG).toFixed(1)}° / radius: ${Math.round(s.radius)}m\n` +
                     `LOD zoom: ${zoomLabel} / selected: ${s.selected.length} / ` +
                     `loaded: ${s.loadedCount} / loading: ${s.loadingCount}`,
             );

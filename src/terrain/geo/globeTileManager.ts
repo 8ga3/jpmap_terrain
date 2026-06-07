@@ -333,13 +333,14 @@ export const createGlobeTileManager = (
         for (const t of tiles) loadTile(t);
         buildReadyTiles(tiles);
 
-        // 新規取得失敗を 1 行へ間引いて出力（no-data/404 の per-tile 警告の氾濫を防ぐ）。
+        // 新規取得失敗を 1 行へ間引いて出力（per-tile 警告の氾濫を防ぐ）。失敗要因は
+        // no-data/404 と一時的なネットワーク障害の双方があり区別しないため、中立な文言にする。
         if (newlyFailed.length > 0) {
             if (process.env.NODE_ENV !== "production") {
                 const sample = newlyFailed.slice(0, 3).join(", ");
                 const more = newlyFailed.length > 3 ? " …" : "";
                 console.debug(
-                    `[globeTileManager] geom タイル ${newlyFailed.length} 件が取得不可（no-data/404）: ${sample}${more}`,
+                    `[globeTileManager] geom タイル ${newlyFailed.length} 件の取得に失敗（no-data や一時障害を含む。バックオフ再試行する）: ${sample}${more}`,
                 );
             }
             newlyFailed.length = 0;
