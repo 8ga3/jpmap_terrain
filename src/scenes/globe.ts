@@ -243,12 +243,15 @@ export class GlobeScene {
 
         engine.runRenderLoop(() => scene.render());
 
-        syncTiles();
+        // 初回同期はレンダーループ（= 本メソッド return 後）へ遅延させる。構築中に
+        // 同期実行すると、呼び出し側の onSyncStats が「createSceneWithController の
+        // 戻り値から代入される controller」をまだ初期化前に参照し TDZ エラーになるため。
+        // frame=0 の最初のフレームで即同期し、以降は syncIntervalFrames ごとに再評価する。
         let frame = 0;
         const observer = scene.onBeforeRenderObservable.add(() => {
             seatCenterOnTerrain();
-            frame++;
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
+            frame++;
         });
 
         const dispose = (): void => {

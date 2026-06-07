@@ -75,6 +75,9 @@ const start = async (): Promise<void> => {
     const engine = await createBabylonEngine(canvas, resolveEngine(search) ?? "webgpu");
 
     const sceneFactory = new GlobeScene();
+    // onSyncStats はレンダーループ（createSceneWithController return 後）でのみ呼ばれるが、
+    // controller への依存を避け floatingOriginMode は確定後の scene 参照から読む。
+    let infoScene: Scene | undefined;
     const controller = sceneFactory.createSceneWithController(engine, canvas, {
         lat,
         lon,
@@ -87,10 +90,11 @@ const start = async (): Promise<void> => {
         onSyncStats: (s: GlobeSceneSyncInfo) => {
             const zoomLabel =
                 s.minZoom !== null && s.maxZoom !== null ? `${s.minZoom}–${s.maxZoom}` : "-";
+            const floatingOrigin = infoScene?.floatingOriginMode ?? "-";
             updateInfo(
                 `Geospatial Globe (#275 Phase 1)\n` +
                     `右ドラッグ=回転 / ホイール=ズーム\n` +
-                    `engine: ${engine.constructor.name} / floatingOrigin: ${controller.scene.floatingOriginMode}\n` +
+                    `engine: ${engine.constructor.name} / floatingOrigin: ${floatingOrigin}\n` +
                     `fps: ${engine.getFps().toFixed(0)}\n` +
                     `lat,lon: ${s.latDeg.toFixed(4)}, ${s.lonDeg.toFixed(4)}\n` +
                     `azimuth: ${((s.yaw * RAD2DEG) % 360).toFixed(1)}° / ` +
@@ -100,6 +104,7 @@ const start = async (): Promise<void> => {
             );
         },
     });
+    infoScene = controller.scene;
 
     window.addEventListener("resize", () => engine.resize());
 
