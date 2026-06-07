@@ -29,6 +29,7 @@ const DEMO_NAMES = [
     "boids",
     "flight",
     "artillery",
+    "geospatial",
 ];
 
 export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.flatMap((name) => [
