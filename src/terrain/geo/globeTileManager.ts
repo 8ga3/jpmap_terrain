@@ -31,7 +31,8 @@ import { ecefToGeodetic } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
 import { selectCoarseEdges, type CoarseEdge } from "./crossLevel";
-import { buildGlobeTileMeshData, sampleElevBilinear } from "./globeMesh";
+import { buildGlobeTileMeshData, type GlobeTileMeshData } from "./globeMesh";
+import { sampleElevBilinear } from "./elevSample";
 
 /** タイルマテリアルの鏡面反射（地形なので弱め）。 */
 const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
@@ -119,6 +120,10 @@ export const createGlobeTileManager = (
     const { scene, mapType, minZoom, geomMaxZoom, segments, snapEnabled } = opts;
 
     const loaded = new Map<string, Mesh>();
+    // 各ロード済みタイルがどのクロスレベル coarse-edge 集合で建築されたかの署名。
+    // LOD 再評価で隣接関係（同 zoom 隣接 ⇄ 粗タイル隣接）が変わると署名が変化し、
+    // ジオメトリを再構築してスナップを更新する（境界の陰影シームを残さないため）。
+    const builtEdgeSig = new Map<string, string>();
     const loading = new Set<string>();
     // クロスレベルスナップのため、ビルド後も標高配列を保持する（隣接細タイルが参照）。
     const elevCache = new Map<string, Float32Array>();
@@ -187,11 +192,28 @@ export const createGlobeTileManager = (
             });
     };
 
+    /** クロスレベル coarse-edge 集合の署名（順不同で同一なら同値）。 */
+    const edgeSignature = (edges: readonly CoarseEdge[]): string =>
+        edges
+            .map((e) => `${e.edge}:${e.coarseX}/${e.coarseY}/${e.scale}`)
+            .sort()
+            .join("|");
+
+    /** メッシュへ頂点データを適用する（新規・再構築 共通）。 */
+    const applyGeometry = (mesh: Mesh, data: GlobeTileMeshData): void => {
+        const vertexData = new VertexData();
+        vertexData.positions = data.positions;
+        vertexData.indices = data.indices;
+        vertexData.normals = data.normals;
+        vertexData.uvs = data.uvs;
+        vertexData.applyToMesh(mesh);
+        mesh.position.copyFrom(data.anchor);
+    };
+
     /** geom 標高が揃った desired タイルをメッシュ化する。 */
     const buildReadyTiles = (tiles: readonly GlobeTile[]): void => {
         for (const t of tiles) {
             const k = tileKey(t.zoom, t.x, t.y);
-            if (loaded.has(k)) continue;
             const { gz, gx, gy } = geomCoordOf(t);
             const geomElev = elevCache.get(tileKey(gz, gx, gy));
             if (!geomElev) continue; // geom 標高が未ロード（または no-data 失敗）
@@ -208,6 +230,23 @@ export const createGlobeTileManager = (
                 if (r.pending) continue; // 粗隣接の標高待ち
                 edges = r.edges;
             }
+            const sig = edgeSignature(edges);
+
+            // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
+            // ジオメトリのみ差し替える（テクスチャ・マテリアルは再利用し再読込を避ける）。
+            const existing = loaded.get(k);
+            if (existing) {
+                if (builtEdgeSig.get(k) === sig) continue;
+                applyGeometry(
+                    existing,
+                    buildGlobeTileMeshData({
+                        zoom: t.zoom, tx: t.x, ty: t.y,
+                        geomElev, geomZoom: gz, geomX: gx, geomY: gy, segments, edges,
+                    }),
+                );
+                builtEdgeSig.set(k, sig);
+                continue;
+            }
 
             const data = buildGlobeTileMeshData({
                 zoom: t.zoom,
@@ -221,15 +260,8 @@ export const createGlobeTileManager = (
                 edges,
             });
 
-            const vertexData = new VertexData();
-            vertexData.positions = data.positions;
-            vertexData.indices = data.indices;
-            vertexData.normals = data.normals;
-            vertexData.uvs = data.uvs;
-
             const mesh = new Mesh(`tile-${k}`, scene);
-            vertexData.applyToMesh(mesh);
-            mesh.position.copyFrom(data.anchor);
+            applyGeometry(mesh, data);
 
             // 地理院タイル画像を diffuseTexture として適用（同一 z/x/y）。タイルごとに専有し、
             // アンロード時に mesh.dispose(_, true) でテクスチャごと破棄する。
@@ -244,6 +276,7 @@ export const createGlobeTileManager = (
             mesh.material = mat;
 
             loaded.set(k, mesh);
+            builtEdgeSig.set(k, sig);
         }
     };
 
@@ -278,6 +311,7 @@ export const createGlobeTileManager = (
             if (!desiredKeys.has(key)) {
                 mesh.dispose(false, true); // マテリアル・テクスチャごと破棄
                 loaded.delete(key);
+                builtEdgeSig.delete(key);
             }
         }
         // 不要になった geom 標高キャッシュを破棄（必要 geom キー集合で判定）。
@@ -330,6 +364,7 @@ export const createGlobeTileManager = (
     const dispose = (): void => {
         for (const mesh of loaded.values()) mesh.dispose(false, true);
         loaded.clear();
+        builtEdgeSig.clear();
         loading.clear();
         elevCache.clear();
         failedRetryAt.clear();

@@ -198,7 +198,10 @@ export class GlobeScene {
                 lookAt,
             );
             // lookAt はカメラ→center 方向。カメラ位置 = center - lookAt * radius。
-            cameraEcef.copyFrom(camera.center).subtractInPlace(lookAt.scale(camera.radius));
+            // lookAt は本関数で都度再計算する一時バッファなので scaleInPlace で割り当てを避ける。
+            cameraEcef
+                .copyFrom(camera.center)
+                .subtractInPlace(lookAt.scaleInPlace(camera.radius));
             return cameraEcef;
         };
 

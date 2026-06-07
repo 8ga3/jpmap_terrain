@@ -22,6 +22,7 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { TILE_SIZE, tileEdgeMeters } from "../gsiTile";
 import { geodeticToEcefToRef } from "./ecef";
 import { pixelToLatLon, totalPixelsForZoom } from "./mapping";
+import { sampleElevBilinear } from "./elevSample";
 import { snapEdgeElevation, type CoarseEdge } from "./crossLevel";
 
 /** スカート深さの下限・上限 [m]、および辺長に対する係数。 */
@@ -67,29 +68,6 @@ export interface BuildGlobeTileMeshParams {
     /** クロスレベル標高スナップ対象の粗タイル辺（無ければ空配列）。 */
     edges: readonly CoarseEdge[];
 }
-
-/** 標高ラスタ（TILE_SIZE 角）をローカルピクセル座標で bilinear サンプル（無効値は 0）。 */
-export const sampleElevBilinear = (
-    elev: Float32Array,
-    px: number,
-    py: number,
-): number => {
-    const cx = Math.max(0, Math.min(TILE_SIZE - 1, px));
-    const cy = Math.max(0, Math.min(TILE_SIZE - 1, py));
-    const x0 = Math.floor(cx);
-    const y0 = Math.floor(cy);
-    const x1 = Math.min(x0 + 1, TILE_SIZE - 1);
-    const y1 = Math.min(y0 + 1, TILE_SIZE - 1);
-    const fx = cx - x0;
-    const fy = cy - y0;
-    const g = (x: number, y: number): number => {
-        const v = elev[y * TILE_SIZE + x];
-        return Number.isFinite(v) ? v : 0;
-    };
-    const a = g(x0, y0) * (1 - fx) + g(x1, y0) * fx;
-    const b = g(x0, y1) * (1 - fx) + g(x1, y1) * fx;
-    return a * (1 - fy) + b * fy;
-};
 
 /**
  * タイルの標高データから曲面メッシュの頂点データを生成する（純粋関数）。

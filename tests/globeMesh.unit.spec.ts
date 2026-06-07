@@ -11,10 +11,8 @@ import { describe, it, expect } from "@jest/globals";
 import { TILE_SIZE } from "../src/terrain/gsiTile";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import { pixelToLatLon, totalPixelsForZoom } from "../src/terrain/geo/mapping";
-import {
-    sampleElevBilinear,
-    buildGlobeTileMeshData,
-} from "../src/terrain/geo/globeMesh";
+import { sampleElevBilinear } from "../src/terrain/geo/elevSample";
+import { buildGlobeTileMeshData } from "../src/terrain/geo/globeMesh";
 
 describe("sampleElevBilinear", () => {
     it("定数ラスタは定数を返す", () => {

@@ -8,6 +8,7 @@
  * グローブ版にもそのまま適用できる。PoC (#321) を本体共有モジュールへ昇格。
  */
 import { TILE_SIZE } from "../gsiTile";
+import { sampleElevBilinear } from "./elevSample";
 
 /** タイル一意キー（globeLod.tileKey と同形式）。 */
 const key = (z: number, x: number, y: number): string => `${z}/${x}/${y}`;
@@ -92,18 +93,22 @@ export const selectCoarseEdges = (
     return { edges, pending };
 };
 
-/** 粗メッシュ頂点の標高（buildGlobeTileMeshData と同じピクセルサンプリング）。 */
+/**
+ * 粗メッシュ頂点の標高。`buildGlobeTileMeshData` が頂点標高を bilinear サンプル
+ * （`sampleElevBilinear`）で求めるのと同一の式で評価する。最近傍だと segments が
+ * TILE_SIZE を割り切らない場合に実際の粗タイルメッシュ表面とズレ、境界シームが残る。
+ */
 const coarseVertexElev = (
     coarseElev: Float32Array,
     gr: number,
     gc: number,
     segments: number,
-): number => {
-    const sx = Math.min(TILE_SIZE - 1, Math.round((gc / segments) * TILE_SIZE));
-    const sy = Math.min(TILE_SIZE - 1, Math.round((gr / segments) * TILE_SIZE));
-    const e = coarseElev[sy * TILE_SIZE + sx];
-    return Number.isFinite(e) ? e : 0;
-};
+): number =>
+    sampleElevBilinear(
+        coarseElev,
+        (gc / segments) * TILE_SIZE,
+        (gr / segments) * TILE_SIZE,
+    );
 
 /** 粗メッシュ表面の標高をグリッド座標 (gx,gy)∈[0,segments] で bilinear 評価。 */
 const sampleCoarseMeshElev = (

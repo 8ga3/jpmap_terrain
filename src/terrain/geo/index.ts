@@ -6,12 +6,14 @@
  * - `mapping`: Web メルカトルのグローバルピクセル ⇄ 緯度経度。
  *
  * Phase 1（地形エンジン）:
+ * - `elevSample`: 標高ラスタの bilinear サンプリング。
  * - `globeLod`: 地心距離ベース Quadtree+SSE の可視タイル選択。
  * - `crossLevel`: LOD 境界のクロスレベル標高スナップ。
  * - `globeMesh`: 曲面タイルメッシュのジオメトリ生成（純粋関数）。
  */
 export * from "./ecef";
 export * from "./mapping";
+export * from "./elevSample";
 export * from "./globeLod";
 export * from "./crossLevel";
 export * from "./globeMesh";

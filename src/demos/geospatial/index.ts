@@ -16,7 +16,7 @@ import type { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera"
 
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
-import type { MapType } from "../../terrain/gsiTile";
+import { clamp, type MapType } from "../../terrain/gsiTile";
 import { RAD2DEG } from "../../terrain/geo/ecef";
 import {
     GlobeScene,
@@ -55,7 +55,13 @@ const start = async (): Promise<void> => {
     const params = new URLSearchParams(search);
     const lat = resolveNumber(search, "lat", GLOBE_SCENE_DEFAULTS.lat);
     const lon = resolveNumber(search, "lon", GLOBE_SCENE_DEFAULTS.lon);
-    const minZoom = Math.round(resolveNumber(search, "zoom", GLOBE_SCENE_DEFAULTS.minZoom));
+    // URL 由来の minZoom は安全な範囲 [0, maxZoom] にクランプする
+    // （負値・極端値だと toTileXY / 1<<zoom が壊れ、タイル選択が空になる）。
+    const minZoom = clamp(
+        Math.round(resolveNumber(search, "zoom", GLOBE_SCENE_DEFAULTS.minZoom)),
+        0,
+        GLOBE_SCENE_DEFAULTS.maxZoom,
+    );
     const radius = resolveNumber(search, "radius", GLOBE_SCENE_DEFAULTS.radius);
     const azimuth = resolveNumber(search, "azimuth", GLOBE_SCENE_DEFAULTS.azimuth);
     const tilt = resolveNumber(search, "tilt", GLOBE_SCENE_DEFAULTS.tilt);

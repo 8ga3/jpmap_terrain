@@ -107,3 +107,28 @@ describe("snapEdgeElevation", () => {
         expect(v).toBeNull();
     });
 });
+
+describe("snapEdgeElevation の粗メッシュ表面サンプリング（bilinear 整合）", () => {
+    // elev = x の線形勾配ラスタ。粗メッシュ頂点標高を bilinear で取れば、境界スナップ値は
+    // coarse ローカルピクセル x（cgx）に正確に一致する。最近傍サンプルだと頂点標高が
+    // 量子化されてズレる（segments が TILE_SIZE=256 を割り切らないとき顕著）。
+    const gradientX = (() => {
+        const a = new Float32Array(TILE_SIZE * TILE_SIZE);
+        for (let y = 0; y < TILE_SIZE; y++) {
+            for (let x = 0; x < TILE_SIZE; x++) a[y * TILE_SIZE + x] = x;
+        }
+        return a;
+    })();
+
+    it("segments が 256 を割り切らなくても線形勾配を正確にスナップ", () => {
+        const segments = 3; // 256 を割り切らない → サブピクセルサンプルが発生
+        const gEdges: CoarseEdge[] = [
+            { edge: "north", coarseElev: gradientX, coarseX: 5, coarseY: 1, scale: 2 },
+        ];
+        // 北辺(row=0), col=1（サブピクセル位置）の頂点。
+        const v = snapEdgeElevation(gEdges, 0, 1, segments, 10, 4, (1 / segments) * TILE_SIZE, 0);
+        // 期待値 = coarse ローカルピクセル x = cgx = 42 + 2/3（bilinear なら厳密一致）。
+        // 最近傍だと 42.5 になりこの精度では一致しない。
+        expect(v).toBeCloseTo(42 + 2 / 3, 4);
+    });
+});
