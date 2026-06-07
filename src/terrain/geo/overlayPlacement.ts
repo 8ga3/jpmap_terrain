@@ -48,11 +48,23 @@ export const computeOverlayDistanceScale = (
     cameraEcef: Vector3,
     posEcef: Vector3,
     refDistanceM: number = OVERLAY_REF_DISTANCE_M,
+): number =>
+    computeOverlayDistanceScaleFromDistance(
+        Vector3.Distance(cameraEcef, posEcef),
+        refDistanceM,
+    );
+
+/**
+ * 既に算出済みの距離 [m] からスクリーン定スケール係数を計算する（下限あり）。
+ * 距離を別途使う呼び出し側で `Vector3.Distance` の二重計算（sqrt）を避けるための入口。
+ */
+export const computeOverlayDistanceScaleFromDistance = (
+    distanceM: number,
+    refDistanceM: number = OVERLAY_REF_DISTANCE_M,
 ): number => {
     // 0 以下の基準距離は不正（Infinity/-Infinity を防ぐ）。既定値へフォールバックする。
     const ref = refDistanceM > 0 ? refDistanceM : OVERLAY_REF_DISTANCE_M;
-    const dist = Vector3.Distance(cameraEcef, posEcef);
-    return Math.max(dist / ref, MIN_SCALE);
+    return Math.max(distanceM / ref, MIN_SCALE);
 };
 
 /**

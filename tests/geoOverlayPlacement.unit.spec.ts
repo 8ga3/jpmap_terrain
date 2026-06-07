@@ -14,6 +14,7 @@ import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import {
     groundPlacementToRef,
     computeOverlayDistanceScale,
+    computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
     OVERLAY_REF_DISTANCE_M,
 } from "../src/terrain/geo/overlayPlacement";
@@ -69,6 +70,25 @@ describe("computeOverlayDistanceScale", () => {
         expect(computeOverlayDistanceScale(cam, pos, 0)).toBeCloseTo(1, 9);
         expect(computeOverlayDistanceScale(cam, pos, -100)).toBeCloseTo(1, 9);
         expect(Number.isFinite(computeOverlayDistanceScale(cam, pos, 0))).toBe(true);
+    });
+});
+
+describe("computeOverlayDistanceScaleFromDistance", () => {
+    it("距離からスケールを算出（基準で1・2倍で2・下限0.1）", () => {
+        expect(computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M)).toBeCloseTo(1, 9);
+        expect(computeOverlayDistanceScaleFromDistance(2 * OVERLAY_REF_DISTANCE_M)).toBeCloseTo(2, 9);
+        expect(computeOverlayDistanceScaleFromDistance(1)).toBe(0.1);
+    });
+    it("computeOverlayDistanceScale と一致する", () => {
+        const cam = new Vector3(0, 0, 0);
+        const pos = new Vector3(3 * OVERLAY_REF_DISTANCE_M, 0, 0);
+        expect(computeOverlayDistanceScaleFromDistance(Vector3.Distance(cam, pos))).toBeCloseTo(
+            computeOverlayDistanceScale(cam, pos),
+            9,
+        );
+    });
+    it("refDistanceM<=0 は既定値フォールバック", () => {
+        expect(computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M, 0)).toBeCloseTo(1, 9);
     });
 });
 

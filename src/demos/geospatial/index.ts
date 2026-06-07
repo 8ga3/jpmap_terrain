@@ -206,10 +206,13 @@ const start = async (): Promise<void> => {
     // グローブマーカー（Phase 3）のデモ表示。`?marker=off` で無効化できる。既定は富士山頂に
     // ラベル付きマーカーを 1 つ置き、接地・地心 up ポール・カメラ正対ラベルを実機確認する。
     if (params.get("marker") !== "off") {
+        // 2d context 取得失敗時は空文字になり validateIconUrl が例外を投げるため、空なら
+        // icon を付けずにラベルのみで追加する（デモ起動を失敗させない）。
+        const iconUrl = buildMarkerIconUrl();
         controller.markerManager.add({
             lat: 35.360625,
             lon: 138.727363,
-            icon: { url: buildMarkerIconUrl() },
+            ...(iconUrl ? { icon: { url: iconUrl } } : {}),
             text: { value: "富士山" },
         });
     }
