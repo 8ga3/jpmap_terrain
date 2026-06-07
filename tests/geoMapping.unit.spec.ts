@@ -13,8 +13,9 @@ import {
     totalPixelsForZoom,
     pixelToLatLon,
     latLonToPixel,
+    MERCATOR_MAX_LAT,
 } from "../src/terrain/geo/mapping";
-import { TILE_SIZE, tileCenterLatLon } from "../src/terrain/gsiTile";
+import { TILE_SIZE, tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
 
 describe("totalPixelsForZoom", () => {
     it("TILE_SIZE * 2^zoom", () => {
@@ -91,5 +92,79 @@ describe("gsiTile との整合", () => {
         const want = tileCenterLatLon(tx, ty, zoom);
         expect(got.lat).toBeCloseTo(want.lat, 9);
         expect(got.lon).toBeCloseTo(want.lon, 9);
+    });
+});
+
+describe("latLonToPixel の堅牢化（クランプ/正規化）", () => {
+    const total = totalPixelsForZoom(15);
+
+    it("緯度はメルカトル有効域 ±MERCATOR_MAX_LAT にクランプされ py は有限", () => {
+        const beyond = latLonToPixel(89, 0, total); // 有効域超
+        const atLimit = latLonToPixel(MERCATOR_MAX_LAT, 0, total);
+        expect(Number.isFinite(beyond.py)).toBe(true);
+        expect(beyond.py).toBeCloseTo(atLimit.py, 6);
+        // クランプにより py は [0, total] 内（北端 0 付近）。
+        expect(beyond.py).toBeGreaterThanOrEqual(0);
+        expect(beyond.py).toBeLessThanOrEqual(total);
+    });
+
+    it("南側も同様にクランプされる", () => {
+        const beyond = latLonToPixel(-89, 0, total);
+        const atLimit = latLonToPixel(-MERCATOR_MAX_LAT, 0, total);
+        expect(beyond.py).toBeCloseTo(atLimit.py, 6);
+        expect(beyond.py).toBeLessThanOrEqual(total);
+    });
+
+    it("経度は [-180,180) に正規化される（lon=190 → -170 相当）", () => {
+        const wrapped = latLonToPixel(0, 190, total);
+        const normalized = latLonToPixel(0, -170, total);
+        expect(wrapped.px).toBeCloseTo(normalized.px, 6);
+        expect(wrapped.px).toBeGreaterThanOrEqual(0);
+        expect(wrapped.px).toBeLessThanOrEqual(total);
+    });
+
+    it("域外入力でも px/py は有限かつ [0,total] 内", () => {
+        for (const [lat, lon] of [
+            [89, 200],
+            [-89, -200],
+            [120, 540],
+        ]) {
+            const { px, py } = latLonToPixel(lat, lon, total);
+            expect(Number.isFinite(px)).toBe(true);
+            expect(Number.isFinite(py)).toBe(true);
+            expect(px).toBeGreaterThanOrEqual(0);
+            expect(px).toBeLessThanOrEqual(total);
+            expect(py).toBeGreaterThanOrEqual(0);
+            expect(py).toBeLessThanOrEqual(total);
+        }
+    });
+
+    it("域内の点はピクセル→タイル整数で gsiTile.toTileXY と一致する", () => {
+        const zoom = 12;
+        const t = totalPixelsForZoom(zoom);
+        const lat = 35.681236;
+        const lon = 139.767125;
+        const { px, py } = latLonToPixel(lat, lon, t);
+        const want = toTileXY(lat, lon, zoom);
+        expect(Math.floor(px / TILE_SIZE)).toBe(want.x);
+        expect(Math.floor(py / TILE_SIZE)).toBe(want.y);
+    });
+});
+
+describe("pixelToLatLon の堅牢化（範囲外クランプ）", () => {
+    const total = totalPixelsForZoom(10);
+
+    it("範囲外の globalPy はクランプされ lat はメルカトル有効域内", () => {
+        const over = pixelToLatLon(total / 2, total * 2, total); // 南へ振り切り
+        const under = pixelToLatLon(total / 2, -total, total); // 北へ振り切り
+        expect(over.lat).toBeCloseTo(-MERCATOR_MAX_LAT, 6);
+        expect(under.lat).toBeCloseTo(MERCATOR_MAX_LAT, 6);
+    });
+
+    it("範囲外の globalPx はクランプされ lon は [-180,180] 内（ラップしない）", () => {
+        const east = pixelToLatLon(total * 3, total / 2, total);
+        const west = pixelToLatLon(-total, total / 2, total);
+        expect(east.lon).toBeCloseTo(180, 6); // ラップせず東端へクランプ
+        expect(west.lon).toBeCloseTo(-180, 6);
     });
 });
