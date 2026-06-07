@@ -36,6 +36,15 @@ import { buildGlobeTileMeshData, sampleElevBilinear } from "./globeMesh";
 /** タイルマテリアルの鏡面反射（地形なので弱め）。 */
 const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
 
+/** 標高タイル取得失敗時の再試行バックオフ初期値 [ms]。 */
+const FAILED_RETRY_BASE_MS = 5_000;
+/** 同・上限 [ms]（no-data タイルを叩き続けないための頭打ち）。 */
+const FAILED_RETRY_MAX_MS = 5 * 60_000;
+
+/** attempts 回失敗したタイルの次回再試行までのバックオフ [ms]（指数・上限付き）。 */
+const retryBackoffMs = (attempts: number): number =>
+    Math.min(FAILED_RETRY_MAX_MS, FAILED_RETRY_BASE_MS * 2 ** (attempts - 1));
+
 export interface GlobeTileManagerOptions {
     /** タイルメッシュを生成するシーン。 */
     scene: Scene;
@@ -113,7 +122,12 @@ export const createGlobeTileManager = (
     const loading = new Set<string>();
     // クロスレベルスナップのため、ビルド後も標高配列を保持する（隣接細タイルが参照）。
     const elevCache = new Map<string, Float32Array>();
-    const failed = new Set<string>();
+    // 取得失敗した geom タイルのバックオフ状態（キー → 再試行可能時刻[ms] と試行回数）。
+    // `loadElevationTile` は no-data(404) と一時的なネットワーク障害の双方で throw し、
+    // 投げられたエラーから両者を区別できない。失敗を永続化すると一時障害でも地形が恒久
+    // 欠落するため、指数バックオフで再試行する（no-data は再試行しても成功しないが、上限間隔で
+    // 抑制される）。
+    const failedRetryAt = new Map<string, { retryAt: number; attempts: number }>();
     // sync ごとにまとめてログするための、新たに取得失敗した geom タイルキー。
     // GSI 側に標高データが無い箇所（no-data/404）は珍しくなく、per-tile 警告だとログが
     // 溢れるため、sync 時に 1 行へ間引いて出力する。
@@ -144,7 +158,10 @@ export const createGlobeTileManager = (
     const loadTile = (t: GlobeTile): void => {
         const { gz, gx, gy } = geomCoordOf(t);
         const gk = tileKey(gz, gx, gy);
-        if (elevCache.has(gk) || loading.has(gk) || failed.has(gk)) return;
+        if (elevCache.has(gk) || loading.has(gk)) return;
+        // 過去に失敗していてもバックオフ経過後は再試行する（一時障害からの回復）。
+        const prevFail = failedRetryAt.get(gk);
+        if (prevFail !== undefined && Date.now() < prevFail.retryAt) return;
         loading.add(gk);
         loadElevationTile(gz, gx, gy)
             .then((elev) => {
@@ -153,13 +170,19 @@ export const createGlobeTileManager = (
                 if (!loading.has(gk)) return;
                 loading.delete(gk);
                 elevCache.set(gk, elev);
+                failedRetryAt.delete(gk); // 回復したのでバックオフ状態を解消
             })
             .catch(() => {
-                // 取得不可（GSI に標高データが無い no-data/404 を含む）。per-tile では警告せず、
-                // sync 時にまとめて間引いて出力する。遅延 reject も同様にゲートする。
+                // 取得失敗（no-data/404 と一時的なネットワーク障害を区別できない）。
+                // 指数バックオフで再試行できるよう次回再試行時刻を記録する。遅延 reject はゲート。
                 if (!loading.has(gk)) return;
                 loading.delete(gk);
-                failed.add(gk);
+                const attempts = (failedRetryAt.get(gk)?.attempts ?? 0) + 1;
+                failedRetryAt.set(gk, {
+                    attempts,
+                    retryAt: Date.now() + retryBackoffMs(attempts),
+                });
+                // per-tile では警告せず、sync 時にまとめて間引いて出力する。
                 newlyFailed.push(gk);
             });
     };
@@ -179,7 +202,7 @@ export const createGlobeTileManager = (
                     t,
                     (kk) => desiredKeys.has(kk),
                     (kk) => elevCache.get(kk),
-                    (kk) => failed.has(kk),
+                    (kk) => failedRetryAt.has(kk),
                     minZoom,
                 );
                 if (r.pending) continue; // 粗隣接の標高待ち
@@ -267,6 +290,11 @@ export const createGlobeTileManager = (
         for (const key of loading) {
             if (!neededGeom.has(key)) loading.delete(key);
         }
+        // 視界外になった失敗タイルのバックオフ状態も破棄（メモリ無制限増加を防ぐ。
+        // 再び視界に入れば即座に新規試行できる）。
+        for (const key of failedRetryAt.keys()) {
+            if (!neededGeom.has(key)) failedRetryAt.delete(key);
+        }
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
         buildReadyTiles(tiles);
@@ -304,7 +332,7 @@ export const createGlobeTileManager = (
         loaded.clear();
         loading.clear();
         elevCache.clear();
-        failed.clear();
+        failedRetryAt.clear();
         newlyFailed.length = 0;
         desiredKeys = new Set<string>();
     };
