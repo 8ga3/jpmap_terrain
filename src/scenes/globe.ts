@@ -21,7 +21,6 @@ import {
 } from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
-import { Ray } from "@babylonjs/core/Culling/ray";
 
 import type { MapType } from "../terrain/gsiTile";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic } from "../terrain/geo/ecef";
@@ -29,7 +28,6 @@ import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     clampRadiusForGroundClearance,
-    raySphereNearHitToRef,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 
@@ -181,12 +179,11 @@ export class GlobeScene {
         camera.addBehavior(new GeospatialClippingBehavior());
         camera.attachControl(true);
 
-        // zoom-to-cursor（カーソル下の地点へ寄るズーム）を有効化する。ネイティブ実装は
-        // ホイール毎に scene.pick でカーソル下の点を取り直すが、floating origin 下では
-        // レンダリング座標と真の ECEF メッシュ位置がずれてピックが毎回ブレ、ズームが揺れる
-        // （PoC で確認）。そこで handleZoom を差し替え、目標点を scene.pick 非依存の
-        // 「真の ECEF カメラ位置からのレイ × 地表球」の幾何交点で求める（後段で配線）。
-        camera.movement.zoomToCursor = true;
+        // ズームは注視点(画面中心)へ寄る半径のみのズームにする。zoom-to-cursor は毎フレーム
+        // 中心をカーソル方向へ動かすため、floating origin 下のピック誤差と相まってガタつく。
+        // zoom-to-cursor のレイ再構成は floating origin 維持と両立が難しく、Phase 2 では無効維持
+        // とする（PoC の判断踏襲）。
+        camera.movement.zoomToCursor = false;
 
         // ---- picking 非依存パン（左ドラッグ / WASD） ----
         // 既定の pan（左ドラッグ/キーボード）は scene.pick でグローブをヒットしてドラッグ平面を
@@ -355,32 +352,6 @@ export class GlobeScene {
                 .copyFrom(camera.center)
                 .subtractInPlace(lookAt.scaleInPlace(camera.radius));
             return cameraEcef;
-        };
-
-        // ---- zoom-to-cursor の目標点を scene.pick 非依存で求める差し替え ----
-        // ネイティブ handleZoom は毎ホイールで scene.pick(pointerX,pointerY) して
-        // computedPerFrameZoomPickPoint を更新するが、floating origin 下では点がブレてズームが
-        // 揺れる。ここでは真の ECEF カメラ位置からカーソル方向のレイを飛ばし、注視点と同じ地心距離
-        // （seat で地表に載っている）の球と交差させて目標点を求める。ホイール毎にのみ取り直し、
-        // ズームの慣性減衰中（新規ホイールなし）は handleZoom が呼ばれず目標点が固定されるため、
-        // 1 ジェスチャ中は固定目標へ滑らかに寄る（新しいホイールが来たら新カーソル位置で更新）。
-        const movement = camera.movement;
-        const zoomTarget = new Vector3();
-        const pickRay = new Ray(Vector3.Zero(), Vector3.Forward());
-        movement.handleZoom = (zoomDelta: number): void => {
-            if (zoomDelta === 0) return;
-            // ネイティブ同様に蓄積（per-frame の zoomDeltaCurrentFrame へ変換される）。
-            movement.zoomAccumulatedPixels += zoomDelta;
-            // カーソル方向のレイ（方向のみ使用。origin は floating origin オフセットを含むため捨てる）。
-            scene.createPickingRayToRef(scene.pointerX, scene.pointerY, null, pickRay, camera);
-            const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
-            const sphereRadius = camera.center.length(); // 注視点の地心距離（地表相当）
-            if (raySphereNearHitToRef(camEcef, pickRay.direction, sphereRadius, zoomTarget)) {
-                movement.computedPerFrameZoomPickPoint = zoomTarget;
-            } else {
-                // 空を指している → 注視点方向（lookAt）ズームにフォールバック。
-                movement.computedPerFrameZoomPickPoint = undefined;
-            }
         };
 
         const syncTiles = (): void => {
