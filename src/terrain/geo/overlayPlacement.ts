@@ -8,7 +8,7 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { geodeticToEcef, geodeticToEcefToRef } from "./ecef";
+import { geodeticToEcefToRef } from "./ecef";
 
 /** 緯度経度 1 点（オーバーレイ頂点）。 */
 export interface LatLonPoint {
@@ -95,15 +95,39 @@ export const buildDrapedPolygonPaths = (
     elevs: readonly number[],
     closed: boolean,
 ): { top: Vector3[]; bottom: Vector3[] } => {
-    const top: Vector3[] = [];
-    const bottom: Vector3[] = [];
+    const len = drapedPolygonPathLength(points.length, closed);
+    const top = Array.from({ length: len }, () => new Vector3());
+    const bottom = Array.from({ length: len }, () => new Vector3());
+    writeDrapedPolygonPathsToRef(points, elevs, closed, top, bottom);
+    return { top, bottom };
+};
+
+/**
+ * `closed` を考慮したパス配列長（`buildDrapedPolygonPaths` の top/bottom の要素数）。
+ * 呼び出し側が再利用バッファを確保するために使う。
+ */
+export const drapedPolygonPathLength = (
+    pointCount: number,
+    closed: boolean,
+): number => pointCount + (closed && pointCount >= 2 ? 1 : 0);
+
+/**
+ * `buildDrapedPolygonPaths` の in-place 版。事前確保した `topRef`/`bottomRef`
+ * （長さは {@link drapedPolygonPathLength}）へ書き込み、毎フレーム更新の割り当てを避ける。
+ */
+export const writeDrapedPolygonPathsToRef = (
+    points: readonly LatLonPoint[],
+    elevs: readonly number[],
+    closed: boolean,
+    topRef: Vector3[],
+    bottomRef: Vector3[],
+): void => {
     for (let i = 0; i < points.length; i++) {
-        top.push(geodeticToEcef(points[i].lat, points[i].lon, elevs[i] ?? 0));
-        bottom.push(geodeticToEcef(points[i].lat, points[i].lon, 0));
+        geodeticToEcefToRef(points[i].lat, points[i].lon, elevs[i] ?? 0, topRef[i]);
+        geodeticToEcefToRef(points[i].lat, points[i].lon, 0, bottomRef[i]);
     }
     if (closed && points.length >= 2) {
-        top.push(top[0].clone());
-        bottom.push(bottom[0].clone());
+        topRef[points.length].copyFrom(topRef[0]);
+        bottomRef[points.length].copyFrom(bottomRef[0]);
     }
-    return { top, bottom };
 };
