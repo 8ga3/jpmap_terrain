@@ -185,6 +185,30 @@ describe("selectGlobeRootTiles", () => {
         expect(seeds.some((s) => s.x === nadirTile.x && s.y === nadirTile.y)).toBe(true);
     });
 
+    it("予算が小さくても nadir と center の root を最優先で確保する", () => {
+        const nadirLat = CENTER_LAT - 0.8;
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), { maxRootTiles: 2 }),
+        );
+        const nadirTile = toTileXY(nadirLat, CENTER_LON, 11);
+        const centerTile = toTileXY(CENTER_LAT, CENTER_LON, 11);
+        expect(nadirTile.y).not.toBe(centerTile.y); // 前提: 別タイル
+        expect(seeds.length).toBeLessThanOrEqual(2);
+        expect(seeds.some((s) => s.x === nadirTile.x && s.y === nadirTile.y)).toBe(true);
+        expect(seeds.some((s) => s.x === centerTile.x && s.y === centerTile.y)).toBe(true);
+    });
+
+    it("budget=1 では nadir を優先する", () => {
+        const nadirLat = CENTER_LAT - 0.8;
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), { maxRootTiles: 1 }),
+        );
+        expect(seeds).toHaveLength(1);
+        const nadirTile = toTileXY(nadirLat, CENTER_LON, 11);
+        expect(seeds[0].x).toBe(nadirTile.x);
+        expect(seeds[0].y).toBe(nadirTile.y);
+    });
+
     it("日付変更線をまたいでも最短方向の帯になり center を含む（x は範囲内に正規化）", () => {
         const minZoom = 8;
         const n = 2 ** minZoom;
