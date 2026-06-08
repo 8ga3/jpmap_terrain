@@ -17,6 +17,7 @@ import {
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
     buildDrapedPolygonPaths,
+    generateGeodesicRing,
     OVERLAY_REF_DISTANCE_M,
 } from "../src/terrain/geo/overlayPlacement";
 
@@ -139,5 +140,28 @@ describe("buildDrapedPolygonPaths", () => {
         const { top } = buildDrapedPolygonPaths(pts, [], false);
         expect(top.length).toBe(3);
         expect(Number.isFinite(top[0].length())).toBe(true);
+    });
+});
+
+describe("generateGeodesicRing", () => {
+    it("segments 個の点を返す", () => {
+        expect(generateGeodesicRing(35, 139, 5000, 8).length).toBe(8);
+        expect(generateGeodesicRing(35, 139, 5000, 64).length).toBe(64);
+    });
+
+    it("各点は中心からほぼ radius の距離（ECEF, 誤差 2% 未満）", () => {
+        const radius = 5000;
+        const center = geodeticToEcef(35, 139, 0);
+        const ring = generateGeodesicRing(35, 139, radius, 32);
+        for (const p of ring) {
+            const d = Vector3.Distance(center, geodeticToEcef(p.lat, p.lon, 0));
+            expect(Math.abs(d - radius) / radius).toBeLessThan(0.02);
+        }
+    });
+
+    it("θ=0 の始点は中心の真北（lon 不変・lat 増）", () => {
+        const ring = generateGeodesicRing(35, 139, 5000, 8);
+        expect(ring[0].lon).toBeCloseTo(139, 6);
+        expect(ring[0].lat).toBeGreaterThan(35);
     });
 });

@@ -232,6 +232,18 @@ const start = async (): Promise<void> => {
         });
     }
 
+    // グローブサークル（Phase 3）のデモ表示。富士山を囲む半径 8km の円を地形ドレープで表示する。
+    // `?circle=off` で無効化できる。
+    if (params.get("circle") !== "off") {
+        controller.circleManager.add({
+            centerLat: 35.360625,
+            centerLon: 138.727363,
+            radiusMeters: 8000,
+            outlineColor: "#33aaff",
+            wallColor: "#33aaff",
+        });
+    }
+
     // render ループはシーン生成側ではなく呼び出し側（本デモ）で開始する
     // （GlobeScene は責務分離のためループを開始しない）。
     engine.runRenderLoop(() => controller.scene.render());

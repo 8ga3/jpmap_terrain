@@ -25,6 +25,9 @@ export const OVERLAY_REF_DISTANCE_M = 1000;
 /** スケール下限（近距離での過大スケール抑制）。 */
 const MIN_SCALE = 0.1;
 
+/** 緯度 1 度あたりのメートル（平面版と同じ近似）。円周点生成の等距離近似に使う。 */
+const METERS_PER_DEGREE_LAT = 111320;
+
 /** ドロップ線高さの下限・上限 [m]（平面版 computeDynamicLineHeight と同レンジ）。 */
 const LINE_HEIGHT_MIN = 100;
 const LINE_HEIGHT_MAX = 10000;
@@ -80,6 +83,30 @@ export const computeOverlayDistanceScaleFromDistance = (
 export const computeOverlayLineHeight = (distanceM: number): number => {
     const h = distanceM * 0.1;
     return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, h));
+};
+
+/**
+ * 中心 lat/lon から半径 `radiusMeters` の円周上の lat/lon 点列を生成する（純関数）。
+ * 局所等距離近似（緯度方向 111320 m/deg、経度方向はその cos(lat) 倍）で、数十 km までの円に十分。
+ * 返すのは `segments` 個の点（始点 = θ=0、北方向）。輪を閉じるのは描画側（closed）に委ねる。
+ */
+export const generateGeodesicRing = (
+    centerLat: number,
+    centerLon: number,
+    radiusMeters: number,
+    segments: number,
+): LatLonPoint[] => {
+    const latRad = (centerLat * Math.PI) / 180;
+    const metersPerDegLon = METERS_PER_DEGREE_LAT * Math.max(1e-6, Math.cos(latRad));
+    const ring: LatLonPoint[] = [];
+    for (let i = 0; i < segments; i++) {
+        const theta = (i / segments) * 2 * Math.PI;
+        // θ=0 を北（+lat）、+ を東回り（+lon）にする。
+        const dLat = (radiusMeters * Math.cos(theta)) / METERS_PER_DEGREE_LAT;
+        const dLon = (radiusMeters * Math.sin(theta)) / metersPerDegLon;
+        ring.push({ lat: centerLat + dLat, lon: centerLon + dLon });
+    }
+    return ring;
 };
 
 /**
