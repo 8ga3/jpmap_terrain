@@ -123,6 +123,45 @@ describe("selectGlobeTiles", () => {
         for (const t of tiles) expect(t.tileSizeMeters).toBeGreaterThan(0);
     });
 
+    it("全球視点（高高度）は粗タイルで可視キャップ全体を欠けなく被覆する（#335 全球モード）", () => {
+        // 高度 15,000km の直下視＝地球の大部分が見える。視線方向に沿う 1 次元帯では 2 次元キャップを
+        // 覆い切れないため全球モード（floorZoom 一様種付け＋タイルサイズ考慮の地平線カリング）に切替。
+        const alt = 15_000_000;
+        const tiles = selectGlobeTiles(
+            baseOpts(alt, { maxZoom: 18, rootZoomFloor: 2, maxTiles: 384, maxRootTiles: 384 }),
+        );
+        // 少数の粗タイルで足りる（z5 を ~200 枚並べる旧挙動ではない）。
+        expect(tiles.length).toBeLessThanOrEqual(40);
+        expect(Math.min(...tiles.map((t) => t.zoom))).toBeLessThanOrEqual(3);
+        // 可視キャップ（地平線中心角 acos(R/r)）内の地表点をすべて何らかのタイルが被覆する。
+        const R = 6371000;
+        const r = R + alt;
+        const capRad = Math.acos(R / r);
+        const DEG = Math.PI / 180;
+        const isCov = (lat: number, lon: number): boolean =>
+            tiles.some((t) => {
+                const c = toTileXY(lat, lon, t.zoom);
+                return c.x === t.x && c.y === t.y;
+            });
+        // sub-camera（中心）から各方位・各角度（キャップの 95% まで）でサンプル。
+        for (let ang = 0; ang <= capRad * 0.95; ang += 5 * DEG) {
+            for (let az = 0; az < 360; az += 30) {
+                const th = az * DEG;
+                const lat1 = CENTER_LAT * DEG;
+                const lat2 = Math.asin(
+                    Math.sin(lat1) * Math.cos(ang) + Math.cos(lat1) * Math.sin(ang) * Math.cos(th),
+                );
+                const lon2 =
+                    CENTER_LON * DEG +
+                    Math.atan2(
+                        Math.sin(th) * Math.sin(ang) * Math.cos(lat1),
+                        Math.cos(ang) - Math.sin(lat1) * Math.sin(lat2),
+                    );
+                expect(isCov(lat2 / DEG, lon2 / DEG)).toBe(true);
+            }
+        }
+    });
+
     it("高チルトで rootZoomFloor を効かせると遠景がより遠くまで被覆される（#335）", () => {
         // nadir を注視点の南 3°（≒333km）に置く＝高チルト。遠景は地平線（~870km）まで広がる。
         const highTiltCam = geodeticToEcef(CENTER_LAT - 3, CENTER_LON, 60000);

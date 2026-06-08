@@ -149,6 +149,15 @@ const LATERAL_TILE_CAP = 16;
 const FORWARD_REACH_MARGIN = 1.25;
 
 /**
+ * 全球モードに切り替える地球の見かけ角半径しきい値 [rad]（Issue #335）。地球の角半径
+ * `asin(R/(R+h))` がこの値以下＝高高度で可視領域が地球の大きな部分（広いキャップ）になると、
+ * 視線方向に沿う 1 次元の帯（swath）では 2 次元キャップを覆い切れず縁が欠ける。そこで全球を最粗
+ * `floorZoom` で種付けし、traverse の SSE 細分化＋地平線カリングに委ねる方式へ切り替える。
+ * 約 1.0rad（≒57°, 高度 ≳1,000km）。これ未満（低〜中高度）は従来の帯で効率を維持する。
+ */
+const GLOBAL_VIEW_EARTH_ANG_RADIUS = 1.0;
+
+/**
  * SSE しきい値の距離累進係数（Issue #335）。実効しきい値を
  * `sseThreshold · (1 + SSE_FALLOFF_RATE · distance / altitude)` とし、遠方ほど大きく＝粗く受容する。
  * 近景（distance≈altitude）はほぼ不変、遠方は幾何 LOD（距離 2 倍で 1 段粗）より速く粗化して
@@ -279,6 +288,25 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     const refTileMeters = Math.max(1, tileEdgeMeters(centerLat, minZoom));
     // 地平線までの地表弧長（中心角 acos(R/(R+h))）。帯の along-track 距離（弧長）と整合。
     const horizonArc = R * Math.acos(Math.min(1, R / (R + h)));
+
+    // ---- 全球モード（高高度, #335） ----
+    // 地球の見かけ角半径が小さい（高高度で地球の大部分＝広いキャップが視界に入る）と、視線方向に
+    // 沿う 1 次元の帯では 2 次元キャップを覆い切れず縁が欠ける（低高度の帯アルゴリズムを高高度へ
+    // 流用するのは無理がある）。この帯域では全球（反対側も含む）を最粗 floorZoom で一様に種付けし、
+    // 後段 traverse の SSE 細分化（サブカメラ直下ほど細かく）＋地平線カリング（裏側を早期に除去）で
+    // 可視半球を適切な LOD で被覆する。floorZoom=2 なら全球 16 枚と安価で、地理院タイルは
+    // テクスチャ z0〜・標高 z1〜を供給するため全球を地図でマッピングできる。
+    const earthAngRadius = Math.asin(Math.min(1, R / (R + h)));
+    if (earthAngRadius <= GLOBAL_VIEW_EARTH_ANG_RADIUS) {
+        const gz = floorZoom;
+        const limit = 2 ** gz;
+        for (let gy = 0; gy < limit && seeds.length < budget; gy++) {
+            for (let gx = 0; gx < limit && seeds.length < budget; gx++) {
+                addAt(gx * 2 ** (minZoom - gz), gy * 2 ** (minZoom - gz), gz);
+            }
+        }
+        return seeds;
+    }
 
     /** 地表沿い距離 arc[m] の地点へのカメラ弦距離 d[m]（球面近似）。 */
     const chordDist = (arcMeters: number): number => {
@@ -435,6 +463,11 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 揃える。地心距離−平均半径の近似だと緯度により数 km ズレ、root と traverse で実効 SSE しきい値が
     // 食い違って余計な分割・訪問が起き得るため（選択ごとに 1 回のみの呼び出しでコストは無視できる）。
     const camAlt = Math.max(1, ecefToGeodetic(cameraEcef).altMeters);
+    // 可視地平線の中心角（acos(R/r), r=カメラ地心距離）。地平線カリングの「タイルサイズ考慮」救済に
+    // 使う（高高度の全球被覆で粗タイルの可視縁を取りこぼさないため, #335）。
+    const capAngle = Math.acos(
+        Math.max(-1, Math.min(1, EARTH_MEAN_RADIUS_M / Math.max(1, cameraEcef.length()))),
+    );
 
     const accepted: GlobeTile[] = [];
     // 受容済みタイルキー。距離適応で粗 root と近景 root が継ぎ目で重なり、別 root の細分化が
@@ -461,7 +494,17 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const tileLen = tileEcef.length();
         const horizonDot =
             tileLen > 0 ? Vector3.Dot(tileEcef, camDir) / tileLen : 0;
-        if (horizonDot < horizonDotThreshold) return;
+        if (horizonDot < horizonDotThreshold) {
+            // 中心ベースのしきい値だけだと、粗タイル（z2 等）は中心が地平線の裏でも近縁が可視キャップ
+            // 内に入る場合に取りこぼし、高高度の全球視点で縁/内側に穴が空く。タイルの角半径ぶん緩めた
+            // 「可視キャップ（capAngle）と重なるか」で救済する。角半径はメルカトルタイルの経度幅
+            // (2π/2^zoom) の 0.75 倍と十分大きめに見積もり、可視縁を確実に含める（裏側は依然カリング。
+            // 余分な裏寄りタイルは描画時に背面/深度で隠れ無害, #335）。低高度では cap が小さく、かつ
+            // 帯 root が地平線裏を種付けしないため、この救済は実質高高度のみで効く。
+            const centerAngle = Math.acos(Math.max(-1, Math.min(1, horizonDot)));
+            const nodeAngRadius = ((2 * Math.PI) / (1 << zoom)) * 0.75;
+            if (centerAngle - nodeAngRadius > capAngle) return;
+        }
 
         const distance = Vector3.Distance(cameraEcef, tileEcef);
         const tileSizeMeters = tileEdgeMeters(lat, zoom);
