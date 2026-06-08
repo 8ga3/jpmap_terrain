@@ -23,6 +23,8 @@ import {
 } from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 
 import type { MapType } from "../terrain/gsiTile";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
@@ -55,14 +57,24 @@ export const GLOBE_SCENE_DEFAULTS = {
     tilt: 60,
     /** SSE 採用しきい値 [px]。 */
     sseThreshold: 256 * 2.5,
-    /** 同時保持タイル数の上限。水平チルト時の前景＋地平線被覆のため #329 で 140→200。 */
-    maxTiles: 200,
+    /**
+     * 同時保持タイル数の上限。#335 の視錐台フルカバー（前景〜地平線、横は水平 FOV 台形）を高 DPI
+     * （3x≒render 3240px）かつ高チルトでも欠けなく収めるため拡大（実測最悪 ~329 枚 < 384）。
+     * 通常（1080p・中チルト）は ~40〜130 枚で、本値は安全上限として滅多に到達しない。
+     */
+    maxTiles: 384,
     /** root 帯の横半幅／後方マージン（±N 格子）。 */
     rootSearchRadius: 2,
-    /** root 帯に張る minZoom タイル数の予算（上限）。#329 の nadir→center swath 用。 */
-    maxRootTiles: 96,
+    /** root（traverse シード）数の予算（上限）。視錐台フルカバーの帯を収めるため maxTiles と同等に。 */
+    maxRootTiles: 384,
     /** 地平線カリングの内積しきい値。 */
     horizonDotThreshold: 0.1,
+    /**
+     * root の最粗 zoom（高度/距離適応ルートレベルの下限, Issue #335）。高高度・遠景では SSE
+     * 最適 zoom がこの値まで下がり、少数の粗タイルで広域（地平線まで）を被覆する。GSI 標高は
+     * dem_png が z5〜z14 を供給するため z5 を下限とする（それ未満は背景スフィアが受け持つ）。
+     */
+    rootZoomFloor: 5,
     /** タイルあたりの分割数（頂点は (seg+1)^2）。 */
     segments: 32,
     /** LOD 再評価の間隔（フレーム）。 */
@@ -89,6 +101,29 @@ const MIN_GROUND_CLEARANCE = 50;
 
 /** WASD パン対象キー。 */
 const PAN_KEYS = new Set(["w", "a", "s", "d"]);
+
+/**
+ * 最大チルト[deg]（pitch 上限, Issue #335 UX ガード）。完全水平（90°=地平線真正面）では
+ * 可視域がほぼ全て遠距離になり、距離適応ルートレベルでも被覆が退化しやすい。実用上の上限で
+ * クランプし、ほぼ水平までは許しつつ完全水平の退化を抑止する。
+ */
+const MAX_TILT_DEG = 89;
+
+/**
+ * 地球楕円体スフィア（背景＋地平線リファレンス, Issue #335）を海面より沈める量 [m]。
+ * 地形（標高>=0）との z-fighting はレンダリンググループの分離（後述）で原理的に解消するため、
+ * 沈め量は高度依存にせず、背景を海面付近に置くための小さな一定値で足りる。
+ */
+const EARTH_SPHERE_SINK_M = 100;
+
+/**
+ * レンダリンググループ（Issue #335）。背景スフィアを地形・地物より先に描画し、地形グループの
+ * 直前で深度バッファをクリアする（Babylon は既定でグループ間の深度を自動クリアする）。これにより
+ * 地形は常にスフィアの上に描画され（地形は常に楕円体面より上＝幾何学的に正しい）、深度精度に
+ * 依存した z-fighting が発生しない。
+ */
+const RG_BACKGROUND = 0;
+const RG_CONTENT = 1;
 
 export interface GlobeSceneInitOptions {
     /** 初期注視点の緯度 [deg]。 */
@@ -188,8 +223,11 @@ export class GlobeScene {
         camera.center = centerEcef;
         camera.radius = radius;
         // 既存 UI の azimuth/tilt[deg] を yaw/pitch[rad] にマッピングして初期化。
+        // 完全水平の退化を避けるため pitch 上限を MAX_TILT_DEG にクランプする（#335 UX ガード）。
+        // GeospatialCamera 組み込みの limits.pitchMax がドラッグ操作にも適用される。
+        camera.limits.pitchMax = MAX_TILT_DEG * DEG2RAD;
         camera.yaw = azimuth * DEG2RAD;
-        camera.pitch = tilt * DEG2RAD;
+        camera.pitch = Math.min(tilt, MAX_TILT_DEG) * DEG2RAD;
 
         // near/far の自動調整（高度に応じた depth 精度最適化）。
         camera.addBehavior(new GeospatialClippingBehavior());
@@ -336,6 +374,36 @@ export class GlobeScene {
         const sun = new DirectionalLight("globe-sun", sunDir, scene);
         sun.intensity = 0.7;
 
+        // ---- 地球楕円体スフィア（背景 / 地平線リファレンス, #335） ----
+        // DEM no-data（海上など）でタイルメッシュが生成されない領域や、距離適応 root の外側で
+        // 視界が「宇宙へ抜ける穴」になるのを防ぎ、地平線を可視化する WGS84 楕円体のソリッド球。
+        // floating origin 下でもタイルメッシュと同じ真の ECEF 系なので、地球中心（原点）に静止
+        // 配置すればよい。極（ECEF Z 軸）方向のみ semiMinorAxis で扁平させ、海面より僅かに沈める。
+        const earthSink = EARTH_SPHERE_SINK_M;
+        const earth = CreateSphere("globe-earth", { diameter: 2, segments: 128 }, scene);
+        // 単位球（半径 1）を楕円体半径へスケール。ECEF の極は Z 軸なので Z のみ扁平。
+        earth.scaling.set(
+            Wgs84Ellipsoid.semiMajorAxis - earthSink,
+            Wgs84Ellipsoid.semiMajorAxis - earthSink,
+            Wgs84Ellipsoid.semiMinorAxis - earthSink,
+        );
+        earth.isPickable = false;
+        // 背景グループに置き、地形・地物は描画時にコンテンツグループへ（深度はグループ間で自動
+        // クリアされ、地形が常にスフィアの上＝深度精度に依存しない z-fighting レス, #335）。
+        earth.renderingGroupId = RG_BACKGROUND;
+        const earthMat = new StandardMaterial("globe-earth-mat", scene);
+        earthMat.diffuseColor = new Color3(0.16, 0.26, 0.36); // 海の濃い青
+        earthMat.specularColor = new Color3(0.02, 0.02, 0.02);
+        earthMat.emissiveColor = new Color3(0.03, 0.05, 0.08); // 夜側でも輪郭が出る程度
+        earthMat.backFaceCulling = true;
+        earth.material = earthMat;
+        // コンテンツグループの直前で深度を明示的にクリア（既定動作だが意図を明示）。以降にシーンへ
+        // 追加されるメッシュ（地形タイル・マーカー・ポリゴン・モデル等）は全てコンテンツグループへ。
+        scene.setRenderingAutoClearDepthStencil(RG_CONTENT, true, true, true);
+        const contentGroupObserver = scene.onNewMeshAddedObservable.add((mesh) => {
+            if (mesh !== earth) mesh.renderingGroupId = RG_CONTENT;
+        });
+
         // ---- 地形タイルマネージャ ----
         const tileManager = createGlobeTileManager({
             scene,
@@ -397,6 +465,7 @@ export class GlobeScene {
                 centerEcef: camera.center,
                 maxZoom: GLOBE_SCENE_DEFAULTS.maxZoom,
                 viewportHeight: engine.getRenderHeight(),
+                viewportWidth: engine.getRenderWidth(),
                 verticalFov: camera.fov,
                 sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
                 maxTiles: GLOBE_SCENE_DEFAULTS.maxTiles,
@@ -404,6 +473,7 @@ export class GlobeScene {
                 maxRootTiles: GLOBE_SCENE_DEFAULTS.maxRootTiles,
                 horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
                 referenceAltitude: centerElevation,
+                rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
             });
             if (options.onSyncStats) {
                 const geo = ecefToGeodetic(camera.center);
@@ -502,6 +572,7 @@ export class GlobeScene {
         const dispose = (): void => {
             // render ループは呼び出し側の所有なので停止しない（呼び出し側が停止する）。
             scene.onBeforeRenderObservable.remove(observer);
+            scene.onNewMeshAddedObservable.remove(contentGroupObserver);
             canvas.removeEventListener("keydown", onKeyDown);
             canvas.removeEventListener("keyup", onKeyUp);
             canvas.removeEventListener("blur", clearPressed);

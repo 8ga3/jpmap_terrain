@@ -96,6 +96,30 @@ jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
     loadElevationTile: jest.fn(() => Promise.resolve(new Float32Array(256 * 256))),
 }));
 
+// ---- globeLod モック（タイル選択を決定的に制御） ----
+// マネージャはライフサイクル（ロード/ビルド/破棄）の責務を持つ。選択ロジック（高度/距離適応
+// SSE）は globeLod 側の単体テスト（globeLod.unit.spec）でカバーするため、ここでは
+// `selectGlobeTiles` をモックし、テストごとに選択タイル集合を直接差し替えて状態遷移を検証する。
+interface SelTile {
+    zoom: number;
+    x: number;
+    y: number;
+    tileSizeMeters: number;
+    distance: number;
+}
+const tile = (x: number, y: number, zoom = 10): SelTile => ({
+    zoom,
+    x,
+    y,
+    tileSizeMeters: 1000,
+    distance: 60000,
+});
+let selectedTiles: SelTile[] = [tile(100, 100)];
+jest.unstable_mockModule("../src/terrain/geo/globeLod", () => ({
+    selectGlobeTiles: jest.fn(() => selectedTiles),
+    tileKey: (z: number, x: number, y: number) => `${z}/${x}/${y}`,
+}));
+
 const { createGlobeTileManager } = await import("../src/terrain/geo/globeTileManager");
 const { geodeticToEcef } = await import("../src/terrain/geo/ecef");
 const gsiMock = await import("../src/terrain/gsiTile");
@@ -116,6 +140,7 @@ const syncParams = () => ({
     centerEcef,
     maxZoom: 10, // minZoom と同じにして分割を起こさない
     viewportHeight: 1080,
+    viewportWidth: 1920,
     verticalFov: 0.8,
     sseThreshold: 1e9, // 必ず root で受容
     maxTiles: 10,
@@ -142,18 +167,21 @@ beforeEach(() => {
     loadElevationTile.mockImplementation(() => Promise.resolve(new Float32Array(256 * 256)));
     toTileXY.mockReset();
     toTileXY.mockReturnValue({ x: 100, y: 100 });
+    selectedTiles = [tile(100, 100)];
 });
 
 describe("createGlobeTileManager", () => {
-    it("geom 標高が揃うとメッシュを 1 枚生成し、テクスチャ onLoad で diffuseTexture を設定", async () => {
+    it("選択タイルは即座に暫定建築し、テクスチャ onLoad で diffuseTexture を設定", async () => {
         const mgr = makeManager();
         const s1 = mgr.sync(syncParams());
-        // 1 タイル選択、まだロード中でメッシュ未生成。
+        // 1 タイル選択。実標高ロード中でも海面フラットで即座に暫定建築する（欠けを防ぐ, #335）。
         expect(s1.selected.length).toBe(1);
-        expect(MeshMock).toHaveBeenCalledTimes(0);
+        expect(MeshMock).toHaveBeenCalledTimes(1);
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
+        expect(s1.loadedCount).toBe(1);
 
         await flush();
+        // 実標高到達後の再 sync は既存メッシュへジオメトリ差し替え（新規 Mesh は増えない）。
         const s2 = mgr.sync(syncParams());
         expect(MeshMock).toHaveBeenCalledTimes(1);
         expect(s2.loadedCount).toBe(1);
@@ -168,7 +196,7 @@ describe("createGlobeTileManager", () => {
 
     it("不要になったタイルのメッシュを dispose する", async () => {
         const mgr = makeManager();
-        toTileXY.mockReturnValue({ x: 100, y: 100 });
+        selectedTiles = [tile(100, 100)];
         mgr.sync(syncParams());
         await flush();
         mgr.sync(syncParams()); // メッシュ A 生成
@@ -176,21 +204,23 @@ describe("createGlobeTileManager", () => {
         expect(MeshMock).toHaveBeenCalledTimes(1);
 
         // 別タイルへ移動 → A は不要に。
-        toTileXY.mockReturnValue({ x: 200, y: 200 });
+        selectedTiles = [tile(200, 200)];
         mgr.sync(syncParams());
         expect(meshA.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    it("取得失敗はバックオフし、直後の sync では再取得しない", async () => {
+    it("取得失敗(no-data)はバックオフし再取得せず、海面フラットの暫定建築が残る", async () => {
         loadElevationTile.mockImplementation(() => Promise.reject(new Error("fetch failed")));
         const mgr = makeManager();
         mgr.sync(syncParams());
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
+        // ロード中でも即座に海面フラットで暫定建築（GSI テクスチャを描画。欠けを防ぐ, #335）。
+        expect(MeshMock).toHaveBeenCalledTimes(1);
         await flush();
-        // 直後の sync ではバックオフ中なので再取得しない。
+        // 直後の sync: バックオフ中で再取得せず、海面フラットのまま残る（新規 Mesh は増えない）。
         mgr.sync(syncParams());
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
-        expect(MeshMock).toHaveBeenCalledTimes(0);
+        expect(MeshMock).toHaveBeenCalledTimes(1);
     });
 
     it("アンロード後に遅延 resolve した結果は無視され、再選択時に再取得する", async () => {
@@ -200,13 +230,13 @@ describe("createGlobeTileManager", () => {
             () => new Promise<Float32Array>((res) => { resolveFn = res; }),
         );
         const mgr = makeManager();
-        toTileXY.mockReturnValue({ x: 100, y: 100 });
+        selectedTiles = [tile(100, 100)];
         const s1 = mgr.sync(syncParams()); // タイル100 をロード中（保留）
         expect(s1.loadingCount).toBe(1);
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
 
         // 別タイルへ移動 → 100 は loading から外れる。
-        toTileXY.mockReturnValue({ x: 200, y: 200 });
+        selectedTiles = [tile(200, 200)];
         mgr.sync(syncParams());
 
         // 保留していた 100 の取得を今 resolve（アンロード後）→ ゲートで無視されキャッシュされない。
@@ -214,7 +244,7 @@ describe("createGlobeTileManager", () => {
         await flush();
 
         // 100 に戻ると、キャッシュされていないので再取得が発生する。
-        toTileXY.mockReturnValue({ x: 100, y: 100 });
+        selectedTiles = [tile(100, 100)];
         mgr.sync(syncParams());
         // 呼び出し: タイル100(1回目) + タイル200 + タイル100(再取得) = 3 回。
         expect(loadElevationTile).toHaveBeenCalledTimes(3);

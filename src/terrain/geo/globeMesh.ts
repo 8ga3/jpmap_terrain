@@ -115,6 +115,10 @@ export const buildGlobeTileMeshData = (
             // クロスレベル: 境界辺なら粗タイル表面へ標高をスナップ（陰影シーム解消、z<=15 のみ）。
             const snapped = snapEdgeElevation(edges, row, col, segments, tx, ty, pxF, pyF);
             if (snapped !== null) elev = snapped;
+            // no-data（NaN）は海面(0m)に倒す。GSI 標高は海上・湖面・カバー外で NaN を返すことがあり、
+            // そのまま使うと頂点座標が NaN になりメッシュが不可視＝タイルが欠ける（#335）。海域は
+            // 海面、海岸の部分 no-data も海面として描画する（GSI テクスチャは別途貼られる）。
+            if (!Number.isFinite(elev)) elev = 0;
 
             const { lat, lon } = pixelToLatLon(
                 tx * TILE_SIZE + pxF,
