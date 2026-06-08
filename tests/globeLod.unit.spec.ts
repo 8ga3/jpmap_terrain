@@ -446,6 +446,22 @@ describe("selectGlobeRootTiles", () => {
         expect(isCovered(seeds, nadirLat, CENTER_LON)).toBe(true);
     });
 
+    it("全球モードで予算が全球枚数に満たなくても nadir/center を最優先で被覆する（#335）", () => {
+        // 高度 3,000km は全球モード（地球の見かけ角半径が小さい）。floorZoom=4 だと全球 2^4×2^4=256
+        // 枚だが予算は 8 枚しかなく、0 起点ラスタ順では北端/日付変更線側で予算が尽き、視界中央の
+        // nadir/center 付近へ到達できない。nadir/center を最優先 seed することで視界中央を被覆する。
+        const nadirLat = CENTER_LAT - 10; // nadir を center から十分離す
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 3_000_000), {
+                rootZoomFloor: 4,
+                maxRootTiles: 8,
+            }),
+        );
+        expect(seeds.length).toBeLessThanOrEqual(8);
+        expect(isCovered(seeds, nadirLat, CENTER_LON)).toBe(true);
+        expect(isCovered(seeds, CENTER_LAT, CENTER_LON)).toBe(true);
+    });
+
     it("高チルトで nadir→地平線の帯が距離適応 zoom の継ぎ目で途切れず連続被覆する（#335 半刻み歩進）", () => {
         // 高チルト（nadir を注視点の南 ~0.4°, 高度 25km ≒ tilt 65°）で地平線が画面に入る。距離適応で
         // root の zoom が遠方ほど粗くなるが、その遷移の継ぎ目で along-track の global タイルを 1 枚
