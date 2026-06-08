@@ -80,8 +80,8 @@ export const createGlobeModelManager = (
 
     /** モデルを地形へ接地（標高 null は直前値→0）し、地心 up へ向ける。 */
     const placeNode = (node: GlobeModelNode): void => {
-        const q = terrainElevAt(node.lat, node.lon);
-        if (q !== null) node.lastElev = q;
+        const elevOrNull = terrainElevAt(node.lat, node.lon);
+        if (elevOrNull !== null) node.lastElev = elevOrNull;
         const elev = (node.lastElev ?? 0) + node.altitudeOffsetMeters;
         // root.position（真の ECEF）へ接地。向きは root.position から地心 up を算出して決める。
         groundPlacementToRef(node.lat, node.lon, elev, node.root.position, upScratch);
