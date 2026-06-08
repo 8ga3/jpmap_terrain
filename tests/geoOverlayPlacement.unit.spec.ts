@@ -164,4 +164,11 @@ describe("generateGeodesicRing", () => {
         expect(ring[0].lon).toBeCloseTo(139, 6);
         expect(ring[0].lat).toBeGreaterThan(35);
     });
+
+    it("radius<=0・非整数/3未満 segments は throw", () => {
+        expect(() => generateGeodesicRing(35, 139, 0, 8)).toThrow(/radiusMeters/);
+        expect(() => generateGeodesicRing(35, 139, -1, 8)).toThrow(/radiusMeters/);
+        expect(() => generateGeodesicRing(35, 139, 5000, 2)).toThrow(/segments/);
+        expect(() => generateGeodesicRing(35, 139, 5000, 8.5)).toThrow(/segments/);
+    });
 });

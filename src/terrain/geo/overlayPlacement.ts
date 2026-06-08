@@ -96,6 +96,15 @@ export const generateGeodesicRing = (
     radiusMeters: number,
     segments: number,
 ): LatLonPoint[] => {
+    // 公開 API のため自身で検証して呼び出し側のバグを早期検出する（JSDoc の「segments 個の点」を保証）。
+    if (!(radiusMeters > 0)) {
+        throw new Error(`generateGeodesicRing: radiusMeters must be > 0 (got ${radiusMeters})`);
+    }
+    if (!Number.isInteger(segments) || segments < 3) {
+        throw new Error(
+            `generateGeodesicRing: segments must be an integer >= 3 (got ${segments})`,
+        );
+    }
     const latRad = (centerLat * Math.PI) / 180;
     const metersPerDegLon = METERS_PER_DEGREE_LAT * Math.max(1e-6, Math.cos(latRad));
     const ring: LatLonPoint[] = [];
