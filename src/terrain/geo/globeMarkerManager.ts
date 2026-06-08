@@ -265,6 +265,8 @@ export const createGlobeMarkerManager = (
     };
 
     const update = (camEcef: Vector3): void => {
+        // 平面版 MarkerManager.update と同様、dispose 後の呼び出しは throw して検知する。
+        if (disposed) throw new Error("GlobeMarkerManager.update: called after dispose");
         if (nodes.size === 0) return;
         for (const node of nodes.values()) {
             if (!node.enabled) continue;

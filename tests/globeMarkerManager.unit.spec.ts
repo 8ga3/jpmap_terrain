@@ -244,6 +244,13 @@ describe("dispose 後ガード", () => {
         mgr.dispose();
         expect(() => mgr.setEnabled(id, false)).toThrow(/after dispose/);
     });
+
+    it("dispose 後の update は throw する", () => {
+        const { mgr } = makeManager();
+        mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        mgr.dispose();
+        expect(() => mgr.update(new Vector3(7_000_000, 0, 0))).toThrow(/after dispose/);
+    });
 });
 
 describe("icon URL 検証の投げ直し", () => {
