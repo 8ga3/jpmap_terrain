@@ -10,8 +10,14 @@
 
 import { describe, it, expect } from "@jest/globals";
 
+import { tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
-import { selectGlobeTiles, tileKey, type GlobeLodOptions } from "../src/terrain/geo/globeLod";
+import {
+    selectGlobeRootTiles,
+    selectGlobeTiles,
+    tileKey,
+    type GlobeLodOptions,
+} from "../src/terrain/geo/globeLod";
 
 const CENTER_LAT = 35.3606;
 const CENTER_LON = 138.7274;
@@ -31,6 +37,7 @@ const baseOpts = (
     sseThreshold: 256 * 2.5,
     maxTiles: 200,
     rootSearchRadius: 2,
+    maxRootTiles: 256,
     horizonDotThreshold: 0.1,
     referenceAltitude: 0,
     ...overrides,
@@ -108,5 +115,73 @@ describe("selectGlobeTiles", () => {
         const tiles = selectGlobeTiles(baseOpts(60000));
         expect(tiles.length).toBeGreaterThan(0);
         for (const t of tiles) expect(t.tileSizeMeters).toBeGreaterThan(0);
+    });
+
+    it("水平チルトでカメラ直下（nadir）の前景タイルが選択される（#329）", () => {
+        // カメラ直下点を注視点の南 ~0.8°（≒88km）に置く＝水平気味のチルト。
+        const nadirLat = CENTER_LAT - 0.8;
+        const tiles = selectGlobeTiles(
+            baseOpts(60000, {
+                cameraEcef: geodeticToEcef(nadirLat, CENTER_LON, 60000),
+                centerLat: CENTER_LAT,
+                centerLon: CENTER_LON,
+                maxZoom: 15,
+            }),
+        );
+        // 前景（nadir 付近, 注視点より十分南）のタイルが少なくとも 1 枚含まれること。
+        // 旧来の注視点中心アンカーでは生成されず、欠落していた領域。
+        const hasForeground = tiles.some((t) => {
+            const { lat } = tileCenterLatLon(t.x, t.y, t.zoom);
+            return lat < CENTER_LAT - 0.5;
+        });
+        expect(hasForeground).toBe(true);
+    });
+});
+
+describe("selectGlobeRootTiles", () => {
+    const baseRoot = (
+        cameraEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, 60000),
+        overrides: Partial<Parameters<typeof selectGlobeRootTiles>[0]> = {},
+    ) => ({
+        cameraEcef,
+        centerLat: CENTER_LAT,
+        centerLon: CENTER_LON,
+        minZoom: 11,
+        rootSearchRadius: 2,
+        maxRootTiles: 256,
+        ...overrides,
+    });
+
+    it("直下視（nadir≒center）は nadir 中心の対称ボックス（一辺 2r+1）", () => {
+        const r = 2;
+        const seeds = selectGlobeRootTiles(baseRoot(undefined, { rootSearchRadius: r }));
+        expect(seeds).toHaveLength((2 * r + 1) ** 2);
+        const center = toTileXY(CENTER_LAT, CENTER_LON, 11);
+        expect(seeds.some((s) => s.x === center.x && s.y === center.y)).toBe(true);
+    });
+
+    it("チルト時は nadir タイルと center タイルの両方を含む（#329 帯）", () => {
+        const nadirLat = CENTER_LAT - 0.8;
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000)),
+        );
+        const nadirTile = toTileXY(nadirLat, CENTER_LON, 11);
+        const centerTile = toTileXY(CENTER_LAT, CENTER_LON, 11);
+        expect(nadirTile.y).not.toBe(centerTile.y); // 前提: 別タイル
+        expect(seeds.some((s) => s.x === nadirTile.x && s.y === nadirTile.y)).toBe(true);
+        expect(seeds.some((s) => s.x === centerTile.x && s.y === centerTile.y)).toBe(true);
+    });
+
+    it("maxRootTiles 予算を超えず、前景（nadir）を残す", () => {
+        const nadirLat = CENTER_LAT - 0.8;
+        const budget = 5;
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), {
+                maxRootTiles: budget,
+            }),
+        );
+        expect(seeds.length).toBeLessThanOrEqual(budget);
+        const nadirTile = toTileXY(nadirLat, CENTER_LON, 11);
+        expect(seeds.some((s) => s.x === nadirTile.x && s.y === nadirTile.y)).toBe(true);
     });
 });
