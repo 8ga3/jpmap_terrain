@@ -50,7 +50,9 @@ export interface GlobeLodOptions {
     maxTiles: number;
     /**
      * root タイル（minZoom）の帯の横半幅（lateral）かつ nadir 手前の後方マージン（±N 格子）。
-     * 直下視（nadir≒center）では nadir 中心の対称ボックス（一辺 2N+1）にフォールバックする。
+     * 直下視（nadir≒center）では nadir 中心の対称ボックス（一辺 2N+1）状に張る。ただし生成は
+     * 常に `maxRootTiles` の予算内に収まり、`maxRootTiles < (2N+1)^2` のときは前景優先で
+     * 打ち切られる（対称ボックスを満たし切らない）。
      */
     rootSearchRadius: number;
     /**
