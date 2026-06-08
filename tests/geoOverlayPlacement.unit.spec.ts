@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "@jest/globals";
 
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import {
@@ -18,6 +18,7 @@ import {
     computeOverlayLineHeight,
     buildDrapedPolygonPaths,
     generateGeodesicRing,
+    surfaceOrientationToRef,
     OVERLAY_REF_DISTANCE_M,
 } from "../src/terrain/geo/overlayPlacement";
 
@@ -170,5 +171,41 @@ describe("generateGeodesicRing", () => {
         expect(() => generateGeodesicRing(35, 139, -1, 8)).toThrow(/radiusMeters/);
         expect(() => generateGeodesicRing(35, 139, 5000, 2)).toThrow(/segments/);
         expect(() => generateGeodesicRing(35, 139, 5000, 8.5)).toThrow(/segments/);
+    });
+});
+
+describe("surfaceOrientationToRef", () => {
+    /** クォータニオン q でローカル軸 v を回した世界ベクトルを返す。 */
+    const rotate = (q: Quaternion, v: Vector3): Vector3 => {
+        const m = new Matrix();
+        q.toRotationMatrix(m);
+        return Vector3.TransformCoordinates(v, m);
+    };
+
+    it("ローカル +Y が地心 up（位置の正規化）へ向く", () => {
+        const pos = geodeticToEcef(35, 139, 1000);
+        const q = new Quaternion();
+        expect(surfaceOrientationToRef(pos, 0, q)).toBe(true);
+        const worldUp = rotate(q, new Vector3(0, 1, 0));
+        const up = pos.clone().normalize();
+        expect(Vector3.Dot(worldUp, up)).toBeCloseTo(1, 6);
+    });
+
+    it("heading=0 でローカル +Z が北向き（地心 up と直交・北成分正）", () => {
+        const pos = geodeticToEcef(35, 139, 0);
+        const q = new Quaternion();
+        surfaceOrientationToRef(pos, 0, q);
+        const fwd = rotate(q, new Vector3(0, 0, 1));
+        const up = pos.clone().normalize();
+        // 前方は接線（up と直交）。
+        expect(Vector3.Dot(fwd, up)).toBeCloseTo(0, 6);
+        // 北半球で「北向き」は +Z 成分が正（北極方向に近い）。
+        expect(fwd.z).toBeGreaterThan(0);
+    });
+
+    it("極では false（東が定義できない）", () => {
+        const pos = geodeticToEcef(90, 0, 0);
+        const q = new Quaternion();
+        expect(surfaceOrientationToRef(pos, 0, q)).toBe(false);
     });
 });

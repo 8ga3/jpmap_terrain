@@ -16,6 +16,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera";
 
+import humanGlbUrl from "../../../assets/human.glb";
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { clamp, type MapType } from "../../terrain/gsiTile";
@@ -243,6 +244,17 @@ const start = async (): Promise<void> => {
             wallColor: "#33aaff",
             // 富士山頂(3776m)より高く浮かせて山に隠れないようにする（polygon と同じ）。
             topAltitudeMeters: 6000,
+        });
+    }
+
+    // グローブモデル（Phase 3）のデモ表示。富士山頂に human.glb を接地し、地心 up へ起立させる。
+    // human.glb は約 1m なので地形上で視認できるよう拡大する。`?model=off` で無効化できる。
+    if (params.get("model") !== "off") {
+        controller.modelManager.add({
+            url: humanGlbUrl,
+            lat: 35.360625,
+            lon: 138.727363,
+            scale: 400,
         });
     }
 
