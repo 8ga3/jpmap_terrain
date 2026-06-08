@@ -217,6 +217,19 @@ const start = async (): Promise<void> => {
         });
     }
 
+    // グローブポリゴン（Phase 3）のデモ表示。富士山頂を囲む三角形を接地アウトライン＋
+    // 地心 up カーテン壁で表示する。`?polygon=off` で無効化できる。
+    if (params.get("polygon") !== "off") {
+        controller.polygonManager.add({
+            points: [
+                { lat: 35.38, lon: 138.70 },
+                { lat: 35.34, lon: 138.70 },
+                { lat: 35.36, lon: 138.76 },
+            ],
+            closed: true,
+        });
+    }
+
     // render ループはシーン生成側ではなく呼び出し側（本デモ）で開始する
     // （GlobeScene は責務分離のためループを開始しない）。
     engine.runRenderLoop(() => controller.scene.render());

@@ -16,6 +16,7 @@ import {
     computeOverlayDistanceScale,
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
+    buildDrapedPolygonPaths,
     OVERLAY_REF_DISTANCE_M,
 } from "../src/terrain/geo/overlayPlacement";
 
@@ -101,5 +102,42 @@ describe("computeOverlayLineHeight", () => {
     });
     it("上限 10000m", () => {
         expect(computeOverlayLineHeight(1_000_000)).toBe(10000); // 100000 → 上限
+    });
+});
+
+describe("buildDrapedPolygonPaths", () => {
+    const pts = [
+        { lat: 35.3, lon: 138.7 },
+        { lat: 35.4, lon: 138.8 },
+        { lat: 35.3, lon: 138.9 },
+    ];
+
+    it("top は地形標高・bottom は楕円体面（alt=0）の ECEF", () => {
+        const elevs = [1000, 2000, 1500];
+        const { top, bottom } = buildDrapedPolygonPaths(pts, elevs, false);
+        expect(top.length).toBe(3);
+        expect(bottom.length).toBe(3);
+        for (let i = 0; i < 3; i++) {
+            // top は bottom より地心距離が標高ぶん大きい。
+            expect(top[i].length()).toBeGreaterThan(bottom[i].length());
+            expect(top[i].length() - bottom[i].length()).toBeCloseTo(elevs[i], 0);
+            // bottom は楕円体面の既知点と一致。
+            const b = geodeticToEcef(pts[i].lat, pts[i].lon, 0);
+            expect(Vector3.Distance(bottom[i], b)).toBeLessThan(1e-3);
+        }
+    });
+
+    it("closed=true は先頭頂点を末尾へ複製して輪を閉じる", () => {
+        const { top, bottom } = buildDrapedPolygonPaths(pts, [0, 0, 0], true);
+        expect(top.length).toBe(4);
+        expect(bottom.length).toBe(4);
+        expect(Vector3.Distance(top[0], top[3])).toBeLessThan(1e-6);
+        expect(Vector3.Distance(bottom[0], bottom[3])).toBeLessThan(1e-6);
+    });
+
+    it("elevs が欠損（undefined）でも 0 扱いで落ちない", () => {
+        const { top } = buildDrapedPolygonPaths(pts, [], false);
+        expect(top.length).toBe(3);
+        expect(Number.isFinite(top[0].length())).toBe(true);
     });
 });

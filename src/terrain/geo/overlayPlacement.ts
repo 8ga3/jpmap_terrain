@@ -8,7 +8,13 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { geodeticToEcefToRef } from "./ecef";
+import { geodeticToEcef, geodeticToEcefToRef } from "./ecef";
+
+/** 緯度経度 1 点（オーバーレイ頂点）。 */
+export interface LatLonPoint {
+    lat: number;
+    lon: number;
+}
 
 /**
  * スケール基準距離 [m]。カメラ距離がこの値で scale=1、それ以上は distance/refDistance 倍して
@@ -74,4 +80,30 @@ export const computeOverlayDistanceScaleFromDistance = (
 export const computeOverlayLineHeight = (distanceM: number): number => {
     const h = distanceM * 0.1;
     return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, h));
+};
+
+/**
+ * グローブポリゴンの ECEF パスを生成する（純関数）。
+ * - `top`: 各頂点を地形標高 `elevs[i]` で接地した ECEF（アウトライン／壁の上端）。
+ * - `bottom`: 同 lat/lon の楕円体面（alt=0）の ECEF（壁＝カーテンの下端）。
+ *
+ * `closed` かつ頂点 2 つ以上のとき、先頭頂点を末尾へ複製して輪を閉じる。
+ * Babylon の `CreateLines`/`CreateRibbon` の path 配列としてそのまま渡せる。
+ */
+export const buildDrapedPolygonPaths = (
+    points: readonly LatLonPoint[],
+    elevs: readonly number[],
+    closed: boolean,
+): { top: Vector3[]; bottom: Vector3[] } => {
+    const top: Vector3[] = [];
+    const bottom: Vector3[] = [];
+    for (let i = 0; i < points.length; i++) {
+        top.push(geodeticToEcef(points[i].lat, points[i].lon, elevs[i] ?? 0));
+        bottom.push(geodeticToEcef(points[i].lat, points[i].lon, 0));
+    }
+    if (closed && points.length >= 2) {
+        top.push(top[0].clone());
+        bottom.push(bottom[0].clone());
+    }
+    return { top, bottom };
 };
