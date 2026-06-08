@@ -227,6 +227,8 @@ const start = async (): Promise<void> => {
                 { lat: 35.36, lon: 138.76 },
             ],
             closed: true,
+            // 富士山頂(3776m)より高く浮かせて山に隠れないようにする。
+            topAltitudeMeters: 6000,
         });
     }
 
