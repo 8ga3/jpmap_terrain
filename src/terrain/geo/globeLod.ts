@@ -300,6 +300,14 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     if (earthAngRadius <= GLOBAL_VIEW_EARTH_ANG_RADIUS) {
         const gz = floorZoom;
         const limit = 2 ** gz;
+        // nadir/center を最優先で確保する。全球一様種付けは gy/gx の 0 起点ラスタ順のため、
+        // 予算（budget）が全球枚数 2^gz×2^gz に満たない場合（例: rootZoomFloor 未指定で
+        // floorZoom===minZoom だと 2^minZoom 周期となり budget 超過）、ラスタ順では視界中央の
+        // nadir/center 付近に到達する前に予算が尽き、視界周辺が未被覆になり得る。先に必ず種付け
+        // しておけば、予算が一様種付けに満たなくても視界中央は被覆される（予算切れ時は addAt の
+        // budget ガードでループは打ち切られ、その時点の seeds を返す）。
+        addAt(t0.x, t0.y, gz);
+        addAt(t1.x, t1.y, gz);
         for (let gy = 0; gy < limit && seeds.length < budget; gy++) {
             for (let gx = 0; gx < limit && seeds.length < budget; gx++) {
                 addAt(gx * 2 ** (minZoom - gz), gy * 2 ** (minZoom - gz), gz);
