@@ -334,7 +334,8 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     };
 
     /**
-     * along-track 位置 arc[m]（emit zoom・カメラ距離 d）の lateral 断面を張る。横半幅は
+     * along-track 位置 s（minZoom タイル単位。s * refTileMeters で距離[m]へ換算）の emit zoom・
+     * カメラ距離 d における lateral 断面を張る。横半幅は
      * 視錐台の台形に合わせ「カメラ距離 × 水平 FOV」をその emit タイルサイズで割った枚数とする
      * （遠方ほど広い台形を、粗い emit タイルで少数被覆）。emit タイルが大きいと枚数は少なく済む。
      */
