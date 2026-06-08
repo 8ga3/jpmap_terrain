@@ -241,6 +241,8 @@ const start = async (): Promise<void> => {
             radiusMeters: 8000,
             outlineColor: "#33aaff",
             wallColor: "#33aaff",
+            // 富士山頂(3776m)より高く浮かせて山に隠れないようにする（polygon と同じ）。
+            topAltitudeMeters: 6000,
         });
     }
 
