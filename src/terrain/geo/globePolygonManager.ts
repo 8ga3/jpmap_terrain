@@ -31,6 +31,12 @@ export interface GlobePolygonOptions {
     points: readonly LatLonPoint[];
     /** 末尾と先頭を結んで輪を閉じる。default false。 */
     closed?: boolean;
+    /**
+     * 指定すると top（アウトライン／壁の上端）を地形標高ではなく **この楕円体高度[m] 固定** で
+     * 描く（壁は alt=0 までのカーテン）。山などに隠れないよう高く浮かせたいときに使う。
+     * 未指定なら地形標高でドレープする。
+     */
+    topAltitudeMeters?: number;
     /** アウトライン色（hex）。 */
     outlineColor?: string;
     /** 壁色（hex）。 */
@@ -53,6 +59,8 @@ interface GlobePolygonNode {
     id: string;
     points: readonly LatLonPoint[];
     closed: boolean;
+    /** top を固定する楕円体高度[m]（undefined なら地形ドレープ）。 */
+    topAltitudeMeters?: number;
     wallsEnabled: boolean;
     enabled: boolean;
     lineMesh: LinesMesh;
@@ -91,13 +99,18 @@ export const createGlobePolygonManager = (
     let seq = 0;
     let disposed = false;
 
-    /** 各頂点の標高を取得（null は直前値→0 フォールバック）し、ECEF パスを返す。 */
+    /** top の各頂点標高を決め（固定高度 or 地形ドレープ）、ECEF パスを返す。 */
     const buildPaths = (node: GlobePolygonNode): { top: Vector3[]; bottom: Vector3[] } => {
-        const elevs = node.points.map((p, i) => {
-            const q = terrainElevAt(p.lat, p.lon);
-            if (q !== null) node.lastElevs[i] = q;
-            return node.lastElevs[i] ?? 0;
-        });
+        const elevs =
+            node.topAltitudeMeters != null
+                ? // 固定高度: 地形に依らず一定（山に隠れないよう浮かせる）。
+                  node.points.map(() => node.topAltitudeMeters as number)
+                : // 地形ドレープ: null（前景タイル未ロード）は頂点ごとに直前値→0 フォールバック。
+                  node.points.map((p, i) => {
+                      const q = terrainElevAt(p.lat, p.lon);
+                      if (q !== null) node.lastElevs[i] = q;
+                      return node.lastElevs[i] ?? 0;
+                  });
         return buildDrapedPolygonPaths(node.points, elevs, node.closed);
     };
 
@@ -115,6 +128,7 @@ export const createGlobePolygonManager = (
             id,
             points: opts.points.map((p) => ({ lat: p.lat, lon: p.lon })),
             closed,
+            topAltitudeMeters: opts.topAltitudeMeters,
             wallsEnabled,
             enabled,
             // 後で代入（lineMesh/wallMesh は paths から生成）。

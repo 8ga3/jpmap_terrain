@@ -178,6 +178,16 @@ describe("update", () => {
     });
 });
 
+describe("topAltitudeMeters（固定高度）", () => {
+    it("固定高度指定時は terrainElevAt を呼ばずに一定高度で描く", () => {
+        const { mgr, terrainElevAt } = makeManager();
+        mgr.add({ points: pts3, closed: true, topAltitudeMeters: 6000 });
+        mgr.update();
+        // 地形に依らないので terrainElevAt は呼ばれない。
+        expect(terrainElevAt).not.toHaveBeenCalled();
+    });
+});
+
 describe("dispose 後ガード", () => {
     it("dispose 後の add/setEnabled/update は throw、二重 dispose は安全", () => {
         const { mgr } = makeManager();
