@@ -210,10 +210,20 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // center が同一整数タイル内でも真の方位差が残り、帯を正しく視線方向へ向けられる。
     const nadir = ecefToGeodetic(cameraEcef);
     const totalMin = totalPixelsForZoom(minZoom);
+    // `latLonToPixel` は px/py を [0, totalPixels] の閉区間にクランプするため、メルカトル端
+    // （緯度 ±85.05° 付近）で py=totalPixels となり得る。そのまま割ると y=2^minZoom（=limit）に
+    // なり、`addAt` の `ty>=limit` 判定で root seed が捨てられて可視タイルが選べなくなる。
+    // y（緯度）は巡回しないので最南端ピクセルを 1px 内側へクランプし、タイル座標を常に
+    // [0, 2^minZoom) に収める（旧 `toTileXY` のタイル index クランプと同等）。x（経度）は
+    // `addAt` 内の wrap（`%limit`）で px=totalPixels→tile 0 に正しく折り返るためクランプ不要。
+    const fracTile = (px: number, py: number) => ({
+        x: px / TILE_SIZE,
+        y: Math.min(py, totalMin - 1) / TILE_SIZE,
+    });
     const nPix = latLonToPixel(nadir.latDeg, nadir.lonDeg, totalMin);
     const cPix = latLonToPixel(centerLat, centerLon, totalMin);
-    const t0 = { x: nPix.px / TILE_SIZE, y: nPix.py / TILE_SIZE };
-    const t1 = { x: cPix.px / TILE_SIZE, y: cPix.py / TILE_SIZE };
+    const t0 = fracTile(nPix.px, nPix.py);
+    const t1 = fracTile(cPix.px, cPix.py);
 
     // x（経度方向）は日付変更線で巡回する（2^minZoom タイル周期）。単純差分だと境界を
     // またいだとき t0.x≒2048/t1.x≒0 のように巨大な dx になり帯の方向・長さが壊れるため、
@@ -420,8 +430,11 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     const tanHalfFov = Math.max(1e-6, Math.tan(verticalFov / 2));
     const sseDenomBase = 2 * tanHalfFov;
     const camDir = cameraEcef.clone().normalize();
-    // カメラ高度（地心距離 − 平均半径の近似）。SSE 距離累進（遠方ほど粗く）に使う。
-    const camAlt = Math.max(1, cameraEcef.length() - EARTH_MEAN_RADIUS_M);
+    // カメラ高度（楕円体高度）。SSE 距離累進（遠方ほど粗く）に使う。`selectGlobeRootTiles` が
+    // root の emit zoom を決める際に使う高度（`ecefToGeodetic(cameraEcef).altMeters`）と**同一定義**に
+    // 揃える。地心距離−平均半径の近似だと緯度により数 km ズレ、root と traverse で実効 SSE しきい値が
+    // 食い違って余計な分割・訪問が起き得るため（選択ごとに 1 回のみの呼び出しでコストは無視できる）。
+    const camAlt = Math.max(1, ecefToGeodetic(cameraEcef).altMeters);
 
     const accepted: GlobeTile[] = [];
     // 受容済みタイルキー。距離適応で粗 root と近景 root が継ぎ目で重なり、別 root の細分化が
