@@ -130,7 +130,12 @@ export const selectGlobeRootTiles = (
     const t0 = toTileXY(nadir.latDeg, nadir.lonDeg, minZoom);
     const t1 = toTileXY(centerLat, centerLon, minZoom);
 
-    const dx = t1.x - t0.x;
+    // x（経度方向）は日付変更線で巡回する（2^minZoom タイル周期）。単純差分だと境界を
+    // またいだとき t0.x=2047/t1.x=0 のように巨大な dx になり帯の方向・長さが壊れるため、
+    // 最短符号付き差分（[-n/2, n/2)）に正規化する。y（メルカトル緯度）は巡回しない。
+    const n = 2 ** minZoom;
+    let dx = ((((t1.x - t0.x) % n) + n) % n);
+    if (dx > n / 2) dx -= n;
     const dy = t1.y - t0.y;
     const dirLen = Math.hypot(dx, dy);
 
@@ -151,10 +156,14 @@ export const selectGlobeRootTiles = (
     const seen = new Set<string>();
     const add = (x: number, y: number): void => {
         if (seeds.length >= budget) return;
-        const key = `${x},${y}`;
+        // y（メルカトル緯度）は巡回しない。範囲外（極側のはみ出し）は無効タイルなので捨て、
+        // 予算を浪費しない。x（経度）は巡回するため範囲内へ正規化する。
+        if (y < 0 || y >= n) return;
+        const wx = ((x % n) + n) % n;
+        const key = `${wx},${y}`;
         if (seen.has(key)) return;
         seen.add(key);
-        seeds.push({ x, y });
+        seeds.push({ x: wx, y });
     };
     /** along-track 位置 s の lateral 断面（±margin）を張る。 */
     const addCrossSection = (s: number): void => {

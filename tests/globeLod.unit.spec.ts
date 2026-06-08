@@ -184,4 +184,46 @@ describe("selectGlobeRootTiles", () => {
         const nadirTile = toTileXY(nadirLat, CENTER_LON, 11);
         expect(seeds.some((s) => s.x === nadirTile.x && s.y === nadirTile.y)).toBe(true);
     });
+
+    it("日付変更線をまたいでも最短方向の帯になり center を含む（x は範囲内に正規化）", () => {
+        const minZoom = 8;
+        const n = 2 ** minZoom;
+        // nadir lon=179.9 / center lon=-179.9: 地理的には近接だがタイル x は wrap する。
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(CENTER_LAT, 179.9, 60000), {
+                minZoom,
+                centerLon: -179.9,
+            }),
+        );
+        const nadirTile = toTileXY(CENTER_LAT, 179.9, minZoom);
+        const centerTile = toTileXY(CENTER_LAT, -179.9, minZoom);
+        // 前提: 日付変更線をまたいで x が大きく離れている（wrap 発生）。
+        expect(Math.abs(nadirTile.x - centerTile.x)).toBeGreaterThan(n / 2);
+        // すべて範囲内に正規化され、最短方向の短い帯として nadir/center 両方を含む。
+        for (const s of seeds) {
+            expect(s.x).toBeGreaterThanOrEqual(0);
+            expect(s.x).toBeLessThan(n);
+            expect(s.y).toBeGreaterThanOrEqual(0);
+            expect(s.y).toBeLessThan(n);
+        }
+        expect(seeds.some((s) => s.x === nadirTile.x && s.y === nadirTile.y)).toBe(true);
+        expect(seeds.some((s) => s.x === centerTile.x && s.y === centerTile.y)).toBe(true);
+    });
+
+    it("極付近では範囲外 y の root を捨てる（予算を無効タイルに使わない）", () => {
+        const minZoom = 6;
+        const n = 2 ** minZoom;
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(85.0, CENTER_LON, 200000), {
+                minZoom,
+                centerLat: 85.0,
+                rootSearchRadius: 3,
+            }),
+        );
+        expect(seeds.length).toBeGreaterThan(0);
+        for (const s of seeds) {
+            expect(s.y).toBeGreaterThanOrEqual(0);
+            expect(s.y).toBeLessThan(n);
+        }
+    });
 });
