@@ -73,8 +73,9 @@ export interface GlobeLodOptions {
      * 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。
      * 高チルト時、近景 minZoom 帯の外側を距離に応じて minZoom-1, -2, … rootZoomFloor まで
      * 粗く張り、少数の粗タイルで地平線まで安価に被覆する（SSE が近景のみ細分化）。
-     * 省略時は minZoom（粗化なし＝従来挙動）。GSI 標高は dem_png が z8〜z14 を供給する
-     * ため z8 程度を下限とするのが安全。
+     * 省略時は minZoom（粗化なし＝従来挙動）。下限はデータソース依存で選ぶ。GSI はテクスチャ
+     * z0〜・dem_png z1〜z14 を供給し、DEM 欠損（z1 未満や海上 no-data）はタイルを海面フラット
+     * (0m) で暫定建築して許容するため、全球視点では低ズーム（既定 rootZoomFloor=2）まで張れる。
      */
     rootZoomFloor?: number;
     /**
