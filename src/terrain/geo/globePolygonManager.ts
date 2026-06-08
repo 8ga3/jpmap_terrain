@@ -17,7 +17,6 @@ import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
-import { RENDERING_GROUP_ID } from "../marker";
 import { buildDrapedPolygonPaths, type LatLonPoint } from "./overlayPlacement";
 
 /** グローブポリゴンの既定値。 */
@@ -134,7 +133,9 @@ export const createGlobePolygonManager = (
             GLOBE_POLYGON_DEFAULTS.outlineColor,
         );
         lineMesh.isPickable = false;
-        lineMesh.renderingGroupId = RENDERING_GROUP_ID;
+        // 地形と同じ既定レンダリンググループ(0)に置き、深度テストで地形と交差・遮蔽させる
+        // （別グループ=1 だとグループ間で深度がクリアされ、常に地形の上に描かれて壁が地中へ
+        // 潜らない。マーカーは「常に手前」が望ましいため 1 だが、ポリゴン壁は地形と交差させる）。
 
         // 壁（カーテン）: top（地表）と bottom（楕円体面）の 2 パスの Ribbon。両面表示。
         const wallMesh = CreateRibbon(
@@ -152,7 +153,7 @@ export const createGlobePolygonManager = (
         wallMat.backFaceCulling = false;
         wallMesh.material = wallMat;
         wallMesh.isPickable = false;
-        wallMesh.renderingGroupId = RENDERING_GROUP_ID;
+        // 壁も既定グループ(0)。半透明だが地形の深度に対してテストされ、地中部分は遮蔽される。
 
         node.lineMesh = lineMesh;
         node.wallMesh = wallMesh;
