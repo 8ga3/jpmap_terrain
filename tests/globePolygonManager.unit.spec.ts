@@ -29,7 +29,8 @@ const stub = (name: string, bucket: StubMesh[]): StubMesh => {
         name,
         color: null,
         isPickable: true,
-        renderingGroupId: 0,
+        // マネージャが 0 を明示設定することを検証するため、非 0 で初期化する。
+        renderingGroupId: -1,
         material: null,
         enabled: true,
         disposeCount: 0,
@@ -115,7 +116,8 @@ describe("add / CRUD", () => {
         expect(createdLines.length).toBe(1);
         expect(createdRibbons.length).toBe(1);
         expect(createdLines[0].isPickable).toBe(false);
-        // 地形と深度交差させるため既定グループ0（スタブ初期値 0 のまま＝設定しない）。
+        // 地形と深度交差させるため、マネージャが renderingGroupId=0 を明示設定する
+        // （スタブ初期値 -1 から 0 へ変わることで設定を検証）。
         expect(createdLines[0].renderingGroupId).toBe(0);
         expect(createdRibbons[0].isPickable).toBe(false);
         expect(createdRibbons[0].renderingGroupId).toBe(0);
@@ -132,6 +134,9 @@ describe("add / CRUD", () => {
         mgr.remove(id);
         expect(createdLines[0].disposeCount).toBe(1);
         expect(createdRibbons[0].disposeCount).toBe(1);
+        // 壁マテリアルも dispose される（リークしない）。
+        const wallMat = createdRibbons[0].material as { disposeCount: number };
+        expect(wallMat.disposeCount).toBe(1);
     });
 
     it("remove 未存在 id は warn + no-op", () => {
