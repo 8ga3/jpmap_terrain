@@ -17,6 +17,7 @@
  * Phase 3（オーバーレイ）:
  * - `overlayPlacement`: ECEF + 地心 up の配置・距離スケール・線高さの純関数。
  * - `globeMarkerManager`: グローブ用マーカー（接地・地心 up ポール・カメラ正対ラベル）。
+ * - `globePolygonManager`: グローブ用ポリゴン（接地アウトライン・地心 up カーテン壁）。
  */
 export * from "./ecef";
 export * from "./mapping";
@@ -27,3 +28,4 @@ export * from "./globeMesh";
 export * from "./cameraMapping";
 export * from "./overlayPlacement";
 export * from "./globeMarkerManager";
+export * from "./globePolygonManager";
