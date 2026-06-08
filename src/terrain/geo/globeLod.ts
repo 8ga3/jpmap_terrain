@@ -176,8 +176,16 @@ export const selectGlobeRootTiles = (
         }
     };
 
-    // nadir(s=0) を起点に、center を越え地平線側へ 2*dirLen + margin まで前進。前景を最優先で
-    // 張り、予算を使い切ったら地平線側を捨てる。最後に nadir 手前のマージン（s<0）を埋める。
+    // nadir と center の root タイルは予算内で最優先に確保する（前景=nadir を最優先、
+    // 次に視界中心=center）。これにより maxRootTiles が小さい／nadir↔center が遠いケースで
+    // 帯が center に届く前に予算切れになっても、視界中心が root 領域外にならない。
+    // budget=1 では nadir のみ確保される。
+    add(t0.x, t0.y);
+    add(t1.x, t1.y);
+
+    // 残り予算で nadir(s=0) を起点に、center を越え地平線側へ 2*dirLen + margin まで前進。
+    // 前景を優先して張り、予算を使い切ったら地平線側を捨てる。最後に nadir 手前のマージン
+    // （s<0）を埋める。既出タイル（nadir/center 等）は seen でデデュプされる。
     const alongEnd = Math.round(2 * dirLen) + margin;
     for (let s = 0; s <= alongEnd && seeds.length < budget; s++) addCrossSection(s);
     for (let s = -1; s >= -margin && seeds.length < budget; s--) addCrossSection(s);
