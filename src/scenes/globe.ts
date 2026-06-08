@@ -117,13 +117,13 @@ const MAX_TILT_DEG = 89;
 const EARTH_SPHERE_SINK_M = 100;
 
 /**
- * レンダリンググループ（Issue #335）。背景スフィアを地形・地物より先に描画し、地形グループの
- * 直前で深度バッファをクリアする（Babylon は既定でグループ間の深度を自動クリアする）。これにより
- * 地形は常にスフィアの上に描画され（地形は常に楕円体面より上＝幾何学的に正しい）、深度精度に
- * 依存した z-fighting が発生しない。
+ * 背景スフィアのレンダリンググループ（Issue #335）。地形・地物と同じ既定グループ(0)に置きつつ、
+ * スフィアのマテリアルを **深度書き込み無効（disableDepthWrite）** にすることで、地形/オーバーレイ
+ * の深度セマンティクス（ポリゴン/サークルは地形と深度共有して交差、マーカーは group 1 で手前）を
+ * 一切変えずに z-fighting を回避する。スフィアは深度を書かない純粋な背景として描画され、地形が
+ * 存在する画素では地形の深度に負けて隠れ、地形が無い画素（no-data/視界の穴）だけ塗られる。
  */
 const RG_BACKGROUND = 0;
-const RG_CONTENT = 1;
 
 export interface GlobeSceneInitOptions {
     /** 初期注視点の緯度 [deg]。 */
@@ -388,21 +388,18 @@ export class GlobeScene {
             Wgs84Ellipsoid.semiMinorAxis - earthSink,
         );
         earth.isPickable = false;
-        // 背景グループに置き、地形・地物は描画時にコンテンツグループへ（深度はグループ間で自動
-        // クリアされ、地形が常にスフィアの上＝深度精度に依存しない z-fighting レス, #335）。
         earth.renderingGroupId = RG_BACKGROUND;
         const earthMat = new StandardMaterial("globe-earth-mat", scene);
         earthMat.diffuseColor = new Color3(0.16, 0.26, 0.36); // 海の濃い青
         earthMat.specularColor = new Color3(0.02, 0.02, 0.02);
         earthMat.emissiveColor = new Color3(0.03, 0.05, 0.08); // 夜側でも輪郭が出る程度
         earthMat.backFaceCulling = true;
+        // 深度書き込みを無効化して純粋な背景にする（地形/オーバーレイの深度を一切汚さない）。
+        // スフィアは深度テストはするが書かないため、地形が存在する画素では地形に負けて隠れ、
+        // 地形が無い画素だけ塗られる。両者が深度を書き合わないので z-fighting が起きず、描画順に
+        // 依存しない（#335）。海面より僅かに沈めた earthSink は、深度等値での取り合いを避ける保険。
+        earthMat.disableDepthWrite = true;
         earth.material = earthMat;
-        // コンテンツグループの直前で深度を明示的にクリア（既定動作だが意図を明示）。以降にシーンへ
-        // 追加されるメッシュ（地形タイル・マーカー・ポリゴン・モデル等）は全てコンテンツグループへ。
-        scene.setRenderingAutoClearDepthStencil(RG_CONTENT, true, true, true);
-        const contentGroupObserver = scene.onNewMeshAddedObservable.add((mesh) => {
-            if (mesh !== earth) mesh.renderingGroupId = RG_CONTENT;
-        });
 
         // ---- 地形タイルマネージャ ----
         const tileManager = createGlobeTileManager({
@@ -572,7 +569,6 @@ export class GlobeScene {
         const dispose = (): void => {
             // render ループは呼び出し側の所有なので停止しない（呼び出し側が停止する）。
             scene.onBeforeRenderObservable.remove(observer);
-            scene.onNewMeshAddedObservable.remove(contentGroupObserver);
             canvas.removeEventListener("keydown", onKeyDown);
             canvas.removeEventListener("keyup", onKeyUp);
             canvas.removeEventListener("blur", clearPressed);
