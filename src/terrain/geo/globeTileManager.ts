@@ -77,8 +77,10 @@ export interface GlobeTileSyncParams {
     sseThreshold: number;
     /** 同時保持タイル数の上限。 */
     maxTiles: number;
-    /** root 探索半径（±N 格子）。 */
+    /** root 帯の横半幅／後方マージン（±N 格子）。 */
     rootSearchRadius: number;
+    /** root 帯に張る minZoom タイル数の予算（上限）。 */
+    maxRootTiles: number;
     /** 地平線カリングの内積しきい値。 */
     horizonDotThreshold: number;
     /** SSE 距離評価の基準標高 [m]（中心付近の地形標高）。 */
@@ -326,6 +328,7 @@ export const createGlobeTileManager = (
             sseThreshold: params.sseThreshold,
             maxTiles: params.maxTiles,
             rootSearchRadius: params.rootSearchRadius,
+            maxRootTiles: params.maxRootTiles,
             horizonDotThreshold: params.horizonDotThreshold,
             referenceAltitude: params.referenceAltitude,
         });

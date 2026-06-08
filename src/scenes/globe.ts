@@ -55,10 +55,12 @@ export const GLOBE_SCENE_DEFAULTS = {
     tilt: 60,
     /** SSE 採用しきい値 [px]。 */
     sseThreshold: 256 * 2.5,
-    /** 同時保持タイル数の上限。 */
-    maxTiles: 140,
-    /** root 探索半径（±N 格子）。 */
+    /** 同時保持タイル数の上限。水平チルト時の前景＋地平線被覆のため #329 で 140→200。 */
+    maxTiles: 200,
+    /** root 帯の横半幅／後方マージン（±N 格子）。 */
     rootSearchRadius: 2,
+    /** root 帯に張る minZoom タイル数の予算（上限）。#329 の nadir→center swath 用。 */
+    maxRootTiles: 96,
     /** 地平線カリングの内積しきい値。 */
     horizonDotThreshold: 0.1,
     /** タイルあたりの分割数（頂点は (seg+1)^2）。 */
@@ -399,6 +401,7 @@ export class GlobeScene {
                 sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
                 maxTiles: GLOBE_SCENE_DEFAULTS.maxTiles,
                 rootSearchRadius: GLOBE_SCENE_DEFAULTS.rootSearchRadius,
+                maxRootTiles: GLOBE_SCENE_DEFAULTS.maxRootTiles,
                 horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
                 referenceAltitude: centerElevation,
             });

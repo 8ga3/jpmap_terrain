@@ -120,6 +120,7 @@ const syncParams = () => ({
     sseThreshold: 1e9, // 必ず root で受容
     maxTiles: 10,
     rootSearchRadius: 0, // root 1 タイルのみ
+    maxRootTiles: 10,
     horizonDotThreshold: -1, // 地平線カリング無効
     referenceAltitude: 0,
 });
