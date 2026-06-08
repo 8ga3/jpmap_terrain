@@ -6,9 +6,9 @@
  * 応じたスクリーン定スケール」「ドロップ線高さ」を ECEF ベースで提供する。平面オーバーレイ
  * とは独立（並行構築）で、`GeospatialCamera` を直接 import しない（jest 環境を軽く保つ）。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 
-import { geodeticToEcefToRef } from "./ecef";
+import { DEG2RAD, geodeticToEcefToRef } from "./ecef";
 
 /** 緯度経度 1 点（オーバーレイ頂点）。 */
 export interface LatLonPoint {
@@ -83,6 +83,49 @@ export const computeOverlayDistanceScaleFromDistance = (
 export const computeOverlayLineHeight = (distanceM: number): number => {
     const h = distanceM * 0.1;
     return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, h));
+};
+
+// surfaceOrientationToRef のスクラッチ（毎フレーム・モデル数ぶん呼ばれるため割り当て回避）。
+const ORI_POLE = new Vector3(0, 0, 1);
+const _oriUp = new Vector3();
+const _oriEast = new Vector3();
+const _oriNorth = new Vector3();
+const _oriFwd = new Vector3();
+const _oriTmp = new Vector3();
+const _oriX = new Vector3();
+const _oriMat = new Matrix();
+
+/**
+ * 地表 ECEF 位置に置くモデル等の **向き（回転クォータニオン）** を `ref` に書き込む。
+ * モデルのローカル +Y を地心 up へ、ローカル +Z を方位 `headingDeg`（0=北, +=東回り）方向へ向ける
+ * （地表で「立つ」姿勢）。極（東が定義できない）では `false` を返す（呼び出し側は向き更新をスキップ）。
+ *
+ * @returns 計算できたら true（`ref` に回転）、極などの特異点で false。
+ */
+export const surfaceOrientationToRef = (
+    positionEcef: Vector3,
+    headingDeg: number,
+    ref: Quaternion,
+): boolean => {
+    const r = positionEcef.length();
+    if (r < 1) return false;
+    positionEcef.scaleToRef(1 / r, _oriUp); // 地心 up
+    Vector3.CrossToRef(ORI_POLE, _oriUp, _oriEast);
+    if (_oriEast.lengthSquared() < 1e-12) return false; // 極
+    _oriEast.normalize();
+    Vector3.CrossToRef(_oriUp, _oriEast, _oriNorth); // 北
+    _oriNorth.normalize();
+    // forward = north*cos(h) + east*sin(h)（0=北, +=東回り）。
+    const h = headingDeg * DEG2RAD;
+    _oriFwd.copyFrom(_oriNorth).scaleInPlace(Math.cos(h));
+    _oriTmp.copyFrom(_oriEast).scaleInPlace(Math.sin(h));
+    _oriFwd.addInPlace(_oriTmp).normalize();
+    // 右手系の正規直交基底 {x=up×fwd, y=up, z=fwd} から回転行列→クォータニオン。
+    Vector3.CrossToRef(_oriUp, _oriFwd, _oriX);
+    _oriX.normalize();
+    Matrix.FromXYZAxesToRef(_oriX, _oriUp, _oriFwd, _oriMat);
+    Quaternion.FromRotationMatrixToRef(_oriMat, ref);
+    return true;
 };
 
 /**

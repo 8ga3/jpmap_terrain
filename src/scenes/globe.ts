@@ -35,6 +35,7 @@ import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats 
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import { createGlobePolygonManager, type GlobePolygonManager } from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
+import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
 
 /** グローブシーンの既定パラメータ（富士山周辺）。 */
 export const GLOBE_SCENE_DEFAULTS = {
@@ -132,6 +133,8 @@ export interface GlobeSceneController {
     polygonManager: GlobePolygonManager;
     /** グローブ用サークル（Phase 3）。中心+半径の円を閉ポリゴンとして描画。 */
     circleManager: GlobeCircleManager;
+    /** グローブ用モデル（Phase 3）。glb/gltf を接地し地心 up へ起立。 */
+    modelManager: GlobeModelManager;
     dispose: () => void;
 }
 
@@ -356,6 +359,11 @@ export class GlobeScene {
             scene,
             terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
         });
+        // ---- グローブモデル（Phase 3） ----
+        const modelManager = createGlobeModelManager({
+            scene,
+            terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+        });
 
         const lookAt = new Vector3();
         const cameraEcef = new Vector3();
@@ -482,6 +490,8 @@ export class GlobeScene {
             // ポリゴン・サークルの地形再ドレープ（アウトライン・壁）。
             polygonManager.update();
             circleManager.update();
+            // モデルの接地・起立更新。
+            modelManager.update();
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             frame++;
         });
@@ -501,10 +511,20 @@ export class GlobeScene {
             markerManager.dispose();
             polygonManager.dispose();
             circleManager.dispose();
+            modelManager.dispose();
             tileManager.dispose();
             scene.dispose();
         };
 
-        return { scene, camera, tileManager, markerManager, polygonManager, circleManager, dispose };
+        return {
+            scene,
+            camera,
+            tileManager,
+            markerManager,
+            polygonManager,
+            circleManager,
+            modelManager,
+            dispose,
+        };
     }
 }
