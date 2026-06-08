@@ -83,8 +83,6 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
     Mesh: { DOUBLESIDE: 2 },
 }));
 
-jest.unstable_mockModule("../src/terrain/marker", () => ({ RENDERING_GROUP_ID: 1 }));
-
 const { createGlobePolygonManager } = await import(
     "../src/terrain/geo/globePolygonManager"
 );
@@ -110,15 +108,16 @@ beforeEach(() => {
 });
 
 describe("add / CRUD", () => {
-    it("アウトライン線と壁 Ribbon を生成し、isPickable=false / renderingGroupId=1", () => {
+    it("アウトライン線と壁 Ribbon を生成し、isPickable=false / 既定グループ0（地形と交差）", () => {
         const { mgr } = makeManager();
         mgr.add({ points: pts3, closed: true });
         expect(createdLines.length).toBe(1);
         expect(createdRibbons.length).toBe(1);
         expect(createdLines[0].isPickable).toBe(false);
-        expect(createdLines[0].renderingGroupId).toBe(1);
+        // 地形と深度交差させるため既定グループ0（スタブ初期値 0 のまま＝設定しない）。
+        expect(createdLines[0].renderingGroupId).toBe(0);
         expect(createdRibbons[0].isPickable).toBe(false);
-        expect(createdRibbons[0].renderingGroupId).toBe(1);
+        expect(createdRibbons[0].renderingGroupId).toBe(0);
     });
 
     it("2 点未満は throw", () => {
