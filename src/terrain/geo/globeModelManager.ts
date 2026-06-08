@@ -95,6 +95,12 @@ export const createGlobeModelManager = (
         try {
             await importLoaderForUrl(url);
             const result = await ImportMeshAsync(url, scene);
+            // 本マネージャはアニメーション制御 API を持たないため、AnimationGroup はロード直後に
+            // 停止・破棄してリークを防ぐ（平面版 modelManager は remove/dispose 時に破棄）。
+            for (const ag of result.animationGroups) {
+                ag.stop();
+                ag.dispose();
+            }
             if (node.cancelled) {
                 for (const m of result.meshes) m.dispose();
                 return;

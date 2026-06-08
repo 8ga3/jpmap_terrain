@@ -41,11 +41,14 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/transformNode", () => ({
 }));
 
 // ImportMeshAsync は解決を手動制御できる deferred にする。
-let resolveImport: ((meshes: { parent: unknown; dispose: () => void }[]) => void) | null = null;
+type StubAg = { stop: () => void; dispose: () => void };
+let resolveImport:
+    | ((meshes: { parent: unknown; dispose: () => void }[], ags?: StubAg[]) => void)
+    | null = null;
 const importMeshAsync = jest.fn(
     () =>
         new Promise((res) => {
-            resolveImport = (meshes) => res({ meshes, animationGroups: [] });
+            resolveImport = (meshes, ags = []) => res({ meshes, animationGroups: ags });
         }),
 );
 jest.unstable_mockModule("@babylonjs/core/Loading/sceneLoader", () => ({
@@ -101,6 +104,18 @@ describe("add / load", () => {
         mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         mgr.update(); // まだ loaded=false
         expect(createdRoots[0].position.length()).toBe(0);
+    });
+
+    it("AnimationGroup はロード直後に stop+dispose される（リーク防止）", async () => {
+        const { mgr } = makeManager();
+        mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await new Promise((r) => setTimeout(r, 0));
+        const ag = { stop: jest.fn(), dispose: jest.fn() };
+        const mesh = { parent: null as unknown, dispose: jest.fn() };
+        resolveImport?.([mesh], [ag]);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(ag.stop).toHaveBeenCalled();
+        expect(ag.dispose).toHaveBeenCalled();
     });
 });
 
