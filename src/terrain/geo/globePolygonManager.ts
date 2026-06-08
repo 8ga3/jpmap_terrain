@@ -9,7 +9,7 @@
  * 本スライスのスコープはアウトライン＋壁。点マーカー／垂線／ラベル／辺ラベルの parity は後続。
  */
 import type { Scene } from "@babylonjs/core/scene";
-import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
 import { CreateLines } from "@babylonjs/core/Meshes/Builders/linesBuilder";
@@ -17,7 +17,11 @@ import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
-import { buildDrapedPolygonPaths, type LatLonPoint } from "./overlayPlacement";
+import {
+    drapedPolygonPathLength,
+    writeDrapedPolygonPathsToRef,
+    type LatLonPoint,
+} from "./overlayPlacement";
 
 /** グローブポリゴンの既定値。 */
 const GLOBE_POLYGON_DEFAULTS = {
@@ -68,6 +72,11 @@ interface GlobePolygonNode {
     wallMat: StandardMaterial;
     /** 各頂点の直近に取得できた地形標高[m]（null=未取得）。前景未ロード時のフォールバック。 */
     lastElevs: (number | null)[];
+    /** 毎フレーム再利用するパスバッファ（割り当て回避）。top=上端 / bottom=楕円体面。 */
+    top: Vector3[];
+    bottom: Vector3[];
+    /** top 各頂点の標高[m]の再利用バッファ。 */
+    elevs: number[];
 }
 
 export interface GlobePolygonManager {
@@ -99,19 +108,21 @@ export const createGlobePolygonManager = (
     let seq = 0;
     let disposed = false;
 
-    /** top の各頂点標高を決め（固定高度 or 地形ドレープ）、ECEF パスを返す。 */
-    const buildPaths = (node: GlobePolygonNode): { top: Vector3[]; bottom: Vector3[] } => {
-        const elevs =
-            node.topAltitudeMeters != null
-                ? // 固定高度: 地形に依らず一定（山に隠れないよう浮かせる）。
-                  node.points.map(() => node.topAltitudeMeters as number)
-                : // 地形ドレープ: null（前景タイル未ロード）は頂点ごとに直前値→0 フォールバック。
-                  node.points.map((p, i) => {
-                      const q = terrainElevAt(p.lat, p.lon);
-                      if (q !== null) node.lastElevs[i] = q;
-                      return node.lastElevs[i] ?? 0;
-                  });
-        return buildDrapedPolygonPaths(node.points, elevs, node.closed);
+    /** top の各頂点標高を決め（固定高度 or 地形ドレープ）、node.top/bottom を in-place 更新する。 */
+    const buildPaths = (node: GlobePolygonNode): void => {
+        if (node.topAltitudeMeters != null) {
+            // 固定高度: 地形に依らず一定（山に隠れないよう浮かせる）。
+            for (let i = 0; i < node.elevs.length; i++) node.elevs[i] = node.topAltitudeMeters;
+        } else {
+            // 地形ドレープ: null（前景タイル未ロード）は頂点ごとに直前値→0 フォールバック。
+            for (let i = 0; i < node.points.length; i++) {
+                const p = node.points[i];
+                const q = terrainElevAt(p.lat, p.lon);
+                if (q !== null) node.lastElevs[i] = q;
+                node.elevs[i] = node.lastElevs[i] ?? 0;
+            }
+        }
+        writeDrapedPolygonPathsToRef(node.points, node.elevs, node.closed, node.top, node.bottom);
     };
 
     const add = (opts: GlobePolygonOptions): string => {
@@ -124,6 +135,7 @@ export const createGlobePolygonManager = (
         const wallsEnabled = opts.wallsEnabled ?? true;
         const enabled = opts.enabled ?? true;
 
+        const pathLen = drapedPolygonPathLength(opts.points.length, closed);
         const node: GlobePolygonNode = {
             id,
             points: opts.points.map((p) => ({ lat: p.lat, lon: p.lon })),
@@ -136,25 +148,29 @@ export const createGlobePolygonManager = (
             wallMesh: undefined as unknown as Mesh,
             wallMat: undefined as unknown as StandardMaterial,
             lastElevs: opts.points.map(() => null),
+            top: Array.from({ length: pathLen }, () => new Vector3()),
+            bottom: Array.from({ length: pathLen }, () => new Vector3()),
+            elevs: opts.points.map(() => 0),
         };
 
-        const { top, bottom } = buildPaths(node);
+        buildPaths(node); // node.top / node.bottom を初期化
 
         // アウトライン: 地表ドレープした頂点を結ぶ線（点数固定 → instance で更新可能）。
-        const lineMesh = CreateLines(`${id}-outline`, { points: top, updatable: true }, scene);
+        const lineMesh = CreateLines(`${id}-outline`, { points: node.top, updatable: true }, scene);
         lineMesh.color = toColor3(
             opts.outlineColor ?? GLOBE_POLYGON_DEFAULTS.outlineColor,
             GLOBE_POLYGON_DEFAULTS.outlineColor,
         );
         lineMesh.isPickable = false;
-        // 地形と同じ既定レンダリンググループ(0)に置き、深度テストで地形と交差・遮蔽させる
-        // （別グループ=1 だとグループ間で深度がクリアされ、常に地形の上に描かれて壁が地中へ
-        // 潜らない。マーカーは「常に手前」が望ましいため 1 だが、ポリゴン壁は地形と交差させる）。
+        // 地形と同じレンダリンググループ(0)に置き、深度テストで地形と交差・遮蔽させる（別グループ=1
+        // だとグループ間で深度がクリアされ常に地形の上に描かれて壁が地中へ潜らない。マーカーは
+        // 「常に手前」が望ましいため 1 だが、ポリゴン壁は地形と交差させる）。既定値に依存せず明示する。
+        lineMesh.renderingGroupId = 0;
 
         // 壁（カーテン）: top（地表）と bottom（楕円体面）の 2 パスの Ribbon。両面表示。
         const wallMesh = CreateRibbon(
             `${id}-wall`,
-            { pathArray: [top, bottom], updatable: true, sideOrientation: Mesh.DOUBLESIDE },
+            { pathArray: [node.top, node.bottom], updatable: true, sideOrientation: Mesh.DOUBLESIDE },
             scene,
         );
         const wallMat = new StandardMaterial(`${id}-wall-mat`, scene);
@@ -163,11 +179,15 @@ export const createGlobePolygonManager = (
             GLOBE_POLYGON_DEFAULTS.wallColor,
         );
         wallMat.alpha = opts.wallOpacity ?? GLOBE_POLYGON_DEFAULTS.wallOpacity;
+        // 半透明（alpha<1）では深度プリパスを有効化して z-fight / ブレンド順の乱れを防ぐ
+        // （平面版 polygon/circle と同様）。
+        if (wallMat.alpha < 1) wallMat.needDepthPrePass = true;
         wallMat.disableLighting = true;
         wallMat.backFaceCulling = false;
         wallMesh.material = wallMat;
         wallMesh.isPickable = false;
-        // 壁も既定グループ(0)。半透明だが地形の深度に対してテストされ、地中部分は遮蔽される。
+        // 壁も同グループ(0)に明示。半透明だが地形の深度に対してテストされ地中部分は遮蔽される。
+        wallMesh.renderingGroupId = 0;
 
         node.lineMesh = lineMesh;
         node.wallMesh = wallMesh;
@@ -205,13 +225,13 @@ export const createGlobePolygonManager = (
         if (nodes.size === 0) return;
         for (const node of nodes.values()) {
             if (!node.enabled) continue;
-            const { top, bottom } = buildPaths(node);
+            buildPaths(node); // node.top / node.bottom を in-place 更新
             // instance 更新（点数は不変）。アウトラインと壁を再ドレープ。
-            CreateLines(`${node.id}-outline`, { points: top, instance: node.lineMesh }, scene);
+            CreateLines(`${node.id}-outline`, { points: node.top, instance: node.lineMesh }, scene);
             if (node.wallsEnabled) {
                 CreateRibbon(
                     `${node.id}-wall`,
-                    { pathArray: [top, bottom], instance: node.wallMesh },
+                    { pathArray: [node.top, node.bottom], instance: node.wallMesh },
                     scene,
                 );
             }
