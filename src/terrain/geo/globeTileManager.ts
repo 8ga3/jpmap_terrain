@@ -37,6 +37,14 @@ import { sampleElevBilinear } from "./elevSample";
 /** タイルマテリアルの鏡面反射（地形なので弱め）。 */
 const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
 
+/**
+ * 海面（標高 0m）フラット標高の共有バッファ（Issue #335）。海上など DEM が no-data で確定失敗した
+ * タイルは、これを使って平坦メッシュとして建築し、GSI テクスチャ（海・海岸の画像）を描画する。
+ * これがないと no-data タイルはメッシュ未生成のままで、背景スフィアの単色が見えるだけになる
+ * （相模湾などで「タイルが欠ける」症状）。読み取り専用で共有（建築側で値を書き換えない）。
+ */
+const FLAT_SEA_ELEV = new Float32Array(TILE_SIZE * TILE_SIZE);
+
 /** 標高タイル取得失敗時の再試行バックオフ初期値 [ms]。 */
 const FAILED_RETRY_BASE_MS = 5_000;
 /** 同・上限 [ms]（no-data タイルを叩き続けないための頭打ち）。 */
@@ -71,6 +79,8 @@ export interface GlobeTileSyncParams {
     maxZoom: number;
     /** ビューポート高さ [px]。 */
     viewportHeight: number;
+    /** ビューポート幅 [px]（水平 FOV＝横方向被覆の算出に使用）。 */
+    viewportWidth: number;
     /** 垂直 FOV [rad]。 */
     verticalFov: number;
     /** SSE 採用しきい値 [px]。 */
@@ -85,6 +95,8 @@ export interface GlobeTileSyncParams {
     horizonDotThreshold: number;
     /** SSE 距離評価の基準標高 [m]（中心付近の地形標高）。 */
     referenceAltitude: number;
+    /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。省略時 minZoom。 */
+    rootZoomFloor?: number;
 }
 
 /** 同期結果の統計。 */
@@ -221,8 +233,15 @@ export const createGlobeTileManager = (
         for (const t of tiles) {
             const k = tileKey(t.zoom, t.x, t.y);
             const { gz, gx, gy } = geomCoordOf(t);
-            const geomElev = elevCache.get(tileKey(gz, gx, gy));
-            if (!geomElev) continue; // geom 標高が未ロード（または no-data 失敗）
+            const gk = tileKey(gz, gx, gy);
+            const cachedElev = elevCache.get(gk);
+            // 実標高が未取得（ロード中 or no-data 失敗）なら、海面フラット(0m)で「暫定建築」する。
+            // 実標高が届いたら次 sync で実標高へ再構築（sig で検知）、no-data なら海面のまま残す。
+            // これにより (1) ロード中の一時的なタイル欠け、(2) 海上 no-data の恒久欠け、(3) 視界
+            // 境界でタイルが出入りして失敗記録が消える際の欠け、のいずれも防ぐ（GSI テクスチャは別途
+            // 貼られ、海・海岸は画像が出る。陸は標高到達時に隆起）。#335。
+            const isFlatFallback = !cachedElev;
+            const geomElev = cachedElev ?? FLAT_SEA_ELEV;
 
             // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
             // crossLevel は細タイル zoom == その geom zoom を前提に、細グローバルピクセルを
@@ -231,7 +250,7 @@ export const createGlobeTileManager = (
             // 残る z16-18×粗 境界の「陰影シーム」除去（geom 座標へ写像した粗表面評価）は
             // 後続フェーズの磨き込み対象（#275）。
             let edges: readonly CoarseEdge[] = [];
-            if (snapEnabled && t.zoom <= geomMaxZoom) {
+            if (snapEnabled && t.zoom <= geomMaxZoom && !isFlatFallback) {
                 const r = selectCoarseEdges(
                     t,
                     (kk) => desiredKeys.has(kk),
@@ -239,10 +258,17 @@ export const createGlobeTileManager = (
                     (kk) => failedRetryAt.has(kk),
                     minZoom,
                 );
-                if (r.pending) continue; // 粗隣接の標高待ち
+                // r.pending（粗隣接の標高がまだロード中）でもビルドは遅延しない。遅延すると、
+                // 海上・列島外など no-data の粗タイルが 404 を返すまで（または視界出入りで失敗記録が
+                // 消える間）、その粗タイルに接する細タイルが恒久的に未建築＝LOD 境界で「四分木の
+                // 2 個／1 ライン分が欠ける」症状になる（#335, tilt 65-70°）。利用可能な edges だけで
+                // 即建築し、粗標高が届いたら sig 変化で再建築してスナップを適用する（一時的な陰影
+                // シームは許容。欠けるよりは良い）。
                 edges = r.edges;
             }
-            const sig = edgeSignature(edges);
+            // フラット建築かどうかも署名に含める（no-data 回復で flat→実標高に変わったら、
+            // coarse-edge が同一でもジオメトリを再構築させるため）。
+            const sig = (isFlatFallback ? "flat|" : "") + edgeSignature(edges);
 
             // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
             // ジオメトリのみ差し替える（テクスチャ・マテリアルは再利用し再読込を避ける）。
@@ -324,6 +350,7 @@ export const createGlobeTileManager = (
             minZoom,
             maxZoom: params.maxZoom,
             viewportHeight: params.viewportHeight,
+            viewportWidth: params.viewportWidth,
             verticalFov: params.verticalFov,
             sseThreshold: params.sseThreshold,
             maxTiles: params.maxTiles,
@@ -331,6 +358,7 @@ export const createGlobeTileManager = (
             maxRootTiles: params.maxRootTiles,
             horizonDotThreshold: params.horizonDotThreshold,
             referenceAltitude: params.referenceAltitude,
+            rootZoomFloor: params.rootZoomFloor,
         });
         desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
         // 必要な geom 標高タイルのキー集合（z16-18 は z15 祖先を共有）。

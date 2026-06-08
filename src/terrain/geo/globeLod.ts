@@ -15,8 +15,9 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { tileCenterLatLon, tileEdgeMeters, toTileXY } from "../gsiTile";
+import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters } from "../gsiTile";
 import { ecefToGeodetic, geodeticToEcefToRef } from "./ecef";
+import { latLonToPixel, totalPixelsForZoom } from "./mapping";
 
 /** LOD 選択されたタイル。 */
 export interface GlobeTile {
@@ -42,6 +43,8 @@ export interface GlobeLodOptions {
     maxZoom: number;
     /** ビューポート高さ [px]。 */
     viewportHeight: number;
+    /** ビューポート幅 [px]（水平 FOV＝横方向被覆の算出に使用）。 */
+    viewportWidth: number;
     /** 垂直 FOV [rad]。 */
     verticalFov: number;
     /** SSE 採用しきい値 [px]。大きいほど粗いタイルを早期受容。 */
@@ -67,6 +70,14 @@ export interface GlobeLodOptions {
      */
     horizonDotThreshold: number;
     /**
+     * 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。
+     * 高チルト時、近景 minZoom 帯の外側を距離に応じて minZoom-1, -2, … rootZoomFloor まで
+     * 粗く張り、少数の粗タイルで地平線まで安価に被覆する（SSE が近景のみ細分化）。
+     * 省略時は minZoom（粗化なし＝従来挙動）。GSI 標高は dem_png が z8〜z14 を供給する
+     * ため z8 程度を下限とするのが安全。
+     */
+    rootZoomFloor?: number;
+    /**
      * SSE 距離評価に使うタイル中心の基準標高[m]。
      * 高標高地（富士山等）では実地表が海面より高く、タイル中心を alt=0 で評価すると
      * カメラ↔タイルの距離が過大になり LOD が上がらない。中心付近の地形標高を渡すことで
@@ -88,6 +99,14 @@ const tileCenterEcefToRef = (
     return { lat, lon };
 };
 
+/** root 帯のシード（タイル座標とその zoom）。遠景は minZoom より粗い zoom を持つ。 */
+export interface RootSeed {
+    x: number;
+    y: number;
+    /** この root を traverse 開始する zoom（近景=minZoom、遠景は距離適応で粗い）。 */
+    zoom: number;
+}
+
 /** `selectGlobeRootTiles` の入力（root 帯の選定に必要な最小集合）。 */
 export interface GlobeRootSeedOptions {
     /** カメラの真の ECEF 位置。 */
@@ -96,44 +115,108 @@ export interface GlobeRootSeedOptions {
     centerLat: number;
     /** 注視点の経度 [deg]。 */
     centerLon: number;
-    /** root（最低）ズーム。 */
+    /**
+     * root の最細（最高）ズーム。SSE 最適より近景が細かい場合の上限で、これ以上の細分化は
+     * 後段の Quadtree+SSE（`selectGlobeTiles`）に任せる。実質「近景 root の基準ズーム」。
+     */
     minZoom: number;
-    /** 帯の横半幅かつ nadir 手前の後方マージン（±N 格子）。 */
+    /** 帯の横半幅かつ nadir 手前の後方マージン（±N 格子, emit ズーム単位）。 */
     rootSearchRadius: number;
     /** root タイル数の予算（上限）。 */
     maxRootTiles: number;
+    /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。省略時 minZoom。 */
+    rootZoomFloor?: number;
+    /** ビューポート高さ [px]（root ズームの SSE 算出に使用）。 */
+    viewportHeight: number;
+    /** ビューポート幅 [px]（水平 FOV＝横方向被覆の算出に使用）。 */
+    viewportWidth: number;
+    /** 垂直 FOV [rad]（同上）。 */
+    verticalFov: number;
+    /** SSE 採用しきい値 [px]（同上, 256px タイルの表示サイズ境界）。 */
+    sseThreshold: number;
 }
+
+/** カメラ↔地表点の弦距離の概算に使う WGS84 平均半径 [m]。 */
+const EARTH_MEAN_RADIUS_M = 6_371_000;
+
+/** z0（zoom 0）のタイル 1 辺の実距離 [m]（緯度 lat）。`tileEdgeMeters(lat,0)`。 */
+const tileEdge0Meters = (lat: number): number => tileEdgeMeters(lat, 0);
+
+/** 1 断面あたりの lateral 片側タイル数の上限（暴発防止）。emit zoom 適応で通常は数枚で足りる。 */
+const LATERAL_TILE_CAP = 16;
+
+/** 前方到達距離のマージン係数。粗タイルの粒度で視錐台上端が僅かに欠けないよう少し超えて張る。 */
+const FORWARD_REACH_MARGIN = 1.25;
+
 /**
- * 可視地表を覆う root（minZoom）タイル集合を選定する（Issue #329）。
- *
- * 旧実装は注視点（look-at center）中心の固定 ±N 格子のみを root にしていたため、水平
- * チルト時にカメラ直下（nadir）の前景がこの領域の外へ出てタイルが生成されなかった。
- * 本関数は **カメラ直下点（nadir）から注視点（center）を通り地平線方向へ伸びる帯**
- * （ground track に沿う swath）に root を張る:
- * - nadir と center の minZoom タイル座標を結ぶ方向を along-track、その直交を lateral とする。
- * - along-track は nadir 手前 `rootSearchRadius` から、center を越え地平線側へ `2*dirLen`
- *   ＋マージンまで（dirLen = nadir↔center のタイル距離）。lateral は ±`rootSearchRadius`。
- * - 前景（nadir 側）から順に張り、`maxRootTiles` を使い切ったら地平線側を捨てる（前景優先）。
- * - 直下視（nadir≒center で方向が定まらない）では nadir 中心の対称ボックスにフォールバックし、
- *   旧来の中心アンカー挙動を保つ。
- *
- * 地平線側の被覆過多や裏側は後段の地平線カリング・SSE・maxTiles 打ち切りで間引かれる。
+ * SSE しきい値の距離累進係数（Issue #335）。実効しきい値を
+ * `sseThreshold · (1 + SSE_FALLOFF_RATE · distance / altitude)` とし、遠方ほど大きく＝粗く受容する。
+ * 近景（distance≈altitude）はほぼ不変、遠方は幾何 LOD（距離 2 倍で 1 段粗）より速く粗化して
+ * 高チルト時の総タイル数を抑える（遠方タイルは文字も読めず粗くて問題ない）。root emit と
+ * traverse の受容判定の双方に同一式を用い、整合（root が即受容され再分割されない）を保つ。
  */
-export const selectGlobeRootTiles = (
-    opts: GlobeRootSeedOptions,
-): { x: number; y: number }[] => {
-    const { cameraEcef, centerLat, centerLon, minZoom, rootSearchRadius, maxRootTiles } =
-        opts;
+const SSE_FALLOFF_RATE = 0.4;
+
+/** 距離 distance[m]・カメラ高度 alt[m] に対する実効 SSE しきい値（距離累進）。 */
+const effectiveSseThreshold = (
+    sseThreshold: number,
+    distance: number,
+    altMeters: number,
+): number =>
+    sseThreshold *
+    (1 + (SSE_FALLOFF_RATE * Math.max(0, distance)) / Math.max(1, altMeters));
+/**
+ * 可視地表を覆う root タイル集合を選定する（Issue #329 の帯 ＋ Issue #335 の高度/距離適応）。
+ *
+ * **帯の張り方（#329）**: カメラ直下点（nadir, 前景）から注視点（center）を通り視線方向へ伸びる
+ * ground-track の帯（swath）に root を張る。along-track は nadir 手前のマージンから center を越え
+ * FOV 端まで、lateral は ±`rootSearchRadius`。これによりチルト時も前景（nadir）が欠落しない。
+ *
+ * **高度/距離適応ルートレベル（#335）**: 各 root の zoom を固定 `minZoom` ではなく、その地点までの
+ * カメラ距離 d に対する **SSE（256px タイルの表示サイズ）最適 zoom** から決める。すなわち
+ * `tileEdge(z)·viewportHeight / (d·2·tan(fov/2)) ≈ sseThreshold` を満たす最も粗い z。これにより
+ * 高高度では粗い root（例: 500km 上空で日本列島が数枚〜十数枚）になり、低高度では細かい root に
+ * なる。emit zoom は `[rootZoomFloor, minZoom]` にクランプし、minZoom より細かい近景の細分化は後段の
+ * Quadtree+SSE（`selectGlobeTiles`）に委ねる。lateral・along-track いずれも emit zoom のタイルサイズ
+ * 刻みで進めるため、結果のタイル数は高度に依らず画面被覆相当に有界化する。
+ *
+ * 帯の被覆過多や裏側は後段の地平線カリング・SSE・maxTiles 打ち切りで間引かれる。直下視
+ * （nadir≒center で方向が定まらない）では nadir 中心の対称ボックスにフォールバックする。
+ */
+export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => {
+    const {
+        cameraEcef,
+        centerLat,
+        centerLon,
+        minZoom,
+        rootSearchRadius,
+        maxRootTiles,
+        viewportHeight,
+        viewportWidth,
+        verticalFov,
+        sseThreshold,
+    } = opts;
     const margin = Math.max(0, rootSearchRadius);
     const budget = Math.max(1, maxRootTiles);
+    // emit zoom の最粗下限。minZoom 以下に丸める（minZoom は最細＝近景 root 基準）。
+    const floorZoom = Math.min(minZoom, Math.max(0, opts.rootZoomFloor ?? minZoom));
 
-    // カメラ直下点（nadir, 前景）と注視点（center）の minZoom タイル座標。
+    // カメラ直下点（nadir, 前景）と注視点（center）の minZoom タイル座標（帯の基準格子）。
+    // **分数（fractional）タイル座標**で持つ。整数タイル（toTileXY）だと、低高度・斜め見で
+    // nadir↔center の水平距離が 1 タイル未満のとき t0==t1 になり dirLen=0 ＝ 帯の方向（方位）が
+    // 失われ、nadir 中心ボックスのフォールバックに落ちて帯が視線方向とは無関係（軸整列）に
+    // 敷かれる。結果、前景（地平線方向）が横方向スプレッドぶんしか覆われず奥に穴が空く（#335:
+    // radius 8000・tilt 67°・az 174.9° で nadir 直下の z7 タイルが未被覆）。分数座標なら nadir と
+    // center が同一整数タイル内でも真の方位差が残り、帯を正しく視線方向へ向けられる。
     const nadir = ecefToGeodetic(cameraEcef);
-    const t0 = toTileXY(nadir.latDeg, nadir.lonDeg, minZoom);
-    const t1 = toTileXY(centerLat, centerLon, minZoom);
+    const totalMin = totalPixelsForZoom(minZoom);
+    const nPix = latLonToPixel(nadir.latDeg, nadir.lonDeg, totalMin);
+    const cPix = latLonToPixel(centerLat, centerLon, totalMin);
+    const t0 = { x: nPix.px / TILE_SIZE, y: nPix.py / TILE_SIZE };
+    const t1 = { x: cPix.px / TILE_SIZE, y: cPix.py / TILE_SIZE };
 
     // x（経度方向）は日付変更線で巡回する（2^minZoom タイル周期）。単純差分だと境界を
-    // またいだとき t0.x=2047/t1.x=0 のように巨大な dx になり帯の方向・長さが壊れるため、
+    // またいだとき t0.x≒2048/t1.x≒0 のように巨大な dx になり帯の方向・長さが壊れるため、
     // 最短符号付き差分（[-n/2, n/2)）に正規化する。y（メルカトル緯度）は巡回しない。
     const n = 2 ** minZoom;
     let dx = ((((t1.x - t0.x) % n) + n) % n);
@@ -154,41 +237,155 @@ export const selectGlobeRootTiles = (
         py = ux;
     }
 
-    const seeds: { x: number; y: number }[] = [];
+    const seeds: RootSeed[] = [];
     const seen = new Set<string>();
-    const add = (x: number, y: number): void => {
+    /**
+     * minZoom 座標 (cxMin, cyMin) を含む zoom レベルのタイルを 1 枚追加する。
+     * 粗 zoom（zoom < minZoom）では minZoom 座標を `2^(minZoom-zoom)` で割って粗グリッドへ
+     * スナップする（量子化で近接断面が同一粗タイルに収束し、自然にデデュプされる）。
+     */
+    const addAt = (cxMin: number, cyMin: number, zoom: number): void => {
         if (seeds.length >= budget) return;
+        const f = 2 ** (minZoom - zoom); // 粗タイル 1 枚 = minZoom タイル f 個分
+        const limit = 2 ** zoom;
         // y（メルカトル緯度）は巡回しない。範囲外（極側のはみ出し）は無効タイルなので捨て、
         // 予算を浪費しない。x（経度）は巡回するため範囲内へ正規化する。
-        if (y < 0 || y >= n) return;
-        const wx = ((x % n) + n) % n;
-        const key = `${wx},${y}`;
+        const ty = Math.floor(cyMin / f);
+        if (ty < 0 || ty >= limit) return;
+        const tx = ((Math.floor(cxMin / f) % limit) + limit) % limit;
+        const key = `${zoom},${tx},${ty}`;
         if (seen.has(key)) return;
         seen.add(key);
-        seeds.push({ x: wx, y });
+        seeds.push({ x: tx, y: ty, zoom });
     };
-    /** along-track 位置 s の lateral 断面（±margin）を張る。 */
-    const addCrossSection = (s: number): void => {
+    const edge0 = tileEdge0Meters(centerLat);
+    const tanHalfV = Math.max(1e-6, Math.tan(verticalFov / 2));
+    const denom = 2 * tanHalfV;
+    // 水平 FOV の半角 tan。画面は縦より横が広い（アスペクト比）ため横方向被覆に必要。
+    const aspect = viewportWidth / Math.max(1, viewportHeight);
+    const tanHalfH = aspect * tanHalfV;
+    const R = EARTH_MEAN_RADIUS_M;
+    const h = Math.max(0, nadir.altMeters);
+    const refTileMeters = Math.max(1, tileEdgeMeters(centerLat, minZoom));
+    // 地平線までの地表弧長（中心角 acos(R/(R+h))）。帯の along-track 距離（弧長）と整合。
+    const horizonArc = R * Math.acos(Math.min(1, R / (R + h)));
+
+    /** 地表沿い距離 arc[m] の地点へのカメラ弦距離 d[m]（球面近似）。 */
+    const chordDist = (arcMeters: number): number => {
+        const theta = Math.abs(arcMeters) / R;
+        return Math.sqrt(
+            (R + h) * (R + h) + R * R - 2 * (R + h) * R * Math.cos(theta),
+        );
+    };
+    /**
+     * カメラ距離 d[m] の地点の SSE 最適 root zoom（256px ルール＋距離累進, [floor, minZoom]）。
+     * 併せて「タイル 1 辺 ≤ カメラ距離」になる粗さ下限（distCapZoom）を課す。これがないと距離累進で
+     * 遠方タイルが極端に粗く（1 辺が距離より大）なり、その巨大タイルが近景領域まで内包して後段の
+     * quadtree カット整形（粗い方優先）が近景の細タイルを誤除去してしまう（画面全体が数枚に潰れる）。
+     */
+    const zoomForDist = (d: number): number => {
+        const eff = effectiveSseThreshold(sseThreshold, d, h);
+        const zStar = Math.log2(
+            (edge0 * viewportHeight) / (eff * Math.max(1, d) * denom),
+        );
+        const distCapZoom = Math.ceil(Math.log2(edge0 / Math.max(1, d)));
+        return Math.min(
+            minZoom,
+            Math.max(floorZoom, Math.ceil(zStar), distCapZoom),
+        );
+    };
+
+    /**
+     * along-track 位置 arc[m]（emit zoom・カメラ距離 d）の lateral 断面を張る。横半幅は
+     * 視錐台の台形に合わせ「カメラ距離 × 水平 FOV」をその emit タイルサイズで割った枚数とする
+     * （遠方ほど広い台形を、粗い emit タイルで少数被覆）。emit タイルが大きいと枚数は少なく済む。
+     */
+    const addCrossSection = (s: number, zoom: number): void => {
+        const f = 2 ** (minZoom - zoom);
+        const tileM = tileEdgeMeters(centerLat, zoom);
+        const d = chordDist(Math.abs(s) * refTileMeters);
+        const halfTiles = Math.min(
+            LATERAL_TILE_CAP,
+            Math.ceil((d * tanHalfH) / Math.max(1, tileM)) + margin,
+        );
         const cx = t0.x + ux * s;
         const cy = t0.y + uy * s;
-        for (let w = -margin; w <= margin; w++) {
-            add(Math.round(cx + px * w), Math.round(cy + py * w));
+        // lateral も **半タイル刻み**で張る。帯（track）がタイル格子に対して斜め（az が格子非整列）
+        // のとき、横方向に 1 タイル（px·f, py·f）ずつ進めると配置点が対角線上に並び、直交隣接の
+        // global タイルを飛ばして横帯に穴が空く（#335: 例 az174.9°・arc127km で root 未被覆）。
+        // 0.5 刻みにすると帯をタイルサイズの半分の解像度で標本化でき、斜めでも重なる global タイルを
+        // 1 枚も飛ばさない。重複は addAt の seen でデデュプ。
+        for (let w = -halfTiles; w <= halfTiles; w += 0.5) {
+            addAt(cx + px * w * f, cy + py * w * f, zoom);
         }
     };
 
-    // nadir と center の root タイルは予算内で最優先に確保する（前景=nadir を最優先、
-    // 次に視界中心=center）。これにより maxRootTiles が小さい／nadir↔center が遠いケースで
-    // 帯が center に届く前に予算切れになっても、視界中心が root 領域外にならない。
-    // budget=1 では nadir のみ確保される。
-    add(t0.x, t0.y);
-    add(t1.x, t1.y);
+    // nadir↔center の地表距離とチルトは、整数タイル座標（dirLen）由来だと丸め誤差で dFar が
+    // 不正確になり特定高度で奥が欠けるため、実カメラ幾何（ベクトル）から正確に求める。
+    // dirLenMeters = R·中心角(nadir↔center)。tilt = 視線(camera→center) と直下(−camera) のなす角。
+    const centerEcef = geodeticToEcefToRef(centerLat, centerLon, 0, new Vector3());
+    const camLen = Math.max(1, cameraEcef.length());
+    const cosPsi = Math.min(
+        1,
+        Math.max(-1, Vector3.Dot(cameraEcef, centerEcef) / (camLen * centerEcef.length())),
+    );
+    const dirLenMeters = R * Math.acos(cosPsi);
+    const lookDir = centerEcef.subtract(cameraEcef); // camera→center（このあと未使用なので破棄可）
+    const tilt = Math.acos(
+        Math.min(1, Math.max(-1, -Vector3.Dot(lookDir, cameraEcef) / (lookDir.length() * camLen))),
+    );
 
-    // 残り予算で nadir(s=0) を起点に、center を越え地平線側へ 2*dirLen + margin まで前進。
-    // 前景を優先して張り、予算を使い切ったら地平線側を捨てる。最後に nadir 手前のマージン
-    // （s<0）を埋める。既出タイル（nadir/center 等）は seen でデデュプされる。
-    const alongEnd = Math.round(2 * dirLen) + margin;
-    for (let s = 0; s <= alongEnd && seeds.length < budget; s++) addCrossSection(s);
-    for (let s = -1; s >= -margin && seeds.length < budget; s--) addCrossSection(s);
+    // nadir と center の root を最優先確保（各々の SSE 最適 zoom で）。budget=1 では nadir のみ。
+    addAt(t0.x, t0.y, zoomForDist(chordDist(0)));
+    addAt(t1.x, t1.y, zoomForDist(chordDist(dirLenMeters)));
+
+    // 前方到達距離 [m]: 視錐台「上端」（tilt＋垂直 FOV 半角）が地表に当たる距離まで張る。上端が
+    // 地平線を越える（≧90°）場合は地平線で打ち切る。これにより高チルトでも奥（地平線側）まで
+    // 欠けずに被覆できる。後方は nadir 手前のフットプリント分。フットプリント半幅は直下視の可視半径で、
+    // 画面は横が広い（水平 FOV）ため tanHalfH を使う（直下視で along-track が任意方向でも広い方の軸を
+    // 被覆）。粗タイルの粒度で上端が僅かに欠けないよう到達距離に小さなマージン係数を掛ける。
+    const footprintMeters = Math.max(refTileMeters, h * tanHalfH);
+    // 視錐台上端レイ（直下から角 alpha = tilt + 垂直FOV半角）と地球（半径 R）の近交点までの地表弧長
+    // を球面で正確に求める（平面 h·tan は斜め見で地表到達点を過小評価し奥が欠ける）。レイが球面に
+    // 当たらない（地平線以遠）/真上向きなら地平線まで張る。中心角 ψ = asin((R+h)·sinα/R) − α。
+    const Rc = R + h;
+    const alpha = tilt + verticalFov / 2;
+    const sinA = Math.sin(alpha);
+    const reachesGround = alpha < Math.PI / 2 && (Rc * sinA) / R < 1;
+    const dFar = reachesGround
+        ? R * (Math.asin((Rc * sinA) / R) - alpha)
+        : horizonArc;
+    const forwardReachM = Math.min(
+        horizonArc,
+        Math.max(footprintMeters, dFar) * FORWARD_REACH_MARGIN,
+    );
+    const backReachM = footprintMeters;
+
+    // 前方: nadir(s=0) から forwardReach まで、along-track 位置 s（minZoom タイル単位）を進めながら
+    // 各 s で「現在距離の SSE 最適 emit zoom」の断面を張って連続被覆する。刻みは現在の emit タイルの
+    // **半分**（s 単位で f/2）にする。これにより距離適応で zoom（タイルサイズ）が変わる継ぎ目でも、
+    // 軌道が通る global タイルを 1 枚も飛ばさず重ねて被覆できる。配置（addAt）は emit zoom の global
+    // タイル格子に量子化し、重複は seen 集合でデデュプされるため、半刻みの重なりはコスト（反復数）
+    // のみで結果のタイル数は被覆相当に有界。旧実装は s 空間の f-セル単位で歩いたため、s 格子（nadir
+    // 起点）と global タイル格子（lon/lat 原点起点）のオフセットが zoom 遷移と重なると最遠側で
+    // global タイル 1 枚分（例: 389-630km 帯）を張り残し、奥（地平線側）が 1 行欠けた（#335）。
+    // 最遠端まで確実に含めるよう reach に最遠 emit タイル 1 枚分の余白を足す。
+    const STEP_MIN_S = 0.5; // s（minZoom タイル）刻みの下限（停滞防止）。
+    const fFar = 2 ** (minZoom - zoomForDist(chordDist(forwardReachM)));
+    const reachS = forwardReachM / refTileMeters + fFar;
+    const backS = backReachM / refTileMeters + fFar;
+    for (let s = 0; s <= reachS && seeds.length < budget; ) {
+        const z = zoomForDist(chordDist(s * refTileMeters));
+        addCrossSection(s, z);
+        s += Math.max(STEP_MIN_S, 2 ** (minZoom - z) / 2);
+    }
+    // 後方（nadir 手前）。s>0 を −s に写して同様に半刻みで連続被覆する（s=0 は前方と重複するが
+    // デデュプされるため STEP_MIN_S から開始）。
+    for (let s = STEP_MIN_S; s <= backS && seeds.length < budget; ) {
+        const z = zoomForDist(chordDist(s * refTileMeters));
+        addCrossSection(-s, z);
+        s += Math.max(STEP_MIN_S, 2 ** (minZoom - z) / 2);
+    }
     return seeds;
 };
 
@@ -207,6 +404,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         minZoom,
         maxZoom,
         viewportHeight,
+        viewportWidth,
         verticalFov,
         sseThreshold,
         maxTiles,
@@ -214,6 +412,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         maxRootTiles,
         horizonDotThreshold,
         referenceAltitude = 0,
+        rootZoomFloor = minZoom,
     } = opts;
 
     if (maxZoom < minZoom) return [];
@@ -221,8 +420,13 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     const tanHalfFov = Math.max(1e-6, Math.tan(verticalFov / 2));
     const sseDenomBase = 2 * tanHalfFov;
     const camDir = cameraEcef.clone().normalize();
+    // カメラ高度（地心距離 − 平均半径の近似）。SSE 距離累進（遠方ほど粗く）に使う。
+    const camAlt = Math.max(1, cameraEcef.length() - EARTH_MEAN_RADIUS_M);
 
     const accepted: GlobeTile[] = [];
+    // 受容済みタイルキー。距離適応で粗 root と近景 root が継ぎ目で重なり、別 root の細分化が
+    // 同一 z/x/y へ到達しうるため、重複受容を防いで予算（maxTiles）の浪費を避ける。
+    const acceptedKeys = new Set<string>();
     const tileEcef = new Vector3();
     // 暴発防止の訪問上限。
     const maxVisited = Math.max(maxTiles, 256) * 32;
@@ -249,14 +453,21 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const distance = Vector3.Distance(cameraEcef, tileEcef);
         const tileSizeMeters = tileEdgeMeters(lat, zoom);
 
+        // 受容条件: SSE（距離累進）を満たし、かつ「タイル 1 辺 ≤ カメラ距離」（巨大タイルが
+        // 近景を内包して整形で誤除去されるのを防ぐ粗さ上限）。maxZoom 到達時はそれ以上分割不可。
         const accept =
             zoom >= maxZoom ||
-            (tileSizeMeters * viewportHeight) /
+            ((tileSizeMeters * viewportHeight) /
                 (Math.max(1, distance) * sseDenomBase) <=
-                sseThreshold;
+                effectiveSseThreshold(sseThreshold, distance, camAlt) &&
+                tileSizeMeters <= distance);
 
         if (accept) {
-            accepted.push({ zoom, x, y, tileSizeMeters, distance });
+            const k = tileKey(zoom, x, y);
+            if (!acceptedKeys.has(k)) {
+                acceptedKeys.add(k);
+                accepted.push({ zoom, x, y, tileSizeMeters, distance });
+            }
             return;
         }
 
@@ -275,11 +486,33 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         minZoom,
         rootSearchRadius,
         maxRootTiles,
+        rootZoomFloor,
+        viewportHeight,
+        viewportWidth,
+        verticalFov,
+        sseThreshold,
     });
-    for (const r of roots) traverse(minZoom, r.x, r.y);
+    for (const r of roots) traverse(r.zoom, r.x, r.y);
 
-    accepted.sort((a, b) => a.distance - b.distance);
-    return accepted.slice(0, maxTiles);
+    // 正しい quadtree カットへ整える（#335）: 距離適応で root の zoom が位置ごとに変わるため、
+    // ズーム遷移の継ぎ目で粗いタイルと、その中に含まれる細いタイル（子孫）が同じ地表を二重に
+    // 覆うことがある（タイルの重なり描画）。各採用タイルについて、より粗い採用タイル（祖先）が
+    // 存在する＝その粗タイルに包含されるものを除外する（粗い方を残す＝被覆は維持される）。
+    // floorZoom（最粗 root）まで祖先を辿れば十分。
+    const floorZoom = Math.min(minZoom, Math.max(0, rootZoomFloor));
+    const dedup =
+        accepted.length > 1
+            ? accepted.filter((t) => {
+                  for (let z = t.zoom - 1; z >= floorZoom; z--) {
+                      const dz = t.zoom - z;
+                      if (acceptedKeys.has(tileKey(z, t.x >> dz, t.y >> dz))) return false;
+                  }
+                  return true;
+              })
+            : accepted;
+
+    dedup.sort((a, b) => a.distance - b.distance);
+    return dedup.slice(0, maxTiles);
 };
 
 /** タイル一意キー（"z/x/y"）。 */
