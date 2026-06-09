@@ -237,11 +237,14 @@ export const createGlobeTileManager = (
             const cachedElev = elevCache.get(gk);
             // 実標高が未取得（ロード中 or no-data 失敗）なら、海面フラット(0m)で「暫定建築」する。
             // 実標高が届いたら次 sync で実標高へ再構築（sig で検知）、no-data なら海面のまま残す。
-            // これにより (1) ロード中の一時的なタイル欠け、(2) 海上 no-data の恒久欠け、(3) 視界
-            // 境界でタイルが出入りして失敗記録が消える際の欠け、のいずれも防ぐ（GSI テクスチャは別途
-            // 貼られ、海・海岸は画像が出る。陸は標高到達時に隆起）。#335。
             const isFlatFallback = !cachedElev;
             const geomElev = cachedElev ?? FLAT_SEA_ELEV;
+
+            // 標高が視覚的に意味を持つ zoom レベル（minZoom 以上）では、標高ロード中は建築をスキップ。
+            // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため (#330)。
+            // - failedRetryAt（no-data/海）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
+            // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
+            if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
 
             // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
             // crossLevel は細タイル zoom == その geom zoom を前提に、細グローバルピクセルを
