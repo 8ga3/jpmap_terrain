@@ -174,22 +174,22 @@ beforeEach(() => {
 });
 
 describe("createGlobeTileManager", () => {
-    it("選択タイルは即座に暫定建築し、テクスチャ onLoad で diffuseTexture を設定", async () => {
+    it("標高ロード完了後に初めてメッシュを建築し、テクスチャ onLoad で表示する", async () => {
         const mgr = makeManager();
         const s1 = mgr.sync(syncParams());
-        // 1 タイル選択。実標高ロード中でも海面フラットで即座に暫定建築する（欠けを防ぐ, #335）。
+        // 標高ロード中はメッシュを建築しない（フラット→実標高のチラつきを防ぐ, #330）。
         expect(s1.selected.length).toBe(1);
-        expect(MeshMock).toHaveBeenCalledTimes(1);
+        expect(MeshMock).toHaveBeenCalledTimes(0);
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
-        expect(s1.loadedCount).toBe(1);
+        expect(s1.loadedCount).toBe(0);
 
-        await flush();
-        // 実標高到達後の再 sync は既存メッシュへジオメトリ差し替え（新規 Mesh は増えない）。
+        await flush(); // 標高到着
+        // 標高揃い → メッシュ生成（テクスチャ読込開始）。
         const s2 = mgr.sync(syncParams());
         expect(MeshMock).toHaveBeenCalledTimes(1);
         expect(s2.loadedCount).toBe(1);
 
-        // onLoad 前: diffuseTexture 未設定かつ非表示（白色チラつき防止 #330）。
+        // onLoad 前: 非表示（白色チラつき防止 #330）。
         const tex = capturedTextures[0];
         const mesh = MeshMock.mock.results[0].value as {
             material: { diffuseTexture: unknown };
@@ -219,17 +219,20 @@ describe("createGlobeTileManager", () => {
         expect(meshA.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    it("取得失敗(no-data)はバックオフし再取得せず、海面フラットの暫定建築が残る", async () => {
+    it("取得失敗(no-data)はバックオフし再取得せず、no-data 確定後にフラット建築する", async () => {
         loadElevationTile.mockImplementation(() => Promise.reject(new Error("fetch failed")));
         const mgr = makeManager();
         mgr.sync(syncParams());
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
-        // ロード中でも即座に海面フラットで暫定建築（GSI テクスチャを描画。欠けを防ぐ, #335）。
-        expect(MeshMock).toHaveBeenCalledTimes(1);
-        await flush();
-        // 直後の sync: バックオフ中で再取得せず、海面フラットのまま残る（新規 Mesh は増えない）。
+        // 標高ロード中: まだ失敗が確定していないのでメッシュ未生成。
+        expect(MeshMock).toHaveBeenCalledTimes(0);
+        await flush(); // 失敗 → failedRetryAt 記録（no-data 確定）
+        // no-data 確定後の sync: フラット(海面 0m)でメッシュ生成（恒久欠けを防ぐ）。
         mgr.sync(syncParams());
-        expect(loadElevationTile).toHaveBeenCalledTimes(1);
+        expect(loadElevationTile).toHaveBeenCalledTimes(1); // バックオフ中、再取得なし
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+        // バックオフ中の再 sync でもメッシュを再生成しない。
+        mgr.sync(syncParams());
         expect(MeshMock).toHaveBeenCalledTimes(1);
     });
 
@@ -274,6 +277,15 @@ describe("createGlobeTileManager", () => {
         tex.onError?.("load error");
         expect(tex.dispose).toHaveBeenCalled();
         expect(mesh.isEnabled()).toBe(true); // onError 後は表示（白でもホールより良い）
+    });
+
+    it("zoom < minZoom の高高度タイルは標高ロード中でも即時建築する (#330)", async () => {
+        // minZoom=10 なので zoom=9 は「高高度・標高不要」扱い。
+        selectedTiles = [tile(50, 50, 9)];
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        // 標高ロード前でも即時建築（高高度では標高が視覚的に無意味）。
+        expect(MeshMock).toHaveBeenCalledTimes(1);
     });
 
     it("選択が不変なら既存メッシュを再構築しない", async () => {
