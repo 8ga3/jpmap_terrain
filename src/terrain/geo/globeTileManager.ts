@@ -309,6 +309,10 @@ export const createGlobeTileManager = (
             mat.backFaceCulling = true;
             mesh.material = mat;
 
+            // テクスチャ未ロード中は白色メッシュが見えるので非表示にする。
+            // onLoad / onError 到着時に表示する（背景球が代わりに見える）。#330
+            mesh.setEnabled(false);
+
             // GPU テクスチャが確実に生成された onLoad 内で diffuseTexture を設定する
             // （WebGPU の "null gpu texture bind" を避ける。平面版 tileManager と同様）。
             // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
@@ -325,11 +329,13 @@ export const createGlobeTileManager = (
                         return;
                     }
                     mat.diffuseTexture = tex;
+                    mesh.setEnabled(true);
                 },
-                // onError: ロード失敗（404/ネットワーク断等）時は scene に登録された
-                // Texture を必ず破棄してリークを防ぐ（平面版 tileManager と同様）。
+                // onError: ロード失敗（404/ネットワーク断等）時は Texture を破棄してリークを防ぐ。
+                // テクスチャなし（白）でもホールより良いので mesh は表示する。
                 () => {
                     tex.dispose();
+                    if (!mesh.isDisposed()) mesh.setEnabled(true);
                 },
             );
             tex.wrapU = Texture.CLAMP_ADDRESSMODE;

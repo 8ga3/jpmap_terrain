@@ -18,11 +18,14 @@ jest.unstable_mockModule("@babylonjs/core/scene", () => ({ Scene: class {} }));
 jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
     Mesh: jest.fn<(name: string) => unknown>().mockImplementation((name) => {
         let disposed = false;
+        let enabled = true;
         return {
             name,
             position: { copyFrom: jest.fn() },
             material: null as unknown,
             isDisposed: () => disposed,
+            isEnabled: () => enabled,
+            setEnabled: jest.fn((v: boolean) => { enabled = v; }),
             dispose: jest.fn(() => {
                 disposed = true;
             }),
@@ -186,12 +189,19 @@ describe("createGlobeTileManager", () => {
         expect(MeshMock).toHaveBeenCalledTimes(1);
         expect(s2.loadedCount).toBe(1);
 
-        // onLoad 前は diffuseTexture 未設定、onLoad 後に設定される。
+        // onLoad 前: diffuseTexture 未設定かつ非表示（白色チラつき防止 #330）。
         const tex = capturedTextures[0];
-        const mesh = MeshMock.mock.results[0].value as { material: { diffuseTexture: unknown } };
+        const mesh = MeshMock.mock.results[0].value as {
+            material: { diffuseTexture: unknown };
+            isEnabled: () => boolean;
+            setEnabled: jest.Mock;
+        };
         expect(mesh.material.diffuseTexture).toBeNull();
+        expect(mesh.isEnabled()).toBe(false);
+        // onLoad 後: diffuseTexture 設定 + 表示。
         tex.onLoad?.();
         expect(mesh.material.diffuseTexture).toBe(tex);
+        expect(mesh.isEnabled()).toBe(true);
     });
 
     it("不要になったタイルのメッシュを dispose する", async () => {
@@ -250,14 +260,20 @@ describe("createGlobeTileManager", () => {
         expect(loadElevationTile).toHaveBeenCalledTimes(3);
     });
 
-    it("テクスチャ onError でテクスチャを dispose する", async () => {
+    it("テクスチャ onError でテクスチャを dispose しメッシュを表示する", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
         await flush();
         mgr.sync(syncParams());
         const tex = capturedTextures[0];
+        const mesh = MeshMock.mock.results[0].value as {
+            isEnabled: () => boolean;
+            setEnabled: jest.Mock;
+        };
+        expect(mesh.isEnabled()).toBe(false); // onLoad/onError 前は非表示
         tex.onError?.("load error");
         expect(tex.dispose).toHaveBeenCalled();
+        expect(mesh.isEnabled()).toBe(true); // onError 後は表示（白でもホールより良い）
     });
 
     it("選択が不変なら既存メッシュを再構築しない", async () => {
