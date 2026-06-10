@@ -219,15 +219,15 @@ describe("createGlobeTileManager", () => {
         expect(meshA.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    it("取得失敗(no-data)はバックオフし再取得せず、no-data 確定後にフラット建築する", async () => {
+    it("取得失敗はバックオフし再取得せず、失敗確定後にフラット建築する", async () => {
         loadElevationTile.mockImplementation(() => Promise.reject(new Error("fetch failed")));
         const mgr = makeManager();
         mgr.sync(syncParams());
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
         // 標高ロード中: まだ失敗が確定していないのでメッシュ未生成。
         expect(MeshMock).toHaveBeenCalledTimes(0);
-        await flush(); // 失敗 → failedRetryAt 記録（no-data 確定）
-        // no-data 確定後の sync: フラット(海面 0m)でメッシュ生成（恒久欠けを防ぐ）。
+        await flush(); // 失敗 → failedRetryAt 記録（取得失敗→バックオフ状態へ移行）
+        // 失敗確定後の sync: フラット(海面 0m)でメッシュ生成（恒久欠けを防ぐ）。
         mgr.sync(syncParams());
         expect(loadElevationTile).toHaveBeenCalledTimes(1); // バックオフ中、再取得なし
         expect(MeshMock).toHaveBeenCalledTimes(1);

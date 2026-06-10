@@ -477,17 +477,18 @@ export const createGlobeTileManager = (
             const { gz, gx, gy } = geomCoordOf(t);
             const gk = tileKey(gz, gx, gy);
             const cachedElev = elevCache.get(gk);
-            // 実標高が未取得（ロード中 or no-data 失敗）の場合の暫定値（海面フラット 0m）。
-            // ただしフラットで暫定建築するのは「no-data 確定(failedRetryAt)」または
+            // 実標高が未取得（ロード中 or 取得失敗でバックオフ中）の場合の暫定値（海面フラット 0m）。
+            // ただしフラットで暫定建築するのは「取得失敗でバックオフ中(failedRetryAt)」または
             // 「minZoom 未満（高高度で標高が無意味）」に限る。それ以外（minZoom 以上のロード中）は
             // 直後の分岐で建築自体をスキップする（フラット→実標高の近景チラつきを避けるため, #330）。
-            // 実標高が届いたら次 sync で実標高へ再構築（sig で検知）、no-data なら海面のまま残す。
+            // loadElevationTile は no-data(404) と一時的障害を区別できないため、失敗は一律バックオフ
+            // 扱い。実標高が届いたら次 sync で実標高へ再構築（sig で検知）、失敗継続なら海面のまま残す。
             const isFlatFallback = !cachedElev;
             const geomElev = cachedElev ?? FLAT_SEA_ELEV;
 
             // 標高が視覚的に意味を持つ zoom レベル（minZoom 以上）では、標高ロード中は建築をスキップ。
             // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため (#330)。
-            // - failedRetryAt（no-data/海）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
+            // - failedRetryAt（取得失敗でバックオフ中）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
             // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
             if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
 
