@@ -89,70 +89,16 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
 
 // ---- gsiTile モック（座標は単純な決定的実装、loadElevationTile は制御可能に） ----
 // 注: ecef / mapping / math.geospatial.functions / math.vector は実物のまま使う。
+// 穴埋め系の純関数（isAllNaN / fillInvalidPixels / isInvalidElev / NO_DATA_SENTINEL 等）や
+// 座標定数は本実装をそのまま再利用し（jest.requireActual）、テストで差し替えたい DOM 依存・
+// 制御対象（loadElevationTile / toTileXY など）だけを最小限モックする。本実装を再実装すると
+// 実装変更時にテスト側が取り残されて偽陽性/偽陰性になりやすいため（PR #344 レビュー指摘）。
 jest.unstable_mockModule("../src/terrain/gsiTile", () => {
-    const TILE_SIZE = 256;
-    const NO_DATA_SENTINEL = -100;
-    const isInvalidElev = (v: number): boolean =>
-        Number.isNaN(v) || v === NO_DATA_SENTINEL;
-    const isAllNaN = (data: Float32Array): boolean => {
-        for (let i = 0; i < data.length; i++) if (!isInvalidElev(data[i])) return false;
-        return true;
-    };
-    // 本物（gsiTile.fillInvalidPixels）と同じ BFS 穴埋め＋番兵フォールバック。
-    const fillInvalidPixels = (elev: Float32Array, width: number, height: number): void => {
-        const size = width * height;
-        const offsets: ReadonlyArray<[number, number]> = [
-            [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
-        ];
-        let frontier: number[] = [];
-        for (let i = 0; i < size; i++) {
-            if (!isInvalidElev(elev[i])) continue;
-            const x = i % width;
-            const y = (i - x) / width;
-            for (const [dx, dy] of offsets) {
-                const nx = x + dx;
-                const ny = y + dy;
-                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-                if (!isInvalidElev(elev[ny * width + nx])) { frontier.push(i); break; }
-            }
-        }
-        while (frontier.length > 0) {
-            const next: number[] = [];
-            for (const idx of frontier) {
-                if (!isInvalidElev(elev[idx])) continue;
-                const x = idx % width;
-                const y = (idx - x) / width;
-                let sum = 0;
-                let count = 0;
-                for (const [dx, dy] of offsets) {
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-                    const v = elev[ny * width + nx];
-                    if (!isInvalidElev(v)) { sum += v; count++; }
-                }
-                if (count > 0) {
-                    elev[idx] = sum / count;
-                    for (const [dx, dy] of offsets) {
-                        const nx = x + dx;
-                        const ny = y + dy;
-                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-                        const ni = ny * width + nx;
-                        if (isInvalidElev(elev[ni])) next.push(ni);
-                    }
-                }
-            }
-            frontier = next;
-        }
-        for (let i = 0; i < size; i++) if (Number.isNaN(elev[i])) elev[i] = NO_DATA_SENTINEL;
-    };
+    const actual = jest.requireActual(
+        "../src/terrain/gsiTile",
+    ) as typeof import("../src/terrain/gsiTile");
     return {
-        TILE_SIZE,
-        NO_DATA_SENTINEL,
-        isInvalidElev,
-        isAllNaN,
-        fillInvalidPixels,
-        clamp: (v: number, min: number, max: number) => Math.min(Math.max(v, min), max),
+        ...actual,
         toTileXY: jest.fn(() => ({ x: 100, y: 100 })),
         tileCenterLatLon: jest.fn(() => ({ lat: 35, lon: 139 })),
         tileEdgeMeters: jest.fn(() => 1000),
