@@ -13,7 +13,7 @@
  * URL 等価性はデモ（`demos/geospatial/index.ts`）側で実装。
  */
 import { Scene } from "@babylonjs/core/scene";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -21,6 +21,7 @@ import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import {
     GeospatialCamera,
     ComputeLookAtFromYawPitchToRef,
+    ComputeYawPitchFromLookAtToRef,
 } from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
@@ -614,24 +615,59 @@ export class GlobeScene {
 
         // ---- ズーム終了時のスナップ（急な移動）を防ぐ毎フレーム向き補正（Issue #327） ----
         // ネイティブはズーム中、毎フレーム _applyZoom→zoomToPoint で center を動かしつつ yaw/pitch を
-        // 数値的に据え置く（center のローカルフレーム回転＝フレーム結合誤差を蓄積）。向き補正を担う
-        // _recalculateCenter は「移動が止まったフレーム」に一度だけ発火するため、蓄積誤差がズーム確定
-        // 時に一括補正され、画面が急に動いて止まる（スナップ）。zoomToPoint をラップして各ズームフレーム
-        // の直後に _recalculateCenter を強制実行し、補正を毎フレーム連続化する。これによりズーム中は
-        // 滑らかなまま、終了時のスナップが解消する。zoomToPoint はズーム時のみ呼ばれるためパン等へは
-        // 影響しない（pickAlongVector は上で floating-origin 非依存の幾何交点に差し替え済み）。
-        // _recalculateCenter は Babylon.js の非公開 API のため、ライブラリ更新で消失/改名しても
-        // クラッシュしないよう存在チェックでガードする（無い場合はネイティブ挙動＝終了時の一括補正に
-        // フォールバック。スナップは戻るが致命的ではない）。
-        const cameraInternal = camera as unknown as {
-            _recalculateCenter?(isCenterMoving: boolean, forceRecalculate?: boolean): void;
+        // 数値的に据え置く（center のローカル ENU フレームが回転＝フレーム結合誤差を蓄積）。向き補正を
+        // 担う _recalculateCenter は「移動が止まったフレーム」に一度だけ発火するため、蓄積誤差がズーム
+        // 確定時に一括補正され、画面が急に動いて止まる（スナップ）。そこで zoomToPoint をラップし、各
+        // ズームフレーム直後に同等の補正を毎フレーム実行して連続化する。ズーム中は滑らかなまま終了時の
+        // スナップが解消する。zoomToPoint はズーム時のみ呼ばれるためパン等へは影響しない。
+        //
+        // 補正は Babylon 非公開 API の camera._recalculateCenter を直接呼ばず、公開 API のみで等価実装する
+        // （非公開 API はライブラリ更新で消失/改名するとクラッシュするため）。内訳:
+        //   - 現在の yaw/pitch から世界 lookAt 方向（カメラ前方）を求める（ComputeLookAtFromYawPitchToRef）。
+        //   - その方向で center を地表楕円体へ再スナップ（movement.pickAlongVector は上で幾何交点に差し替え済み）。
+        //   - 世界 lookAt を保つ yaw/pitch を新 center で引き直す（ComputeYawPitchFromLookAtToRef は公開エクスポート）。
+        //   - 公開セッタ center→yaw→pitch→radius の順で反映（最終状態は _setOrientation 等価。カメラ位置は
+        //     ほぼ不変＝カーソル下の画素が固定される）。
+        // これによりネイティブ _recalculateCenter（_checkInputs から毎フレーム呼ばれ、確定時のみ発火）は
+        // 残るが、本補正で既に整っているため実質 no-op となり整合する。
+        const recalcLookAt = new Vector3();
+        const recalcCenterToOrigin = new Vector3();
+        const recalcYawPitch = new Vector2();
+        const recalculateCenterPublic = (): void => {
+            ComputeLookAtFromYawPitchToRef(
+                camera.yaw,
+                camera.pitch,
+                camera.center,
+                scene.useRightHandedSystem,
+                recalcLookAt,
+                movement.calculateUpVectorFromPointToRef,
+            );
+            const newCenter = movement.pickAlongVector(recalcLookAt);
+            if (!newCenter?.pickedPoint) return;
+            // 地球の裏側の center を採らないよう、center→原点方向が lookAt とおおむね一致する場合のみ更新。
+            recalcCenterToOrigin.copyFrom(newCenter.pickedPoint).negateInPlace().normalize();
+            if (Vector3.Dot(recalcLookAt, recalcCenterToOrigin) <= 0) return;
+            const newRadius = Vector3.Distance(computeCameraEcef(), newCenter.pickedPoint);
+            if (newRadius <= 1e-6) return;
+            ComputeYawPitchFromLookAtToRef(
+                recalcLookAt,
+                newCenter.pickedPoint,
+                scene.useRightHandedSystem,
+                camera.yaw,
+                recalcYawPitch,
+                movement.calculateUpVectorFromPointToRef,
+            );
+            // center→yaw→pitch→radius の順で公開セッタへ反映（各セッタが _setOrientation を呼び、
+            // 最終呼び出しが (newYaw, newPitch, newRadius, newCenter) 等価になる）。
+            camera.center = newCenter.pickedPoint;
+            camera.yaw = recalcYawPitch.x;
+            camera.pitch = recalcYawPitch.y;
+            camera.radius = newRadius;
         };
         const origZoomToPoint = camera.zoomToPoint.bind(camera);
         camera.zoomToPoint = (targetPoint, distance): void => {
             origZoomToPoint(targetPoint, distance);
-            if (typeof cameraInternal._recalculateCenter === "function") {
-                cameraInternal._recalculateCenter(false, true);
-            }
+            recalculateCenterPublic();
         };
 
 
