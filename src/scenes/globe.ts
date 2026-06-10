@@ -505,6 +505,12 @@ export class GlobeScene {
             const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
             if (elev === null) return;
             centerElevation = elev; // SSE 距離評価の基準標高（追従の有無に関わらず最新化）
+            // パン操作中（左ドラッグ / WASD）は鉛直追従を停止する（#337）。パンは
+            // panCenterOnSphereToRef で「旧標高の地心距離」を保って水平移動するため、毎フレーム
+            // seat が新地点の地形標高へ一気に引き戻すと離散的な鉛直補正＝画面のガタつきになる
+            // （山岳地帯ほど標高差が大きく顕著）。一定高度のまま滑らかにパンさせ、パン終了後に
+            // seat が滑らかに再着地する。地形衝突（enforceGroundClearance）は安全のため維持。
+            if (dragging || pressed.size > 0) return;
             // カメラの対地クリアランスで追従強度をフェード（FULL 以下で完全追従、ZERO 以上で停止）。
             const clearance = camAltMeters - elev;
             const seatFactor = Math.max(
