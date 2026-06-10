@@ -771,7 +771,7 @@ export const createGlobeTileManager = (
                 const coarse = coarseSeed.get(gk);
                 if (coarse !== undefined) {
                     // (2a) 粗ズーム祖先 DEM の代表標高（湖面標高近似）で平坦化。最優先。
-                    elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(coarse));
+                    elevCache.set(gk, flatElevArray(coarse));
                     allNanGeom.delete(gk);
                     dirty.add(gk);
                     lastRepElev = coarse;
@@ -781,7 +781,7 @@ export const createGlobeTileManager = (
                     //      どちらも無い場合のみ生 NaN のまま（build で海面 0m＝外洋として妥当）。
                     const rep = inViewRep ?? lastRepElev;
                     if (rep !== undefined) {
-                        elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(rep));
+                        elevCache.set(gk, flatElevArray(rep));
                     }
                     allNanGeom.delete(gk);
                     dirty.add(gk);
