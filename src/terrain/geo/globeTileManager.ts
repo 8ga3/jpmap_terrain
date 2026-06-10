@@ -55,6 +55,15 @@ const FLAT_SEA_ELEV = new Float32Array(TILE_SIZE * TILE_SIZE);
 const BASE_LAYER_ZOOM = 2;
 
 /**
+ * ベースレイヤ 1 タイルあたりの分割数（Issue #341）。マネージャ既定（globe 32）より細かくする。
+ * z2 タイルは 90° 角を張るため、分割が粗いとメッシュ（三角形弦）が真球面から大きく内側へたるみ
+ * （32 分割で最大 ~3840m）、地平線（limb）でタイルが背景球より内側に退いて青球が縁から透ける。
+ * 96 分割でたるみを ~430m まで抑え、地平線をベースのテクスチャ面で覆う（背景球露出を防ぐ）。
+ * 全球 16 枚・一度きりの生成なので頂点数増（~150k）は常時保持でも軽微。
+ */
+const BASE_LAYER_SEGMENTS = 96;
+
+/**
  * ベースレイヤのテクスチャ到着前の塗り色（海色, #341）。背景球と同系色にして、初回ロード前の
  * 白フラッシュや青球露出を避ける。テクスチャ到着後は地理院タイル画像へ差し替わる。
  */
@@ -825,7 +834,7 @@ export const createGlobeTileManager = (
                     geomZoom: BASE_LAYER_ZOOM,
                     geomX: x,
                     geomY: y,
-                    segments,
+                    segments: BASE_LAYER_SEGMENTS,
                     edges: [],
                 });
                 const mesh = new Mesh(`base-tile-${k}`, scene);
