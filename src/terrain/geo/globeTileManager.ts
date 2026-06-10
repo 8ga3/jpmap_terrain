@@ -227,6 +227,7 @@ export const createGlobeTileManager = (
     // 湖岸（陸地）を含むため、その有効ピクセル平均を湖面標高として平坦化に用いる。
     const coarseSeed = new Map<string, number>(); // geomKey → 代表標高[m]
     const coarseSeedPending = new Set<string>(); // 粗ズーム取得中の geomKey
+    const coarseSeedDone = new Set<string>(); // 粗ズーム取得を試行完了した geomKey（成否問わず）
     // 粗ズームタイル取得結果のメモ（coarseKey `z/x/y` → 標高配列 or null）。
     // 同一湖の複数 all-NaN タイルが同じ粗タイルを参照するため取得を重複させない。
     const coarseTileMemo = new Map<string, Promise<Float32Array | null>>();
@@ -549,19 +550,23 @@ export const createGlobeTileManager = (
     /**
      * 元データが all-NaN（全面 no-data）だった geom タイルを穴埋めする（#339, 平面版 #221 相当）。
      *
-     * 大きな湖（本栖湖など）では、対象タイルだけでなく同 zoom 隣接タイルも all-NaN になり、
-     * 同 zoom 縫い合わせだけでは中心タイルにシードが届かず標高が 0m（海面）へ沈む。これを防ぐ:
+     * 大きな湖（本栖湖・諏訪湖など）では、対象タイルだけでなく同 zoom 隣接タイルも all-NaN になり、
+     * さらに LOD により隣接が粗 zoom で描画されると同 zoom 隣接自体が存在せず、同 zoom 縫い合わせ
+     * では中心タイルにシードが届かず標高が 0m（海面）へ沈む。これを防ぐ:
      *
      * 1. 波状反復: 同 zoom 隣接（`stitchTileEdges`）からシードが得られたタイルを `fillInvalidPixels`
      *    で補間し `elevCache` を更新する。解決済みタイルが次の反復で隣接のシード源になり、湖岸から
      *    中心へリング状に補間が前進する。1 sync 内で収束するよう内部反復する。
-     * 2. レスキュー（視界内代表標高）: 反復後も残った all-NaN タイル（周囲も all-NaN で到達不能）で、
-     *    かつ視界内に有効タイルがあれば、その代表標高で平坦化する（#221 Step4 同等）。誤って早期
-     *    平坦化しないよう、隣接が in-flight（`loading`）の間はそのタイルのレスキューを見送る。
-     * 2b. レスキュー（粗ズーム祖先）: 視界が全面水面で有効タイルが一切無い場合（大きな湖を z15 で
-     *    接写する等。本栖湖・諏訪湖で 0m へ沈む事象 #339）、粗ズーム祖先 DEM タイルの有効ピクセル
-     *    平均（＝湖岸・陸地を含むため湖面標高の近似）を非同期取得し、その代表標高で平坦化する。
+     * 2. レスキュー（粗ズーム祖先 DEM）: 反復後も残った all-NaN タイルは、粗ズーム祖先 DEM タイル
+     *    （湖岸＝陸地を含むため湖面標高の近似が得られる）の有効ピクセル平均を非同期取得し、その
+     *    代表標高で平坦化する（#339）。最優先。誤って早期確定しないよう、同 zoom 隣接が in-flight
+     *    （`loading`）の間はそのタイルの確定を見送る。
+     *    - 粗ズーム祖先にも有効標高が無い（真の no-data: 外洋等）場合は、視界内の有効タイルがあれば
+     *      その代表標高で、無ければ海面 0m（外洋として妥当）で確定する。
      * 3. 解決/レスキューしたタイルを共有する建築済み表示タイルの署名を無効化し再建築させる。
+     *
+     * なお、確定前（粗ズーム取得待ち）の all-NaN タイルは `buildReadyTiles` で建築を見送り、生 NaN を
+     * 0m（海面クレーター）として描画しない（解決後に正しい標高で初めて建築する）。
      */
     // 粗ズーム祖先タイルの取得デルタ候補（gz から何段階粗いタイルを試すか）。
     // 大きな湖ほど粗くしないと祖先タイルも全面水面（all-NaN）になるため複数段試す。
@@ -606,6 +611,7 @@ export const createGlobeTileManager = (
                 // 全粗ズームで有効標高無し（真の no-data: 外洋等）。0m(海面)のままが妥当。
             } finally {
                 coarseSeedPending.delete(gk);
+                coarseSeedDone.add(gk);
             }
         })();
     };
@@ -651,47 +657,44 @@ export const createGlobeTileManager = (
 
         // --- Step 2: レスキュー（到達不能な残存 all-NaN タイルを代表標高で平坦化） ---
         if (allNanGeom.size > 0) {
-            // 隣接が in-flight でないタイルのみ確定対象にする（早期平坦化を避ける）。
-            const ready: string[] = [];
-            for (const gk of allNanGeom) {
+            // 粗ズーム取得が真の no-data（外洋等）だった場合のフォールバック用に、視界内の
+            // 有効タイル代表標高（中央ピクセル平均）を一度だけ算出する（#221 同様の近似）。
+            const mid = (TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1);
+            let inViewSum = 0;
+            let inViewCount = 0;
+            for (const [k, data] of elevCache) {
+                if (allNanGeom.has(k)) continue; // 未解決 all-NaN は除外
+                const v = data[mid];
+                if (!isInvalidElev(v)) { inViewSum += v; inViewCount++; }
+            }
+            const inViewRep = inViewCount > 0 ? inViewSum / inViewCount : undefined;
+
+            for (const gk of [...allNanGeom]) {
                 if (!elevCache.has(gk)) continue;
                 const { zoom: gz, x: gx, y: gy } = parseKey(gk);
+                // 同 zoom 隣接が in-flight の間は確定を見送る（揃えば波状反復で解決しうる）。
                 const neighborLoading = allNanNeighborOffsets.some(
                     ([dx, dy]) => loading.has(tileKey(gz, gx + dx, gy + dy)),
                 );
-                if (!neighborLoading) ready.push(gk);
-            }
-            if (ready.length > 0) {
-                // 解決済み（有効）タイルの中央ピクセルから代表標高を求める（#221 同様の近似）。
-                let sum = 0;
-                let count = 0;
-                const mid = (TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1);
-                for (const [k, data] of elevCache) {
-                    if (allNanGeom.has(k)) continue; // 未解決 all-NaN は除外
-                    const v = data[mid];
-                    if (!isInvalidElev(v)) { sum += v; count++; }
-                }
-                if (count > 0) {
-                    // Step 2: 視界内に有効タイルあり → その代表標高で即時平坦化。
-                    const rep = sum / count;
-                    for (const gk of ready) {
-                        elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(rep));
-                        allNanGeom.delete(gk);
-                        dirty.add(gk);
+                if (neighborLoading) continue;
+
+                const coarse = coarseSeed.get(gk);
+                if (coarse !== undefined) {
+                    // (2a) 粗ズーム祖先 DEM の代表標高（湖面標高近似）で平坦化。最優先。
+                    elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(coarse));
+                    allNanGeom.delete(gk);
+                    dirty.add(gk);
+                } else if (coarseSeedDone.has(gk)) {
+                    // (2b) 粗ズーム祖先にも有効標高無し（真の no-data: 外洋等）。視界内に有効タイルが
+                    //      あればその代表標高で平坦化、無ければ生 NaN のまま（build で海面 0m＝外洋妥当）。
+                    if (inViewRep !== undefined) {
+                        elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(inViewRep));
                     }
+                    allNanGeom.delete(gk);
+                    dirty.add(gk);
                 } else {
-                    // Step 2b: 視界が全面水面（有効タイル皆無）→ 粗ズーム祖先 DEM の代表標高で平坦化。
-                    // 取得済みなら即適用、未取得なら非同期取得を起動し次 sync で適用する（#339）。
-                    for (const gk of ready) {
-                        const rep = coarseSeed.get(gk);
-                        if (rep !== undefined) {
-                            elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(rep));
-                            allNanGeom.delete(gk);
-                            dirty.add(gk);
-                        } else {
-                            requestCoarseSeed(gk);
-                        }
-                    }
+                    // (2c) 未取得 → 粗ズーム祖先取得を起動し、確定は次 sync へ見送る（build は遅延）。
+                    requestCoarseSeed(gk);
                 }
             }
         }
@@ -725,6 +728,13 @@ export const createGlobeTileManager = (
             // - failedRetryAt（取得失敗でバックオフ中）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
             // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
             if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
+
+            // 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイルは建築を見送る。生 NaN を
+            // そのまま建築すると globeMesh が海面 0m へ倒し「湖中央の沈み込み（クレーター）」に
+            // なるため（本栖湖・諏訪湖 #339）。`refineAllNaNTiles` が代表標高で確定（allNanGeom
+            // から除外）し次第、正しい標高で初めて建築する。高高度（minZoom 未満）は標高が視覚的に
+            // 無意味なので従来どおり即建築する。
+            if (allNanGeom.has(gk) && t.zoom >= minZoom) continue;
 
             // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
             // crossLevel は細タイル zoom == その geom zoom を前提に、細グローバルピクセルを
@@ -958,6 +968,7 @@ export const createGlobeTileManager = (
                 allNanGeom.delete(key);
                 coarseSeed.delete(key);
                 coarseSeedPending.delete(key);
+                coarseSeedDone.delete(key);
             }
         }
         // 不要になった in-flight ロードを loading から外す。これにより、その後 resolve した
@@ -1108,6 +1119,7 @@ export const createGlobeTileManager = (
         allNanGeom.clear();
         coarseSeed.clear();
         coarseSeedPending.clear();
+        coarseSeedDone.clear();
         coarseTileMemo.clear();
         failedRetryAt.clear();
         newlyFailed.length = 0;
