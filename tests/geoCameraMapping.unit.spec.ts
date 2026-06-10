@@ -20,6 +20,7 @@ import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     clampRadiusForGroundClearance,
+    rayEllipsoidNearHitToRef,
 } from "../src/terrain/geo/cameraMapping";
 
 describe("uiToYawPitch / yawPitchToUi", () => {
@@ -156,5 +157,56 @@ describe("clampRadiusForGroundClearance", () => {
         // NaN は < 1e-3 判定を素通りするため明示ガードが必要（camera.radius=NaN 防止）。
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, NaN)).toBe(1000);
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, Infinity)).toBe(1000);
+    });
+});
+
+describe("rayEllipsoidNearHitToRef", () => {
+    // WGS84 相当の半径（赤道 a、極 b）。
+    const A = 6378137;
+    const B = 6356752.314245;
+
+    it("球（rx=ry=rz=R）の真上から直下視で半径上の点に当たる", () => {
+        const R = 6378137;
+        const origin = new Vector3(0, 0, R + 1000); // 面の 1000m 上空
+        const dir = new Vector3(0, 0, -1); // 直下
+        const ref = new Vector3();
+        expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(true);
+        expect(ref.z).toBeCloseTo(R, 3); // 手前側（上面）= +Z 側の半径
+        expect(ref.x).toBeCloseTo(0, 3);
+        expect(ref.y).toBeCloseTo(0, 3);
+    });
+
+    it("WGS84 楕円体: 北極直上からの直下視は極半径 b に当たる", () => {
+        const origin = new Vector3(0, 0, B + 5000);
+        const dir = new Vector3(0, 0, -1);
+        const ref = new Vector3();
+        expect(rayEllipsoidNearHitToRef(origin, dir, A, A, B, ref)).toBe(true);
+        expect(ref.z).toBeCloseTo(B, 2); // 極では極半径
+    });
+
+    it("WGS84 楕円体: 赤道上空（+X）からの直下視は赤道半径 a に当たる", () => {
+        const origin = new Vector3(A + 5000, 0, 0);
+        const dir = new Vector3(-1, 0, 0);
+        const ref = new Vector3();
+        expect(rayEllipsoidNearHitToRef(origin, dir, A, A, B, ref)).toBe(true);
+        expect(ref.x).toBeCloseTo(A, 2); // 赤道では赤道半径
+    });
+
+    it("斜めレイでも手前側（origin に近い方）の交点を返す", () => {
+        const R = 100;
+        const origin = new Vector3(0, 0, 200);
+        const dir = new Vector3(0.3, 0, -1).normalize();
+        const ref = new Vector3();
+        expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(true);
+        expect(ref.length()).toBeCloseTo(R, 3); // 球面上
+        expect(ref.z).toBeGreaterThan(0); // 手前側（z>0）
+    });
+
+    it("楕円体を外す方向（空を指す）は false", () => {
+        const R = 100;
+        const origin = new Vector3(0, 0, 200);
+        const dir = new Vector3(0, 0, 1); // 面から離れる向き
+        const ref = new Vector3();
+        expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(false);
     });
 });
