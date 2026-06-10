@@ -620,13 +620,18 @@ export class GlobeScene {
         // の直後に _recalculateCenter を強制実行し、補正を毎フレーム連続化する。これによりズーム中は
         // 滑らかなまま、終了時のスナップが解消する。zoomToPoint はズーム時のみ呼ばれるためパン等へは
         // 影響しない（pickAlongVector は上で floating-origin 非依存の幾何交点に差し替え済み）。
+        // _recalculateCenter は Babylon.js の非公開 API のため、ライブラリ更新で消失/改名しても
+        // クラッシュしないよう存在チェックでガードする（無い場合はネイティブ挙動＝終了時の一括補正に
+        // フォールバック。スナップは戻るが致命的ではない）。
         const cameraInternal = camera as unknown as {
-            _recalculateCenter(isCenterMoving: boolean, forceRecalculate?: boolean): void;
+            _recalculateCenter?(isCenterMoving: boolean, forceRecalculate?: boolean): void;
         };
         const origZoomToPoint = camera.zoomToPoint.bind(camera);
         camera.zoomToPoint = (targetPoint, distance): void => {
             origZoomToPoint(targetPoint, distance);
-            cameraInternal._recalculateCenter(false, true);
+            if (typeof cameraInternal._recalculateCenter === "function") {
+                cameraInternal._recalculateCenter(false, true);
+            }
         };
 
 
