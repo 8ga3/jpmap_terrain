@@ -114,8 +114,10 @@ export const panCenterOnSphereToRef = (
 };
 
 /**
- * 原点 `origin` から単位方向 `dir` のレイと、**世界原点中心の楕円体**
+ * 原点 `origin` から方向 `dir` のレイと、**世界原点中心の楕円体**
  * `(x/radiusX)² + (y/radiusY)² + (z/radiusZ)² = 1` との手前側交点を `ref` に書き込む。
+ * `dir` は**正規化不要**（二次方程式の係数 `t` がスケールに追従するだけで、交点
+ * `origin + t·dir` は `dir` の長さに依らず正しく求まる）。
  * zoom-to-cursor のカーソル下の目標点を `scene.pick` 非依存かつ**地球楕円体上の固定点**として
  * 求める用途（球近似だとカメラがズームで動くたび `center.length()` 変化＋楕円体との差で目標点が
  * フレーム毎にずれ、カーソル下の地点が固定されず揺れる。WGS84 楕円体で解けば物理的に同一点へ収束）。
@@ -123,6 +125,7 @@ export const panCenterOnSphereToRef = (
  * 楕円体を各軸 `1/radius*` でスケールすると単位球に写るため、スケール空間でレイ係数 `t` を解く
  * （`t` はスケール変換に不変なので元空間の `origin + t·dir` に適用できる）。
  *
+ * @param dir レイ方向。正規化は不要（長さは交点に影響しない）。
  * @returns 交点があり t>0 なら true（`ref` に交点）、レイが楕円体を外す/背面なら false。
  */
 export const rayEllipsoidNearHitToRef = (
