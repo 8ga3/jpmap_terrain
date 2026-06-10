@@ -8,8 +8,9 @@
  * Phase 1: 「座標系・メッシュ生成・カメラ基盤・配置・LOD」の地形エンジン（注視点ズーム・
  * seat-on-terrain・地心距離 LOD）。
  * Phase 2: picking 非依存パン（左ドラッグ / WASD）・カメラ地形衝突・seat の対地クリアランス
- * フェードを追加。zoom-to-cursor は seat との鉛直結合で揺れるため無効維持（中心ズーム。
- * 再実装は Issue #327）。URL 等価性はデモ（`demos/geospatial/index.ts`）側で実装。
+ * フェードを追加。zoom-to-cursor（カーソル位置へ寄るズーム）は seat との鉛直結合で揺れていたため、
+ * ズーム中は seat を一時停止し目標点を scene.pick 非依存で固定して実装（Issue #327）。
+ * URL 等価性はデモ（`demos/geospatial/index.ts`）側で実装。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -25,6 +26,7 @@ import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/ge
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
 import type { MapType } from "../terrain/gsiTile";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
@@ -32,6 +34,7 @@ import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     clampRadiusForGroundClearance,
+    rayEllipsoidNearHitToRef,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
@@ -96,6 +99,17 @@ const SEAT_LERP = 0.5;
  */
 const SEAT_FULL_CLEARANCE = 3000;
 const SEAT_ZERO_CLEARANCE = 10000;
+
+/**
+ * zoom-to-cursor のズーム中に seat-on-terrain を一時停止する判定パラメータ（Issue #327）。
+ * ネイティブのズーム（ホイール入力＋慣性減衰）と seat（center 高度の地形追従）が鉛直方向で
+ * 引っ張り合い揺れるため、ズームが落ち着くまで seat を止める。
+ * - `ZOOM_PAUSE_IDLE_MS`: 最後のホイール入力からこの時間が経過するまでは「ズーム中」とみなす。
+ * - `ZOOM_SETTLE_RATIO`: フレーム間の radius 変化がこの相対値を超える間は（慣性減衰中）「ズーム中」。
+ *   ホイール idle かつ radius が settle した時点で seat を滑らかに復帰させる。
+ */
+const ZOOM_PAUSE_IDLE_MS = 200;
+const ZOOM_SETTLE_RATIO = 1e-4;
 
 /** 1 秒あたりの WASD パン距離 = radius（高度相当）× この係数。高度比例で自然な速度。 */
 const PAN_RATE_PER_SEC = 0.6;
@@ -243,11 +257,30 @@ export class GlobeScene {
         camera.addBehavior(new GeospatialClippingBehavior());
         camera.attachControl(true);
 
-        // ズームは注視点(画面中心)へ寄る半径のみのズームにする。zoom-to-cursor は毎フレーム
-        // 中心をカーソル方向へ動かすため、floating origin 下のピック誤差と相まってガタつく。
-        // zoom-to-cursor のレイ再構成は floating origin 維持と両立が難しく、Phase 2 では無効維持
-        // とする（PoC の判断踏襲）。
-        camera.movement.zoomToCursor = false;
+        // zoom-to-cursor（カーソル下の地点へ寄るズーム）を有効化する（Issue #327）。ネイティブ実装は
+        // ホイール毎に scene.pick でカーソル下の点を取り直すが、floating origin 下では
+        // レンダリング座標と真の ECEF メッシュ位置がずれてピックが毎回ブレ、ズームが揺れる。
+        // そこで後段で handleZoom を差し替え、目標点を scene.pick 非依存の「真の ECEF カメラ位置
+        // からのレイ × 地表球」の幾何交点で固定する。加えてズーム中（ホイール〜慣性減衰）は
+        // seat-on-terrain を一時停止し、鉛直方向の引っ張り合い（揺れの主因）を断つ。
+        camera.movement.zoomToCursor = true;
+
+        // GeospatialCamera 内部の scene.pick を無効化しつつ、ズーム後の向き補正は温存する（Issue #327 揺れ修正）。
+        // ネイティブカメラは複数箇所で scene.pick / PickWithRay を使う:
+        //   1) startDrag（左ドラッグの開始でドラッグ平面を作る）
+        //   2) handleZoom（カーソル下の点を取り直しズーム目標にする）
+        //   3) _recalculateCenter の pickAlongVector（ズーム/パン後に center を地表へ再スナップし、
+        //      かつ lookAt（ワールド注視方向）から yaw/pitch を**再計算**して向きを保つ）
+        // floating origin 下では 1)2) のピックが真の ECEF メッシュ位置とずれてブレるため無効化する。
+        // 一方 3) はズーム時の「揺れ補正」の要である: zoomToPoint は yaw/pitch を数値的に据え置いた
+        // まま center を動かすため、center のローカル ENU フレームが回転し、特に真下チルトでは同じ
+        // yaw が別方位を指して南北東西に振れる（フレーム結合誤差）。_recalculateCenter はズーム確定時に
+        // lookAt から yaw/pitch を引き直してこの誤差を打ち消す。したがって 3) は**無効化してはならない**。
+        // そこで pickPredicate=false で 1)2) 系の PickWithRay を不活性化しつつ、3) が使う
+        // pickAlongVector のみを floating-origin 非依存の幾何交点（真の ECEF カメラ位置 × WGS84 楕円体）に
+        // 差し替え、scene.pick に頼らず向き補正を機能させる（前回 pickPredicate=false だけでは
+        // pickAlongVector が null を返し補正が止まって揺れが残っていた）。
+        camera.movement.pickPredicate = () => false;
 
         // ---- picking 非依存パン（左ドラッグ / WASD） ----
         // 既定の pan（左ドラッグ/キーボード）は scene.pick でグローブをヒットしてドラッグ平面を
@@ -466,6 +499,144 @@ export class GlobeScene {
             return cameraEcef;
         };
 
+        // ---- zoom-to-cursor の目標点を scene.pick 非依存で求める差し替え（Issue #327） ----
+        // ネイティブ handleZoom は毎ホイールで scene.pick(pointerX,pointerY) して
+        // computedPerFrameZoomPickPoint を更新するが、floating origin 下では点がブレてズームが
+        // 揺れる。ここでは真の ECEF カメラ位置からカーソル方向のレイを飛ばし、地球楕円体（WGS84、
+        // 注視点付近の地形標高 centerElevation を高さに採用）との交点を目標点として求める。
+        // 目標点を**球ではなく楕円体**で解くのが重要: 球（半径 = center.length()）近似だとカメラが
+        // ズームで動くたびに半径が変化し、かつ楕円体との差でカーソル下の地点がフレーム毎にずれて
+        // 揺れる。楕円体面は視点に依らない固定面なので、同じカーソル画素のレイは常に同一の地点へ
+        // 収束し、ズーム中もカーソル下の画素が固定される。ホイール毎にのみ取り直し、慣性減衰中
+        // （新規ホイールなし）は handleZoom が呼ばれず目標固定。新しいホイールで新カーソル位置へ更新。
+        // 併せて最後のホイール入力時刻を記録し、observer 側の seat 一時停止判定に使う。
+        const movement = camera.movement;
+        const zoomTarget = new Vector3();
+        const ellipsoidSemiMajor = Wgs84Ellipsoid.semiMajorAxis;
+        const ellipsoidSemiMinor = Wgs84Ellipsoid.semiMinorAxis;
+        // 二重精度カーソルレイ用バッファ。
+        const rayFwd = new Vector3();
+        const rayRight = new Vector3();
+        const rayUpTerm = new Vector3();
+        const cursorDir = new Vector3();
+        let lastWheelTimeMs = Number.NEGATIVE_INFINITY;
+
+        // カーソル下方向の単位レイを**二重精度**で構築する（Issue #327 揺れの精度要因）。
+        // scene.createPickingRayToRef は near/far の 2 点を逆ビュー射影で復元し差分して方向を得るが、
+        // floating origin 下でも getViewMatrix が返すのは真の ECEF（並進 ~6.4e6）の行列で、しかも
+        // Babylon の Matrix は Float32Array。巨大並進を含む行列で復元した 2 つの近接点の差分は桁落ち
+        // （catastrophic cancellation）し、方向が約 1〜4° もずれ、かつカメラ位置の変化に応じて
+        // フレーム毎に揺らぐ。これがズーム目標点をブレさせる精度要因。そこで行列を介さず、yaw/pitch
+        // から forward を、camera.upVector から up/right を二重精度で求め、画素 NDC オフセットと
+        // 垂直 FOV・アスペクトから解析的にレイ方向を構築する（中心画素は厳密に forward に一致）。
+        const computeCursorRayDirToRef = (ref: Vector3): Vector3 => {
+            // 注意: computeCameraEcef は共有 lookAt バッファを radius 倍して破壊するため専用バッファに計算する。
+            ComputeLookAtFromYawPitchToRef(
+                camera.yaw,
+                camera.pitch,
+                camera.center,
+                scene.useRightHandedSystem,
+                rayFwd,
+            );
+            // right = normalize(cross(forward, up)) / up = camera.upVector（いずれも二重精度）。
+            Vector3.CrossToRef(rayFwd, camera.upVector, rayRight);
+            rayRight.normalize();
+            // scene.pointerX/Y は CSS ピクセル、getRenderWidth/Height はバックバッファ解像度。
+            // Retina 等 devicePixelRatio>1 では両者がずれるため、Babylon の picking と同様に
+            // pointer を hardwareScalingLevel で割ってバックバッファ座標へ揃える（これを怠ると
+            // カーソル位置が縦横とも半分にずれてズーム先が合わない）。
+            const hsl = engine.getHardwareScalingLevel();
+            const w = engine.getRenderWidth();
+            const h = engine.getRenderHeight();
+            const ndcx = (scene.pointerX / hsl / w) * 2 - 1;
+            const ndcy = 1 - (scene.pointerY / hsl / h) * 2;
+            const tanY = Math.tan(camera.fov / 2);
+            const tanX = tanY * (w / h);
+            ref.copyFrom(rayFwd)
+                .addInPlace(rayRight.scaleInPlace(ndcx * tanX))
+                .addInPlace(rayUpTerm.copyFrom(camera.upVector).scaleInPlace(ndcy * tanY))
+                .normalize();
+            return ref;
+        };
+
+        movement.handleZoom = (zoomDelta: number): void => {
+            if (zoomDelta === 0) return;
+            lastWheelTimeMs = performance.now();
+            // ネイティブ同様に蓄積（per-frame の zoomDeltaCurrentFrame へ変換される）。
+            movement.zoomAccumulatedPixels += zoomDelta;
+            // カーソル方向の単位レイ（二重精度。createPickingRay の Float32 桁落ちを避ける）。
+            computeCursorRayDirToRef(cursorDir);
+            const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
+            // 注視点付近の地形標高（海面=0）を高さに採用した WGS84 楕円体面と交差させる。
+            const equatorial = ellipsoidSemiMajor + centerElevation;
+            const polar = ellipsoidSemiMinor + centerElevation;
+            if (
+                rayEllipsoidNearHitToRef(
+                    camEcef,
+                    cursorDir,
+                    equatorial,
+                    equatorial,
+                    polar,
+                    zoomTarget,
+                )
+            ) {
+                movement.computedPerFrameZoomPickPoint = zoomTarget;
+            } else {
+                // 空を指している → 注視点方向（lookAt）ズームにフォールバック。
+                movement.computedPerFrameZoomPickPoint = undefined;
+            }
+        };
+
+        // ---- _recalculateCenter 用の center 再取得を scene.pick 非依存にする差し替え（Issue #327） ----
+        // ネイティブ _recalculateCenter はズーム/パン確定時に pickAlongVector(lookAt) で center を
+        // 地表へ再スナップし、その新 center に対して lookAt（ワールド注視方向）から yaw/pitch を
+        // 引き直す。これがズームのフレーム結合誤差（真下チルトでの南北東西の振れ）を打ち消す肝。
+        // しかし pickAlongVector は scene.pick（PickWithRay）に依存し、floating origin 下や海面上で
+        // ヒットせず null を返すと補正が止まり揺れが残る。そこで真の ECEF カメラ位置から lookAt 方向へ
+        // WGS84 楕円体（注視点標高 centerElevation を採用）と交差させた幾何交点を返すよう差し替える。
+        // 返り値は _recalculateCenter が参照する pickedPoint のみを持つ PickingInfo 互換オブジェクト。
+        const recalcHit = new Vector3();
+        movement.pickAlongVector = (vector: Vector3): PickingInfo | null => {
+            const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
+            const equatorial = ellipsoidSemiMajor + centerElevation;
+            const polar = ellipsoidSemiMinor + centerElevation;
+            if (rayEllipsoidNearHitToRef(camEcef, vector, equatorial, equatorial, polar, recalcHit)) {
+                const info = new PickingInfo();
+                info.hit = true;
+                info.pickedPoint = recalcHit.clone();
+                return info;
+            }
+            return null;
+        };
+
+        // ---- ズーム終了時のスナップ（急な移動）を防ぐ毎フレーム向き補正（Issue #327） ----
+        // ネイティブはズーム中、毎フレーム _applyZoom→zoomToPoint で center を動かしつつ yaw/pitch を
+        // 数値的に据え置く（center のローカルフレーム回転＝フレーム結合誤差を蓄積）。向き補正を担う
+        // _recalculateCenter は「移動が止まったフレーム」に一度だけ発火するため、蓄積誤差がズーム確定
+        // 時に一括補正され、画面が急に動いて止まる（スナップ）。zoomToPoint をラップして各ズームフレーム
+        // の直後に _recalculateCenter を強制実行し、補正を毎フレーム連続化する。これによりズーム中は
+        // 滑らかなまま、終了時のスナップが解消する。zoomToPoint はズーム時のみ呼ばれるためパン等へは
+        // 影響しない（pickAlongVector は上で floating-origin 非依存の幾何交点に差し替え済み）。
+        const cameraInternal = camera as unknown as {
+            _recalculateCenter(isCenterMoving: boolean, forceRecalculate?: boolean): void;
+        };
+        const origZoomToPoint = camera.zoomToPoint.bind(camera);
+        camera.zoomToPoint = (targetPoint, distance): void => {
+            origZoomToPoint(targetPoint, distance);
+            cameraInternal._recalculateCenter(false, true);
+        };
+
+
+        // ズーム中（ホイール入力〜慣性減衰）か否かを判定する。ホイールが idle かつ radius が
+        // フレーム間で settle したら「ズーム終了」とみなし seat を復帰させる（Issue #327）。
+        let prevRadius = camera.radius;
+        const isZoomActive = (): boolean => {
+            const radiusDelta = Math.abs(camera.radius - prevRadius);
+            const settling = radiusDelta > ZOOM_SETTLE_RATIO * Math.max(1, camera.radius);
+            prevRadius = camera.radius;
+            return performance.now() - lastWheelTimeMs < ZOOM_PAUSE_IDLE_MS || settling;
+        };
+
         const syncTiles = (): void => {
             const stats = tileManager.sync({
                 cameraEcef: computeCameraEcef(),
@@ -497,14 +668,16 @@ export class GlobeScene {
 
         // 注視点を地形表面へ追従させる（地表付近でカメラが地形下へ潜るのを防ぐ）。毎フレーム実行。
         // 追従強度はカメラの対地クリアランスでフェードし、十分高い位置では追従しない（高高度の
-        // パンで地形の起伏に沿ってカメラ高度がばたつくのを防ぐ）。`zoomToCursor=false` のため
-        // ズームは radius のみを変え center を動かさず、seat と競合しないので zoom 中もそのまま動く。
+        // パンで地形の起伏に沿ってカメラ高度がばたつくのを防ぐ）。zoom-to-cursor（Issue #327）は
+        // center を毎フレーム動かすため、ズーム中（`zoomActive`）は seat を一時停止して鉛直方向の
+        // 引っ張り合い（揺れの主因）を断つ。ズームが落ち着くと seat の lerp で滑らかに復帰する。
         // camAltMeters はカメラの楕円体高度（observer で 1 回だけ計算した値を共有）。
-        const seatCenterOnTerrain = (camAltMeters: number): void => {
+        const seatCenterOnTerrain = (camAltMeters: number, zoomActive: boolean): void => {
             const g = ecefToGeodetic(camera.center);
             const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
             if (elev === null) return;
             centerElevation = elev; // SSE 距離評価の基準標高（追従の有無に関わらず最新化）
+            if (zoomActive) return; // ズーム中は seat を止める（鉛直の引っ張り合いを断つ）
             // カメラの対地クリアランスで追従強度をフェード（FULL 以下で完全追従、ZERO 以上で停止）。
             const clearance = camAltMeters - elev;
             const seatFactor = Math.max(
@@ -563,7 +736,8 @@ export class GlobeScene {
             // わずかに動かすため衝突はその直前のスナップショットを使うが、毎フレーム補正のため実用上問題ない。
             const camEcef = computeCameraEcef(); // lookAt バッファも更新される
             const camGeo = ecefToGeodetic(camEcef);
-            seatCenterOnTerrain(camGeo.altMeters);
+            // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
+            seatCenterOnTerrain(camGeo.altMeters, isZoomActive());
             enforceGroundClearance(camEcef, camGeo);
             // マーカーの接地・距離スケール更新（フレーム共有の camEcef を渡す）。
             markerManager.update(camEcef);
