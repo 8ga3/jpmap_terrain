@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "@jest/globals";
 
-import { TILE_SIZE } from "../src/terrain/gsiTile";
+import { TILE_SIZE, NO_DATA_SENTINEL } from "../src/terrain/gsiTile";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import { pixelToLatLon, totalPixelsForZoom } from "../src/terrain/geo/mapping";
 import { sampleElevBilinear } from "../src/terrain/geo/elevSample";
@@ -47,6 +47,17 @@ describe("sampleElevBilinear", () => {
         elev[1] = 200; // (x=1,y=0)
         // (px=0.5,py=0): 上辺の 2隅のみ有効、重み 0.5/0.5 → 150。
         expect(sampleElevBilinear(elev, 0.5, 0)).toBeCloseTo(150, 6);
+    });
+
+    it("番兵値 NO_DATA_SENTINEL(-100) を無効として除外する (#339)", () => {
+        // 穴埋め残しの番兵値が有効標高として混入すると、メッシュ/terrainElevAt が
+        // -100m へ引っ張られて沈む。NaN と同様に重み計算から除外する。
+        const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);
+        elev[0] = 80; // (x=0,y=0) のみ有効
+        expect(sampleElevBilinear(elev, 0.5, 0.5)).toBeCloseTo(80, 6);
+        // 全隅が番兵なら 0 を返す（4隅すべて無効）。
+        const allSentinel = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);
+        expect(sampleElevBilinear(allSentinel, 3, 3)).toBe(0);
     });
 });
 

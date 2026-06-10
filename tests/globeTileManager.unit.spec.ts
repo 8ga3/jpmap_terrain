@@ -89,15 +89,77 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
 
 // ---- gsiTile モック（座標は単純な決定的実装、loadElevationTile は制御可能に） ----
 // 注: ecef / mapping / math.geospatial.functions / math.vector は実物のまま使う。
-jest.unstable_mockModule("../src/terrain/gsiTile", () => ({
-    TILE_SIZE: 256,
-    clamp: (v: number, min: number, max: number) => Math.min(Math.max(v, min), max),
-    toTileXY: jest.fn(() => ({ x: 100, y: 100 })),
-    tileCenterLatLon: jest.fn(() => ({ lat: 35, lon: 139 })),
-    tileEdgeMeters: jest.fn(() => 1000),
-    textureUrl: jest.fn(() => "https://example.com/tile.png"),
-    loadElevationTile: jest.fn(() => Promise.resolve(new Float32Array(256 * 256))),
-}));
+jest.unstable_mockModule("../src/terrain/gsiTile", () => {
+    const TILE_SIZE = 256;
+    const NO_DATA_SENTINEL = -100;
+    const isInvalidElev = (v: number): boolean =>
+        Number.isNaN(v) || v === NO_DATA_SENTINEL;
+    const isAllNaN = (data: Float32Array): boolean => {
+        for (let i = 0; i < data.length; i++) if (!isInvalidElev(data[i])) return false;
+        return true;
+    };
+    // 本物（gsiTile.fillInvalidPixels）と同じ BFS 穴埋め＋番兵フォールバック。
+    const fillInvalidPixels = (elev: Float32Array, width: number, height: number): void => {
+        const size = width * height;
+        const offsets: ReadonlyArray<[number, number]> = [
+            [-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1],
+        ];
+        let frontier: number[] = [];
+        for (let i = 0; i < size; i++) {
+            if (!isInvalidElev(elev[i])) continue;
+            const x = i % width;
+            const y = (i - x) / width;
+            for (const [dx, dy] of offsets) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                if (!isInvalidElev(elev[ny * width + nx])) { frontier.push(i); break; }
+            }
+        }
+        while (frontier.length > 0) {
+            const next: number[] = [];
+            for (const idx of frontier) {
+                if (!isInvalidElev(elev[idx])) continue;
+                const x = idx % width;
+                const y = (idx - x) / width;
+                let sum = 0;
+                let count = 0;
+                for (const [dx, dy] of offsets) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                    const v = elev[ny * width + nx];
+                    if (!isInvalidElev(v)) { sum += v; count++; }
+                }
+                if (count > 0) {
+                    elev[idx] = sum / count;
+                    for (const [dx, dy] of offsets) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                        const ni = ny * width + nx;
+                        if (isInvalidElev(elev[ni])) next.push(ni);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        for (let i = 0; i < size; i++) if (Number.isNaN(elev[i])) elev[i] = NO_DATA_SENTINEL;
+    };
+    return {
+        TILE_SIZE,
+        NO_DATA_SENTINEL,
+        isInvalidElev,
+        isAllNaN,
+        fillInvalidPixels,
+        clamp: (v: number, min: number, max: number) => Math.min(Math.max(v, min), max),
+        toTileXY: jest.fn(() => ({ x: 100, y: 100 })),
+        tileCenterLatLon: jest.fn(() => ({ lat: 35, lon: 139 })),
+        tileEdgeMeters: jest.fn(() => 1000),
+        textureUrl: jest.fn(() => "https://example.com/tile.png"),
+        loadElevationTile: jest.fn(() => Promise.resolve(new Float32Array(256 * 256))),
+    };
+});
 
 // ---- globeLod モック（タイル選択を決定的に制御） ----
 // マネージャはライフサイクル（ロード/ビルド/破棄）の責務を持つ。選択ロジック（高度/距離適応
@@ -569,5 +631,46 @@ describe("createGlobeTileManager", () => {
         selectedTiles = [tile(500, 500, 10)];
         mgr.sync(syncParams());
         expect(meshA.dispose).toHaveBeenCalledWith(false, true);
+    });
+
+    // ===== 標高タイルの穴埋め（Issue #339 / 平面版 #211・#221 相当） =====
+
+    it("部分欠測タイルの内部 NaN を周囲の有効標高で穴埋めする (#339)", async () => {
+        const mgr = makeManager();
+        // 1 ピクセルだけ有効(70m)で残りは全て NaN のタイル。fillInvalidPixels の BFS で
+        // タイル全体が 70m に伝播するため、どこをサンプルしても 70m になる（NaN→0 沈み無し）。
+        loadElevationTile.mockImplementation(() => {
+            const a = new Float32Array(256 * 256).fill(NaN);
+            a[0] = 70;
+            return Promise.resolve(a);
+        });
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        await flush(); // 標高到着 → loadTile で穴埋め
+        mgr.sync(syncParams());
+
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        expect(elev as number).toBeCloseTo(70, 3);
+    });
+
+    it("all-NaN タイルを同 zoom 隣接の補間結果をシードに穴埋めする (#339, #221)", async () => {
+        const mgr = makeManager();
+        // 対象タイル(gx=100)は全面 no-data(all-NaN)、右隣(gx=101)は一様 60m。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const gx = args[1] as number;
+            if (gx === 100) return Promise.resolve(new Float32Array(256 * 256).fill(NaN));
+            return Promise.resolve(new Float32Array(256 * 256).fill(60));
+        });
+        selectedTiles = [tile(100, 100, 10), tile(101, 100, 10)];
+        mgr.sync(syncParams());
+        await flush(); // 両タイル到着。100 は allNanGeom 入り、101 は穴埋め済み
+        // 1 回目: refineAllNaNTiles が隣接 60m をシードに 100 を補間する。
+        mgr.sync(syncParams());
+
+        // terrainElevAt は toTileXY モックで常に (100,100) を参照する。補間後は 60m。
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        expect(elev as number).toBeCloseTo(60, 3);
     });
 });
