@@ -316,7 +316,9 @@ export const createGlobeTileManager = (
                 // - 部分欠測（一部 NaN）: 自タイル内の有効ピクセルから BFS で内部の穴を即補間。
                 // - all-NaN（全面 no-data: 大きな湖など）: 自タイルにシードが無いため即補間できない。
                 //   `allNanGeom` に記録し、隣接の補間結果が揃い次第 `refineAllNaNTiles` で補間する。
-                //   それまでは生 NaN のまま格納し（globeMesh が海面 0m へ倒す＝従来挙動）暫定表示する。
+                //   それまでは生 NaN のまま格納するが、確定前に建築要求が来た場合は `buildReadyTiles`
+                //   が暫定代表標高（粗ズーム祖先 ?? 隣接接線 ?? 直近代表標高）で平坦建築するため、
+                //   0m クレーター（海面）には倒さない（確定後に署名差分で再建築）。
                 if (isAllNaN(elev)) {
                     allNanGeom.add(gk);
                 } else {
