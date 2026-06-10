@@ -595,16 +595,19 @@ export class GlobeScene {
         // ヒットせず null を返すと補正が止まり揺れが残る。そこで真の ECEF カメラ位置から lookAt 方向へ
         // WGS84 楕円体（注視点標高 centerElevation を採用）と交差させた幾何交点を返すよう差し替える。
         // 返り値は _recalculateCenter が参照する pickedPoint のみを持つ PickingInfo 互換オブジェクト。
-        const recalcHit = new Vector3();
+        // ズーム中は zoomToPoint ラップ経由で毎フレーム呼ばれるため、PickingInfo / pickedPoint は
+        // 事前確保して使い回し、フレーム毎の割り当て・GC ジッタを避ける。
+        const recalcPickedPoint = new Vector3();
+        const recalcPickInfo = new PickingInfo();
+        recalcPickInfo.pickedPoint = recalcPickedPoint;
         movement.pickAlongVector = (vector: Vector3): PickingInfo | null => {
             const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
             const equatorial = ellipsoidSemiMajor + centerElevation;
             const polar = ellipsoidSemiMinor + centerElevation;
-            if (rayEllipsoidNearHitToRef(camEcef, vector, equatorial, equatorial, polar, recalcHit)) {
-                const info = new PickingInfo();
-                info.hit = true;
-                info.pickedPoint = recalcHit.clone();
-                return info;
+            if (rayEllipsoidNearHitToRef(camEcef, vector, equatorial, equatorial, polar, recalcPickedPoint)) {
+                recalcPickInfo.hit = true;
+                recalcPickInfo.pickedPoint = recalcPickedPoint;
+                return recalcPickInfo;
             }
             return null;
         };
