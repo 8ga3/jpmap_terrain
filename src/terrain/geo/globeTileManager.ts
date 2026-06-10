@@ -720,11 +720,19 @@ export const createGlobeTileManager = (
             }
             const { zoom: gz, x: gx, y: gy } = parseKey(gk);
             const neighbors: StitchNeighbors = {};
+            let hasNeighbor = false;
             for (const [dx, dy, dir] of allNanNeighborOffsets) {
-                const nElev = elevCache.get(tileKey(gz, gx + dx, gy + dy));
-                // 未解決 all-NaN 隣接（全 NaN）はシードにならず `nanMean` で自然に除外される。
-                if (nElev) neighbors[dir] = nElev;
+                const nKey = tileKey(gz, gx + dx, gy + dy);
+                const nElev = elevCache.get(nKey);
+                if (!nElev) continue;
+                neighbors[dir] = nElev;
+                // 未解決 all-NaN 隣接（全 NaN）はシードにならない（stitch では nanMean で
+                // 自然に除外される）ため、コピー要否の判定では有効隣接として数えない。
+                if (!allNanGeom.has(nKey)) hasNeighbor = true;
             }
+            // シード源となる隣接が一つも無ければ stitch しても all-NaN のまま。
+            // 大きな湖で all-NaN タイルが多い場合の無駄な 256x256 コピーを避ける（#339 レビュー指摘）。
+            if (!hasNeighbor) return false;
             const copy = Float32Array.from(target);
             stitchTileEdges(copy, neighbors, TILE_SIZE);
             if (isAllNaN(copy)) return false; // まだシード無し。
