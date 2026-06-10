@@ -25,8 +25,11 @@ import {
     textureUrl,
     toTileXY,
     TILE_SIZE,
+    isAllNaN,
+    fillInvalidPixels,
     type MapType,
 } from "../gsiTile";
+import { stitchTileEdges, type StitchNeighbors } from "../tileStitching";
 import { ecefToGeodetic } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
@@ -212,6 +215,10 @@ export const createGlobeTileManager = (
     const loading = new Set<string>();
     // クロスレベルスナップのため、ビルド後も標高配列を保持する（隣接細タイルが参照）。
     const elevCache = new Map<string, Float32Array>();
+    // 元データが all-NaN（湖面・no-data 領域全面）だった geom タイルキーの集合（#339）。
+    // 取得直後は隣接が未ロードでシードが無いため穴埋めできない。隣接の補間結果が揃い次第
+    // `refineAllNaNTiles` で同 zoom 隣接からシードして反復補間する。解決したらこの集合から外す。
+    const allNanGeom = new Set<string>();
     // 取得失敗した geom タイルのバックオフ状態（キー → 再試行可能時刻[ms] と試行回数）。
     // `loadElevationTile` は no-data(404) と一時的なネットワーク障害の双方で throw し、
     // 投げられたエラーから両者を区別できない。失敗を永続化すると一時障害でも地形が恒久
@@ -280,6 +287,17 @@ export const createGlobeTileManager = (
                 // （不要・dispose 済みマネージャの状態を書き戻さない）。
                 if (!loading.has(gk)) return;
                 loading.delete(gk);
+                // 穴埋め（#339, 平面版 #211/#221 相当）。
+                // - 部分欠測（一部 NaN）: 自タイル内の有効ピクセルから BFS で内部の穴を即補間。
+                // - all-NaN（全面 no-data: 大きな湖など）: 自タイルにシードが無いため即補間できない。
+                //   `allNanGeom` に記録し、隣接の補間結果が揃い次第 `refineAllNaNTiles` で補間する。
+                //   それまでは生 NaN のまま格納し（globeMesh が海面 0m へ倒す＝従来挙動）暫定表示する。
+                if (isAllNaN(elev)) {
+                    allNanGeom.add(gk);
+                } else {
+                    fillInvalidPixels(elev, TILE_SIZE, TILE_SIZE);
+                    allNanGeom.delete(gk);
+                }
                 elevCache.set(gk, elev);
                 failedRetryAt.delete(gk); // 回復したのでバックオフ状態を解消
             })
@@ -506,6 +524,58 @@ export const createGlobeTileManager = (
             // Case 3: 同 zoom の新タイルが同キーで ready なら不要。
             const same = loaded.get(key);
             if (same && isMeshTextureReady(same)) releasePendingTile(key);
+        }
+    };
+
+    /** 表示タイルキー `"z/x/y"` → 共有する geom 標高タイルキー（z16-18 は z15 祖先を共有）。 */
+    const geomKeyOfDisplay = (key: string): string => {
+        const { zoom, x, y } = parseKey(key);
+        const gz = Math.min(zoom, geomMaxZoom);
+        const d = zoom - gz;
+        return tileKey(gz, x >> d, y >> d);
+    };
+
+    /**
+     * 元データが all-NaN（全面 no-data）だった geom タイルを、同 zoom 隣接の補間結果を
+     * シードに穴埋めする（#339, 平面版 #221 相当）。
+     *
+     * - 隣接 8 タイル（同 geom zoom）を `stitchTileEdges` で境界辺に縫い合わせてシードを得る。
+     * - シードが入れば（縫い合わせ後に有効ピクセルが現れれば）`fillInvalidPixels` で内部へ伝播。
+     * - 解決したら `elevCache` を更新し `allNanGeom` から外し、該当表示タイルの建築署名を
+     *   無効化して次の `buildReadyTiles` で実標高へ再建築させる。
+     * - 隣接がまだ揃わずシードが得られないタイルは未解決のまま残し、次 sync で再試行する
+     *   （隣接が波状に解決するたびに 1 リング分ずつ前進し、最終的に収束する）。
+     */
+    const refineAllNaNTiles = (): void => {
+        if (allNanGeom.size === 0) return;
+        const neighborOffsets: ReadonlyArray<[number, number, keyof StitchNeighbors]> = [
+            [0, -1, "top"], [0, 1, "bottom"], [-1, 0, "left"], [1, 0, "right"],
+            [-1, -1, "topLeft"], [1, -1, "topRight"], [-1, 1, "bottomLeft"], [1, 1, "bottomRight"],
+        ];
+        for (const gk of [...allNanGeom]) {
+            const target = elevCache.get(gk);
+            if (!target) {
+                // 退避済み（視界外）。再ロード時に再評価されるのでここでは外すだけ。
+                allNanGeom.delete(gk);
+                continue;
+            }
+            const { zoom: gz, x: gx, y: gy } = parseKey(gk);
+            const neighbors: StitchNeighbors = {};
+            for (const [dx, dy, dir] of neighborOffsets) {
+                const nElev = elevCache.get(tileKey(gz, gx + dx, gy + dy));
+                // 未解決 all-NaN 隣接（全 NaN）はシードにならず `nanMean` で自然に除外される。
+                if (nElev) neighbors[dir] = nElev;
+            }
+            const copy = Float32Array.from(target);
+            stitchTileEdges(copy, neighbors, TILE_SIZE);
+            if (isAllNaN(copy)) continue; // まだシード無し。次 sync で再試行。
+            fillInvalidPixels(copy, TILE_SIZE, TILE_SIZE);
+            elevCache.set(gk, copy);
+            allNanGeom.delete(gk);
+            // この geom を共有する建築済み表示タイルを再建築対象にする（実標高へ差し替え）。
+            for (const key of [...builtEdgeSig.keys()]) {
+                if (geomKeyOfDisplay(key) === gk) builtEdgeSig.delete(key);
+            }
         }
     };
 
@@ -758,7 +828,10 @@ export const createGlobeTileManager = (
             }),
         );
         for (const key of elevCache.keys()) {
-            if (!neededGeom.has(key)) elevCache.delete(key);
+            if (!neededGeom.has(key)) {
+                elevCache.delete(key);
+                allNanGeom.delete(key);
+            }
         }
         // 不要になった in-flight ロードを loading から外す。これにより、その後 resolve した
         // 結果は loadTile の then/catch ゲート（loading.has）で無視され、不要な geom が
@@ -773,6 +846,8 @@ export const createGlobeTileManager = (
         }
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
+        // 隣接が揃った all-NaN タイルを補間してから建築（#339）。
+        refineAllNaNTiles();
         buildReadyTiles(tiles);
 
         // 新規ロードが発生しない再 sync（同一可視集合での再評価など）では loadTile 経路の
@@ -903,6 +978,7 @@ export const createGlobeTileManager = (
         builtEdgeSig.clear();
         loading.clear();
         elevCache.clear();
+        allNanGeom.clear();
         failedRetryAt.clear();
         newlyFailed.length = 0;
         desiredKeys = new Set<string>();
