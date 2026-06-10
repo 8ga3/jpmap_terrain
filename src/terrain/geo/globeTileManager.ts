@@ -54,6 +54,23 @@ const FAILED_RETRY_MAX_MS = 5 * 60_000;
 const retryBackoffMs = (attempts: number): number =>
     Math.min(FAILED_RETRY_MAX_MS, FAILED_RETRY_BASE_MS * 2 ** (attempts - 1));
 
+/**
+ * LOD 遷移中に残した旧タイルを強制解放するまでのタイムアウト [ms]（平面版 #281 と同値）。
+ * 新タイルのテクスチャ/標高が揃わずカバー判定が成立しない場合の安全網。短すぎると遷移途中で
+ * 背景球が見え、長すぎると古い LOD のタイルが残ってちらつく。
+ */
+const PENDING_RELEASE_TIMEOUT_MS = 5_000;
+
+/**
+ * LOD シームレス遷移（pendingRelease / hiddenChild / カバー判定）で祖先タイルを探索する際の
+ * 最下限 zoom。manager の `minZoom`（標高が視覚的に意味を持つ下限。グローブ既定 11）とは別概念で、
+ * selectGlobeTiles は `rootZoomFloor`(既定 2) まで粗いタイルを返すため、祖先探索を `minZoom` で
+ * 打ち切ると zoom 11 未満の LOD 遷移で祖先が一切見つからず、旧タイルが即破棄されて背景球が
+ * ちらつく（#330）。四分木の全祖先を対象にするため floor は 0 とする（探索回数は最大でも zoom 段数）。
+ */
+const SEAMLESS_FLOOR_ZOOM = 0;
+
+
 export interface GlobeTileManagerOptions {
     /** タイルメッシュを生成するシーン。 */
     scene: Scene;
@@ -113,6 +130,21 @@ export interface GlobeTileSyncStats {
     loadingCount: number;
 }
 
+/**
+ * LOD 遷移中に画面へ残す旧タイル（平面版 #281 の PendingReleaseTile 相当）。
+ * 新タイルが描画可能になるまで表示を維持し、カバー完了 or タイムアウトで解放する。
+ */
+interface PendingTile {
+    /** 表示を維持する旧メッシュ。 */
+    mesh: Mesh;
+    /** 旧タイルの zoom/x/y（祖先・子孫判定に使う）。 */
+    zoom: number;
+    x: number;
+    y: number;
+    /** 強制解放用タイマーID。 */
+    timerId: ReturnType<typeof setTimeout>;
+}
+
 export interface GlobeTileManager {
     /** カメラ状態に応じて可視タイルを再選択し、ロード/ビルド/破棄する。 */
     sync: (params: GlobeTileSyncParams) => GlobeTileSyncStats;
@@ -153,6 +185,23 @@ export const createGlobeTileManager = (
     const newlyFailed: string[] = [];
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
+
+    // --- LOD シームレス遷移（Issue #330 / 平面版 #281 同等） ---
+    // LOD 切替で不要になった旧タイルを即破棄せず、新タイルが描画可能になるまで画面に残す。
+    // これにより zoom-in/out の遷移中にタイルが欠けて背景球が見える/ちらつくのを防ぐ。
+    const pendingRelease = new Map<string, PendingTile>();
+    // pendingRelease の子孫候補を高速に引くための祖先インデックス（祖先キー → pending キー集合）。
+    const pendingAncestorIndex = new Map<string, Set<string>>();
+    // 祖先タイルが pendingRelease 中のため、テクスチャが揃っても非表示で待機している子タイルキー。
+    // 4枚（=旧粗タイル領域）が揃ったタイミングで一斉に表示して旧タイルを解放する（原子的スワップ）。
+    const hiddenChildTiles = new Set<string>();
+    // テクスチャ（onLoad/onError）到達で「描画可能」になったメッシュ集合。
+    // mesh.isEnabled() とは独立に持つ（hiddenChild は描画可能だが非表示のため）。
+    const readyMeshes = new Set<Mesh>();
+    // 現在の可視タイルの全祖先キー集合（isAreaCovered / hasZoomRelation の枝刈り用）。
+    let visibleAncestorKeys = new Set<string>();
+    // 現在の可視タイルの最大 zoom（zoom-in カバー判定の targetZoom）。
+    let currentMaxZoom = minZoom;
 
     /** 描画タイル(zoom 最大18) → ジオメトリ用標高タイル(最大 geomMaxZoom=15)の対応。 */
     const geomCoordOf = (t: GlobeTile): { gz: number; gx: number; gy: number } => {
@@ -226,6 +275,199 @@ export const createGlobeTileManager = (
         vertexData.uvs = data.uvs;
         vertexData.applyToMesh(mesh);
         mesh.position.copyFrom(data.anchor);
+    };
+
+    // ===== LOD シームレス遷移ヘルパ（平面版 tileManager.ts の同名関数を移植） =====
+
+    /** タイルキー `"z/x/y"` を数値へ分解する。 */
+    const parseKey = (key: string): { zoom: number; x: number; y: number } => {
+        const [z, x, y] = key.split("/");
+        return { zoom: Number(z), x: Number(x), y: Number(y) };
+    };
+
+    /**
+     * メッシュのテクスチャが描画可能（onLoad/onError 到達済み）か。
+     * mesh.isEnabled() とは独立に判定する（hiddenChild は描画可能だが非表示のため）。
+     */
+    const isMeshTextureReady = (mesh: Mesh): boolean => readyMeshes.has(mesh);
+
+    /** メッシュを破棄し、付随する状態（readyMeshes / builtEdgeSig）も片付ける。 */
+    const disposeMesh = (key: string, mesh: Mesh): void => {
+        readyMeshes.delete(mesh);
+        mesh.dispose(false, true); // マテリアル・テクスチャごと破棄
+        builtEdgeSig.delete(key);
+    };
+
+    /** pendingRelease に登録し、祖先インデックスも更新する。 */
+    const addPendingRelease = (key: string, entry: PendingTile): void => {
+        pendingRelease.set(key, entry);
+        for (let az = entry.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+            const diff = entry.zoom - az;
+            const ak = tileKey(az, entry.x >> diff, entry.y >> diff);
+            let s = pendingAncestorIndex.get(ak);
+            if (!s) {
+                s = new Set();
+                pendingAncestorIndex.set(ak, s);
+            }
+            s.add(key);
+        }
+    };
+
+    /** pendingRelease から削除し、祖先インデックスも更新する。 */
+    const removePendingRelease = (key: string): PendingTile | undefined => {
+        const entry = pendingRelease.get(key);
+        if (!entry) return undefined;
+        pendingRelease.delete(key);
+        for (let az = entry.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+            const diff = entry.zoom - az;
+            const ak = tileKey(az, entry.x >> diff, entry.y >> diff);
+            const s = pendingAncestorIndex.get(ak);
+            if (s) {
+                s.delete(key);
+                if (s.size === 0) pendingAncestorIndex.delete(ak);
+            }
+        }
+        return entry;
+    };
+
+    /** pendingRelease から単一タイルを解放する（メッシュを破棄）。 */
+    const releasePendingTile = (key: string): void => {
+        const pending = pendingRelease.get(key);
+        if (!pending) return;
+        clearTimeout(pending.timerId);
+        // 強制解放時は、待機中の子孫タイルを hiddenChildTiles から外して表示可能にする。
+        // テクスチャ未 ready のメッシュは onLoad 側で表示されるため、ここでは ready のもののみ表示。
+        const toRemove: string[] = [];
+        for (const dk of hiddenChildTiles) {
+            const c = parseKey(dk);
+            if (c.zoom <= pending.zoom) continue;
+            const diff = c.zoom - pending.zoom;
+            if ((c.x >> diff) === pending.x && (c.y >> diff) === pending.y) {
+                toRemove.push(dk);
+            }
+        }
+        for (const dk of toRemove) {
+            hiddenChildTiles.delete(dk);
+            const mesh = loaded.get(dk);
+            if (mesh && isMeshTextureReady(mesh)) mesh.setEnabled(true);
+        }
+        disposeMesh(key, pending.mesh);
+        removePendingRelease(key);
+    };
+
+    /**
+     * 指定矩形領域が loaded タイルで完全カバーされているか再帰的に判定する（平面版 isAreaCovered）。
+     * - loaded に存在しテクスチャ ready → カバー済み
+     * - loaded に存在するが未 ready → 未カバー（描画穴防止）
+     * - desiredKeys に存在するが loaded に無い → 未カバー
+     * - desiredKeys に無く targetZoom 到達 → frustum 外でカバー不要
+     * - 可視タイルの祖先でなければカバー不要
+     */
+    const isAreaCovered = (
+        areaZoom: number,
+        ax: number,
+        ay: number,
+        targetZoom: number,
+    ): boolean => {
+        const areaKey = tileKey(areaZoom, ax, ay);
+        const mesh = loaded.get(areaKey);
+        if (mesh) return isMeshTextureReady(mesh);
+        if (desiredKeys.has(areaKey)) return false;
+        if (areaZoom >= targetZoom) return true;
+        if (!visibleAncestorKeys.has(areaKey)) return true;
+        const cz = areaZoom + 1;
+        return (
+            isAreaCovered(cz, ax * 2, ay * 2, targetZoom) &&
+            isAreaCovered(cz, ax * 2 + 1, ay * 2, targetZoom) &&
+            isAreaCovered(cz, ax * 2, ay * 2 + 1, targetZoom) &&
+            isAreaCovered(cz, ax * 2 + 1, ay * 2 + 1, targetZoom)
+        );
+    };
+
+    /** 指定矩形領域内の hiddenChildTiles を一斉に表示状態にする（平面版 enableDescendants）。 */
+    const enableDescendants = (areaZoom: number, ax: number, ay: number): void => {
+        const toRemove: string[] = [];
+        for (const dk of hiddenChildTiles) {
+            const c = parseKey(dk);
+            if (c.zoom < areaZoom) continue;
+            const diff = c.zoom - areaZoom;
+            if ((c.x >> diff) === ax && (c.y >> diff) === ay) {
+                toRemove.push(dk);
+            }
+        }
+        for (const dk of toRemove) {
+            hiddenChildTiles.delete(dk);
+            const mesh = loaded.get(dk);
+            if (mesh && isMeshTextureReady(mesh)) mesh.setEnabled(true);
+        }
+    };
+
+    /**
+     * 新タイルが描画可能になったとき、カバーされた旧 pending タイルを解放する（平面版同等）。
+     * Case 1 (zoom-in): 旧粗タイル領域が子孫新タイルで完全カバー → 子孫一斉表示 + 親解放。
+     * Case 2 (zoom-out): 旧細タイルの祖先タイルが ready → 即解放。
+     * Case 3 (同 zoom): 同キーが ready → 解放。
+     * `loadedCoord` 指定時は関連 pending のみ判定（高速化）。未指定時は全 pending。
+     */
+    const checkAndReleaseCoveredTiles = (loadedCoord?: {
+        zoom: number;
+        x: number;
+        y: number;
+    }): void => {
+        let candidateKeys: Iterable<string>;
+        if (loadedCoord) {
+            const cands = new Set<string>();
+            cands.add(tileKey(loadedCoord.zoom, loadedCoord.x, loadedCoord.y));
+            for (let az = loadedCoord.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+                const diff = loadedCoord.zoom - az;
+                const ak = tileKey(az, loadedCoord.x >> diff, loadedCoord.y >> diff);
+                if (pendingRelease.has(ak)) cands.add(ak);
+            }
+            const descendants = pendingAncestorIndex.get(
+                tileKey(loadedCoord.zoom, loadedCoord.x, loadedCoord.y),
+            );
+            if (descendants) for (const dk of descendants) cands.add(dk);
+            candidateKeys = cands;
+        } else {
+            candidateKeys = Array.from(pendingRelease.keys());
+        }
+
+        for (const key of candidateKeys) {
+            const pending = pendingRelease.get(key);
+            if (!pending) continue;
+            const { zoom: pz, x: px, y: py } = pending;
+
+            // Case 1: 旧粗タイル領域が子孫新タイルで完全カバー（zoom-in）。
+            if (pz < currentMaxZoom && visibleAncestorKeys.has(key)) {
+                if (isAreaCovered(pz, px, py, currentMaxZoom)) {
+                    enableDescendants(pz + 1, px * 2, py * 2);
+                    enableDescendants(pz + 1, px * 2 + 1, py * 2);
+                    enableDescendants(pz + 1, px * 2, py * 2 + 1);
+                    enableDescendants(pz + 1, px * 2 + 1, py * 2 + 1);
+                    releasePendingTile(key);
+                    continue;
+                }
+            }
+
+            // Case 2: 旧細タイルが ready な祖先タイルでカバー（zoom-out, 多段対応）。
+            let ancestorFound = false;
+            for (let az = pz - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+                const diff = pz - az;
+                const am = loaded.get(tileKey(az, px >> diff, py >> diff));
+                if (am && isMeshTextureReady(am)) {
+                    ancestorFound = true;
+                    break;
+                }
+            }
+            if (ancestorFound) {
+                releasePendingTile(key);
+                continue;
+            }
+
+            // Case 3: 同 zoom の新タイルが同キーで ready なら不要。
+            const same = loaded.get(key);
+            if (same && isMeshTextureReady(same)) releasePendingTile(key);
+        }
     };
 
     /** geom 標高が揃った desired タイルをメッシュ化する。 */
@@ -316,6 +558,19 @@ export const createGlobeTileManager = (
             // onLoad / onError 到着時に表示する（背景球が代わりに見える）。#330
             mesh.setEnabled(false);
 
+            // 祖先タイルが pendingRelease 中なら、この子タイルは非表示待機として登録する（#281）。
+            // テクスチャ onLoad での表示を抑止し、旧粗タイル解放と同時に一斉表示して原子的に
+            // スワップする（レベルの違うタイルの重なりちらつきを防ぐ）。多段 zoom も全祖先を確認。
+            let isHiddenChild = false;
+            for (let az = t.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+                const diff = t.zoom - az;
+                if (pendingRelease.has(tileKey(az, t.x >> diff, t.y >> diff))) {
+                    isHiddenChild = true;
+                    break;
+                }
+            }
+            if (isHiddenChild) hiddenChildTiles.add(k);
+
             // GPU テクスチャが確実に生成された onLoad 内で diffuseTexture を設定する
             // （WebGPU の "null gpu texture bind" を避ける。平面版 tileManager と同様）。
             // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
@@ -332,13 +587,23 @@ export const createGlobeTileManager = (
                         return;
                     }
                     mat.diffuseTexture = tex;
-                    mesh.setEnabled(true);
+                    // 描画可能になったことを記録（isAreaCovered / カバー判定で参照）。
+                    readyMeshes.add(mesh);
+                    // 非表示待機中（祖先が pendingRelease 中）の子タイルは表示しない。
+                    if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
+                    // このタイルでカバーされた旧 pending タイルを解放する。
+                    checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
                 },
                 // onError: ロード失敗（404/ネットワーク断等）時は Texture を破棄してリークを防ぐ。
                 // テクスチャなし（白）でもホールより良いので mesh は表示する。
                 () => {
                     tex.dispose();
-                    if (!mesh.isDisposed()) mesh.setEnabled(true);
+                    if (mesh.isDisposed()) return;
+                    readyMeshes.add(mesh);
+                    // テクスチャ無しでも描画可能扱い。非表示待機を解除して表示する。
+                    hiddenChildTiles.delete(k);
+                    mesh.setEnabled(true);
+                    checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
                 },
             );
             tex.wrapU = Texture.CLAMP_ADDRESSMODE;
@@ -370,6 +635,73 @@ export const createGlobeTileManager = (
             rootZoomFloor: params.rootZoomFloor,
         });
         desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
+        // 可視タイルの全祖先キー集合と最大 zoom を構築（カバー判定・zoom 階層判定に使う）。
+        visibleAncestorKeys = new Set<string>();
+        currentMaxZoom = SEAMLESS_FLOOR_ZOOM;
+        for (const t of tiles) {
+            if (t.zoom > currentMaxZoom) currentMaxZoom = t.zoom;
+            for (let az = t.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+                const diff = t.zoom - az;
+                visibleAncestorKeys.add(tileKey(az, t.x >> diff, t.y >> diff));
+            }
+        }
+        /**
+         * 旧タイルが新可視タイル群と zoom 階層関係にあるか（祖先 or 子孫が可視）。
+         * いずれでもなければ単なる横パン外なので pendingRelease せず即破棄する（フレーム落ち対策）。
+         */
+        const hasZoomRelation = (z: number, x: number, y: number): boolean => {
+            for (let az = z - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+                const diff = z - az;
+                if (desiredKeys.has(tileKey(az, x >> diff, y >> diff))) return true;
+            }
+            return visibleAncestorKeys.has(tileKey(z, x, y));
+        };
+
+        // 不要になったメッシュを処理: zoom 階層関係があれば pendingRelease で表示を維持し、
+        // なければ即破棄する（平面版 #281 の applyVisibleTiles 同等）。
+        for (const [key, mesh] of loaded) {
+            if (desiredKeys.has(key)) continue;
+            const c = parseKey(key);
+            // 非表示待機中(hiddenChild)のメッシュは描画されていないので pending にせず即破棄。
+            const wasHidden = hiddenChildTiles.has(key);
+            hiddenChildTiles.delete(key);
+            if (
+                !wasHidden &&
+                isMeshTextureReady(mesh) &&
+                hasZoomRelation(c.zoom, c.x, c.y)
+            ) {
+                if (!pendingRelease.has(key)) {
+                    const timerId = setTimeout(
+                        () => releasePendingTile(key),
+                        PENDING_RELEASE_TIMEOUT_MS,
+                    );
+                    // builtEdgeSig は残す（再可視化で復元する際の不要な再構築を避ける）。
+                    addPendingRelease(key, { mesh, zoom: c.zoom, x: c.x, y: c.y, timerId });
+                }
+            } else {
+                disposeMesh(key, mesh);
+            }
+            loaded.delete(key);
+        }
+
+        // pendingRelease にあるタイルが再び可視になった場合、loaded に復元する。
+        for (const key of desiredKeys) {
+            const pending = pendingRelease.get(key);
+            if (pending) {
+                clearTimeout(pending.timerId);
+                loaded.set(key, pending.mesh);
+                removePendingRelease(key);
+            }
+        }
+
+        // 現在の可視タイル群ともはや zoom 階層関係が無い stale な pending を即時解放する
+        // （視界が連続して変わった場合にタイムアウトまで滞留してちらつくのを防ぐ）。
+        for (const [key, pending] of pendingRelease) {
+            if (!hasZoomRelation(pending.zoom, pending.x, pending.y)) {
+                releasePendingTile(key);
+            }
+        }
+        // 不要になった geom 標高キャッシュを破棄（必要 geom キー集合で判定）。
         // 必要な geom 標高タイルのキー集合（z16-18 は z15 祖先を共有）。
         const neededGeom = new Set(
             tiles.map((t) => {
@@ -377,16 +709,6 @@ export const createGlobeTileManager = (
                 return tileKey(gz, gx, gy);
             }),
         );
-
-        // 不要になったメッシュを破棄。
-        for (const [key, mesh] of loaded) {
-            if (!desiredKeys.has(key)) {
-                mesh.dispose(false, true); // マテリアル・テクスチャごと破棄
-                loaded.delete(key);
-                builtEdgeSig.delete(key);
-            }
-        }
-        // 不要になった geom 標高キャッシュを破棄（必要 geom キー集合で判定）。
         for (const key of elevCache.keys()) {
             if (!neededGeom.has(key)) elevCache.delete(key);
         }
@@ -404,6 +726,12 @@ export const createGlobeTileManager = (
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
         buildReadyTiles(tiles);
+
+        // 新規ロードが発生しない再 sync（同一可視集合での再評価など）では loadTile 経路の
+        // checkAndReleaseCoveredTiles が呼ばれず、既に祖先/子孫が揃った pending が
+        // タイムアウトまで滞留しうる。全 pending を対象に再判定し即時解放する（#281 同等）。
+        if (pendingRelease.size > 0) checkAndReleaseCoveredTiles();
+
 
         // 新規取得失敗を 1 行へ間引いて出力（per-tile 警告の氾濫を防ぐ）。失敗要因は
         // no-data/404 と一時的なネットワーク障害の双方があり区別しないため、中立な文言にする。
@@ -438,6 +766,16 @@ export const createGlobeTileManager = (
     const dispose = (): void => {
         for (const mesh of loaded.values()) mesh.dispose(false, true);
         loaded.clear();
+        // LOD 遷移中に残した pending タイルのタイマー解除＋メッシュ破棄。
+        for (const pending of pendingRelease.values()) {
+            clearTimeout(pending.timerId);
+            pending.mesh.dispose(false, true);
+        }
+        pendingRelease.clear();
+        pendingAncestorIndex.clear();
+        hiddenChildTiles.clear();
+        readyMeshes.clear();
+        visibleAncestorKeys = new Set<string>();
         builtEdgeSig.clear();
         loading.clear();
         elevCache.clear();

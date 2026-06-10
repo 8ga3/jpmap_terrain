@@ -309,4 +309,139 @@ describe("createGlobeTileManager", () => {
         mgr.dispose();
         expect(mesh.dispose).toHaveBeenCalledWith(false, true);
     });
+
+    // ===== LOD シームレス遷移（Issue #330 / 平面版 #281 同等） =====
+
+    it("zoom-out: 低レベル(親)タイルが描画可能になるまで高レベル(子)タイルを保持する", async () => {
+        const mgr = makeManager();
+        // zoom 11 の子 4 枚（親 100/100@z10 を完全カバー）。
+        selectedTiles = [
+            tile(200, 200, 11), tile(201, 200, 11),
+            tile(200, 201, 11), tile(201, 201, 11),
+        ];
+        mgr.sync(syncParams()); // 子の標高ロード
+        await flush();
+        mgr.sync(syncParams()); // 子 4 枚を建築
+        expect(MeshMock).toHaveBeenCalledTimes(4);
+        const childMeshes = [0, 1, 2, 3].map(
+            (i) => MeshMock.mock.results[i].value as { isEnabled: () => boolean; dispose: jest.Mock },
+        );
+        // 子のテクスチャ到着 → 表示。
+        capturedTextures.slice(0, 4).forEach((t) => t.onLoad?.());
+        childMeshes.forEach((m) => expect(m.isEnabled()).toBe(true));
+
+        // zoom-out: 親 z10 へ。親の標高はまだロード中なので親は建築されない。
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        // 子は pendingRelease で保持され、まだ破棄されない（背景球が見えない）。
+        childMeshes.forEach((m) => expect(m.dispose).not.toHaveBeenCalled());
+
+        await flush(); // 親の標高到着
+        mgr.sync(syncParams()); // 親メッシュ建築（非表示で待機）
+        expect(MeshMock).toHaveBeenCalledTimes(5);
+        const parentMesh = MeshMock.mock.results[4].value as { isEnabled: () => boolean };
+        // 親が描画可能になる前は子をまだ保持。
+        childMeshes.forEach((m) => expect(m.dispose).not.toHaveBeenCalled());
+
+        // 親のテクスチャ到着 → 親表示 + 旧子タイルを一斉解放。
+        capturedTextures[4].onLoad?.();
+        expect(parentMesh.isEnabled()).toBe(true);
+        childMeshes.forEach((m) => expect(m.dispose).toHaveBeenCalledWith(false, true));
+    });
+
+    it("zoom-in: 新レベル(子)が全て揃うまで旧(親)を保持し、原子的にスワップする", async () => {
+        const mgr = makeManager();
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams()); // 親 1 枚を建築
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+        const parent = MeshMock.mock.results[0].value as { isEnabled: () => boolean; dispose: jest.Mock };
+        capturedTextures[0].onLoad?.();
+        expect(parent.isEnabled()).toBe(true);
+
+        // zoom-in: 子 4 枚へ。
+        selectedTiles = [
+            tile(200, 200, 11), tile(201, 200, 11),
+            tile(200, 201, 11), tile(201, 201, 11),
+        ];
+        mgr.sync(syncParams()); // 親 → pendingRelease、子の標高ロード
+        expect(parent.dispose).not.toHaveBeenCalled();
+
+        await flush();
+        mgr.sync(syncParams()); // 子 4 枚を建築（祖先が pending なので非表示待機）
+        expect(MeshMock).toHaveBeenCalledTimes(5);
+        const children = [1, 2, 3, 4].map(
+            (i) => MeshMock.mock.results[i].value as { isEnabled: () => boolean },
+        );
+        // 子はテクスチャ前は非表示。親も継続表示（穴を作らない）。
+        children.forEach((m) => expect(m.isEnabled()).toBe(false));
+        expect(parent.dispose).not.toHaveBeenCalled();
+
+        // 子のうち 3 枚だけ到着 → まだ非表示・親保持（レベル違いの重なりを防ぐ）。
+        capturedTextures.slice(1, 4).forEach((t) => t.onLoad?.());
+        children.slice(0, 3).forEach((m) => expect(m.isEnabled()).toBe(false));
+        expect(parent.dispose).not.toHaveBeenCalled();
+
+        // 4 枚目到着 → 原子的スワップ：子を一斉表示し、親を解放。
+        capturedTextures[4].onLoad?.();
+        children.forEach((m) => expect(m.isEnabled()).toBe(true));
+        expect(parent.dispose).toHaveBeenCalledWith(false, true);
+    });
+
+    it("zoom-in: minZoom 未満の親(粗タイル)でも子が揃うまで保持し原子スワップする (#330 回帰)", async () => {
+        // minZoom=10。親 z8・子 z9 はいずれも minZoom 未満。祖先探索の下限を minZoom に
+        // すると hasZoomRelation/visibleAncestorKeys が空になり、親が即破棄されて背景球が
+        // 露出した（#330 のズームアップちらつき）。SEAMLESS_FLOOR_ZOOM=0 で全 zoom を橋渡し。
+        const mgr = makeManager();
+        selectedTiles = [tile(50, 50, 8)];
+        mgr.sync(syncParams()); // zoom<minZoom は標高待ちせず即建築。
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+        const parent = MeshMock.mock.results[0].value as {
+            isEnabled: () => boolean;
+            dispose: jest.Mock;
+        };
+        capturedTextures[0].onLoad?.();
+        expect(parent.isEnabled()).toBe(true);
+
+        // zoom-in: z9 の子 4 枚（親 50/50@z8 を完全カバー）。
+        selectedTiles = [
+            tile(100, 100, 9), tile(101, 100, 9),
+            tile(100, 101, 9), tile(101, 101, 9),
+        ];
+        mgr.sync(syncParams()); // 親 → pendingRelease、子を即建築（祖先 pending で非表示待機）。
+        // 親は保持され破棄されない（穴を作らない）。
+        expect(parent.dispose).not.toHaveBeenCalled();
+        expect(MeshMock).toHaveBeenCalledTimes(5);
+        const children = [1, 2, 3, 4].map(
+            (i) => MeshMock.mock.results[i].value as { isEnabled: () => boolean },
+        );
+        // 子はテクスチャ前は非表示。
+        children.forEach((m) => expect(m.isEnabled()).toBe(false));
+
+        // 3 枚到着 → まだ非表示・親保持。
+        capturedTextures.slice(1, 4).forEach((t) => t.onLoad?.());
+        children.slice(0, 3).forEach((m) => expect(m.isEnabled()).toBe(false));
+        expect(parent.dispose).not.toHaveBeenCalled();
+
+        // 4 枚目到着 → 原子的スワップ：子を一斉表示し、親を解放。
+        capturedTextures[4].onLoad?.();
+        children.forEach((m) => expect(m.isEnabled()).toBe(true));
+        expect(parent.dispose).toHaveBeenCalledWith(false, true);
+    });
+
+    it("zoom 階層関係のない横パンでは旧タイルを pending せず即破棄する", async () => {
+        const mgr = makeManager();
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+        const meshA = MeshMock.mock.results[0].value as { dispose: jest.Mock };
+        capturedTextures[0].onLoad?.(); // 表示・描画可能に
+
+        // 同 zoom の無関係タイルへ横パン → 即破棄（フレーム落ち対策）。
+        selectedTiles = [tile(500, 500, 10)];
+        mgr.sync(syncParams());
+        expect(meshA.dispose).toHaveBeenCalledWith(false, true);
+    });
 });
