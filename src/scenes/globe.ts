@@ -261,8 +261,8 @@ export class GlobeScene {
         // ホイール毎に scene.pick でカーソル下の点を取り直すが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックが毎回ブレ、ズームが揺れる。
         // そこで後段で handleZoom を差し替え、目標点を scene.pick 非依存の「真の ECEF カメラ位置
-        // からのレイ × 地表球」の幾何交点で固定する。加えてズーム中（ホイール〜慣性減衰）は
-        // seat-on-terrain を一時停止し、鉛直方向の引っ張り合い（揺れの主因）を断つ。
+        // からのレイ × 地表楕円体（WGS84 + centerElevation）」の幾何交点で固定する。加えてズーム中
+        // （ホイール〜慣性減衰）は seat-on-terrain を一時停止し、鉛直方向の引っ張り合い（揺れの主因）を断つ。
         camera.movement.zoomToCursor = true;
 
         // GeospatialCamera 内部の scene.pick を無効化しつつ、ズーム後の向き補正は温存する（Issue #327 揺れ修正）。
@@ -538,7 +538,7 @@ export class GlobeScene {
                 scene.useRightHandedSystem,
                 rayFwd,
             );
-            // right = normalize(cross(forward, up)) / up = camera.upVector（いずれも二重精度）。
+            // right = normalize(cross(forward, up))。up は camera.upVector（いずれも二重精度）。
             Vector3.CrossToRef(rayFwd, camera.upVector, rayRight);
             rayRight.normalize();
             // scene.pointerX/Y は CSS ピクセル、getRenderWidth/Height はバックバッファ解像度。
