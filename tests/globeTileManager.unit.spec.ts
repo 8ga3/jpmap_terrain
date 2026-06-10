@@ -279,6 +279,18 @@ describe("createGlobeTileManager", () => {
         expect(mesh.isEnabled()).toBe(true);
     });
 
+    it("前景タイルを非ピッカブルにする（内蔵パンとの二重操作=ガタつきを防ぐ, #337）", async () => {
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        await flush(); // 標高到着
+        mgr.sync(syncParams());
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+        const mesh = MeshMock.mock.results[0].value as { isPickable?: boolean };
+        // ピッカブルだと GeospatialCamera 内蔵パンの scene.pick がヒットし、独自パンと二重に
+        // カメラを動かして水平方向にガタつく（#337）。基準タイル同様に非ピッカブルへ固定する。
+        expect(mesh.isPickable).toBe(false);
+    });
+
     it("不要になったタイルのメッシュを dispose する", async () => {
         const mgr = makeManager();
         selectedTiles = [tile(100, 100)];
