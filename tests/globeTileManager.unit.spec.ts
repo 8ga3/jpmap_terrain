@@ -619,4 +619,25 @@ describe("createGlobeTileManager", () => {
         expect(elev).not.toBeNull();
         expect(elev as number).toBeCloseTo(60, 3);
     });
+
+    it("周囲も all-NaN で到達不能な水面のみタイルを代表標高でレスキューする (#339, #221)", async () => {
+        const mgr = makeManager();
+        // 対象タイル(gx=100)は全面 no-data(all-NaN)で同 zoom 隣接(99/101)は未ロード（視界外）。
+        // 別位置(gx=105)に有効標高 300m のタイルがあり、これが代表標高の供給源になる。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const gx = args[1] as number;
+            if (gx === 100) return Promise.resolve(new Float32Array(256 * 256).fill(NaN));
+            return Promise.resolve(new Float32Array(256 * 256).fill(300));
+        });
+        selectedTiles = [tile(100, 100, 10), tile(105, 105, 10)];
+        mgr.sync(syncParams());
+        await flush(); // 両タイル到着。loading は空。100 は allNanGeom 入り
+        // refineAllNaNTiles: 100 は隣接シード無し → レスキューで代表標高 300m に平坦化。
+        mgr.sync(syncParams());
+
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        // 海面 0m へ沈まず、代表標高 300m で平坦化されること（中心の沈み込み解消）。
+        expect(elev as number).toBeCloseTo(300, 3);
+    });
 });

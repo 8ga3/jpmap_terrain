@@ -26,6 +26,7 @@ import {
     toTileXY,
     TILE_SIZE,
     isAllNaN,
+    isInvalidElev,
     fillInvalidPixels,
     type MapType,
 } from "../gsiTile";
@@ -536,45 +537,96 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * 元データが all-NaN（全面 no-data）だった geom タイルを、同 zoom 隣接の補間結果を
-     * シードに穴埋めする（#339, 平面版 #221 相当）。
+     * 元データが all-NaN（全面 no-data）だった geom タイルを穴埋めする（#339, 平面版 #221 相当）。
      *
-     * - 隣接 8 タイル（同 geom zoom）を `stitchTileEdges` で境界辺に縫い合わせてシードを得る。
-     * - シードが入れば（縫い合わせ後に有効ピクセルが現れれば）`fillInvalidPixels` で内部へ伝播。
-     * - 解決したら `elevCache` を更新し `allNanGeom` から外し、該当表示タイルの建築署名を
-     *   無効化して次の `buildReadyTiles` で実標高へ再建築させる。
-     * - 隣接がまだ揃わずシードが得られないタイルは未解決のまま残し、次 sync で再試行する
-     *   （隣接が波状に解決するたびに 1 リング分ずつ前進し、最終的に収束する）。
+     * 大きな湖（本栖湖など）では、対象タイルだけでなく同 zoom 隣接タイルも all-NaN になり、
+     * 同 zoom 縫い合わせだけでは中心タイルにシードが届かず標高が 0m（海面）へ沈む。これを防ぐ:
+     *
+     * 1. 波状反復: 同 zoom 隣接（`stitchTileEdges`）からシードが得られたタイルを `fillInvalidPixels`
+     *    で補間し `elevCache` を更新する。解決済みタイルが次の反復で隣接のシード源になり、湖岸から
+     *    中心へリング状に補間が前進する。1 sync 内で収束するよう内部反復する。
+     * 2. レスキュー: 反復後も残った all-NaN タイル（周囲も all-NaN で到達不能）は、解決済みタイルの
+     *    代表標高で平坦化する（#221 Step4 同等）。誤って早期平坦化しないよう、隣接が in-flight
+     *    （`loading`）の間はそのタイルのレスキューを見送り、ロード完了後に確定させる。
+     * 3. 解決/レスキューしたタイルを共有する建築済み表示タイルの署名を無効化し再建築させる。
      */
+    const ALL_NAN_REFINE_MAX_ITER = 8;
+    const allNanNeighborOffsets: ReadonlyArray<[number, number, keyof StitchNeighbors]> = [
+        [0, -1, "top"], [0, 1, "bottom"], [-1, 0, "left"], [1, 0, "right"],
+        [-1, -1, "topLeft"], [1, -1, "topRight"], [-1, 1, "bottomLeft"], [1, 1, "bottomRight"],
+    ];
     const refineAllNaNTiles = (): void => {
         if (allNanGeom.size === 0) return;
-        const neighborOffsets: ReadonlyArray<[number, number, keyof StitchNeighbors]> = [
-            [0, -1, "top"], [0, 1, "bottom"], [-1, 0, "left"], [1, 0, "right"],
-            [-1, -1, "topLeft"], [1, -1, "topRight"], [-1, 1, "bottomLeft"], [1, 1, "bottomRight"],
-        ];
-        for (const gk of [...allNanGeom]) {
+        const dirty = new Set<string>(); // 再建築が必要になった geom キー
+
+        // --- Step 1: 同 zoom 隣接からのシード補間を波状に反復 ---
+        const tryStitch = (gk: string): boolean => {
             const target = elevCache.get(gk);
             if (!target) {
-                // 退避済み（視界外）。再ロード時に再評価されるのでここでは外すだけ。
-                allNanGeom.delete(gk);
-                continue;
+                allNanGeom.delete(gk); // 退避済み（視界外）。再ロード時に再評価。
+                return false;
             }
             const { zoom: gz, x: gx, y: gy } = parseKey(gk);
             const neighbors: StitchNeighbors = {};
-            for (const [dx, dy, dir] of neighborOffsets) {
+            for (const [dx, dy, dir] of allNanNeighborOffsets) {
                 const nElev = elevCache.get(tileKey(gz, gx + dx, gy + dy));
                 // 未解決 all-NaN 隣接（全 NaN）はシードにならず `nanMean` で自然に除外される。
                 if (nElev) neighbors[dir] = nElev;
             }
             const copy = Float32Array.from(target);
             stitchTileEdges(copy, neighbors, TILE_SIZE);
-            if (isAllNaN(copy)) continue; // まだシード無し。次 sync で再試行。
+            if (isAllNaN(copy)) return false; // まだシード無し。
             fillInvalidPixels(copy, TILE_SIZE, TILE_SIZE);
             elevCache.set(gk, copy);
             allNanGeom.delete(gk);
-            // この geom を共有する建築済み表示タイルを再建築対象にする（実標高へ差し替え）。
+            dirty.add(gk);
+            return true;
+        };
+        for (let iter = 0; iter < ALL_NAN_REFINE_MAX_ITER; iter++) {
+            let progressed = 0;
+            for (const gk of [...allNanGeom]) {
+                if (tryStitch(gk)) progressed++;
+            }
+            if (allNanGeom.size === 0 || progressed === 0) break;
+        }
+
+        // --- Step 2: レスキュー（到達不能な残存 all-NaN タイルを代表標高で平坦化） ---
+        if (allNanGeom.size > 0) {
+            // 隣接が in-flight でないタイルのみ確定対象にする（早期平坦化を避ける）。
+            const ready: string[] = [];
+            for (const gk of allNanGeom) {
+                if (!elevCache.has(gk)) continue;
+                const { zoom: gz, x: gx, y: gy } = parseKey(gk);
+                const neighborLoading = allNanNeighborOffsets.some(
+                    ([dx, dy]) => loading.has(tileKey(gz, gx + dx, gy + dy)),
+                );
+                if (!neighborLoading) ready.push(gk);
+            }
+            if (ready.length > 0) {
+                // 解決済み（有効）タイルの中央ピクセルから代表標高を求める（#221 同様の近似）。
+                let sum = 0;
+                let count = 0;
+                const mid = (TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1);
+                for (const [k, data] of elevCache) {
+                    if (allNanGeom.has(k)) continue; // 未解決 all-NaN は除外
+                    const v = data[mid];
+                    if (!isInvalidElev(v)) { sum += v; count++; }
+                }
+                if (count > 0) {
+                    const rep = sum / count;
+                    for (const gk of ready) {
+                        elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(rep));
+                        allNanGeom.delete(gk);
+                        dirty.add(gk);
+                    }
+                }
+            }
+        }
+
+        // --- Step 3: 解決/レスキュー済み geom を共有する建築済み表示タイルを再建築対象にする ---
+        if (dirty.size > 0) {
             for (const key of [...builtEdgeSig.keys()]) {
-                if (geomKeyOfDisplay(key) === gk) builtEdgeSig.delete(key);
+                if (dirty.has(geomKeyOfDisplay(key))) builtEdgeSig.delete(key);
             }
         }
     };
