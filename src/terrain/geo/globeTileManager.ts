@@ -637,13 +637,14 @@ export const createGlobeTileManager = (
      *      その代表標高で、無ければ海面 0m（外洋として妥当）で確定する。
      * 3. 解決/レスキューしたタイルを共有する建築済み表示タイルの署名を無効化し再建築させる。
      *
-     * なお、確定前（粗ズーム取得待ち）の all-NaN タイルは `buildReadyTiles` で建築を見送り、生 NaN を
-     * 0m（海面クレーター）として描画しない（解決後に正しい標高で初めて建築する）。
+     * なお、確定前（粗ズーム取得待ち）の all-NaN タイルは `buildReadyTiles` で生 NaN を 0m
+     * （海面クレーター）として描画せず、暫定代表標高（粗ズーム祖先 ?? 隣接接線 ?? 直近代表標高）で
+     * 平坦建築する。`refineAllNaNTiles` が正確な湖面標高で確定し次第、署名差分で再建築される。
      */
     // 粗ズーム祖先タイルの取得デルタ候補（gz から何段階粗いタイルを試すか）。
     // 大きな湖ほど粗くしないと祖先タイルも全面水面（all-NaN）になるため複数段試す。
     const COARSE_SEED_DELTAS: ReadonlyArray<number> = [4, 6, 8, 10];
-    /** 粗ズームタイルを取得（メモ化）。all-NaN や取得失敗は null。 */
+    /** 粗ズームタイルを取得（in-flight 重複排除のみメモ化）。all-NaN や取得失敗は null。 */
     const loadCoarseTile = (cz: number, cx: number, cy: number): Promise<Float32Array | null> => {
         const ck = tileKey(cz, cx, cy);
         let p = coarseTileMemo.get(ck);
@@ -652,6 +653,12 @@ export const createGlobeTileManager = (
                 .then((e) => (isAllNaN(e) ? null : e))
                 .catch(() => null);
             coarseTileMemo.set(ck, p);
+            // メモは「同一粗タイルへの同時並行取得の重複排除」が目的。確定後も Promise
+            // （256x256 の Float32Array を保持）を残すと、多数の湖/外洋を巡るとメモリが単調
+            // 増加する。settle 後にエントリを削除して上限を設けない（#339 レビュー指摘）。
+            void p.finally(() => {
+                if (coarseTileMemo.get(ck) === p) coarseTileMemo.delete(ck);
+            });
         }
         return p;
     };
@@ -678,12 +685,20 @@ export const createGlobeTileManager = (
                         const v = data[i];
                         if (!isInvalidElev(v)) { sum += v; n++; }
                     }
-                    if (n > 0) { coarseSeed.set(gk, sum / n); return; }
+                    // 取得完了までに当該 geom タイルが prune（eviction/dispose）または解決済み
+                    // （allNanGeom から除外）になっている場合は書き込まない。さもないと dispose/prune
+                    // 後に coarseSeed が再増加（リーク）・不要な seed が残る（#339 レビュー指摘）。
+                    if (n > 0) {
+                        if (allNanGeom.has(gk) && elevCache.has(gk)) coarseSeed.set(gk, sum / n);
+                        return;
+                    }
                 }
                 // 全粗ズームで有効標高無し（真の no-data: 外洋等）。0m(海面)のままが妥当。
             } finally {
                 coarseSeedPending.delete(gk);
-                coarseSeedDone.add(gk);
+                // done フラグも、まだ未解決(allNanGeom)かつキャッシュに在るタイルにのみ立てる。
+                // prune/解決済みのタイルで完了フラグだけ復活させない（#339 レビュー指摘）。
+                if (allNanGeom.has(gk) && elevCache.has(gk)) coarseSeedDone.add(gk);
             }
         })();
     };
