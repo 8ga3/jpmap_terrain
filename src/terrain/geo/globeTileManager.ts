@@ -45,6 +45,21 @@ const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
  */
 const FLAT_SEA_ELEV = new Float32Array(TILE_SIZE * TILE_SIZE);
 
+/**
+ * 常時表示の粗いベースレイヤの zoom（Issue #341）。全球を 4^zoom 枚の固定タイルで覆う
+ * （z2=16枚）。地理院タイルは std/seamlessphoto が z0〜供給されるため z2 をマッピングできる。
+ * ズームアップ／回転で地平線の縁へ新規に回転インするタイルは、自身も全祖先も未ロードのため
+ * LOD シームレス機構（pendingRelease / 祖先カバー）では橋渡しできず、テクスチャ到着まで背景球
+ * （青）が一瞬透ける（#341）。この粗タイル集合を恒久背景として常時描画し、露出を防ぐ。
+ */
+const BASE_LAYER_ZOOM = 2;
+
+/**
+ * ベースレイヤのテクスチャ到着前の塗り色（海色, #341）。背景球と同系色にして、初回ロード前の
+ * 白フラッシュや青球露出を避ける。テクスチャ到着後は地理院タイル画像へ差し替わる。
+ */
+const BASE_LAYER_OCEAN = new Color3(0.16, 0.26, 0.36);
+
 /** 標高タイル取得失敗時の再試行バックオフ初期値 [ms]。 */
 const FAILED_RETRY_BASE_MS = 5_000;
 /** 同・上限 [ms]（no-data タイルを叩き続けないための頭打ち）。 */
@@ -171,6 +186,9 @@ export const createGlobeTileManager = (
     const { scene, mapType, minZoom, geomMaxZoom, segments, snapEnabled } = opts;
 
     const loaded = new Map<string, Mesh>();
+    // 常時表示の粗いベースレイヤのメッシュ（Issue #341, key="z/x/y"）。LOD の loaded とは別管理で
+    // sync の選択/解放対象に含めず、マネージャ生存中ずっと保持する（新規回転インタイルの背景）。
+    const baseLoaded = new Map<string, Mesh>();
     // 各ロード済みタイルがどのクロスレベル coarse-edge 集合で建築されたかの署名。
     // LOD 再評価で隣接関係（同 zoom 隣接 ⇄ 粗タイル隣接）が変わると署名が変化し、
     // ジオメトリを再構築してスナップを更新する（境界の陰影シームを残さないため）。
@@ -774,9 +792,81 @@ export const createGlobeTileManager = (
         };
     };
 
+    /**
+     * 常時表示の粗いベースレイヤを構築する（Issue #341）。全球を覆う z=BASE_LAYER_ZOOM の固定
+     * タイル集合（4^zoom 枚）を、海面フラット（0m）の楕円体パッチとして一度だけ生成し、以後ずっと
+     * 保持する。新規に回転インする地平線の縁のタイルが未ロードでも、この背景が見えるため背景球
+     * （青）が露出しない。
+     *
+     * 層順は Babylon の既定 PainterSortCompare（マテリアル uniqueId=生成順で昇順描画）で決定的に
+     * 制御される。背景球マテリアルは本マネージャ生成前（globe.ts）に作られ、ベースは本関数で、LOD は
+     * 後続 sync で作られるため、描画順は「背景球 → ベース → LOD」になる。ベースは深度を書かない
+     * （disableDepthWrite）ので背景球の手前に塗られ、かつ後描画で深度を書く LOD には常に上書きされる。
+     * これによりメッシュ弦のたるみ（粗タイルの幾何）に依存せず、LOD がある画素では LOD、ない画素では
+     * ベース、ベースも無い極域などでは背景球、という安定した重なりになる。
+     */
+    const buildBaseLayer = (): void => {
+        const count = 1 << BASE_LAYER_ZOOM; // 軸方向のタイル数（= 2^zoom）。
+        for (let x = 0; x < count; x++) {
+            for (let y = 0; y < count; y++) {
+                const k = tileKey(BASE_LAYER_ZOOM, x, y);
+                const data = buildGlobeTileMeshData({
+                    zoom: BASE_LAYER_ZOOM,
+                    tx: x,
+                    ty: y,
+                    geomElev: FLAT_SEA_ELEV,
+                    geomZoom: BASE_LAYER_ZOOM,
+                    geomX: x,
+                    geomY: y,
+                    segments,
+                    edges: [],
+                });
+                const mesh = new Mesh(`base-tile-${k}`, scene);
+                applyGeometry(mesh, data);
+                mesh.isPickable = false;
+
+                const mat = new StandardMaterial(`base-tile-mat-${k}`, scene);
+                mat.specularColor = TILE_SPECULAR;
+                mat.backFaceCulling = true;
+                // 深度を書かず純粋な背景として描く（背景球の手前・LOD の背面に固定する鍵）。
+                mat.disableDepthWrite = true;
+                // テクスチャ到着までは海色で塗る（白フラッシュ・青球露出を避ける）。
+                mat.diffuseColor = BASE_LAYER_OCEAN;
+                mesh.material = mat;
+
+                // GPU テクスチャ生成完了（onLoad）で diffuseTexture を設定する（WebGPU の
+                // "null gpu texture bind" 回避。LOD タイルと同様）。ベースは常時表示なので
+                // setEnabled の出し入れはしない。
+                const tex = new Texture(
+                    textureUrl(mapType, BASE_LAYER_ZOOM, x, y),
+                    scene,
+                    false,
+                    true,
+                    Texture.TRILINEAR_SAMPLINGMODE,
+                    () => {
+                        if (mesh.isDisposed()) {
+                            tex.dispose();
+                            return;
+                        }
+                        mat.diffuseTexture = tex;
+                    },
+                    // onError: 取得失敗時は Texture を破棄し、海色のまま背景として残す。
+                    () => tex.dispose(),
+                );
+                tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+                tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+
+                baseLoaded.set(k, mesh);
+            }
+        }
+    };
+
     const dispose = (): void => {
         for (const mesh of loaded.values()) mesh.dispose(false, true);
         loaded.clear();
+        // 常時表示ベースレイヤ（#341）もテクスチャごと破棄する。
+        for (const mesh of baseLoaded.values()) mesh.dispose(false, true);
+        baseLoaded.clear();
         // LOD 遷移中に残した pending タイルのタイマー解除＋メッシュ破棄。
         for (const pending of pendingRelease.values()) {
             clearTimeout(pending.timerId);
@@ -794,6 +884,9 @@ export const createGlobeTileManager = (
         newlyFailed.length = 0;
         desiredKeys = new Set<string>();
     };
+
+    // 常時表示の粗いベースレイヤを一度だけ構築する（Issue #341）。
+    buildBaseLayer();
 
     return { sync, terrainElevAt, dispose };
 };

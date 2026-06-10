@@ -127,10 +127,12 @@ const { createGlobeTileManager } = await import("../src/terrain/geo/globeTileMan
 const { geodeticToEcef } = await import("../src/terrain/geo/ecef");
 const gsiMock = await import("../src/terrain/gsiTile");
 const { Mesh } = await import("@babylonjs/core/Meshes/mesh");
+const { StandardMaterial } = await import("@babylonjs/core/Materials/standardMaterial");
 
 const loadElevationTile = gsiMock.loadElevationTile as jest.Mock;
 const toTileXY = gsiMock.toTileXY as jest.Mock;
 const MeshMock = Mesh as unknown as jest.Mock;
+const MaterialMock = StandardMaterial as unknown as jest.Mock;
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -153,8 +155,8 @@ const syncParams = () => ({
     referenceAltitude: 0,
 });
 
-const makeManager = () =>
-    createGlobeTileManager({
+const makeManager = () => {
+    const mgr = createGlobeTileManager({
         scene: {} as never,
         mapType: "std",
         minZoom: 10,
@@ -162,6 +164,14 @@ const makeManager = () =>
         segments: 2,
         snapEnabled: false,
     });
+    // Issue #341: 常時表示ベースレイヤがコンストラクタで生成する 16 枚（全球 z2）のメッシュ／
+    // テクスチャは、以降の sync 挙動テストの数え上げ対象外。ここでクリアして、各テストの
+    // MeshMock / capturedTextures が sync 由来のみを反映するようにする（ベースレイヤ自体の検証は
+    // 専用テストで直接構築して行う）。
+    MeshMock.mockClear();
+    capturedTextures.length = 0;
+    return mgr;
+};
 
 beforeEach(() => {
     capturedTextures.length = 0;
@@ -174,6 +184,46 @@ beforeEach(() => {
 });
 
 describe("createGlobeTileManager", () => {
+    it("常時表示ベースレイヤを全球 z2=16 枚・深度書き込み無効で構築する (#341)", () => {
+        // ベースレイヤ自体の検証は makeManager のクリアを通さず直接構築して数える。
+        MeshMock.mockClear();
+        MaterialMock.mockClear();
+        capturedTextures.length = 0;
+        createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        // 全球 z2 = 4^2 = 16 枚をコンストラクタで一度だけ生成する。
+        expect(MeshMock).toHaveBeenCalledTimes(16);
+        expect(capturedTextures.length).toBe(16);
+        // 全ベースマテリアルは深度書き込み無効（背景球の手前・LOD の背面に固定する鍵）。
+        const baseMats = MaterialMock.mock.results
+            .slice(0, 16)
+            .map((r) => r.value as { disableDepthWrite?: boolean });
+        baseMats.forEach((m) => expect(m.disableDepthWrite).toBe(true));
+    });
+
+    it("dispose でベースレイヤ 16 枚もテクスチャごと破棄する (#341)", () => {
+        MeshMock.mockClear();
+        const mgr = createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        const baseMeshes = MeshMock.mock.results
+            .slice(0, 16)
+            .map((r) => r.value as { dispose: jest.Mock });
+        mgr.dispose();
+        baseMeshes.forEach((m) => expect(m.dispose).toHaveBeenCalledWith(false, true));
+    });
+
     it("標高ロード完了後に初めてメッシュを建築し、テクスチャ onLoad で表示する", async () => {
         const mgr = makeManager();
         const s1 = mgr.sync(syncParams());
