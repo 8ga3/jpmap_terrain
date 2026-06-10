@@ -209,4 +209,36 @@ describe("rayEllipsoidNearHitToRef", () => {
         const ref = new Vector3();
         expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(false);
     });
+
+    it("dir は非正規化でも同一交点を返す（長さは交点に影響しない）", () => {
+        const R = 100;
+        const origin = new Vector3(0, 0, 200);
+        const unitDir = new Vector3(0.3, 0, -1).normalize();
+        const scaledDir = unitDir.scale(7.5); // 長さ 7.5 倍
+        const refUnit = new Vector3();
+        const refScaled = new Vector3();
+        expect(rayEllipsoidNearHitToRef(origin, unitDir, R, R, R, refUnit)).toBe(true);
+        expect(rayEllipsoidNearHitToRef(origin, scaledDir, R, R, R, refScaled)).toBe(true);
+        expect(Vector3.Distance(refUnit, refScaled)).toBeLessThan(1e-6);
+    });
+
+    it("半径が非正/非有限なら NaN を書かず false（0除算ガード）", () => {
+        const origin = new Vector3(0, 0, 200);
+        const dir = new Vector3(0, 0, -1);
+        const ref = new Vector3();
+        const cases: Array<[number, number, number]> = [
+            [0, 100, 100],
+            [100, 0, 100],
+            [100, 100, 0],
+            [-100, 100, 100],
+            [NaN, 100, 100],
+            [Infinity, 100, 100],
+        ];
+        for (const [rx, ry, rz] of cases) {
+            ref.copyFromFloats(123, 123, 123); // 事前値（書き換わらないこと）
+            expect(rayEllipsoidNearHitToRef(origin, dir, rx, ry, rz, ref)).toBe(false);
+            expect(ref.x).toBe(123); // ref は変更されない
+            expect(Number.isNaN(ref.x)).toBe(false);
+        }
+    });
 });
