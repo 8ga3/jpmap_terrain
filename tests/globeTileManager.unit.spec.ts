@@ -131,6 +131,26 @@ jest.unstable_mockModule("../src/terrain/geo/globeLod", () => ({
     tileKey: (z: number, x: number, y: number) => `${z}/${x}/${y}`,
 }));
 
+// ---- globeMesh スパイ（建築時に渡される geomElev を捕捉して建築標高を検証可能にする） ----
+// 実装（純粋関数）はそのまま動かしつつ、404/all-NaN タイルがどの代表標高で平坦建築されたかを
+// 観測する。terrainElevAt は elevCache を参照するため、elevCache に載らない 404 タイルの
+// 建築標高はメッシュ生成入力（geomElev）でしか検証できない（#339）。
+const capturedBuilds: { tx: number; ty: number; geomElev: Float32Array }[] = [];
+jest.unstable_mockModule("../src/terrain/geo/globeMesh", () => {
+    const actual = jest.requireActual(
+        "../src/terrain/geo/globeMesh",
+    ) as typeof import("../src/terrain/geo/globeMesh");
+    return {
+        ...actual,
+        buildGlobeTileMeshData: jest.fn(
+            (params: Parameters<typeof actual.buildGlobeTileMeshData>[0]) => {
+                capturedBuilds.push({ tx: params.tx, ty: params.ty, geomElev: params.geomElev });
+                return actual.buildGlobeTileMeshData(params);
+            },
+        ),
+    };
+});
+
 const { createGlobeTileManager } = await import("../src/terrain/geo/globeTileManager");
 const { geodeticToEcef } = await import("../src/terrain/geo/ecef");
 const gsiMock = await import("../src/terrain/gsiTile");
@@ -183,6 +203,7 @@ const makeManager = () => {
 
 beforeEach(() => {
     capturedTextures.length = 0;
+    capturedBuilds.length = 0;
     MeshMock.mockClear();
     loadElevationTile.mockReset();
     loadElevationTile.mockImplementation(() => Promise.resolve(new Float32Array(256 * 256)));
@@ -684,5 +705,36 @@ describe("createGlobeTileManager", () => {
         // referenceAltitude→0 と循環し暫定代表標高まで 0m に崩れる。これを防ぐため null を返す。
         const elev = mgr.terrainElevAt(35, 139);
         expect(elev).toBeNull();
+    });
+
+    it("取得失敗(404)の湖面タイルを 0m でなく隣接タイルの接線標高で平坦建築する (#339)", async () => {
+        const mgr = makeManager();
+        // 中央 geom タイル(gx=100,gy=100)は全レイヤ 404（reject）＝本栖湖 z15 湖面タイルの実挙動。
+        // 上下左右の隣接タイルは一様 900m（本栖湖の湖面標高 ≒ 湖岸標高）。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const gx = args[1] as number;
+            const gy = args[2] as number;
+            if (gx === 100 && gy === 100) return Promise.reject(new Error("HTTP 404"));
+            return Promise.resolve(new Float32Array(256 * 256).fill(900));
+        });
+        selectedTiles = [
+            tile(100, 100, 10),
+            tile(100, 99, 10),
+            tile(100, 101, 10),
+            tile(99, 100, 10),
+            tile(101, 100, 10),
+        ];
+        mgr.sync(syncParams());
+        await flush(); // 中央 404→failedRetryAt、隣接 900m ロード完了
+        capturedBuilds.length = 0;
+        mgr.sync(syncParams()); // 隣接到着後、中央を隣接接線 900m で平坦建築
+
+        // 中央タイル(404)は FLAT_SEA_ELEV(0m) ではなく隣接接線標高 900m で平坦建築されること。
+        // これが「湖中央が 0m に沈む（≒900m クレーター）」(#339) の根本修正。
+        const centerBuilds = capturedBuilds.filter((b) => b.tx === 100 && b.ty === 100);
+        expect(centerBuilds.length).toBeGreaterThan(0);
+        const built = centerBuilds[centerBuilds.length - 1].geomElev;
+        const mean = built.reduce((a, b) => a + b, 0) / built.length;
+        expect(mean).toBeCloseTo(900, 0);
     });
 });
