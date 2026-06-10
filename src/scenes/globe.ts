@@ -540,7 +540,14 @@ export class GlobeScene {
                 rayFwd,
             );
             // right = normalize(cross(forward, up))。up は camera.upVector（いずれも二重精度）。
+            // 通常 forward ⊥ upVector（_setOrientation が直交化、真下視でも up を水平へ退避）なので
+            // cross はゼロにならないが、万一平行/反平行になった場合は right が 0 ベクトルとなり
+            // normalize が NaN を生む。NaN がカーソルレイ・ズーム目標点へ伝播するのを防ぐため、
+            // 退化時は中心画素方向（forward）へフォールバックする。
             Vector3.CrossToRef(rayFwd, camera.upVector, rayRight);
+            if (rayRight.lengthSquared() < 1e-12) {
+                return ref.copyFrom(rayFwd).normalize();
+            }
             rayRight.normalize();
             // scene.pointerX/Y は CSS ピクセル、getRenderWidth/Height はバックバッファ解像度。
             // Retina 等 devicePixelRatio>1 では両者がずれるため、Babylon の picking と同様に

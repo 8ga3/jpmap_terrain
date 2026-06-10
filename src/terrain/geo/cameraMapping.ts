@@ -127,7 +127,7 @@ export const panCenterOnSphereToRef = (
  *
  * @param dir レイ方向。正規化は不要（長さは交点に影響しない）。
  * @returns 交点があり t>=0 なら true（`ref` に交点。t=0 は origin が楕円体面上の境界ケース）、
- *          レイが楕円体を外す/両交点とも背面、または半径が非有限/非正なら false。
+ *          レイが楕円体を外す/両交点とも背面、または半径・origin・dir が非有限/半径が非正なら false。
  */
 export const rayEllipsoidNearHitToRef = (
     origin: Vector3,
@@ -138,14 +138,22 @@ export const rayEllipsoidNearHitToRef = (
     ref: Vector3,
 ): boolean => {
     // 半径が非有限/非正だと 0 除算で NaN が伝播し、disc<0 / t<0 判定を素通りして ref に NaN を
-    // 書きつつ true を返し得る。export 関数として早期ガードする（呼び出し側は通常正の半径を渡す）。
+    // 書きつつ true を返し得る。origin/dir に NaN/Infinity が入った場合も同様に NaN が比較を
+    // 素通りする。export 関数として入力（半径・origin・dir）の有限性を早期ガードする
+    // （呼び出し側は通常正の有限値を渡す。退化入力時は ref を変更せず false）。
     if (
         !(radiusX > 0) ||
         !(radiusY > 0) ||
         !(radiusZ > 0) ||
         !Number.isFinite(radiusX) ||
         !Number.isFinite(radiusY) ||
-        !Number.isFinite(radiusZ)
+        !Number.isFinite(radiusZ) ||
+        !Number.isFinite(origin.x) ||
+        !Number.isFinite(origin.y) ||
+        !Number.isFinite(origin.z) ||
+        !Number.isFinite(dir.x) ||
+        !Number.isFinite(dir.y) ||
+        !Number.isFinite(dir.z)
     ) {
         return false;
     }

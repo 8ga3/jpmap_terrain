@@ -241,4 +241,21 @@ describe("rayEllipsoidNearHitToRef", () => {
             expect(Number.isNaN(ref.x)).toBe(false);
         }
     });
+
+    it("origin/dir が非有限なら NaN を書かず false（入力ガード）", () => {
+        const ref = new Vector3();
+        const R = 100;
+        const badInputs: Array<[Vector3, Vector3]> = [
+            [new Vector3(NaN, 0, 200), new Vector3(0, 0, -1)],
+            [new Vector3(0, Infinity, 200), new Vector3(0, 0, -1)],
+            [new Vector3(0, 0, 200), new Vector3(NaN, 0, -1)],
+            [new Vector3(0, 0, 200), new Vector3(0, 0, -Infinity)],
+        ];
+        for (const [origin, dir] of badInputs) {
+            ref.copyFromFloats(123, 123, 123);
+            expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(false);
+            expect(ref.x).toBe(123);
+            expect(Number.isNaN(ref.x)).toBe(false);
+        }
+    });
 });
