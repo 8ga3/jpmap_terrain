@@ -345,6 +345,61 @@ export const createGlobeTileManager = (
     const flatElevArray = (v: number): Float32Array =>
         new Float32Array(TILE_SIZE * TILE_SIZE).fill(Number.isFinite(v) ? v : 0);
 
+    /** 標高タイルの 1 辺（256px 列/行）の有効ピクセル平均[m]。全 NaN なら undefined。 */
+    const tileEdgeMean = (
+        e: Float32Array,
+        edge: "top" | "bottom" | "left" | "right",
+    ): number | undefined => {
+        let sum = 0;
+        let cnt = 0;
+        for (let i = 0; i < TILE_SIZE; i++) {
+            const idx =
+                edge === "top"
+                    ? i
+                    : edge === "bottom"
+                      ? (TILE_SIZE - 1) * TILE_SIZE + i
+                      : edge === "left"
+                        ? i * TILE_SIZE
+                        : i * TILE_SIZE + (TILE_SIZE - 1);
+            const v = e[idx];
+            if (!isInvalidElev(v)) {
+                sum += v;
+                cnt++;
+            }
+        }
+        return cnt > 0 ? sum / cnt : undefined;
+    };
+
+    /**
+     * geom タイル (gz,gx,gy) が「取得失敗(404)」「全面 no-data」等で実標高を持たない場合に、
+     * 上下左右の隣接タイルの「接する辺」の有効標高平均から代表標高[m] を推定する（#339）。
+     * これにより 0m 平坦（海面）に倒さず、隣接タイルの接線と段差なく連続した高さで平坦化できる。
+     * GSI は湖面など水域の z15 タイルを 404 で配信しないことがあり（本栖湖 15/28998/12927 等）、
+     * その場合この近傍代表標高（湖岸/湖面 ≒ 湖面標高）で穴を埋める。隣接が一切無効なら undefined。
+     */
+    const neighborRepElev = (gz: number, gx: number, gy: number): number | undefined => {
+        const facing: readonly [number, number, "top" | "bottom" | "left" | "right"][] = [
+            [0, -1, "bottom"], // 上隣の下辺がこのタイルの上辺に接する
+            [0, 1, "top"],
+            [-1, 0, "right"],
+            [1, 0, "left"],
+        ];
+        let sum = 0;
+        let cnt = 0;
+        for (const [dx, dy, edge] of facing) {
+            const nk = tileKey(gz, gx + dx, gy + dy);
+            if (allNanGeom.has(nk)) continue; // 未解決 all-NaN（水面）隣接は代表標高源にしない
+            const e = elevCache.get(nk);
+            if (!e) continue;
+            const m = tileEdgeMean(e, edge);
+            if (m !== undefined) {
+                sum += m;
+                cnt++;
+            }
+        }
+        return cnt > 0 ? sum / cnt : undefined;
+    };
+
     /** クロスレベル coarse-edge 集合の署名（順不同で同一なら同値）。 */
     const edgeSignature = (edges: readonly CoarseEdge[]): string =>
         edges
@@ -745,7 +800,6 @@ export const createGlobeTileManager = (
             // loadElevationTile は no-data(404) と一時的障害を区別できないため、失敗は一律バックオフ
             // 扱い。実標高が届いたら次 sync で実標高へ再構築（sig で検知）、失敗継続なら海面のまま残す。
             const isFlatFallback = !cachedElev;
-            // 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイル（湖面・no-data 全面）。
             let geomElev = cachedElev ?? FLAT_SEA_ELEV;
 
             // 標高が視覚的に意味を持つ zoom レベル（minZoom 以上）では、標高ロード中は建築をスキップ。
@@ -754,16 +808,33 @@ export const createGlobeTileManager = (
             // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
             if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
 
-            // 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイル（本栖湖・諏訪湖 #339）。
-            // 生 NaN をそのまま建築すると globeMesh が海面 0m へ倒し「湖中央の沈み込み（クレーター）」、
-            // 逆に建築を見送ると下地の低解像度ベースレイヤ（陸地=橙系）が露出する。どちらも避けるため、
-            // 暫定代表標高（粗ズーム祖先 ?? 直近代表標高 ?? referenceAltitude）で平坦に建築する。
-            // 地図テクスチャは標高に依存せず読み込まれるため、湖面相当の高さに平坦な正しい地図が描かれる。
-            // `refineAllNaNTiles` が正確な湖面標高で確定（allNanGeom から除外）し次第、sig 差分で再建築する。
+            // 暫定平坦建築の代表標高[m]（sig へ反映し、隣接ロードで値が変われば再建築させる）。
+            let repElev: number | undefined;
+
+            // (A) 取得失敗(404/no-data)タイル（本栖湖の z15 湖面タイル 15/28998/12927 等は 404）。
+            //     GSI は水域の高 zoom タイルを 404 で配信しないため、従来は FLAT_SEA_ELEV(0m) で
+            //     平坦建築され「湖中央が 0m に沈む（≒900m クレーター）」原因になっていた（#339）。
+            //     隣接タイルの接線標高（湖岸/湖面 ≒ 湖面標高）で平坦化し、段差無く連続させる。
+            //     隣接も全て無効なら従来どおり 0m（外洋として妥当）。高高度(minZoom 未満)は標高無意味。
+            if (isFlatFallback && t.zoom >= minZoom) {
+                repElev = coarseSeed.get(gk) ?? neighborRepElev(gz, gx, gy) ?? lastRepElev;
+                if (repElev !== undefined) geomElev = flatElevArray(repElev);
+            }
+
+            // (B) 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイル（湖面・no-data 全面）。
+            //     生 NaN をそのまま建築すると globeMesh が海面 0m へ倒し「湖中央の沈み込み（クレーター）」、
+            //     逆に建築を見送ると下地の低解像度ベースレイヤ（陸地=橙系）が露出する。どちらも避けるため、
+            //     暫定代表標高（粗ズーム祖先 ?? 隣接接線 ?? 直近代表標高 ?? referenceAltitude）で平坦建築。
+            //     地図テクスチャは標高非依存で読まれるため、湖面相当の高さに平坦な正しい地図が描かれる。
+            //     `refineAllNaNTiles` が正確な湖面標高で確定（allNanGeom から除外）し次第、sig 差分で再建築。
             const isAllNanPending = !!cachedElev && allNanGeom.has(gk) && t.zoom >= minZoom;
             if (isAllNanPending) {
-                const rep = coarseSeed.get(gk) ?? lastRepElev ?? lastReferenceAltitude;
-                geomElev = flatElevArray(rep);
+                repElev =
+                    coarseSeed.get(gk) ??
+                    neighborRepElev(gz, gx, gy) ??
+                    lastRepElev ??
+                    lastReferenceAltitude;
+                geomElev = flatElevArray(repElev);
             }
 
             // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
@@ -789,11 +860,13 @@ export const createGlobeTileManager = (
                 // シームは許容。欠けるよりは良い）。
                 edges = r.edges;
             }
-            // フラット建築・暫定 all-NaN 建築かどうかも署名に含める（実標高で確定したら、
-            // coarse-edge が同一でもジオメトリを再構築させるため）。
+            // フラット建築・暫定 all-NaN 建築かどうかと、暫定代表標高（10m 量子化）も署名に含める。
+            // 実標高で確定したら coarse-edge 同一でも再構築させ、隣接ロードで代表標高が変わったら
+            // （0m→湖面標高 等）追従して再構築させるため（#339）。
             const sig =
                 (isFlatFallback ? "flat|" : "") +
                 (isAllNanPending ? "allnan|" : "") +
+                (repElev !== undefined ? `r${Math.round(repElev / 10)}|` : "") +
                 edgeSignature(edges);
 
             // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
