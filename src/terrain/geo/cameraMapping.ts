@@ -126,7 +126,8 @@ export const panCenterOnSphereToRef = (
  * （`t` はスケール変換に不変なので元空間の `origin + t·dir` に適用できる）。
  *
  * @param dir レイ方向。正規化は不要（長さは交点に影響しない）。
- * @returns 交点があり t>0 なら true（`ref` に交点）、レイが楕円体を外す/背面なら false。
+ * @returns 交点があり t>=0 なら true（`ref` に交点。t=0 は origin が楕円体面上の境界ケース）、
+ *          レイが楕円体を外す/両交点とも背面なら false。
  */
 export const rayEllipsoidNearHitToRef = (
     origin: Vector3,
