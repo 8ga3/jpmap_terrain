@@ -207,6 +207,31 @@ describe("createGlobeTileManager", () => {
         baseMats.forEach((m) => expect(m.disableDepthWrite).toBe(true));
     });
 
+    it("ベーステクスチャ onLoad で diffuseColor を白に戻しティントを解除する (#341)", () => {
+        MeshMock.mockClear();
+        MaterialMock.mockClear();
+        capturedTextures.length = 0;
+        createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        const mat0 = MaterialMock.mock.results[0].value as {
+            diffuseColor: { r: number; g: number; b: number };
+            diffuseTexture: unknown;
+        };
+        // 到着前は海色ティント（暗め）で、テクスチャは未設定。
+        expect(mat0.diffuseColor.r).toBeLessThan(1);
+        expect(mat0.diffuseTexture).toBeNull();
+        // onLoad でテクスチャ設定＋白へ復帰（diffuseTexture が暗く青くティントされないこと）。
+        capturedTextures[0].onLoad?.();
+        expect(mat0.diffuseTexture).not.toBeNull();
+        expect(mat0.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
+    });
+
     it("dispose でベースレイヤ 16 枚もテクスチャごと破棄する (#341)", () => {
         MeshMock.mockClear();
         const mgr = createGlobeTileManager({

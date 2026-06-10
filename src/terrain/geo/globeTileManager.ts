@@ -60,6 +60,13 @@ const BASE_LAYER_ZOOM = 2;
  */
 const BASE_LAYER_OCEAN = new Color3(0.16, 0.26, 0.36);
 
+/**
+ * ベースレイヤのテクスチャ到着後の diffuseColor（白, #341）。StandardMaterial は diffuseTexture に
+ * diffuseColor を乗算するため、暫定の海色（BASE_LAYER_OCEAN）のままだと地図画像が暗く青く
+ * ティントされる。テクスチャ設定時に白へ戻し、LOD タイル（diffuseColor 既定=白）と同じ発色にする。
+ */
+const BASE_LAYER_TEXTURE_TINT = new Color3(1, 1, 1);
+
 /** 標高タイル取得失敗時の再試行バックオフ初期値 [ms]。 */
 const FAILED_RETRY_BASE_MS = 5_000;
 /** 同・上限 [ms]（no-data タイルを叩き続けないための頭打ち）。 */
@@ -849,6 +856,9 @@ export const createGlobeTileManager = (
                             return;
                         }
                         mat.diffuseTexture = tex;
+                        // 暫定の海色ティントを解除（白に戻す）。さもないと diffuseTexture が乗算で
+                        // 暗く青くティントされ、地図画像が意図どおり発色しない。
+                        mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
                     },
                     // onError: 取得失敗時は Texture を破棄し、海色のまま背景として残す。
                     () => tex.dispose(),
