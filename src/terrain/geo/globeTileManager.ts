@@ -124,8 +124,13 @@ export interface GlobeTileSyncStats {
     minZoom: number | null;
     /** 選択タイルの最大 zoom（選択なしは null）。 */
     maxZoom: number | null;
-    /** 現在ロード済みのメッシュ数。 */
+    /** 現在ロード済みのメッシュ数（loaded Map のみ。画面に残る pendingRelease は含まない）。 */
     loadedCount: number;
+    /**
+     * LOD 遷移中に画面へ残している pendingRelease タイル数（loaded には含まれないが
+     * シーン上に描画され得るメッシュ）。loadedCount と区別して公開する。
+     */
+    pendingCount: number;
     /** ロード中の標高タイル数。 */
     loadingCount: number;
 }
@@ -599,14 +604,15 @@ export const createGlobeTileManager = (
                     checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
                 },
                 // onError: ロード失敗（404/ネットワーク断等）時は Texture を破棄してリークを防ぐ。
-                // テクスチャなし（白）でもホールより良いので mesh は表示する。
+                // テクスチャなし（白）でもホールより良いので描画可能扱いにする。ただし祖先が
+                // pendingRelease 中の hiddenChild は即表示しない（onLoad と同様）。即表示すると
+                // 親と子が同時に見えて原子スワップ（重なりちらつき防止）が壊れる。readyMeshes に
+                // 登録するのでカバー判定が成立し、enableDescendants 経由でスワップ時に表示される。
                 () => {
                     tex.dispose();
                     if (mesh.isDisposed()) return;
                     readyMeshes.add(mesh);
-                    // テクスチャ無しでも描画可能扱い。非表示待機を解除して表示する。
-                    hiddenChildTiles.delete(k);
-                    mesh.setEnabled(true);
+                    if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
                     checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
                 },
             );
@@ -763,6 +769,7 @@ export const createGlobeTileManager = (
             minZoom: Number.isFinite(minZ) ? minZ : null,
             maxZoom: Number.isFinite(maxZ) ? maxZ : null,
             loadedCount: loaded.size,
+            pendingCount: pendingRelease.size,
             loadingCount: loading.size,
         };
     };

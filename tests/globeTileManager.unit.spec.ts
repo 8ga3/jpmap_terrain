@@ -389,6 +389,45 @@ describe("createGlobeTileManager", () => {
         expect(parent.dispose).toHaveBeenCalledWith(false, true);
     });
 
+    it("zoom-in: 子のテクスチャが onError でも非表示待機を維持し原子スワップする (#330 レビュー対応)", async () => {
+        // 祖先 pending 中の hiddenChild が onError で即表示されると、親と子が同時に見えて
+        // 原子スワップが壊れる。onError も onLoad 同様に hiddenChild は表示を抑止し、
+        // readyMeshes 登録のみ行う → スワップ時に enableDescendants 経由で表示される。
+        const mgr = makeManager();
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+        const parent = MeshMock.mock.results[0].value as {
+            isEnabled: () => boolean;
+            dispose: jest.Mock;
+        };
+        capturedTextures[0].onLoad?.();
+        expect(parent.isEnabled()).toBe(true);
+
+        selectedTiles = [
+            tile(200, 200, 11), tile(201, 200, 11),
+            tile(200, 201, 11), tile(201, 201, 11),
+        ];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+        const children = [1, 2, 3, 4].map(
+            (i) => MeshMock.mock.results[i].value as { isEnabled: () => boolean },
+        );
+        children.forEach((m) => expect(m.isEnabled()).toBe(false));
+
+        // 1 枚目が onError（テクスチャ取得失敗）→ 即表示せず非表示待機を維持・親保持。
+        capturedTextures[1].onError?.();
+        expect(children[0].isEnabled()).toBe(false);
+        expect(parent.dispose).not.toHaveBeenCalled();
+
+        // 残り 3 枚到着 → 4 枚すべて描画可能になり原子スワップ：onError の子も含め一斉表示、親解放。
+        capturedTextures.slice(2, 5).forEach((t) => t.onLoad?.());
+        children.forEach((m) => expect(m.isEnabled()).toBe(true));
+        expect(parent.dispose).toHaveBeenCalledWith(false, true);
+    });
+
     it("zoom-in: minZoom 未満の親(粗タイル)でも子が揃うまで保持し原子スワップする (#330 回帰)", async () => {
         // minZoom=10。親 z8・子 z9 はいずれも minZoom 未満。祖先探索の下限を minZoom に
         // すると hasZoomRelation/visibleAncestorKeys が空になり、親が即破棄されて背景球が

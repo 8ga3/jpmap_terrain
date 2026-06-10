@@ -187,7 +187,7 @@ const start = async (): Promise<void> => {
                     `azimuth: ${azimuthDeg.toFixed(1)}° / ` +
                     `tilt: ${tiltDeg.toFixed(1)}° / radius: ${Math.round(s.radius)}m\n` +
                     `LOD zoom: ${zoomLabel} / selected: ${s.selected.length} / ` +
-                    `loaded: ${s.loadedCount} / loading: ${s.loadingCount}`,
+                    `loaded: ${s.loadedCount} / pending: ${s.pendingCount} / loading: ${s.loadingCount}`,
             );
         },
     });
