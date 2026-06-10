@@ -127,7 +127,7 @@ export const panCenterOnSphereToRef = (
  *
  * @param dir レイ方向。正規化は不要（長さは交点に影響しない）。
  * @returns 交点があり t>=0 なら true（`ref` に交点。t=0 は origin が楕円体面上の境界ケース）、
- *          レイが楕円体を外す/両交点とも背面なら false。
+ *          レイが楕円体を外す/両交点とも背面、または半径が非有限/非正なら false。
  */
 export const rayEllipsoidNearHitToRef = (
     origin: Vector3,
@@ -137,6 +137,18 @@ export const rayEllipsoidNearHitToRef = (
     radiusZ: number,
     ref: Vector3,
 ): boolean => {
+    // 半径が非有限/非正だと 0 除算で NaN が伝播し、disc<0 / t<0 判定を素通りして ref に NaN を
+    // 書きつつ true を返し得る。export 関数として早期ガードする（呼び出し側は通常正の半径を渡す）。
+    if (
+        !(radiusX > 0) ||
+        !(radiusY > 0) ||
+        !(radiusZ > 0) ||
+        !Number.isFinite(radiusX) ||
+        !Number.isFinite(radiusY) ||
+        !Number.isFinite(radiusZ)
+    ) {
+        return false;
+    }
     const ox = origin.x / radiusX;
     const oy = origin.y / radiusY;
     const oz = origin.z / radiusZ;
