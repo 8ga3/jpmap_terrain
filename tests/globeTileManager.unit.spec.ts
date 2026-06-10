@@ -640,4 +640,32 @@ describe("createGlobeTileManager", () => {
         // 海面 0m へ沈まず、代表標高 300m で平坦化されること（中心の沈み込み解消）。
         expect(elev as number).toBeCloseTo(300, 3);
     });
+
+    it("視界が全面水面の all-NaN タイルを粗ズーム祖先 DEM の代表標高で平坦化する (#339)", async () => {
+        const mgr = makeManager();
+        // geom zoom(=10) は全タイル全面 no-data（all-NaN: 湖面のみ）。
+        // 粗ズーム祖先(<10)は湖岸（陸地）を含むため一様 900m を返す（湖面標高近似の供給源）。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const z = args[0] as number;
+            if (z < 10) return Promise.resolve(new Float32Array(256 * 256).fill(900));
+            return Promise.resolve(new Float32Array(256 * 256).fill(NaN));
+        });
+        // 3x3 の全面水面ブロック（視界内に有効タイルが一切無い ＝ 大きな湖の接写）。
+        selectedTiles = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                selectedTiles.push(tile(100 + dx, 100 + dy, 10));
+            }
+        }
+        mgr.sync(syncParams());
+        await flush(); // geom タイル到着（全 all-NaN）
+        mgr.sync(syncParams()); // Step2b: 粗ズーム祖先の取得を起動
+        await flush(); // 粗ズームタイル到着 → coarseSeed に 900m
+        mgr.sync(syncParams()); // 粗ズーム代表標高で平坦化
+
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        // 海面 0m へ沈まず、粗ズーム祖先の代表標高 900m で平坦化されること。
+        expect(elev as number).toBeCloseTo(900, 3);
+    });
 });
