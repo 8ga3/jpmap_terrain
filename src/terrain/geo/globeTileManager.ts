@@ -231,6 +231,13 @@ export const createGlobeTileManager = (
     // 粗ズームタイル取得結果のメモ（coarseKey `z/x/y` → 標高配列 or null）。
     // 同一湖の複数 all-NaN タイルが同じ粗タイルを参照するため取得を重複させない。
     const coarseTileMemo = new Map<string, Promise<Float32Array | null>>();
+    // 直近に得られた有効な代表標高[m]（視界内有効タイル平均または粗ズーム祖先標高）。#339
+    // 大きな湖へ陸地から接近して全面水面になった瞬間でも、直前まで見えていた湖岸標高を
+    // 暫定代表として保持し、未解決 all-NaN タイルを生 NaN(=0m クレーター) ではなく湖面相当で
+    // 平坦化するために用いる（粗ズーム取得が完了するまでの同期フォールバック）。
+    let lastRepElev: number | undefined;
+    // 直近 sync の referenceAltitude（カメラ中心地表標高）。代表標高の最終フォールバック。
+    let lastReferenceAltitude = 0;
     // 取得失敗した geom タイルのバックオフ状態（キー → 再試行可能時刻[ms] と試行回数）。
     // `loadElevationTile` は no-data(404) と一時的なネットワーク障害の双方で throw し、
     // 投げられたエラーから両者を区別できない。失敗を永続化すると一時障害でも地形が恒久
@@ -275,7 +282,13 @@ export const createGlobeTileManager = (
         const lowerGz = Math.min(minZoom, geomMaxZoom);
         for (let gz = geomMaxZoom; gz >= lowerGz; gz--) {
             const { x, y } = toTileXY(latDeg, lonDeg, gz);
-            const e = elevCache.get(tileKey(gz, x, y));
+            const gk = tileKey(gz, x, y);
+            // 未解決 all-NaN（湖面・no-data）タイルは生 NaN を保持しており bilinear が 0m を返す。
+            // これを採用すると湖上で centerElevation→0→referenceAltitude→0 と循環して暫定代表標高
+            // まで 0m へ崩れる（湖中央 0m クレーターの一因）。未解決の間はこの zoom を飛ばし、
+            // より粗い zoom（無ければ null）へ委ねて直前の有効な centerElevation を維持させる。#339
+            if (allNanGeom.has(gk)) continue;
+            const e = elevCache.get(gk);
             if (!e) continue;
             const total = totalPixelsForZoom(gz);
             const { px, py } = latLonToPixel(latDeg, lonDeg, total);
@@ -327,6 +340,10 @@ export const createGlobeTileManager = (
                 newlyFailed.push(gk);
             });
     };
+
+    /** geom タイル全面を単一標高 v[m] で埋めた Float32Array を生成する（湖面平坦化用, #339）。 */
+    const flatElevArray = (v: number): Float32Array =>
+        new Float32Array(TILE_SIZE * TILE_SIZE).fill(Number.isFinite(v) ? v : 0);
 
     /** クロスレベル coarse-edge 集合の署名（順不同で同一なら同値）。 */
     const edgeSignature = (edges: readonly CoarseEdge[]): string =>
@@ -668,6 +685,9 @@ export const createGlobeTileManager = (
                 if (!isInvalidElev(v)) { inViewSum += v; inViewCount++; }
             }
             const inViewRep = inViewCount > 0 ? inViewSum / inViewCount : undefined;
+            // 視界内に有効タイルがあれば代表標高を更新して保持する（全面水面化後の同期
+            // フォールバックに使う）。湖へ陸地から接近する経路では湖岸標高が記録される。#339
+            if (inViewRep !== undefined) lastRepElev = inViewRep;
 
             for (const gk of [...allNanGeom]) {
                 if (!elevCache.has(gk)) continue;
@@ -684,16 +704,20 @@ export const createGlobeTileManager = (
                     elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(coarse));
                     allNanGeom.delete(gk);
                     dirty.add(gk);
+                    lastRepElev = coarse;
                 } else if (coarseSeedDone.has(gk)) {
                     // (2b) 粗ズーム祖先にも有効標高無し（真の no-data: 外洋等）。視界内に有効タイルが
-                    //      あればその代表標高で平坦化、無ければ生 NaN のまま（build で海面 0m＝外洋妥当）。
-                    if (inViewRep !== undefined) {
-                        elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(inViewRep));
+                    //      あればその代表標高、無ければ直近の代表標高（湖岸標高）で平坦化する。
+                    //      どちらも無い場合のみ生 NaN のまま（build で海面 0m＝外洋として妥当）。
+                    const rep = inViewRep ?? lastRepElev;
+                    if (rep !== undefined) {
+                        elevCache.set(gk, new Float32Array(TILE_SIZE * TILE_SIZE).fill(rep));
                     }
                     allNanGeom.delete(gk);
                     dirty.add(gk);
                 } else {
-                    // (2c) 未取得 → 粗ズーム祖先取得を起動し、確定は次 sync へ見送る（build は遅延）。
+                    // (2c) 未取得 → 粗ズーム祖先取得を起動し、確定は次 sync へ見送る。確定までは
+                    //      build が暫定代表標高で平坦化するため 0m クレーターも下地露出も生じない。
                     requestCoarseSeed(gk);
                 }
             }
@@ -721,7 +745,8 @@ export const createGlobeTileManager = (
             // loadElevationTile は no-data(404) と一時的障害を区別できないため、失敗は一律バックオフ
             // 扱い。実標高が届いたら次 sync で実標高へ再構築（sig で検知）、失敗継続なら海面のまま残す。
             const isFlatFallback = !cachedElev;
-            const geomElev = cachedElev ?? FLAT_SEA_ELEV;
+            // 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイル（湖面・no-data 全面）。
+            let geomElev = cachedElev ?? FLAT_SEA_ELEV;
 
             // 標高が視覚的に意味を持つ zoom レベル（minZoom 以上）では、標高ロード中は建築をスキップ。
             // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため (#330)。
@@ -729,12 +754,17 @@ export const createGlobeTileManager = (
             // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
             if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
 
-            // 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイルは建築を見送る。生 NaN を
-            // そのまま建築すると globeMesh が海面 0m へ倒し「湖中央の沈み込み（クレーター）」に
-            // なるため（本栖湖・諏訪湖 #339）。`refineAllNaNTiles` が代表標高で確定（allNanGeom
-            // から除外）し次第、正しい標高で初めて建築する。高高度（minZoom 未満）は標高が視覚的に
-            // 無意味なので従来どおり即建築する。
-            if (allNanGeom.has(gk) && t.zoom >= minZoom) continue;
+            // 確定前（粗ズーム祖先 DEM の取得待ち等）の all-NaN タイル（本栖湖・諏訪湖 #339）。
+            // 生 NaN をそのまま建築すると globeMesh が海面 0m へ倒し「湖中央の沈み込み（クレーター）」、
+            // 逆に建築を見送ると下地の低解像度ベースレイヤ（陸地=橙系）が露出する。どちらも避けるため、
+            // 暫定代表標高（粗ズーム祖先 ?? 直近代表標高 ?? referenceAltitude）で平坦に建築する。
+            // 地図テクスチャは標高に依存せず読み込まれるため、湖面相当の高さに平坦な正しい地図が描かれる。
+            // `refineAllNaNTiles` が正確な湖面標高で確定（allNanGeom から除外）し次第、sig 差分で再建築する。
+            const isAllNanPending = !!cachedElev && allNanGeom.has(gk) && t.zoom >= minZoom;
+            if (isAllNanPending) {
+                const rep = coarseSeed.get(gk) ?? lastRepElev ?? lastReferenceAltitude;
+                geomElev = flatElevArray(rep);
+            }
 
             // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
             // crossLevel は細タイル zoom == その geom zoom を前提に、細グローバルピクセルを
@@ -743,7 +773,7 @@ export const createGlobeTileManager = (
             // 残る z16-18×粗 境界の「陰影シーム」除去（geom 座標へ写像した粗表面評価）は
             // 後続フェーズの磨き込み対象（#275）。
             let edges: readonly CoarseEdge[] = [];
-            if (snapEnabled && t.zoom <= geomMaxZoom && !isFlatFallback) {
+            if (snapEnabled && t.zoom <= geomMaxZoom && !isFlatFallback && !isAllNanPending) {
                 const r = selectCoarseEdges(
                     t,
                     (kk) => desiredKeys.has(kk),
@@ -759,9 +789,12 @@ export const createGlobeTileManager = (
                 // シームは許容。欠けるよりは良い）。
                 edges = r.edges;
             }
-            // フラット建築かどうかも署名に含める（no-data 回復で flat→実標高に変わったら、
+            // フラット建築・暫定 all-NaN 建築かどうかも署名に含める（実標高で確定したら、
             // coarse-edge が同一でもジオメトリを再構築させるため）。
-            const sig = (isFlatFallback ? "flat|" : "") + edgeSignature(edges);
+            const sig =
+                (isFlatFallback ? "flat|" : "") +
+                (isAllNanPending ? "allnan|" : "") +
+                edgeSignature(edges);
 
             // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
             // ジオメトリのみ差し替える（テクスチャ・マテリアルは再利用し再読込を避ける）。
@@ -868,6 +901,8 @@ export const createGlobeTileManager = (
     };
 
     const sync = (params: GlobeTileSyncParams): GlobeTileSyncStats => {
+        // 暫定代表標高の最終フォールバックとして referenceAltitude（カメラ中心地表標高）を保持。
+        if (Number.isFinite(params.referenceAltitude)) lastReferenceAltitude = params.referenceAltitude;
         // root 探索はカメラの現在の注視点(center)を追従する（パン後もカメラ直下を選択）。
         const camGeo = ecefToGeodetic(params.centerEcef);
         const tiles = selectGlobeTiles({

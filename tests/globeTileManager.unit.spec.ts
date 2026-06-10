@@ -669,4 +669,20 @@ describe("createGlobeTileManager", () => {
         // 海面 0m へ沈まず、粗ズーム祖先の代表標高 900m で平坦化されること。
         expect(elev as number).toBeCloseTo(900, 3);
     });
+
+    it("未解決 all-NaN タイル上では terrainElevAt が 0m でなく null を返す（代表標高の循環崩壊防止, #339）", async () => {
+        const mgr = makeManager();
+        // 全タイル全面 no-data（all-NaN）。粗ズーム祖先取得が完了するまで未解決状態が続く。
+        loadElevationTile.mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256).fill(NaN)),
+        );
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        await flush(); // all-NaN 到着 → allNanGeom 入り（未解決）
+
+        // 未解決 all-NaN を生 NaN(bilinear=0m) として採用すると、湖上で centerElevation→0→
+        // referenceAltitude→0 と循環し暫定代表標高まで 0m に崩れる。これを防ぐため null を返す。
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).toBeNull();
+    });
 });
