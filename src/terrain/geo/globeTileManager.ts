@@ -588,6 +588,10 @@ export const createGlobeTileManager = (
 
             const mesh = new Mesh(`tile-${k}`, scene);
             applyGeometry(mesh, data);
+            // 前景タイルも非ピッカブルにする（#337）。ピッカブルだと `GeospatialCamera` 内蔵パン
+            // の `scene.pick` がこのメッシュにヒットし、独自パン（scenes/globe.ts の onPointerMove）
+            // と二重にカメラを動かして水平方向にガタつく。基準タイル（base-tile）と挙動を揃える。
+            mesh.isPickable = false;
 
             // 地理院タイル画像を diffuseTexture として適用（同一 z/x/y）。タイルごとに専有し、
             // アンロード時に mesh.dispose(_, true) でテクスチャごと破棄する。
