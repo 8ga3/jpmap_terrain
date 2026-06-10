@@ -477,7 +477,10 @@ export const createGlobeTileManager = (
             const { gz, gx, gy } = geomCoordOf(t);
             const gk = tileKey(gz, gx, gy);
             const cachedElev = elevCache.get(gk);
-            // 実標高が未取得（ロード中 or no-data 失敗）なら、海面フラット(0m)で「暫定建築」する。
+            // 実標高が未取得（ロード中 or no-data 失敗）の場合の暫定値（海面フラット 0m）。
+            // ただしフラットで暫定建築するのは「no-data 確定(failedRetryAt)」または
+            // 「minZoom 未満（高高度で標高が無意味）」に限る。それ以外（minZoom 以上のロード中）は
+            // 直後の分岐で建築自体をスキップする（フラット→実標高の近景チラつきを避けるため, #330）。
             // 実標高が届いたら次 sync で実標高へ再構築（sig で検知）、no-data なら海面のまま残す。
             const isFlatFallback = !cachedElev;
             const geomElev = cachedElev ?? FLAT_SEA_ELEV;
