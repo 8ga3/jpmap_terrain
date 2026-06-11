@@ -1373,9 +1373,24 @@ export class GlobeScene {
                     if (!hasAnyPolygonPointListener()) detachPolygonPointHandlers();
                 };
             };
-        const subscribePolygonPointHover = makePolygonPointSubscribe(
-            polygonPointHoverListeners,
-        );
+        const subscribePolygonPointHover = (
+            listener: GlobePolygonPointListener,
+        ): (() => void) => {
+            polygonPointHoverListeners.push(listener);
+            attachPolygonPointHandlers();
+            return () => {
+                const i = polygonPointHoverListeners.indexOf(listener);
+                if (i >= 0) polygonPointHoverListeners.splice(i, 1);
+                // 最後の hover リスナー解除時は、click/drag リスナーが残って handler が
+                // 付いたままでも hover 検出が止まりカーソルが pointer のまま残り得る。
+                // planar (subscribePolygonPointHover) と同様に明示的にクリアする。
+                if (polygonPointHoverListeners.length === 0 && polygonPointHoverState !== null) {
+                    polygonPointHoverState = null;
+                    canvas.style.cursor = "";
+                }
+                if (!hasAnyPolygonPointListener()) detachPolygonPointHandlers();
+            };
+        };
         const subscribePolygonPointClick = makePolygonPointSubscribe(
             polygonPointClickListeners,
         );
