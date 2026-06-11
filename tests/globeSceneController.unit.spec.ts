@@ -385,12 +385,16 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
         expect(m.list()).toEqual(["p1", "p2"]);
     });
 
-    it("dispose は globe マネージャへ委譲し、以後の add は throw する", () => {
+    it("dispose は内部マネージャを破棄せず、追加分のみ remove して以後の add は throw する", () => {
         const stub = makeGlobeMarkerStub();
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 0);
         m.add("p1", { ...BASE });
+        const addedId = stub.added[0].id;
         m.dispose();
-        expect(stub.disposed()).toBe(true);
+        // 内部 GlobeMarkerManager はシーンが所有・毎フレーム参照するため破棄しない。
+        expect(stub.disposed()).toBe(false);
+        // アダプタが追加したマーカーのみ remove する。
+        expect(stub.removed).toContain(addedId);
         expect(() => m.add("p2", { ...BASE })).toThrow(/disposed/);
     });
 });
@@ -496,8 +500,12 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
                 expect(m.list()).toEqual([]);
                 m.remove("missing");
                 expect(warn).toHaveBeenCalled();
+                // dispose 時に残っているポリゴンのみ remove し、内部マネージャは破棄しない。
+                m.add("poly2", { points: PTS });
+                const aliveId = stub.added[stub.added.length - 1].id;
                 m.dispose();
-                expect(stub.disposed()).toBe(true);
+                expect(stub.disposed()).toBe(false);
+                expect(stub.removed).toContain(aliveId);
                 expect(() => m.add("x", { points: PTS })).toThrow(/disposed/);
                 warn.mockRestore();
             });
