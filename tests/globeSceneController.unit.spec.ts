@@ -15,12 +15,12 @@ import {
     createGlobePolygonManagerAdapter,
     createGlobeCircleManagerAdapter,
 } from "../src/scenes/globeSceneController";
-import type { GlobeSceneController } from "../src/scenes/globe";
-import type { TerrainClickEvent } from "../src/lib/types";
 import type {
+    GlobeSceneController,
     GlobeTerrainClickEvent,
     GlobeTerrainClickListener,
 } from "../src/scenes/globe";
+import type { TerrainClickEvent } from "../src/lib/types";
 import type {
     GlobeMarkerManager,
     GlobeMarkerOptions,
