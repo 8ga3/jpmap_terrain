@@ -1,8 +1,9 @@
 /**
- * GlobeCircleManager の振る舞い (Issue #275 Phase 3)。
+ * GlobeCircleManager の振る舞い (Issue #275 Phase 3 / Phase 4 Slice 2b-2)。
  *
- * 内部の GlobePolygonManager をスタブに差し替え、サークルが「閉ポリゴン + 円周点列」へ委譲される
- * こと、半径/分割数の検証、CRUD/update/dispose の委譲を検証する。
+ * 内部の GlobePolygonManager をスタブに差し替え、1 サークルが ring（閉ポリゴン・線＋壁）と
+ * center（中心 1 点・点＋ラベル）の 2 ノードへ委譲されること、半径/分割数の検証、
+ * CRUD/update/dispose の委譲を検証する。
  */
 import { jest } from "@jest/globals";
 
@@ -10,6 +11,11 @@ interface AddCall {
     points: { lat: number; lon: number }[];
     closed?: boolean;
     outlineColor?: string;
+    pointsEnabled?: boolean;
+    lineEnabled?: boolean;
+    wallsEnabled?: boolean;
+    labelsEnabled?: boolean;
+    labels?: ReadonlyArray<string | undefined>;
 }
 const addCalls: AddCall[] = [];
 const removeCalls: string[] = [];
@@ -51,13 +57,19 @@ beforeEach(() => {
 });
 
 describe("add", () => {
-    it("円周点列を持つ閉ポリゴンとして委譲する", () => {
+    it("ring（閉ポリゴン）と center（中心 1 点）の 2 ノードへ委譲する", () => {
         const mgr = makeManager();
         const id = mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, segments: 16 });
-        expect(addCalls.length).toBe(1);
+        expect(addCalls.length).toBe(2);
+        // ring ノード: 閉ポリゴン・円周点列・頂点マーカー無効。
         expect(addCalls[0].closed).toBe(true);
         expect(addCalls[0].points.length).toBe(16);
-        expect(id).toBe("globe-polygon-0");
+        expect(addCalls[0].pointsEnabled).toBe(false);
+        // center ノード: 中心 1 点・点マーカー有効・線無効。
+        expect(addCalls[1].points.length).toBe(1);
+        expect(addCalls[1].pointsEnabled).toBe(true);
+        expect(addCalls[1].lineEnabled).toBe(false);
+        expect(id).toBe("globe-circle-0");
     });
 
     it("segments 既定は 64", () => {
@@ -66,7 +78,14 @@ describe("add", () => {
         expect(addCalls[0].points.length).toBe(64);
     });
 
-    it("スタイル（色）を委譲する", () => {
+    it("ラベル指定時は center ノードにラベルを委譲する", () => {
+        const mgr = makeManager();
+        mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, label: "中心" });
+        expect(addCalls[1].labelsEnabled).toBe(true);
+        expect(addCalls[1].labels?.[0]).toBe("中心");
+    });
+
+    it("旧 API のスタイル（色）を ring へ委譲する", () => {
         const mgr = makeManager();
         mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, outlineColor: "#abcdef" });
         expect(addCalls[0].outlineColor).toBe("#abcdef");
@@ -91,16 +110,20 @@ describe("add", () => {
 });
 
 describe("委譲（remove/setEnabled/update/dispose）", () => {
-    it("各操作が内部ポリゴンマネージャへ委譲される", () => {
+    it("remove / setEnabled は ring・center 両ノードへ委譲する", () => {
         const mgr = makeManager();
         const id = mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000 });
         mgr.setEnabled(id, false);
         mgr.update();
         mgr.remove(id);
         mgr.dispose();
-        expect(setEnabledCalls).toEqual([[id, false]]);
+        // ring=globe-polygon-0 / center=globe-polygon-1 の 2 ノード。
+        expect(setEnabledCalls).toEqual([
+            ["globe-polygon-0", false],
+            ["globe-polygon-1", false],
+        ]);
         expect(updateCount).toBe(1);
-        expect(removeCalls).toEqual([id]);
+        expect(removeCalls).toEqual(["globe-polygon-0", "globe-polygon-1"]);
         expect(disposeCount).toBe(1);
     });
 });

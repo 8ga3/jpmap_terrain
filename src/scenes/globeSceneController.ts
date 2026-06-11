@@ -29,6 +29,7 @@ import {
 import { createUiVisibilityController } from "../terrain/uiVisibility";
 import type { MarkerManager } from "../terrain/markerManager";
 import type { PolygonManager } from "../terrain/polygonManager";
+import type { CircleManager } from "../terrain/circleManager";
 import type {
     MarkerHandle,
     MarkerOptions,
@@ -42,14 +43,30 @@ import type {
     PolygonPointPartial,
     PolygonStyleOptions,
     PolygonUpdate,
+    CircleHandle,
+    CircleOptions,
+    CircleUpdate,
+    CircleCenterOptions,
+    CircleStyleOptions,
     AltitudeMode,
 } from "../lib/types";
-import { MARKER_DEFAULTS, POLYGON_DEFAULTS } from "../lib/types";
+import {
+    MARKER_DEFAULTS,
+    POLYGON_DEFAULTS,
+    CIRCLE_DEFAULTS,
+    CIRCLE_RADIUS_MAX_M,
+    CIRCLE_SEGMENTS_MIN,
+    CIRCLE_SEGMENTS_MAX,
+} from "../lib/types";
 import type { GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import type {
     GlobePolygonManager,
     GlobePolygonOptions,
 } from "../terrain/geo/globePolygonManager";
+import type {
+    GlobeCircleManager,
+    GlobeCircleOptions,
+} from "../terrain/geo/globeCircleManager";
 import type {
     DefaultSceneController,
     DefaultSceneInitOptions,
@@ -635,6 +652,330 @@ export const createGlobePolygonManagerAdapter = (
     };
 };
 
+const CIRCLE_ERROR_PREFIX = "JpmapTerrain.addCircle";
+
+/** 公開 `CircleStyleOptions` を `CIRCLE_DEFAULTS.style` で埋める。 */
+const resolveCircleStyle = (
+    style: CircleStyleOptions | undefined,
+): Required<CircleStyleOptions> => ({
+    pointColor: style?.pointColor ?? CIRCLE_DEFAULTS.style.pointColor,
+    pointDiameter: style?.pointDiameter ?? CIRCLE_DEFAULTS.style.pointDiameter,
+    pointOpacity: style?.pointOpacity ?? CIRCLE_DEFAULTS.style.pointOpacity,
+    lineColor: style?.lineColor ?? CIRCLE_DEFAULTS.style.lineColor,
+    lineWidth: style?.lineWidth ?? CIRCLE_DEFAULTS.style.lineWidth,
+    lineOpacity: style?.lineOpacity ?? CIRCLE_DEFAULTS.style.lineOpacity,
+    wallColor: style?.wallColor ?? CIRCLE_DEFAULTS.style.wallColor,
+    wallOpacity: style?.wallOpacity ?? CIRCLE_DEFAULTS.style.wallOpacity,
+    labelColor: style?.labelColor ?? CIRCLE_DEFAULTS.style.labelColor,
+    labelBackgroundColor:
+        style?.labelBackgroundColor ?? CIRCLE_DEFAULTS.style.labelBackgroundColor,
+    labelFontSize: style?.labelFontSize ?? CIRCLE_DEFAULTS.style.labelFontSize,
+});
+
+/**
+ * 中心ラベルの自動生成テキスト（lat / lon / alt / radius を 4 行）。planar `circle.ts` と一致させる。
+ */
+const formatCircleAutoLabel = (
+    center: CircleCenterOptions,
+    radius: number,
+): string => {
+    const altText = center.altitude !== undefined ? center.altitude.toFixed(1) : "0.0";
+    return [
+        `lat: ${center.lat.toFixed(6)}`,
+        `lon: ${center.lon.toFixed(6)}`,
+        `alt: ${altText} m`,
+        `radius: ${radius.toFixed(1)} m`,
+    ].join("\n");
+};
+
+/** アダプタが保持する 1 サークルの解決済み状態（公開ハンドル再構築用）。 */
+interface CircleAdapterEntry {
+    /** `GlobeCircleManager.add` が採番した内部 id。 */
+    globeId: string;
+    center: CircleCenterOptions;
+    radius: number;
+    segments: number;
+    altitudeMode: AltitudeMode;
+    /** label が undefined（自動生成）指定だったか。center/radius 変化時に再生成する。 */
+    labelAuto: boolean;
+    /** 現在のラベル文字列（null は非表示指定）。 */
+    labelText: string | null;
+    style: Required<CircleStyleOptions>;
+    enabled: boolean;
+    pointEnabled: boolean;
+    lineEnabled: boolean;
+    wallEnabled: boolean;
+    labelEnabled: boolean;
+}
+
+/**
+ * `GlobeCircleManager`（採番 id・閉ポリゴン委譲）を公開 `CircleManager`（明示 id・`CircleHandle`
+ * 返却・partial-update・各種トグル）へアダプトする（#275 Phase 4 / Slice 2b-2）。
+ *
+ * - `GlobeCircleManager` は in-place 更新を持たないため、`update` および各トグルは内部ノードを
+ *   作り直す（add-then-remove のトランザクション。Marker / Polygon アダプタと同契約）。
+ * - `elevationResolved` は planar 同様、中心の地形標高が取得できるか（`terrainElevAt !== null`）で
+ *   best-effort 判定する（`absolute` は常に true）。
+ *
+ * @internal テスト用に export する。
+ */
+export const createGlobeCircleManagerAdapter = (
+    globeMgr: GlobeCircleManager,
+    terrainElevAt: (latDeg: number, lonDeg: number) => number | null,
+): CircleManager => {
+    const entries = new Map<string, CircleAdapterEntry>();
+    let disposed = false;
+
+    const assertNotDisposed = (): void => {
+        if (disposed) throw new Error("CircleManager has been disposed");
+    };
+
+    const requireEntry = (id: string): CircleAdapterEntry => {
+        const e = entries.get(id);
+        if (!e) throw new Error(`Circle id "${id}" not found`);
+        return e;
+    };
+
+    const validateOptions = (
+        center: CircleCenterOptions,
+        radius: number,
+        segments: number | undefined,
+        altitudeMode: AltitudeMode,
+        prefix: string,
+    ): void => {
+        if (!center) throw new Error(`${prefix}: center is required`);
+        assertLatLonInBounds(center.lat, center.lon, prefix);
+        if (!Number.isFinite(radius) || radius <= 0 || radius > CIRCLE_RADIUS_MAX_M) {
+            throw new Error(
+                `${prefix}: radius must be in (0, ${CIRCLE_RADIUS_MAX_M}] m (got ${radius})`,
+            );
+        }
+        if (
+            segments !== undefined &&
+            (!Number.isInteger(segments) ||
+                segments < CIRCLE_SEGMENTS_MIN ||
+                segments > CIRCLE_SEGMENTS_MAX)
+        ) {
+            throw new Error(
+                `${prefix}: segments must be an integer in [${CIRCLE_SEGMENTS_MIN}, ${CIRCLE_SEGMENTS_MAX}] (got ${segments})`,
+            );
+        }
+        if (altitudeMode === "absolute" && center.altitude === undefined) {
+            throw new Error(`${prefix}: altitudeMode="absolute" requires center.altitude`);
+        }
+    };
+
+    const toGlobeOptions = (e: CircleAdapterEntry): GlobeCircleOptions => ({
+        centerLat: e.center.lat,
+        centerLon: e.center.lon,
+        radiusMeters: e.radius,
+        segments: e.segments,
+        altitudeMode: e.altitudeMode,
+        centerAltitudeMeters: e.center.altitude,
+        label: e.labelText,
+        style: e.style as PolygonStyleOptions,
+        enabled: e.enabled,
+        pointEnabled: e.pointEnabled,
+        lineEnabled: e.lineEnabled,
+        wallEnabled: e.wallEnabled,
+        labelEnabled: e.labelEnabled,
+    });
+
+    const buildHandle = (id: string, e: CircleAdapterEntry): CircleHandle => ({
+        id,
+        center: { ...e.center },
+        radius: e.radius,
+        segments: e.segments,
+        altitudeMode: e.altitudeMode,
+        label: e.labelText,
+        style: { ...e.style },
+        enabled: e.enabled,
+        pointEnabled: e.pointEnabled,
+        lineEnabled: e.lineEnabled,
+        wallEnabled: e.wallEnabled,
+        labelEnabled: e.labelEnabled,
+        elevationResolved:
+            e.altitudeMode === "absolute" ||
+            terrainElevAt(e.center.lat, e.center.lon) !== null,
+    });
+
+    // 先に新ノードを add し、成功時のみ旧ノードを remove する（Polygon アダプタと同契約）。
+    const commitRebuild = (
+        id: string,
+        prev: CircleAdapterEntry,
+        next: CircleAdapterEntry,
+    ): CircleAdapterEntry => {
+        const globeId = globeMgr.add(toGlobeOptions(next));
+        globeMgr.remove(prev.globeId);
+        next.globeId = globeId;
+        entries.set(id, next);
+        return next;
+    };
+
+    const cloneEntry = (e: CircleAdapterEntry): CircleAdapterEntry => ({
+        ...e,
+        center: { ...e.center },
+        style: { ...e.style },
+    });
+
+    return {
+        add(id: string, options: CircleOptions): CircleHandle {
+            assertNotDisposed();
+            if (entries.has(id)) {
+                throw new Error(`${CIRCLE_ERROR_PREFIX}: id "${id}" already exists`);
+            }
+            const altitudeMode = options.altitudeMode ?? CIRCLE_DEFAULTS.altitudeMode;
+            validateOptions(
+                options.center,
+                options.radius,
+                options.segments,
+                altitudeMode,
+                CIRCLE_ERROR_PREFIX,
+            );
+            const center = { ...options.center };
+            const radius = options.radius;
+            // label: undefined=自動生成 / null=非表示 / string=カスタム。
+            const labelAuto = options.label === undefined;
+            const labelText: string | null =
+                options.label === null
+                    ? null
+                    : labelAuto
+                      ? formatCircleAutoLabel(center, radius)
+                      : (options.label as string);
+            const entry: CircleAdapterEntry = {
+                globeId: "",
+                center,
+                radius,
+                segments: options.segments ?? CIRCLE_DEFAULTS.segments,
+                altitudeMode,
+                labelAuto,
+                labelText,
+                style: resolveCircleStyle(options.style),
+                enabled: options.enabled ?? CIRCLE_DEFAULTS.enabled,
+                pointEnabled: options.pointEnabled ?? CIRCLE_DEFAULTS.pointEnabled,
+                lineEnabled: options.lineEnabled ?? CIRCLE_DEFAULTS.lineEnabled,
+                wallEnabled: options.wallEnabled ?? CIRCLE_DEFAULTS.wallEnabled,
+                labelEnabled: options.labelEnabled ?? CIRCLE_DEFAULTS.labelEnabled,
+            };
+            entry.globeId = globeMgr.add(toGlobeOptions(entry));
+            entries.set(id, entry);
+            return buildHandle(id, entry);
+        },
+        update(id: string, partial: CircleUpdate): CircleHandle {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const center =
+                partial.center !== undefined ? { ...partial.center } : { ...prev.center };
+            const radius = partial.radius ?? prev.radius;
+            const segments = partial.segments ?? prev.segments;
+            const altitudeMode = partial.altitudeMode ?? prev.altitudeMode;
+            validateOptions(
+                center,
+                radius,
+                segments,
+                altitudeMode,
+                `JpmapTerrain.updateCircle[${id}]`,
+            );
+            // label の再解決:
+            // - partial.label 指定あり: undefined=自動 / null=非表示 / string=カスタム
+            // - 未指定: 自動なら center/radius 変化に追従して再生成、それ以外は維持。
+            let labelAuto = prev.labelAuto;
+            let labelText = prev.labelText;
+            if (partial.label !== undefined) {
+                if (partial.label === null) {
+                    labelAuto = false;
+                    labelText = null;
+                } else {
+                    labelAuto = false;
+                    labelText = partial.label;
+                }
+            } else if (prev.labelAuto) {
+                labelText = formatCircleAutoLabel(center, radius);
+            }
+            const next: CircleAdapterEntry = {
+                ...prev,
+                center,
+                radius,
+                segments,
+                altitudeMode,
+                labelAuto,
+                labelText,
+                style:
+                    partial.style !== undefined
+                        ? resolveCircleStyle(partial.style)
+                        : { ...prev.style },
+                enabled: partial.enabled ?? prev.enabled,
+                pointEnabled: partial.pointEnabled ?? prev.pointEnabled,
+                lineEnabled: partial.lineEnabled ?? prev.lineEnabled,
+                wallEnabled: partial.wallEnabled ?? prev.wallEnabled,
+                labelEnabled: partial.labelEnabled ?? prev.labelEnabled,
+            };
+            return buildHandle(id, commitRebuild(id, prev, next));
+        },
+        get(id: string): CircleHandle | null {
+            const e = entries.get(id);
+            return e ? buildHandle(id, e) : null;
+        },
+        remove(id: string): void {
+            const e = entries.get(id);
+            if (!e) {
+                console.warn(`[jpmap-terrain] removeCircle: id "${id}" not found`);
+                return;
+            }
+            globeMgr.remove(e.globeId);
+            entries.delete(id);
+        },
+        setEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            globeMgr.setEnabled(e.globeId, enabled);
+            e.enabled = enabled;
+        },
+        setPointEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.pointEnabled = enabled;
+            commitRebuild(id, prev, next);
+        },
+        setLineEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.lineEnabled = enabled;
+            commitRebuild(id, prev, next);
+        },
+        setWallEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.wallEnabled = enabled;
+            commitRebuild(id, prev, next);
+        },
+        setLabelEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.labelEnabled = enabled;
+            commitRebuild(id, prev, next);
+        },
+        list(): readonly string[] {
+            return Array.from(entries.keys());
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            // 内部 GlobeCircleManager はシーンが毎フレーム update(camEcef) で参照し
+            // GlobeScene.dispose() が破棄する所有者であるため、ここでは破棄しない。
+            // このアダプタが追加したサークルのみ削除し、以降の API 呼び出しを禁止する。
+            for (const e of entries.values()) {
+                globeMgr.remove(e.globeId);
+            }
+            entries.clear();
+        },
+    };
+};
+
 /**
  * `DefaultScene` と同一シグネチャの `createScene` を提供する globe シーンファクトリ。
  * `JpmapTerrain.initAsync` は `terrainEngine` に応じて `DefaultScene` か本クラスを選ぶ。
@@ -695,6 +1036,10 @@ export const createGlobeSceneController = (
     );
     const polygonManager = createGlobePolygonManagerAdapter(
         gc.polygonManager,
+        (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
+    );
+    const circleManager = createGlobeCircleManagerAdapter(
+        gc.circleManager,
         (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
     );
 
@@ -1012,6 +1357,7 @@ export const createGlobeSceneController = (
 
         getMarkerManager: () => markerManager,
         getPolygonManager: () => polygonManager,
+        getCircleManager: () => circleManager,
 
         // ---- イベント購読（floating-origin 対応の pick 非依存実装は P4-0 後続スライス） ----
         // インターフェース通り listener を受け取るが globe では未対応のため無視する（no-op）。

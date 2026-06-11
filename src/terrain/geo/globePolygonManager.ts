@@ -106,6 +106,8 @@ export interface GlobePolygonOptions {
     verticalsEnabled?: boolean;
     labelsEnabled?: boolean;
     wallsEnabled?: boolean;
+    /** アウトライン（輪郭線）の表示。default true。circle 委譲で線と壁を独立トグルするために使う。 */
+    lineEnabled?: boolean;
     /** 内部用途: circle 委譲時は頂点マーカーを非表示にして既存の円表示を保つ。 */
     pointsEnabled?: boolean;
     enabled?: boolean;
@@ -140,6 +142,7 @@ interface GlobePolygonNode {
     verticalsEnabled: boolean;
     labelsEnabled: boolean;
     wallsEnabled: boolean;
+    lineEnabled: boolean;
     pointsEnabled: boolean;
     elevationResolved: boolean;
     style: ResolvedStyle;
@@ -359,7 +362,7 @@ export const createGlobePolygonManager = (
         for (const entry of node.edgeLabels) {
             if (entry) entry.mesh.setEnabled(visible && node.labelsEnabled && hasEdges);
         }
-        node.lineMesh.setEnabled(visible && hasEdges);
+        node.lineMesh.setEnabled(visible && hasEdges && node.lineEnabled);
         node.wallMesh.setEnabled(visible && hasEdges && node.wallsEnabled);
     };
 
@@ -598,6 +601,7 @@ export const createGlobePolygonManager = (
             verticalsEnabled,
             labelsEnabled: opts.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled,
             wallsEnabled: opts.wallsEnabled ?? POLYGON_DEFAULTS.wallsEnabled,
+            lineEnabled: opts.lineEnabled ?? true,
             pointsEnabled,
             elevationResolved: altitudeMode === "absolute",
             style,
