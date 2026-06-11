@@ -308,6 +308,8 @@ export class JpmapTerrain {
                     } else {
                         this._markerManager =
                             controller.getMarkerManager?.() ?? null;
+                        this._polygonManager =
+                            controller.getPolygonManager?.() ?? null;
                     }
                 },
             });

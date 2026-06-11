@@ -18,7 +18,11 @@
  * 開発デモ層につき `src/lib/**` には依存型のみ依存し、内部実装は触らない。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
-import type { JpmapTerrainOptions, PolygonOptions } from "../../lib/types";
+import type {
+    JpmapTerrainOptions,
+    PolygonOptions,
+    TerrainEngine,
+} from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
@@ -34,6 +38,16 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
     const value = new URLSearchParams(search).get("engine");
     if (value === "webgpu") return "webgpu";
     if (value === "webgl" || value === "webgl2") return "webgl2";
+    return undefined;
+};
+
+/** `?terrainEngine=` クエリ文字列から地形バックエンドを解決する（viewer デモと同規則）。 */
+export const resolveTerrainEngine = (
+    search: string,
+): TerrainEngine | undefined => {
+    const value = new URLSearchParams(search).get("terrainEngine");
+    if (value === "globe") return "globe";
+    if (value === "planar") return "planar";
     return undefined;
 };
 
@@ -318,6 +332,7 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
+    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraState = parseCameraStateFromUrl(location.href) ?? undefined;
     const mapType = parseMapTypeFromUrl(location.href);
     // よみうりランド近傍を初期視点（URL 指定がない場合）。
@@ -331,6 +346,7 @@ const start = async (): Promise<void> => {
 
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
+        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
         // ライブラリ内蔵の視点モード切替ボタンは非表示。デモ独自の UI を提供する (Issue #193)。

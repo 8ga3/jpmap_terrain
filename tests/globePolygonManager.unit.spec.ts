@@ -15,13 +15,20 @@ interface StubMesh {
     material: unknown;
     enabled: boolean;
     disposeCount: number;
+    position: { length: () => number; copyFrom: (v: unknown) => unknown; addInPlace: (v: unknown) => unknown };
+    scaling: { setAll: (v: number) => void };
+    billboardMode?: number;
     setEnabled: (v: boolean) => void;
     dispose: () => void;
 }
 
 const createdLines: StubMesh[] = [];
+const createdPoints: StubMesh[] = [];
+const createdDrops: StubMesh[] = [];
+const createdPlanes: StubMesh[] = [];
 const createdRibbons: StubMesh[] = [];
 const lineInstanceUpdates: number[] = [];
+const dropInstanceUpdates: number[] = [];
 const ribbonInstanceUpdates: number[] = [];
 
 const stub = (name: string, bucket: StubMesh[]): StubMesh => {
@@ -34,6 +41,16 @@ const stub = (name: string, bucket: StubMesh[]): StubMesh => {
         material: null,
         enabled: true,
         disposeCount: 0,
+        position: {
+            length: () => 1,
+            copyFrom() {
+                return this;
+            },
+            addInPlace() {
+                return this;
+            },
+        },
+        scaling: { setAll() {} },
         setEnabled(v: boolean) {
             this.enabled = v;
         },
@@ -45,14 +62,28 @@ const stub = (name: string, bucket: StubMesh[]): StubMesh => {
     return m;
 };
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/linesBuilder", () => ({
-    CreateLines: (name: string, opts: { instance?: StubMesh }) => {
+jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/sphereBuilder", () => ({
+    CreateSphere: (name: string) => stub(name, createdPoints),
+}));
+
+jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/tubeBuilder", () => ({
+    CreateTube: (name: string, opts: { instance?: StubMesh }) => {
         if (opts.instance) {
-            lineInstanceUpdates.push(1);
+            if (name.includes("outline")) lineInstanceUpdates.push(1);
+            else dropInstanceUpdates.push(1);
             return opts.instance;
         }
-        return stub(name, createdLines);
+        const bucket = name.includes("outline") ? createdLines : createdDrops;
+        return stub(name, bucket);
     },
+}));
+
+jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/planeBuilder", () => ({
+    CreatePlane: (name: string) => stub(name, createdPlanes),
+}));
+
+jest.unstable_mockModule("@babylonjs/core/Meshes/abstractMesh", () => ({
+    AbstractMesh: { BILLBOARDMODE_ALL: 7 },
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => ({
@@ -72,6 +103,8 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
         needDepthPrePass = false;
         disableLighting = false;
         backFaceCulling = true;
+        useAlphaFromDiffuseTexture = false;
+        diffuseTexture: unknown = null;
         disposeCount = 0;
         constructor(public name: string) {}
         dispose(): void {
@@ -80,9 +113,54 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
     },
 }));
 
+jest.unstable_mockModule("@babylonjs/core/Materials/Textures/dynamicTexture", () => ({
+    DynamicTexture: class {
+        hasAlpha = false;
+        vScale = 1;
+        vOffset = 0;
+        disposeCount = 0;
+        constructor(public name: string) {}
+        getContext(): {
+            font: string;
+            fillStyle: string;
+            strokeStyle: string;
+            lineWidth: number;
+            textBaseline: string;
+            textAlign: string;
+            lineJoin: string;
+            miterLimit: number;
+            measureText: (s: string) => { width: number };
+            clearRect: () => void;
+            fillRect: () => void;
+            strokeText: () => void;
+            fillText: () => void;
+        } {
+            return {
+                font: "",
+                fillStyle: "",
+                strokeStyle: "",
+                lineWidth: 1,
+                textBaseline: "",
+                textAlign: "",
+                lineJoin: "",
+                miterLimit: 0,
+                measureText: (s: string) => ({ width: s.length * 8 }),
+                clearRect() {},
+                fillRect() {},
+                strokeText() {},
+                fillText() {},
+            };
+        }
+        update(): void {}
+        dispose(): void {
+            this.disposeCount++;
+        }
+    },
+}));
+
 // Mesh.DOUBLESIDE 定数のみ使用するため軽量スタブ。
 jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
-    Mesh: { DOUBLESIDE: 2 },
+    Mesh: { DOUBLESIDE: 2, NO_CAP: 0 },
 }));
 
 const { createGlobePolygonManager } = await import(
@@ -104,28 +182,42 @@ const makeManager = () => {
 
 beforeEach(() => {
     createdLines.length = 0;
+    createdPoints.length = 0;
+    createdDrops.length = 0;
+    createdPlanes.length = 0;
     createdRibbons.length = 0;
     lineInstanceUpdates.length = 0;
+    dropInstanceUpdates.length = 0;
     ribbonInstanceUpdates.length = 0;
 });
 
 describe("add / CRUD", () => {
-    it("アウトライン線と壁 Ribbon を生成し、isPickable=false / 既定グループ0（地形と交差）", () => {
+    it("点・垂線・アウトライン線・壁 Ribbon を生成する", () => {
         const { mgr } = makeManager();
-        mgr.add({ points: pts3, closed: true });
+        mgr.add({
+            points: pts3,
+            closed: true,
+            labels: ["A", "B", "C"],
+            edgeLabels: ["AB", "BC", "CA"],
+        });
+        expect(createdPoints.length).toBe(3);
+        expect(createdDrops.length).toBe(3);
+        expect(createdPlanes.length).toBe(6);
         expect(createdLines.length).toBe(1);
         expect(createdRibbons.length).toBe(1);
         expect(createdLines[0].isPickable).toBe(false);
-        // 地形と深度交差させるため、マネージャが renderingGroupId=0 を明示設定する
-        // （スタブ初期値 -1 から 0 へ変わることで設定を検証）。
-        expect(createdLines[0].renderingGroupId).toBe(0);
+        expect(createdLines[0].renderingGroupId).toBe(1);
         expect(createdRibbons[0].isPickable).toBe(false);
         expect(createdRibbons[0].renderingGroupId).toBe(0);
     });
 
-    it("2 点未満は throw", () => {
+    it("1 点のみも許容し、線・壁は非表示", () => {
         const { mgr } = makeManager();
-        expect(() => mgr.add({ points: [{ lat: 35, lon: 139 }] })).toThrow(/at least 2/);
+        mgr.add({ points: [{ lat: 35, lon: 139 }], labels: ["single"] });
+        expect(createdPoints.length).toBe(1);
+        expect(createdDrops.length).toBe(1);
+        expect(createdLines[0].enabled).toBe(false);
+        expect(createdRibbons[0].enabled).toBe(false);
     });
 
     it("remove で線・壁・マテリアルが dispose される", () => {
@@ -177,18 +269,34 @@ describe("update", () => {
     it("有効ポリゴンは instance 更新される", () => {
         const { mgr, terrainElevAt } = makeManager();
         mgr.add({ points: pts3, closed: true });
+        lineInstanceUpdates.length = 0;
+        dropInstanceUpdates.length = 0;
+        ribbonInstanceUpdates.length = 0;
         mgr.update();
         expect(terrainElevAt).toHaveBeenCalled();
         expect(lineInstanceUpdates.length).toBe(1);
+        expect(dropInstanceUpdates.length).toBe(3);
         expect(ribbonInstanceUpdates.length).toBe(1);
     });
 
     it("wallsEnabled=false は壁の instance 更新をしない", () => {
         const { mgr } = makeManager();
         mgr.add({ points: pts3, wallsEnabled: false });
+        lineInstanceUpdates.length = 0;
+        ribbonInstanceUpdates.length = 0;
         mgr.update();
         expect(lineInstanceUpdates.length).toBe(1);
         expect(ribbonInstanceUpdates.length).toBe(0);
+    });
+
+    it("terrain 標高未解決なら全要素を非表示にする", () => {
+        const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(() => null);
+        const mgr = createGlobePolygonManager({ scene: {} as never, terrainElevAt });
+        mgr.add({ points: pts3 });
+        expect(createdPoints.every((m) => !m.enabled)).toBe(true);
+        expect(createdDrops.every((m) => !m.enabled)).toBe(true);
+        expect(createdLines[0].enabled).toBe(false);
+        expect(createdRibbons[0].enabled).toBe(false);
     });
 });
 
@@ -199,6 +307,17 @@ describe("topAltitudeMeters（固定高度）", () => {
         mgr.update();
         // 地形に依らないので terrainElevAt は呼ばれない。
         expect(terrainElevAt).not.toHaveBeenCalled();
+    });
+
+    it("absolute altitudeMode は terrainElevAt を呼ばず解決済み表示する", () => {
+        const { mgr, terrainElevAt } = makeManager();
+        mgr.add({
+            points: pts3.map((p) => ({ ...p, altitude: 500 })),
+            altitudeMode: "absolute",
+        });
+        mgr.update();
+        expect(terrainElevAt).not.toHaveBeenCalled();
+        expect(createdPoints.every((m) => m.enabled)).toBe(true);
     });
 });
 

@@ -38,6 +38,7 @@ import {
     type ViewMode,
 } from "../lib/types";
 import type { MarkerManager } from "../terrain/markerManager";
+import type { PolygonManager } from "../terrain/polygonManager";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = TILE_MAX_ZOOM;
@@ -278,6 +279,11 @@ export interface DefaultSceneController {
      * 本メソッドは実装せず（undefined）、`JpmapTerrain` は planar/globe を呼び分ける。
      */
     getMarkerManager?(): MarkerManager | null;
+    /**
+     * globe バックエンド専用フック。公開 `PolygonManager` 互換のアダプタを返す。
+     * planar 実装は `getMarkerContext()` 経由で構築するため optional。
+     */
+    getPolygonManager?(): PolygonManager | null;
 
     /**
      * 地形タイルへのクリック通知を購読する (Issue #183)。
