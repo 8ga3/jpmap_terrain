@@ -9,7 +9,7 @@
  * 平面版 `markerManager` には手を加えない（再利用するのは座標系非依存の描画部のみ）。
  */
 import type { Scene } from "@babylonjs/core/scene";
-import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -160,11 +160,14 @@ export const createGlobeMarkerManager = (
         tmp.copyFrom(up).scaleInPlace(lineHeight / 2);
         node.lineMesh.position.copyFrom(pos).addInPlace(tmp);
 
-        // アイコン/ラベル: ポール上端の少し上。BILLBOARDMODE_ALL なので向きは自動。
+        // アイコン/ラベル: ポール先端 (lineTop = 地表 + up*lineHeight) をアンカーにする。
+        // BILLBOARDMODE_ALL はメッシュの局所原点を中心にカメラへ正対するため、原点がアンカーから
+        // 外れると視線角度によって投影位置がずれる（真上視点で顕著）。add 時にプレーン下端が局所原点へ
+        // 来るよう頂点を平行移動済みなので、原点をポール先端へ置けば、円形/ラベルがポールの上に乗り
+        // （重なりによるチラつきを回避）、どの角度でも下端が先端に固定される。
         if (node.iconText) {
             node.iconText.mesh.scaling.set(distScale, distScale, distScale);
-            const textHalf = (node.iconText.heightWorld * distScale) / 2;
-            tmp.copyFrom(up).scaleInPlace(lineHeight + textHalf);
+            tmp.copyFrom(up).scaleInPlace(lineHeight);
             node.iconText.mesh.position.copyFrom(pos).addInPlace(tmp);
         }
     };
@@ -187,8 +190,18 @@ export const createGlobeMarkerManager = (
         }
         const text = resolveText(opts.text);
         const iconText = createIconTextMesh(scene, id, icon, text);
-        // ラベルもピック対象から外す（地形ピック等の妨げにしない）。
-        if (iconText) iconText.mesh.isPickable = false;
+        if (iconText) {
+            // ラベルもピック対象から外す（地形ピック等の妨げにしない）。
+            iconText.mesh.isPickable = false;
+            // BILLBOARDMODE_ALL は局所原点を中心にカメラへ正対するため、プレーン下端を局所原点へ
+            // 移す。プレーン構成は上→下に textHeightWorld / iconHeightWorld で、最下端（アイコン下端、
+            // アイコン無しならテキスト下端）の局所 y = -heightWorld/2。これを原点へ寄せると、原点を
+            // ポール先端へ置いたとき円形/ラベルがポール（実体シリンダ）の上に乗り、重なりによる
+            // z-fighting のチラつきを避けつつ、どの視線角度でも下端が先端に固定される。
+            iconText.mesh.bakeTransformIntoVertices(
+                Matrix.Translation(0, iconText.heightWorld / 2, 0),
+            );
+        }
 
         const lineColor = opts.line?.color ?? GLOBE_MARKER_DEFAULTS.lineColor;
         // ドロップ線は地心 up 沿いの細いシリンダ（ポール）。高さ/径は update で毎フレーム決める。

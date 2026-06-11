@@ -92,6 +92,7 @@ jest.unstable_mockModule("../src/terrain/marker", () => ({
                 setEnabled(v: boolean) {
                     this.enabled = v;
                 },
+                bakeTransformIntoVertices() {},
                 dispose() {},
             },
             material: { dispose() {} },
