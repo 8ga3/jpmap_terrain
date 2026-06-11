@@ -337,6 +337,9 @@ export const createGlobeSceneController = (
 
     if (canvas && typeof document !== "undefined") {
         const ui = createControlPanel();
+        // UI 破棄後にアニメーション（requestAnimationFrame）が camera を更新し続けないための
+        // ガードフラグ。uiDispose で true にし、各 rAF ループは次フレームをスケジュールしない。
+        let uiDisposed = false;
         // globe は 2D(ortho) を持たないため視点切替ボタンは常時非表示にする（#275 P4-1）。
         // createUiVisibilityController は生成時の display を初期値として捕捉するため、
         // 先に "none" にしておけば setUiVisibility("viewModeButton", true) でも再表示されない。
@@ -356,10 +359,13 @@ export const createGlobeSceneController = (
         const SCALE_BAR_BASE_PX = 100;
         let prevCompassDeg = Number.NaN;
         let prevScaleText = "";
+        let prevBarPx = Number.NaN;
         const updateOverlayUi = (): void => {
             // コンパス: 北矢印が実際の北を指すよう azimuth の逆回転を適用する。
+            // azimuthDeg は浮動小数のためほぼ毎フレーム変化しうる。0.1 度に丸めて比較し、
+            // 視覚的に意味のある変化があるときだけ DOM(style.transform) を書く。
             const az = yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg;
-            const deg = -az;
+            const deg = Math.round(-az * 10) / 10;
             if (deg !== prevCompassDeg) {
                 ui.compass.style.transform = `rotate(${deg}deg)`;
                 prevCompassDeg = deg;
@@ -378,7 +384,11 @@ export const createGlobeSceneController = (
                         ui.scaleBar.label.textContent = text;
                         prevScaleText = text;
                     }
-                    ui.scaleBar.bar.style.width = `${barPx}px`;
+                    // ラベル同様、幅も変化時のみ更新して不要なレイアウトを避ける。
+                    if (barPx !== prevBarPx) {
+                        ui.scaleBar.bar.style.width = `${barPx}px`;
+                        prevBarPx = barPx;
+                    }
                 }
             }
         };
@@ -399,6 +409,8 @@ export const createGlobeSceneController = (
             const duration = 400;
             const startTime = performance.now();
             const animate = (now: number): void => {
+                // UI 破棄後はカメラを更新せず再スケジュールも止める。
+                if (uiDisposed) return;
                 const t = Math.min((now - startTime) / duration, 1);
                 const ease = 1 - Math.pow(1 - t, 3);
                 camera.yaw = startYaw + dYaw * ease;
@@ -422,6 +434,8 @@ export const createGlobeSceneController = (
             const duration = 250;
             const startTime = performance.now();
             const animate = (now: number): void => {
+                // UI 破棄後は camera.radius を更新せず再スケジュールも止める。
+                if (uiDisposed) return;
                 const t = Math.min((now - startTime) / duration, 1);
                 const ease = 1 - Math.pow(1 - t, 3);
                 camera.radius = startR + (targetR - startR) * ease;
@@ -487,6 +501,7 @@ export const createGlobeSceneController = (
             el?.parentElement?.removeChild(el);
         };
         uiDispose = (): void => {
+            uiDisposed = true;
             gc.scene.onBeforeRenderObservable.remove(overlayObserver);
             removeFromParent(ui.compass);
             removeFromParent(ui.mapToggle);
