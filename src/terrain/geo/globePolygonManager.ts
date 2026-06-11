@@ -42,6 +42,7 @@ const scratchUp = new Vector3();
 const scratchMid = new Vector3();
 const scratchBottomMid = new Vector3();
 const scratchEdgeUp = new Vector3();
+const scratchCentroid = new Vector3();
 
 interface GlobePolygonPoint extends LatLonPoint {
     altitude?: number;
@@ -367,10 +368,17 @@ export const createGlobePolygonManager = (
             applyVisibility(node);
             return;
         }
-        const firstTop = node.top[0] ?? Vector3.Zero();
-        const distScale = cameraEcef
-            ? computeOverlayDistanceScale(cameraEcef, firstTop)
-            : 1;
+        // planar (polygonManager) と同様、頂点列の重心を distScale の基準にする。
+        // 先頭頂点基準だと大きなポリゴンやカメラが先頭頂点から離れたケースで
+        // スケールが不自然に変化するため。closed の重複点（top[points.length]）は除外する。
+        let distScale = 1;
+        if (cameraEcef) {
+            const n = node.points.length;
+            scratchCentroid.setAll(0);
+            for (let i = 0; i < n; i++) scratchCentroid.addInPlace(node.top[i]);
+            if (n > 0) scratchCentroid.scaleInPlace(1 / n);
+            distScale = computeOverlayDistanceScale(cameraEcef, scratchCentroid);
+        }
         const pointDiameter = Math.max(node.style.pointDiameter, 0.001);
         const pointRadius = pointDiameter * distScale * 0.5;
         const labelGap = node.style.labelFontSize * distScale * LABEL_GAP_FONT_RATIO;
