@@ -977,7 +977,8 @@ export class GlobeScene {
         const pickPolygonPoint = (
             pxCss: number,
             pyCss: number,
-        ): { polygonId: string; index: number; world: Vector3 } | null => {
+            outWorld?: Vector3,
+        ): { polygonId: string; index: number } | null => {
             const count = polygonManager.getPickablePoints(ppPickBuffer);
             if (count === 0) return null;
             ppOrigin.copyFrom(computeCameraEcef());
@@ -1021,12 +1022,13 @@ export class GlobeScene {
                     bestZ = p.z;
                 }
             }
-            // Vector3 の生成はベスト確定後に 1 回だけ行い、毎候補の割り当て/GC を避ける。
+            // world 座標はドラッグ開始時のみ必要。hover/click では outWorld を渡さず
+            // 割り当てをゼロにする。要求時のみ呼び出し側の Vector3 へ書き込む。
             if (bestPolygonId === null) return null;
+            if (outWorld) outWorld.set(bestX, bestY, bestZ);
             return {
                 polygonId: bestPolygonId,
                 index: bestIndex,
-                world: new Vector3(bestX, bestY, bestZ),
             };
         };
 
@@ -1203,9 +1205,14 @@ export class GlobeScene {
             if (!hasPolygonPointGestureListeners()) return;
             if (e.ctrlKey || e.metaKey) return;
             const rect = canvas.getBoundingClientRect();
-            const hit = pickPolygonPoint(e.clientX - rect.left, e.clientY - rect.top);
+            const startWorld = new Vector3();
+            const hit = pickPolygonPoint(
+                e.clientX - rect.left,
+                e.clientY - rect.top,
+                startWorld,
+            );
             if (!hit) return;
-            const startGeo = ecefToGeodetic(hit.world);
+            const startGeo = ecefToGeodetic(startWorld);
             polygonPointGesture = {
                 pointerId: e.pointerId,
                 polygonId: hit.polygonId,
@@ -1213,7 +1220,7 @@ export class GlobeScene {
                 startClientX: e.clientX,
                 startClientY: e.clientY,
                 dragging: false,
-                startWorld: hit.world,
+                startWorld,
                 startAltMeters: startGeo.altMeters,
             };
             canvas.setPointerCapture?.(e.pointerId);

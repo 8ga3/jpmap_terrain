@@ -1095,8 +1095,20 @@ export const createGlobeSceneController = (
     // removePolygon→addPolygon でポリゴンを作り直すため、内部 globeId が毎フレーム
     // 変わり、ジェスチャが dragstart 時に掴んだ内部 id は途中で失効する。dragstart 時点で
     // 解決した公開 id を drag/dragEnd まで使い回し、id 失効でデモが更新を無視するのを防ぐ。
-    // 次の dragstart で必ず上書きされるため明示クリアは不要（複数リスナー時の取りこぼし回避）。
+    //
+    // resolve は「内部イベント 1 件につき 1 度だけ」行う必要がある（複数リスナーが居ても
+    // activeDragPublicId を上書き/クリアする責務を 1 箇所に集約する）。そのため drag 系は
+    // public リスナーを配列で保持し、gc への購読は種別ごとに 1 本だけ張る。dragEnd では
+    // 全リスナーへ配送し終えてから activeDragPublicId をクリアし、stale id を次ジェスチャへ
+    // 持ち越さない。drag/dragEnd でも解決できた publicId で更新するため、dragStart を購読
+    // しない利用者が drag だけ購読しても publicId が安定する。
     let activeDragPublicId: string | null = null;
+    const dragStartListeners: PolygonPointDragListener[] = [];
+    const dragListeners: PolygonPointDragListener[] = [];
+    const dragEndListeners: PolygonPointDragListener[] = [];
+    let dragStartUnsub: (() => void) | null = null;
+    let dragUnsub: (() => void) | null = null;
+    let dragEndUnsub: (() => void) | null = null;
 
     /** 現在の注視点（地表 lat/lon）。 */
     const currentGeodetic = (): { latDeg: number; lonDeg: number } => {
@@ -1451,28 +1463,64 @@ export const createGlobeSceneController = (
                     pointerEvent: e.pointerEvent,
                 }),
             ),
-        subscribePolygonPointDragStart: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDragStart((e) => {
-                activeDragPublicId = resolvePolygonPublicId(e.polygonId);
-                listener(toPublicDragEvent(e, activeDragPublicId));
-            }),
-        subscribePolygonPointDrag: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDrag((e) =>
-                listener(
-                    toPublicDragEvent(
-                        e,
-                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId),
-                    ),
-                ),
-            ),
-        subscribePolygonPointDragEnd: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDragEnd((e) =>
-                listener(
-                    toPublicDragEvent(
-                        e,
-                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId),
-                    ),
-                ),
-            ),
+        subscribePolygonPointDragStart: (listener: PolygonPointDragListener) => {
+            dragStartListeners.push(listener);
+            if (!dragStartUnsub) {
+                dragStartUnsub = gc.subscribePolygonPointDragStart((e) => {
+                    activeDragPublicId = resolvePolygonPublicId(e.polygonId);
+                    const ev = toPublicDragEvent(e, activeDragPublicId);
+                    for (const l of dragStartListeners.slice()) l(ev);
+                });
+            }
+            return () => {
+                const i = dragStartListeners.indexOf(listener);
+                if (i >= 0) dragStartListeners.splice(i, 1);
+                if (dragStartListeners.length === 0 && dragStartUnsub) {
+                    dragStartUnsub();
+                    dragStartUnsub = null;
+                }
+            };
+        },
+        subscribePolygonPointDrag: (listener: PolygonPointDragListener) => {
+            dragListeners.push(listener);
+            if (!dragUnsub) {
+                dragUnsub = gc.subscribePolygonPointDrag((e) => {
+                    const id =
+                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
+                    activeDragPublicId = id;
+                    const ev = toPublicDragEvent(e, id);
+                    for (const l of dragListeners.slice()) l(ev);
+                });
+            }
+            return () => {
+                const i = dragListeners.indexOf(listener);
+                if (i >= 0) dragListeners.splice(i, 1);
+                if (dragListeners.length === 0 && dragUnsub) {
+                    dragUnsub();
+                    dragUnsub = null;
+                }
+            };
+        },
+        subscribePolygonPointDragEnd: (listener: PolygonPointDragListener) => {
+            dragEndListeners.push(listener);
+            if (!dragEndUnsub) {
+                dragEndUnsub = gc.subscribePolygonPointDragEnd((e) => {
+                    const id =
+                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
+                    const ev = toPublicDragEvent(e, id);
+                    for (const l of dragEndListeners.slice()) l(ev);
+                    // 全リスナー配送後にクリアし、次ジェスチャへ stale id を持ち越さない。
+                    activeDragPublicId = null;
+                });
+            }
+            return () => {
+                const i = dragEndListeners.indexOf(listener);
+                if (i >= 0) dragEndListeners.splice(i, 1);
+                if (dragEndListeners.length === 0 && dragEndUnsub) {
+                    dragEndUnsub();
+                    dragEndUnsub = null;
+                }
+            };
+        },
     };
 };
