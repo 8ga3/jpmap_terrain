@@ -16,7 +16,7 @@
  * `window.showToast` を露出する。これらは公開 API ではない。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
-import type { EngineType, JpmapTerrainOptions, TerrainEngine } from "../../lib/types";
+import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
 import { showToast } from "../../terrain/controlPanel";
 import {
     parseCameraStateFromUrl,
@@ -25,6 +25,7 @@ import {
     updateMapTypeInUrl,
     parseViewModeFromUrl,
     updateViewModeInUrl,
+    resolveTerrainEngine,
     type CameraUrlState,
 } from "../../terrain/urlState";
 
@@ -46,21 +47,10 @@ export const resolveEngine = (search: string): EngineType | undefined => {
 };
 
 /**
- * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する (#275 Phase 4 / P4-1)。
- * - `globe` → `"globe"`（GeospatialCamera + ECEF の地球儀バックエンド）
- * - `planar` → `"planar"`（従来の平面シーン）
- * - 上記以外 / 未指定 → `undefined`（lib 既定の `"planar"` にフォールバック）
- *
- * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
+ * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する。
+ * 実装は `terrain/urlState` に集約し、既存 import 互換のため再 export する。
  */
-export const resolveTerrainEngine = (
-    search: string,
-): TerrainEngine | undefined => {
-    const value = new URLSearchParams(search).get("terrainEngine");
-    if (value === "globe") return "globe";
-    if (value === "planar") return "planar";
-    return undefined;
-};
+export { resolveTerrainEngine };
 
 /**
  * URL からカメラ状態（緯度経度＋altitude/azimuth/tilt）を解決する (Issue #64)。

@@ -2,7 +2,7 @@
 
 import { clamp, JAPAN_BOUNDS } from "./gsiTile";
 import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
-import type { MapType, ViewMode } from "../lib/types";
+import type { MapType, ViewMode, TerrainEngine } from "../lib/types";
 
 export interface LatLon {
     lat: number;
@@ -43,6 +43,24 @@ export const CAMERA_URL_LIMITS = {
 
 /** ズームレベルの表示精度（小数桁数） */
 const ZOOM_LEVEL_PRECISION = 2;
+
+/**
+ * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する (#275 Phase 4 / P4-1)。
+ * 各デモ（viewer / polygon 等）で共通利用するため本モジュールに集約する。
+ * - `globe` → `"globe"`（GeospatialCamera + ECEF の地球儀バックエンド）
+ * - `planar` → `"planar"`（従来の平面シーン）
+ * - 上記以外 / 未指定 → `undefined`（lib 既定の `"planar"` にフォールバック）
+ *
+ * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
+ */
+export const resolveTerrainEngine = (
+    search: string,
+): TerrainEngine | undefined => {
+    const value = new URLSearchParams(search).get("terrainEngine");
+    if (value === "globe") return "globe";
+    if (value === "planar") return "planar";
+    return undefined;
+};
 
 /**
  * Web Mercator の赤道上 zoom 0 における 1 ピクセルあたりメートル。
