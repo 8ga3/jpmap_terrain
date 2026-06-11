@@ -25,6 +25,7 @@ const makeStub = (
     radius: number,
     yaw: number,
     pitch: number,
+    idle = true,
 ): { gc: GlobeSceneController; disposed: () => boolean } => {
     let disposedFlag = false;
     const camera = {
@@ -35,6 +36,11 @@ const makeStub = (
     };
     const gc = {
         camera,
+        // isTerrainIdle / marker アダプタが参照する tileManager スタブ。
+        tileManager: {
+            isIdle: () => idle,
+            terrainElevAt: () => null,
+        },
         dispose: () => {
             disposedFlag = true;
         },
@@ -102,13 +108,14 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         expect(c2.getMapType()).toBe("standard");
     });
 
-    it("setMapType は状態のみ保持し warn は一度だけ（実描画は未適用）", () => {
+    it("setMapType は実描画未適用のため getMapType は生成時固定値のまま、warn は一度だけ", () => {
         const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(gc, "std");
         c.setMapType("photo");
-        c.setMapType("photo"); // 同値は no-op（warn しない）
-        expect(c.getMapType()).toBe("photo");
+        c.setMapType("photo"); // 実行時切替未対応のため状態は変えず、warn も増やさない
+        // 実描画と乖離させないため currentMapType は生成時固定値("std"→"standard")のまま。
+        expect(c.getMapType()).toBe("standard");
         expect(warn).toHaveBeenCalledTimes(1);
         warn.mockRestore();
     });
@@ -120,12 +127,34 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
     });
 
     it("購読 API は no-op unsubscribe を返し、no-op メソッドは例外を投げない", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(gc, "std");
         expect(typeof c.subscribeTerrainClick(() => {})).toBe("function");
         expect(() => c.setUiVisibility("compass", false)).not.toThrow();
         expect(() => c.setSunShadows(true)).not.toThrow();
-        expect(c.isTerrainIdle()).toBe(true);
+        warn.mockRestore();
+    });
+
+    it("subscribeTerrainClick は未対応を一度だけ warn し、unsubscribe を返す", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const { gc } = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(gc, "std");
+        const off1 = c.subscribeTerrainClick(() => {});
+        const off2 = c.subscribeTerrainClick(() => {});
+        expect(typeof off1).toBe("function");
+        expect(typeof off2).toBe("function");
+        expect(() => off1()).not.toThrow();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toMatch(/subscribeTerrainClick is not yet supported/);
+        warn.mockRestore();
+    });
+
+    it("isTerrainIdle は tileManager.isIdle へ委譲する（true/false）", () => {
+        const idle = makeStub(35, 139, 1000, 0, 0, true);
+        expect(createGlobeSceneController(idle.gc, "std").isTerrainIdle()).toBe(true);
+        const busy = makeStub(35, 139, 1000, 0, 0, false);
+        expect(createGlobeSceneController(busy.gc, "std").isTerrainIdle()).toBe(false);
     });
 
     it("dispose は GlobeSceneController.dispose へ委譲する", () => {
@@ -258,6 +287,18 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
         expect(h.lon).toBeCloseTo(135, 6);
         expect(h.text?.value).toBe("b");
         expect(h.enabled).toBe(false);
+    });
+
+    it("lat/lon を変更する update 直後は elevationResolved=false（planar parity）", () => {
+        const stub = makeGlobeMarkerStub();
+        // terrainElevAt は常に解決(非 null)を返すが、座標変更直後は false を返すべき。
+        const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 50);
+        m.add("p1", { lat: VALID_LAT, lon: VALID_LON, text: { value: "a" } });
+        const moved = m.update("p1", { lat: 34, lon: 135 });
+        expect(moved.elevationResolved).toBe(false);
+        // 座標を変えない update は通常の best-effort 判定（terrainElevAt!==null）に従う。
+        const sameCoord = m.update("p1", { text: { value: "c" } });
+        expect(sameCoord.elevationResolved).toBe(true);
     });
 
     it("update は未知 id で throw、範囲外 lat で throw する", () => {

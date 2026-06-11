@@ -194,6 +194,13 @@ export interface GlobeTileManager {
      * geomMaxZoom→minZoom を探索し最初に見つかったものを使う（無ければ null）。
      */
     terrainElevAt: (latDeg: number, lonDeg: number) => number | null;
+    /**
+     * 地形が idle（安定）かを返す。テスト用（ビジュアル回帰の安定待ち）。
+     * 初回 sync 済み かつ 標高ロード中タイルが無い（loadingCount===0）かつ
+     * LOD 遷移で残している pendingRelease が無い（pendingCount===0）とき true。
+     * 平面版 `tileManager.isIdle` 相当の安定判定を globe で提供する。
+     */
+    isIdle: () => boolean;
     /** 全メッシュ・キャッシュを破棄する。 */
     dispose: () => void;
 }
@@ -267,6 +274,8 @@ export const createGlobeTileManager = (
     let visibleAncestorKeys = new Set<string>();
     // 現在の可視タイルの最大 zoom（zoom-in カバー判定の targetZoom）。
     let currentMaxZoom = minZoom;
+    // 初回 sync が実行されたか（isIdle が sync 前に誤って true を返さないためのガード）。
+    let syncedAtLeastOnce = false;
 
     /** 描画タイル(zoom 最大18) → ジオメトリ用標高タイル(最大 geomMaxZoom=15)の対応。 */
     const geomCoordOf = (t: GlobeTile): { gz: number; gx: number; gy: number } => {
@@ -999,6 +1008,7 @@ export const createGlobeTileManager = (
     };
 
     const sync = (params: GlobeTileSyncParams): GlobeTileSyncStats => {
+        syncedAtLeastOnce = true;
         // 暫定代表標高の最終フォールバックとして referenceAltitude（カメラ中心地表標高）を保持。
         if (Number.isFinite(params.referenceAltitude)) lastReferenceAltitude = params.referenceAltitude;
         // root 探索はカメラの現在の注視点(center)を追従する（パン後もカメラ直下を選択）。
@@ -1259,8 +1269,11 @@ export const createGlobeTileManager = (
         desiredKeys = new Set<string>();
     };
 
+    const isIdle = (): boolean =>
+        syncedAtLeastOnce && loading.size === 0 && pendingRelease.size === 0;
+
     // 常時表示の粗いベースレイヤを一度だけ構築する（Issue #341）。
     buildBaseLayer();
 
-    return { sync, terrainElevAt, dispose };
+    return { sync, terrainElevAt, isIdle, dispose };
 };
