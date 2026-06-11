@@ -1357,21 +1357,17 @@ export const createGlobeTileManager = (
         if (next === currentMapType) return;
         currentMapType = next;
         // key="z/x/y"。ロード済み LOD・LOD 遷移中の pendingRelease・常時表示ベースレイヤを再テクスチャする。
-        const parseKey = (k: string): [number, number, number] => {
-            const [z, x, y] = k.split("/").map(Number);
-            return [z, x, y];
-        };
         for (const [k, mesh] of loaded) {
-            const [z, x, y] = parseKey(k);
-            retextureMesh(mesh, z, x, y, false);
+            const { zoom, x, y } = parseKey(k);
+            retextureMesh(mesh, zoom, x, y, false);
         }
         for (const [k, pending] of pendingRelease) {
-            const [z, x, y] = parseKey(k);
-            retextureMesh(pending.mesh, z, x, y, false);
+            const { zoom, x, y } = parseKey(k);
+            retextureMesh(pending.mesh, zoom, x, y, false);
         }
         for (const [k, mesh] of baseLoaded) {
-            const [z, x, y] = parseKey(k);
-            retextureMesh(mesh, z, x, y, true);
+            const { zoom, x, y } = parseKey(k);
+            retextureMesh(mesh, zoom, x, y, true);
         }
     };
 
