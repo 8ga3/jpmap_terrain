@@ -11,7 +11,7 @@
  * これにより planar の「中心点・中心ラベル・円周線・壁」パリティを保ちつつ、polygon の堅牢化
  * （dispose ガード・距離スケール・地形ドレープ）をそのまま享受する。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import {
     createGlobePolygonManager,
@@ -112,6 +112,18 @@ export const createGlobeCircleManager = (
         }
         const altitudeMode = opts.altitudeMode ?? "terrain";
         const altitude = opts.centerAltitudeMeters;
+        // absolute は高度を一意に決める必要がある。centerAltitudeMeters / topAltitudeMeters の
+        // いずれも無いと暗黙に 0m 扱いになり誤用を見逃すため、ここで早期 throw する
+        // （public CircleManager の absolute=center.altitude 必須と整合）。
+        if (
+            altitudeMode === "absolute" &&
+            altitude == null &&
+            opts.topAltitudeMeters == null
+        ) {
+            throw new Error(
+                'GlobeCircleManager.add: altitudeMode="absolute" requires centerAltitudeMeters (or topAltitudeMeters)',
+            );
+        }
         const enabled = opts.enabled ?? true;
         const wallEnabled = opts.wallsEnabled ?? opts.wallEnabled ?? true;
         const ringPoints = generateGeodesicRing(
