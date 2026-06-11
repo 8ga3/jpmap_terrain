@@ -994,8 +994,11 @@ export class GlobeScene {
             ) {
                 tEllip = Vector3.Distance(ppOrigin, ppEllipHit);
             }
-            let best: { polygonId: string; index: number; world: Vector3 } | null =
-                null;
+            let bestPolygonId: string | null = null;
+            let bestIndex = -1;
+            let bestX = 0;
+            let bestY = 0;
+            let bestZ = 0;
             let bestT = Number.POSITIVE_INFINITY;
             for (const p of points) {
                 const vx = p.x - ppOrigin.x;
@@ -1008,14 +1011,20 @@ export class GlobeScene {
                 if (perp2 > p.radius * p.radius) continue; // レイがスフィアを外れている
                 if (t < bestT) {
                     bestT = t;
-                    best = {
-                        polygonId: p.polygonId,
-                        index: p.index,
-                        world: new Vector3(p.x, p.y, p.z),
-                    };
+                    bestPolygonId = p.polygonId;
+                    bestIndex = p.index;
+                    bestX = p.x;
+                    bestY = p.y;
+                    bestZ = p.z;
                 }
             }
-            return best;
+            // Vector3 の生成はベスト確定後に 1 回だけ行い、毎候補の割り当て/GC を避ける。
+            if (bestPolygonId === null) return null;
+            return {
+                polygonId: bestPolygonId,
+                index: bestIndex,
+                world: new Vector3(bestX, bestY, bestZ),
+            };
         };
 
         /** カーソルレイ × 地形楕円体の交点（terrain-click と同方針）。 */
@@ -1037,9 +1046,12 @@ export class GlobeScene {
             ) {
                 return { lat: null, lon: null, groundAltitude: null };
             }
-            let geo = ecefToGeodetic(ppEllipHit);
+            const geo = ecefToGeodetic(ppEllipHit);
             const elev = tileManager.terrainElevAt(geo.latDeg, geo.lonDeg);
             if (elev !== null && Number.isFinite(elev)) {
+                // 補正交点（地形標高ぶん持ち上げた楕円体面）が得られた場合のみ、
+                // その lat/lon と groundAltitude=elev を採用し両者を一貫させる。
+                // computeTerrainClick と同じく、補正に失敗したら海面交点へフォールバックする。
                 if (
                     rayEllipsoidNearHitToRef(
                         ppOrigin,
@@ -1050,9 +1062,13 @@ export class GlobeScene {
                         ppScratch,
                     )
                 ) {
-                    geo = ecefToGeodetic(ppScratch);
+                    const corrected = ecefToGeodetic(ppScratch);
+                    return {
+                        lat: corrected.latDeg,
+                        lon: corrected.lonDeg,
+                        groundAltitude: elev,
+                    };
                 }
-                return { lat: geo.latDeg, lon: geo.lonDeg, groundAltitude: elev };
             }
             return { lat: geo.latDeg, lon: geo.lonDeg, groundAltitude: geo.altMeters };
         };
