@@ -819,18 +819,37 @@ export class GlobeScene {
                 }
             }
         };
-        canvas.addEventListener("pointerdown", onClickPointerDown);
-        canvas.addEventListener("pointerup", onClickPointerUp);
-        canvas.addEventListener("pointercancel", cancelClick);
-        canvas.addEventListener("lostpointercapture", cancelClick);
+        // terrain-click のポインタハンドラは購読者がいる間だけ canvas に登録する
+        // （購読ゼロ時に余計なグローバルなポインタ処理を行わない・他のポインタ処理との
+        //   意図しない干渉を避ける）。
+        let clickHandlersAttached = false;
+        const attachClickHandlers = (): void => {
+            if (clickHandlersAttached) return;
+            canvas.addEventListener("pointerdown", onClickPointerDown);
+            canvas.addEventListener("pointerup", onClickPointerUp);
+            canvas.addEventListener("pointercancel", cancelClick);
+            canvas.addEventListener("lostpointercapture", cancelClick);
+            clickHandlersAttached = true;
+        };
+        const detachClickHandlers = (): void => {
+            if (!clickHandlersAttached) return;
+            canvas.removeEventListener("pointerdown", onClickPointerDown);
+            canvas.removeEventListener("pointerup", onClickPointerUp);
+            canvas.removeEventListener("pointercancel", cancelClick);
+            canvas.removeEventListener("lostpointercapture", cancelClick);
+            clickStart = null;
+            clickHandlersAttached = false;
+        };
 
         const subscribeTerrainClick = (
             listener: GlobeTerrainClickListener,
         ): (() => void) => {
             terrainClickListeners.push(listener);
+            attachClickHandlers();
             return () => {
                 const i = terrainClickListeners.indexOf(listener);
                 if (i >= 0) terrainClickListeners.splice(i, 1);
+                if (terrainClickListeners.length === 0) detachClickHandlers();
             };
         };
 
@@ -971,12 +990,8 @@ export class GlobeScene {
             canvas.removeEventListener("pointerup", onPointerUp);
             canvas.removeEventListener("pointercancel", endDrag);
             canvas.removeEventListener("pointermove", onPointerMove);
-            canvas.removeEventListener("pointerdown", onClickPointerDown);
-            canvas.removeEventListener("pointerup", onClickPointerUp);
-            canvas.removeEventListener("pointercancel", cancelClick);
-            canvas.removeEventListener("lostpointercapture", cancelClick);
+            detachClickHandlers();
             terrainClickListeners.length = 0;
-            clickStart = null;
             markerManager.dispose();
             polygonManager.dispose();
             circleManager.dispose();
