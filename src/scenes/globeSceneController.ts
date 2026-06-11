@@ -1030,7 +1030,6 @@ export const createGlobeSceneController = (
     const { camera } = gc;
     let currentMapType: MapType = initialMapType;
     let viewModeWarned = false;
-    let terrainClickWarned = false;
 
     // 公開 overlay manager 互換アダプタ（P4-0 Slice 2a / 2b-1）。
     const markerManager = createGlobeMarkerManagerAdapter(
@@ -1362,22 +1361,20 @@ export const createGlobeSceneController = (
         getPolygonManager: () => polygonManager,
         getCircleManager: () => circleManager,
 
-        // ---- イベント購読（floating-origin 対応の pick 非依存実装は P4-0 後続スライス） ----
-        // インターフェース通り listener を受け取るが globe では未対応のため無視する（no-op）。
-        // 引数を明示することで「未対応で listener を無視している」意図をコード上に残す。
-        subscribeTerrainClick: (listener) => {
-            // globe では未対応のため listener を無視する（no-op）。引数を明示的に受け取り
-            // `void` でデバッグ容易性のため「未対応で listener を無視している」意図を残す。
-            void listener;
-            // 他 no-op（setMapType/setViewMode）と同様、未対応をデバッグしやすいよう一度だけ warn する。
-            if (!terrainClickWarned) {
-                terrainClickWarned = true;
-                console.warn(
-                    "[globeSceneController] subscribeTerrainClick is not yet supported on the globe backend (pick-independent terrain click pending; P4-0 follow-up).",
-                );
-            }
-            return () => {};
-        },
+        // ---- 地形クリック購読（pick 非依存・floating origin 対応, #275 P4-0 後続スライス） ----
+        // globe シーン（globe.ts）が真の ECEF レイ × 地形楕円体で求めたクリック地点を、公開
+        // TerrainClickEvent へ橋渡しする。GlobeTerrainClickEvent は構造互換だが、型を明示するため
+        // ここで明示的にイベントを組み直す。
+        subscribeTerrainClick: (listener) =>
+            gc.subscribeTerrainClick((e) =>
+                listener({
+                    lat: e.lat,
+                    lon: e.lon,
+                    altitude: e.altitude,
+                    world: e.world,
+                    pointerEvent: e.pointerEvent,
+                }),
+            ),
         subscribePolygonPointHover: () => () => {},
         subscribePolygonPointClick: () => () => {},
         subscribePolygonPointDragStart: () => () => {},
