@@ -5,6 +5,7 @@
  * - URL 形式:
  *   - 3D: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
  *   - 2D: `/@lat,lon,Xz?viewMode=2d` （X はズームレベル, Issue #254）
+ *   - 地形バックエンド: `?terrainEngine=globe|planar`（既定 planar, #275 Phase 4 / P4-1）
  *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可、Issue #64）
  * - `#root` 要素にビューアをマウントする。
  * - URL ↔ カメラ同期はパッケージ層から切り離し、デモ層 (本ファイル) で
@@ -15,7 +16,7 @@
  * `window.showToast` を露出する。これらは公開 API ではない。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
-import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
+import type { EngineType, JpmapTerrainOptions, TerrainEngine } from "../../lib/types";
 import { showToast } from "../../terrain/controlPanel";
 import {
     parseCameraStateFromUrl,
@@ -41,6 +42,23 @@ export const resolveEngine = (search: string): EngineType | undefined => {
     const value = new URLSearchParams(search).get("engine");
     if (value === "webgpu") return "webgpu";
     if (value === "webgl" || value === "webgl2") return "webgl2";
+    return undefined;
+};
+
+/**
+ * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する (#275 Phase 4 / P4-1)。
+ * - `globe` → `"globe"`（GeospatialCamera + ECEF の地球儀バックエンド）
+ * - `planar` → `"planar"`（従来の平面シーン）
+ * - 上記以外 / 未指定 → `undefined`（lib 既定の `"planar"` にフォールバック）
+ *
+ * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
+ */
+export const resolveTerrainEngine = (
+    search: string,
+): TerrainEngine | undefined => {
+    const value = new URLSearchParams(search).get("terrainEngine");
+    if (value === "globe") return "globe";
+    if (value === "planar") return "planar";
     return undefined;
 };
 
@@ -137,6 +155,7 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const engine = resolveEngine(location.search);
+    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraState = resolveCameraState(location.href);
     const dateTime = resolveDateTime(location.search);
     const autoSunPosition = resolveAutoSunPosition(location.search);
@@ -145,6 +164,7 @@ const start = async (): Promise<void> => {
     const viewMode = parseViewModeFromUrl(location.href);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
+        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? {}),
         ...(dateTime !== undefined ? { dateTime } : {}),
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
