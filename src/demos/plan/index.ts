@@ -13,7 +13,6 @@ import type {
     JpmapTerrainOptions,
     PolygonOptions,
     CircleOptions,
-    TerrainEngine,
 } from "../../lib/types";
 import { CIRCLE_RADIUS_MAX_M } from "../../lib/types";
 import {
@@ -68,16 +67,6 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
     const value = new URLSearchParams(search).get("engine");
     if (value === "webgpu") return "webgpu";
     if (value === "webgl" || value === "webgl2") return "webgl2";
-    return undefined;
-};
-
-/** `?terrainEngine=` クエリ文字列から地形バックエンドを解決する（viewer デモと同規則）。 */
-export const resolveTerrainEngine = (
-    search: string,
-): TerrainEngine | undefined => {
-    const value = new URLSearchParams(search).get("terrainEngine");
-    if (value === "globe") return "globe";
-    if (value === "planar") return "planar";
     return undefined;
 };
 
@@ -287,7 +276,6 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
-    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraState = parseCameraStateFromUrl(location.href) ?? undefined;
     const mapType = parseMapTypeFromUrl(location.href);
     const defaultCamera = {
@@ -300,7 +288,6 @@ const start = async (): Promise<void> => {
 
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
-        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
         showViewModeButton: false,

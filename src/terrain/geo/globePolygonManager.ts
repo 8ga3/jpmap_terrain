@@ -132,8 +132,8 @@ interface GlobePolygonNode {
     pointsEnabled: boolean;
     elevationResolved: boolean;
     style: ResolvedStyle;
-    pointMeshes: MeshEntry[];
-    dropMeshes: MeshEntry[];
+    pointMeshes: (MeshEntry | null)[];
+    dropMeshes: (MeshEntry | null)[];
     pointLabels: (LabelEntry | null)[];
     edgeLabels: (LabelEntry | null)[];
     lineMesh: Mesh;
@@ -334,10 +334,10 @@ export const createGlobePolygonManager = (
         const visible = node.enabled && node.elevationResolved;
         const hasEdges = node.points.length >= 2;
         for (const entry of node.pointMeshes) {
-            entry.mesh.setEnabled(visible && node.pointsEnabled);
+            if (entry) entry.mesh.setEnabled(visible && node.pointsEnabled);
         }
         for (const entry of node.dropMeshes) {
-            entry.mesh.setEnabled(visible && node.verticalsEnabled);
+            if (entry) entry.mesh.setEnabled(visible && node.verticalsEnabled);
         }
         for (const entry of node.pointLabels) {
             if (entry) entry.mesh.setEnabled(visible && node.labelsEnabled);
@@ -368,17 +368,20 @@ export const createGlobePolygonManager = (
             if (up.lengthSquared() < 1e-12) top.normalizeToRef(up);
             else up.normalize();
 
-            const point = node.pointMeshes[i].mesh;
-            point.position.copyFrom(top);
-            point.scaling.setAll(pointDiameter * distScale);
+            const point = node.pointMeshes[i];
+            if (point) {
+                point.mesh.position.copyFrom(top);
+                point.mesh.scaling.setAll(pointDiameter * distScale);
+            }
 
-            if (node.verticalsEnabled) {
-                node.dropMeshes[i].mesh = CreateTube(
+            const drop = node.dropMeshes[i];
+            if (node.verticalsEnabled && drop) {
+                drop.mesh = CreateTube(
                     `${node.id}-drop-${i}`,
                     {
                         path: [top, bottom],
                         radius: Math.max(node.style.dropLineWidth, 0.001),
-                        instance: node.dropMeshes[i].mesh,
+                        instance: drop.mesh,
                     },
                     scene,
                 );
@@ -389,7 +392,11 @@ export const createGlobePolygonManager = (
                 label.mesh.scaling.setAll(distScale);
                 label.mesh.position
                     .copyFrom(top)
-                    .addInPlace(up.scale(pointRadius + label.heightWorld * distScale * 0.5 + labelGap));
+                    .addInPlace(
+                        up.scaleInPlace(
+                            pointRadius + label.heightWorld * distScale * 0.5 + labelGap,
+                        ),
+                    );
             }
         }
 
@@ -428,7 +435,7 @@ export const createGlobePolygonManager = (
                 label.mesh.position
                     .copyFrom(mid)
                     .addInPlace(
-                        up.scale(
+                        up.scaleInPlace(
                             Math.max(node.style.lineWidth, 0.001) +
                                 label.heightWorld * distScale * 0.5 +
                                 labelGap,
@@ -457,7 +464,11 @@ export const createGlobePolygonManager = (
             wallOpacity: opts.style?.wallOpacity ?? opts.wallOpacity,
         });
         const pathLen = Math.max(2, drapedPolygonPathLength(opts.points.length, closed));
-        const pointMeshes = opts.points.map((_p, i) => {
+        const pointsEnabled = opts.pointsEnabled ?? true;
+        const verticalsEnabled =
+            opts.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled;
+        const pointMeshes: (MeshEntry | null)[] = opts.points.map((_p, i) => {
+            if (!pointsEnabled) return null;
             const mesh = CreateSphere(
                 `${id}-point-${i}`,
                 { diameter: 1, segments: 16 },
@@ -475,7 +486,8 @@ export const createGlobePolygonManager = (
             mesh.material = material;
             return { mesh, material };
         });
-        const dropMeshes = opts.points.map((_p, i) => {
+        const dropMeshes: (MeshEntry | null)[] = opts.points.map((_p, i) => {
+            if (!verticalsEnabled) return null;
             const mesh = CreateTube(
                 `${id}-drop-${i}`,
                 {
@@ -558,10 +570,10 @@ export const createGlobePolygonManager = (
             altitudeMode,
             topAltitudeMeters: opts.topAltitudeMeters,
             enabled: opts.enabled ?? POLYGON_DEFAULTS.enabled,
-            verticalsEnabled: opts.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled,
+            verticalsEnabled,
             labelsEnabled: opts.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled,
             wallsEnabled: opts.wallsEnabled ?? POLYGON_DEFAULTS.wallsEnabled,
-            pointsEnabled: opts.pointsEnabled ?? true,
+            pointsEnabled,
             elevationResolved: altitudeMode === "absolute",
             style,
             pointMeshes,
@@ -588,10 +600,12 @@ export const createGlobePolygonManager = (
             return;
         }
         for (const entry of node.pointMeshes) {
+            if (!entry) continue;
             entry.material.dispose();
             entry.mesh.dispose();
         }
         for (const entry of node.dropMeshes) {
+            if (!entry) continue;
             entry.material.dispose();
             entry.mesh.dispose();
         }

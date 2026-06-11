@@ -468,6 +468,23 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
                 expect(m.get("poly")?.labels).toBeUndefined();
             });
 
+            it("rebuild 中の add 例外時は旧 globeId・旧状態を保持する（トランザクション）", () => {
+                const stub = makeGlobePolygonStub();
+                let failNext = false;
+                const baseAdd = stub.mgr.add.bind(stub.mgr);
+                (stub.mgr as { add: GlobePolygonManager["add"] }).add = (opts) => {
+                    if (failNext) throw new Error("globe add failed");
+                    return baseAdd(opts);
+                };
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS, wallsEnabled: true });
+                failNext = true;
+                expect(() => m.setWallsEnabled("poly", false)).toThrow(/globe add failed/);
+                // 旧ノードは remove されず、状態も巻き戻る（wallsEnabled=true のまま）。
+                expect(stub.removed).toEqual([]);
+                expect(m.get("poly")?.wallsEnabled).toBe(true);
+            });
+
             it("remove/list/dispose とエラー条件", () => {
                 const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
                 const stub = makeGlobePolygonStub();
