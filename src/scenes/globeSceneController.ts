@@ -1361,7 +1361,7 @@ export const createGlobeSceneController = (
         getPolygonManager: () => polygonManager,
         getCircleManager: () => circleManager,
 
-        // ---- 地形クリック購読（pick 非依存・floating origin 対応, #275 P4-0 後続スライス） ----
+        // ---- 地形クリック購読（pick 非依存・floating origin 対応, #275 P4・実装済み） ----
         // globe シーン（globe.ts）が真の ECEF レイ × 地形楕円体で求めたクリック地点を、公開
         // TerrainClickEvent へ橋渡しする。GlobeTerrainClickEvent は構造互換だが、型を明示するため
         // ここで明示的にイベントを組み直す。
