@@ -247,9 +247,13 @@ export const createGlobeMarkerManagerAdapter = (
         dispose(): void {
             if (disposed) return;
             disposed = true;
-            // globe マネージャの破棄はシーン破棄（gc.dispose）でも行われるが、公開 API の
-            // dispose 契約に合わせてここでも明示的に破棄する（GlobeMarkerManager は冪等）。
-            globeMgr.dispose();
+            // 内部 GlobeMarkerManager はシーンが毎フレーム参照し GlobeScene.dispose() が破棄する
+            // 所有者であるため、ここでは破棄しない（破棄すると render ループが called-after-dispose で
+            // 壊れる）。公開 API dispose の契約として、このアダプタが追加したマーカーのみ削除し、
+            // 以降の API 呼び出しを禁止する。
+            for (const e of entries.values()) {
+                globeMgr.remove(e.globeId);
+            }
             entries.clear();
         },
     };
@@ -618,7 +622,14 @@ export const createGlobePolygonManagerAdapter = (
         dispose(): void {
             if (disposed) return;
             disposed = true;
-            globeMgr.dispose();
+            // 内部 GlobePolygonManager はシーンが毎フレーム update(camEcef) で参照し
+            // GlobeScene.dispose() が破棄する所有者であるため、ここでは破棄しない（破棄すると
+            // render ループが GlobePolygonManager.update: called after dispose で壊れる）。
+            // 公開 API dispose の契約として、このアダプタが追加したポリゴンのみ削除し、
+            // 以降の API 呼び出しを禁止する。
+            for (const e of entries.values()) {
+                globeMgr.remove(e.globeId);
+            }
             entries.clear();
         },
     };
