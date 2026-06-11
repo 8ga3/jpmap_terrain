@@ -27,6 +27,7 @@ import type {
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
+    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import {
     DEFAULT_DISTANCE_DEMO_MODE,
@@ -221,6 +222,7 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
+    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraState = parseCameraStateFromUrl(location.href) ?? undefined;
     const mapType = parseMapTypeFromUrl(location.href);
     // よみうりランド近傍を初期視点（URL 指定がない場合）。
@@ -234,6 +236,7 @@ const start = async (): Promise<void> => {
 
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
+        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
         // ライブラリ内蔵の視点モード切替ボタンは非表示。デモ独自の UI を提供する (Issue #193)。
@@ -317,9 +320,12 @@ const start = async (): Promise<void> => {
     // 連続 pointermove 中に scene.pick が一瞬外れて hover が解除されると
     // cursor が `""` に戻ってしまう。そこで demo 側で pointermove ごとに
     // 自前でピックし直し、ライブラリ後段で cursor を再適用する。
-    viewer.onPolygonPointHover(() => {
-        /* no-op: cursor 制御は下記 pointermove 内で行う */
-    });
+    //
+    // ただし globe バックエンド（#275 P4）では floating origin のため demo 側の
+    // `scene.pick` は頂点メッシュをヒットできない。そこでライブラリの hover イベント
+    // （pick 非依存の幾何ピックで発火）も併用し、どちらかが hover を示せば hover 扱いに
+    // する。planar では従来どおり scene.pick が主、globe ではライブラリ hover が効く。
+    let libHoveringPoint = false;
     const scene = viewer.__debugScene;
     const renderCanvas =
         (scene?.getEngine().getRenderingCanvas() as HTMLCanvasElement | null) ??
@@ -329,6 +335,7 @@ const start = async (): Promise<void> => {
     let lastPointerCanvasX: number | null = null;
     let lastPointerCanvasY: number | null = null;
     const isHoveringPoint = (sx: number, sy: number): boolean => {
+        if (libHoveringPoint) return true;
         if (!scene) return false;
         const pick = scene.pick(sx, sy, (m) =>
             POLYGON_POINT_NAME_RE.test(m.name),
@@ -364,6 +371,14 @@ const start = async (): Promise<void> => {
             applyModeCursor(sx, sy);
         });
     }
+    // ライブラリ hover（#184, pick 非依存の幾何ピックで発火）を購読し、globe でも
+    // remove/edit のモード別カーソルが効くようにする。遷移時にカーソルを再適用する。
+    viewer.onPolygonPointHover((e) => {
+        libHoveringPoint = e !== null;
+        if (lastPointerCanvasX !== null && lastPointerCanvasY !== null) {
+            applyModeCursor(lastPointerCanvasX, lastPointerCanvasY);
+        }
+    });
     const onShiftKey = (down: boolean) => (ev: KeyboardEvent): void => {
         if (ev.key !== "Shift") return;
         shiftPressed = down;
