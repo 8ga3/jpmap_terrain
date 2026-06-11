@@ -30,6 +30,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
 import type { MapType } from "../terrain/gsiTile";
+import { TERRAIN_CLICK_DRAG_THRESHOLD_PX } from "../lib/types";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
 import {
     cameraTangentBasisToRef,
@@ -127,12 +128,6 @@ const PAN_KEYS = new Set(["w", "a", "s", "d"]);
  * クランプし、ほぼ水平までは許しつつ完全水平の退化を抑止する。
  */
 const MAX_TILT_DEG = 89;
-
-/**
- * 地形クリック判定のドラッグしきい値 [CSS px]。pointerdown→pointerup の移動量がこれ以下なら
- * クリック、超えればパン/回転とみなしてクリック通知しない（平面版 default.ts と同方針）。
- */
-const GLOBE_TERRAIN_CLICK_DRAG_THRESHOLD_PX = 6;
 
 /**
  * 地球楕円体スフィア（背景＋地平線リファレンス, Issue #335）を海面より沈める量 [m]。
@@ -715,7 +710,7 @@ export class GlobeScene {
             recalculateCenterPublic();
         };
 
-        // ---- 地形クリック通知（pick 非依存・floating origin 対応, #275 P4-0 後続スライス） ----
+        // ---- 地形クリック通知（pick 非依存・floating origin 対応, #275 P4） ----
         // 平面版（default.ts）は scene.pick で地形メッシュをヒットするが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックがブレる。そこでズーム/パンと同じく
         // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で 1 回反復）と交差させて
@@ -800,8 +795,8 @@ export class GlobeScene {
             const dx = e.clientX - start.x;
             const dy = e.clientY - start.y;
             if (
-                Math.abs(dx) > GLOBE_TERRAIN_CLICK_DRAG_THRESHOLD_PX ||
-                Math.abs(dy) > GLOBE_TERRAIN_CLICK_DRAG_THRESHOLD_PX
+                Math.abs(dx) > TERRAIN_CLICK_DRAG_THRESHOLD_PX ||
+                Math.abs(dy) > TERRAIN_CLICK_DRAG_THRESHOLD_PX
             ) {
                 return; // ドラッグ（パン/回転）はクリックとみなさない
             }
