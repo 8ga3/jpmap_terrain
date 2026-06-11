@@ -389,7 +389,8 @@ export const createGlobeSceneController = (
         setSunShadows: () => {},
 
         // テスト用の idle 判定。globe タイルマネージャの実 idle 状態
-        // （初回 sync 済み かつ 標高ロード中タイル無し かつ LOD 遷移の pendingRelease 無し）を返す。
+        // （初回 sync 済み / 標高ロード中タイル無し / LOD 遷移の pendingRelease 無し に加え、
+        //  希望タイル desiredKeys がすべて loaded かつテクスチャ適用済み readyMeshes）を返す。
         isTerrainIdle: () => gc.tileManager.isIdle(),
 
         dispose: () => gc.dispose(),
