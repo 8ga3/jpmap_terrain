@@ -39,6 +39,7 @@ import {
     PolygonPointPartial,
     SUN_AUTO_UPDATE_INTERVAL_MS,
     TerrainClickListener,
+    TerrainEngine,
     PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
@@ -123,8 +124,13 @@ export class JpmapTerrain {
     /** 3Dモデル管理 (Issue #243)。`onReady` で初期化される */
     private _modelManager: ModelManager | null = null;
 
+    /** 地形描画バックエンド (Issue #349 / #275 Phase 4)。 */
+    private readonly _terrainEngine: TerrainEngine;
+
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
+        this._terrainEngine =
+            options.terrainEngine ?? JPMAP_TERRAIN_DEFAULTS.terrainEngine;
         this._lat = options.lat ?? JPMAP_TERRAIN_DEFAULTS.lat;
         this._lon = options.lon ?? JPMAP_TERRAIN_DEFAULTS.lon;
         this._altitude = options.altitude ?? JPMAP_TERRAIN_DEFAULTS.altitude;
@@ -211,7 +217,12 @@ export class JpmapTerrain {
             );
             this._engine = engine;
 
-            const sceneFactory = new DefaultScene();
+            // globe バックエンドは Babylon Geospatial 等の重い依存を伴うため、選択時のみ動的 import する
+            // （planar 既定のバンドル/テストへ globe 依存を持ち込まない）。
+            const sceneFactory =
+                this._terrainEngine === "globe"
+                    ? new (await import("../scenes/globeSceneController")).GlobeSceneAdapter()
+                    : new DefaultScene();
             const scene = await sceneFactory.createScene(engine, canvas, {
                 lat: this._lat,
                 lon: this._lon,
@@ -275,21 +286,29 @@ export class JpmapTerrain {
                         controller.setSunShadows(true);
                     }
                     // マーカー (Issue #167)。境界コンテキスト経由で manager を構築する。
-                    this._markerManager = createMarkerManager(
-                        controller.getMarkerContext(),
-                    );
-                    // ポリゴン (Issue #170)。MarkerContext と同一のコンテキストを共有する。
-                    this._polygonManager = createPolygonManager(
-                        controller.getMarkerContext(),
-                    );
-                    // 円 (Issue #201)。MarkerContext と同一のコンテキストを共有する。
-                    this._circleManager = createCircleManager(
-                        controller.getMarkerContext(),
-                    );
-                    // 3Dモデル (Issue #243)。MarkerContext と同一のコンテキストを共有する。
-                    this._modelManager = createModelManager(
-                        controller.getMarkerContext(),
-                    );
+                    // globe バックエンド（P4-0）では marker のみ専用アダプタ（getMarkerManager）
+                    // 経由で公開 interface に対応する。polygon/circle/model は globe マネージャの
+                    // 機能不足（ラベル/垂線/altitudeMode 等）で parity 未達のため後続スライス（未対応）。
+                    if (this._terrainEngine === "planar") {
+                        this._markerManager = createMarkerManager(
+                            controller.getMarkerContext(),
+                        );
+                        // ポリゴン (Issue #170)。MarkerContext と同一のコンテキストを共有する。
+                        this._polygonManager = createPolygonManager(
+                            controller.getMarkerContext(),
+                        );
+                        // 円 (Issue #201)。MarkerContext と同一のコンテキストを共有する。
+                        this._circleManager = createCircleManager(
+                            controller.getMarkerContext(),
+                        );
+                        // 3Dモデル (Issue #243)。MarkerContext と同一のコンテキストを共有する。
+                        this._modelManager = createModelManager(
+                            controller.getMarkerContext(),
+                        );
+                    } else {
+                        this._markerManager =
+                            controller.getMarkerManager?.() ?? null;
+                    }
                 },
             });
             this._scene = scene;
@@ -385,6 +404,11 @@ export class JpmapTerrain {
     }
 
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
+
+    /** 地形描画バックエンド (Issue #349 / #275 Phase 4)。`"planar"` | `"globe"`。 */
+    public get terrainEngine(): TerrainEngine {
+        return this._terrainEngine;
+    }
 
     public get lat(): number {
         return this._controller?.getLat() ?? this._lat;
