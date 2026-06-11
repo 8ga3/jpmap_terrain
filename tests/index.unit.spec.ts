@@ -15,11 +15,32 @@ import { describe, it, expect, jest } from "@jest/globals";
 
 import {
     resolveEngine,
+    resolveTerrainEngine,
     resolveLatLon,
     resolveDateTime,
     resolveAutoSunPosition,
     resolveShowSunShadows,
 } from "../src/demos/viewer/index";
+
+describe("resolveTerrainEngine", () => {
+    it("?terrainEngine=globe → 'globe'", () => {
+        expect(resolveTerrainEngine("?terrainEngine=globe")).toBe("globe");
+    });
+
+    it("?terrainEngine=planar → 'planar'", () => {
+        expect(resolveTerrainEngine("?terrainEngine=planar")).toBe("planar");
+    });
+
+    it("未指定 → undefined（lib 既定 planar にフォールバック）", () => {
+        expect(resolveTerrainEngine("")).toBeUndefined();
+        expect(resolveTerrainEngine("?engine=webgpu")).toBeUndefined();
+    });
+
+    it("不正値 → undefined", () => {
+        expect(resolveTerrainEngine("?terrainEngine=sphere")).toBeUndefined();
+        expect(resolveTerrainEngine("?terrainEngine=")).toBeUndefined();
+    });
+});
 
 describe("resolveEngine", () => {
     it("?engine=webgpu → 'webgpu'", () => {
