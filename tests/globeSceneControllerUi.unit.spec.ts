@@ -36,6 +36,7 @@ const makeObservable = <T extends () => void>(): ObservableStub<T> => {
 };
 
 let rafCallbacks: FrameRequestCallback[] = [];
+let originalRaf: typeof requestAnimationFrame;
 
 const makeCamera = () => ({
     center: geodeticToEcef(35, 139, 0),
@@ -82,10 +83,15 @@ const makeCanvas = (): HTMLCanvasElement => {
 beforeEach(() => {
     document.body.innerHTML = "";
     rafCallbacks = [];
+    originalRaf = global.requestAnimationFrame;
     global.requestAnimationFrame = ((cb: FrameRequestCallback) => {
         rafCallbacks.push(cb);
         return rafCallbacks.length;
     }) as typeof requestAnimationFrame;
+});
+
+afterEach(() => {
+    global.requestAnimationFrame = originalRaf;
 });
 
 describe("globe UI コントロールパネル配線 (#275 P4-1)", () => {
