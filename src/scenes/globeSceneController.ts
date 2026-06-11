@@ -362,10 +362,27 @@ export const createGlobePolygonManagerAdapter = (
         return e;
     };
 
-    const replaceGlobeNode = (entry: PolygonAdapterEntry): void => {
-        const globeId = globeMgr.add(toGlobePolygonOptions(entry));
-        globeMgr.remove(entry.globeId);
-        entry.globeId = globeId;
+    const cloneEntry = (e: PolygonAdapterEntry): PolygonAdapterEntry => ({
+        ...e,
+        points: e.points.map((p) => ({ ...p })),
+        labels: [...e.labels],
+        edgeLabels: [...e.edgeLabels],
+        style: { ...e.style },
+    });
+
+    // 先に新ノードを add し、成功した場合にのみ旧ノードを remove して entries を差し替える。
+    // add が throw した場合は「表示は旧ノード・状態は旧 entry」のまま不整合を残さない
+    // （Marker アダプタの add-then-remove と同じトランザクション契約）。
+    const commitRebuild = (
+        id: string,
+        prev: PolygonAdapterEntry,
+        next: PolygonAdapterEntry,
+    ): PolygonAdapterEntry => {
+        const globeId = globeMgr.add(toGlobePolygonOptions(next));
+        globeMgr.remove(prev.globeId);
+        next.globeId = globeId;
+        entries.set(id, next);
+        return next;
     };
 
     const createEntry = (options: PolygonOptions, globeId: string): PolygonAdapterEntry => {
@@ -459,9 +476,7 @@ export const createGlobePolygonManagerAdapter = (
                 labelsEnabled: partial.labelsEnabled ?? prev.labelsEnabled,
                 wallsEnabled: partial.wallsEnabled ?? prev.wallsEnabled,
             };
-            replaceGlobeNode(next);
-            entries.set(id, next);
-            return buildHandle(id, next);
+            return buildHandle(id, commitRebuild(id, prev, next));
         },
         remove(id: string): void {
             const e = entries.get(id);
@@ -482,64 +497,66 @@ export const createGlobePolygonManagerAdapter = (
         },
         setVerticalsEnabled(id: string, enabled: boolean): void {
             assertNotDisposed();
-            const e = requireEntry(id);
-            e.verticalsEnabled = enabled;
-            replaceGlobeNode(e);
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.verticalsEnabled = enabled;
+            commitRebuild(id, prev, next);
         },
         setLabelsEnabled(id: string, enabled: boolean): void {
             assertNotDisposed();
-            const e = requireEntry(id);
-            e.labelsEnabled = enabled;
-            replaceGlobeNode(e);
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.labelsEnabled = enabled;
+            commitRebuild(id, prev, next);
         },
         setWallsEnabled(id: string, enabled: boolean): void {
             assertNotDisposed();
-            const e = requireEntry(id);
-            e.wallsEnabled = enabled;
-            replaceGlobeNode(e);
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.wallsEnabled = enabled;
+            commitRebuild(id, prev, next);
         },
         insertPoint(id: string, index: number, point: PolygonPointOptions): PolygonHandle {
             assertNotDisposed();
-            const e = requireEntry(id);
-            if (!Number.isInteger(index) || index < 0 || index > e.points.length) {
+            const prev = requireEntry(id);
+            if (!Number.isInteger(index) || index < 0 || index > prev.points.length) {
                 throw new RangeError(
-                    `JpmapTerrain.insertPolygonPoint[${id}]: index out of range (got ${index}, length=${e.points.length})`,
+                    `JpmapTerrain.insertPolygonPoint[${id}]: index out of range (got ${index}, length=${prev.points.length})`,
                 );
             }
             validatePolygonPoints(
                 [point],
-                e.altitudeMode,
+                prev.altitudeMode,
                 `JpmapTerrain.insertPolygonPoint[${id}]`,
             );
-            e.points.splice(index, 0, { ...point });
-            e.labels.splice(index, 0, undefined);
-            const eCount = polygonEdgeCount(e.points.length, e.closed);
-            e.edgeLabels.splice(index, 0, undefined);
-            e.edgeLabels.length = eCount;
-            replaceGlobeNode(e);
-            return buildHandle(id, e);
+            const next = cloneEntry(prev);
+            next.points.splice(index, 0, { ...point });
+            next.labels.splice(index, 0, undefined);
+            next.edgeLabels.splice(index, 0, undefined);
+            next.edgeLabels.length = polygonEdgeCount(next.points.length, next.closed);
+            return buildHandle(id, commitRebuild(id, prev, next));
         },
         removePoint(id: string, index: number): PolygonHandle {
             assertNotDisposed();
-            const e = requireEntry(id);
-            if (!Number.isInteger(index) || index < 0 || index >= e.points.length) {
+            const prev = requireEntry(id);
+            if (!Number.isInteger(index) || index < 0 || index >= prev.points.length) {
                 throw new RangeError(
-                    `JpmapTerrain.removePolygonPoint[${id}]: index out of range (got ${index}, length=${e.points.length})`,
+                    `JpmapTerrain.removePolygonPoint[${id}]: index out of range (got ${index}, length=${prev.points.length})`,
                 );
             }
-            if (e.points.length <= 1) {
+            if (prev.points.length <= 1) {
                 throw new Error(
                     `JpmapTerrain.removePolygonPoint[${id}]: cannot remove (must keep at least 1 point)`,
                 );
             }
-            e.points.splice(index, 1);
-            e.labels.splice(index, 1);
-            if (e.edgeLabels.length > 0) {
-                e.edgeLabels.splice(Math.min(index, e.edgeLabels.length - 1), 1);
+            const next = cloneEntry(prev);
+            next.points.splice(index, 1);
+            next.labels.splice(index, 1);
+            if (next.edgeLabels.length > 0) {
+                next.edgeLabels.splice(Math.min(index, next.edgeLabels.length - 1), 1);
             }
-            e.edgeLabels.length = polygonEdgeCount(e.points.length, e.closed);
-            replaceGlobeNode(e);
-            return buildHandle(id, e);
+            next.edgeLabels.length = polygonEdgeCount(next.points.length, next.closed);
+            return buildHandle(id, commitRebuild(id, prev, next));
         },
         updatePoint(
             id: string,
@@ -547,14 +564,14 @@ export const createGlobePolygonManagerAdapter = (
             partial: PolygonPointPartial,
         ): PolygonHandle {
             assertNotDisposed();
-            const e = requireEntry(id);
-            if (!Number.isInteger(index) || index < 0 || index >= e.points.length) {
+            const prev = requireEntry(id);
+            if (!Number.isInteger(index) || index < 0 || index >= prev.points.length) {
                 throw new RangeError(
-                    `JpmapTerrain.updatePolygonPoint[${id}]: index out of range (got ${index}, length=${e.points.length})`,
+                    `JpmapTerrain.updatePolygonPoint[${id}]: index out of range (got ${index}, length=${prev.points.length})`,
                 );
             }
-            const current = e.points[index];
-            const next = {
+            const current = prev.points[index];
+            const nextPoint = {
                 lat: partial.lat ?? current.lat,
                 lon: partial.lon ?? current.lon,
                 altitude:
@@ -563,36 +580,37 @@ export const createGlobePolygonManagerAdapter = (
                         : current.altitude,
             };
             validatePolygonPoints(
-                [next],
-                e.altitudeMode,
+                [nextPoint],
+                prev.altitudeMode,
                 `JpmapTerrain.updatePolygonPoint[${id}][${index}]`,
             );
-            e.points[index] = next;
+            const next = cloneEntry(prev);
+            next.points[index] = nextPoint;
             if (partial.label !== undefined) {
-                e.labels[index] = partial.label === null ? undefined : partial.label;
-                if (partial.label !== null) e.hasLabels = true;
+                next.labels[index] =
+                    partial.label === null ? undefined : partial.label;
+                if (partial.label !== null) next.hasLabels = true;
             }
-            replaceGlobeNode(e);
-            return buildHandle(id, e);
+            return buildHandle(id, commitRebuild(id, prev, next));
         },
         replacePoints(id: string, points: readonly PolygonPointOptions[]): PolygonHandle {
             assertNotDisposed();
-            const e = requireEntry(id);
+            const prev = requireEntry(id);
             validatePolygonPoints(
                 points,
-                e.altitudeMode,
+                prev.altitudeMode,
                 `JpmapTerrain.replacePolygonPoints[${id}]`,
             );
-            e.points = points.map((p) => ({ ...p }));
-            e.labels = e.points.map(() => undefined);
-            e.hasLabels = false;
-            e.edgeLabels = Array.from(
-                { length: polygonEdgeCount(e.points.length, e.closed) },
+            const next = cloneEntry(prev);
+            next.points = points.map((p) => ({ ...p }));
+            next.labels = next.points.map(() => undefined);
+            next.hasLabels = false;
+            next.edgeLabels = Array.from(
+                { length: polygonEdgeCount(next.points.length, next.closed) },
                 () => undefined,
             );
-            e.hasEdgeLabels = false;
-            replaceGlobeNode(e);
-            return buildHandle(id, e);
+            next.hasEdgeLabels = false;
+            return buildHandle(id, commitRebuild(id, prev, next));
         },
         list(): readonly string[] {
             return Array.from(entries.keys());

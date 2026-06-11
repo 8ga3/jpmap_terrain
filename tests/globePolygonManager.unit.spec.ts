@@ -256,12 +256,18 @@ describe("add / CRUD", () => {
         expect(createdRibbons[0].enabled).toBe(false);
     });
 
-    it("半透明壁(alpha<1)は needDepthPrePass=true、不透明なら false", () => {
+    it("pointsEnabled=false / verticalsEnabled=false なら点・垂線メッシュを生成しない（円委譲の最適化）", () => {
         const { mgr } = makeManager();
-        mgr.add({ points: pts3 }); // 既定 wallOpacity 0.25 → 半透明
-        expect((createdRibbons[0].material as { needDepthPrePass: boolean }).needDepthPrePass).toBe(true);
-        mgr.add({ points: pts3, wallOpacity: 1 }); // 不透明
-        expect((createdRibbons[1].material as { needDepthPrePass: boolean }).needDepthPrePass).toBe(false);
+        mgr.add({
+            points: pts3,
+            pointsEnabled: false,
+            verticalsEnabled: false,
+        });
+        expect(createdPoints.length).toBe(0);
+        expect(createdDrops.length).toBe(0);
+        // 線・壁は通常どおり生成される。
+        expect(createdLines.length).toBe(1);
+        expect(createdRibbons.length).toBe(1);
     });
 });
 
