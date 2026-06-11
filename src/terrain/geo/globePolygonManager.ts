@@ -169,10 +169,12 @@ export interface GlobePolygonManager {
     update(cameraEcef?: Vector3): void;
     /**
      * 現在表示中・ピック可能な頂点（点メッシュ）の真の ECEF 位置と当該フレームの
-     * ワールド半径を列挙する（floating origin 非依存の幾何ピック用, #275 P4）。
+     * ワールド半径を `out` に書き込み、件数を返す（floating origin 非依存の幾何ピック用, #275 P4）。
      * 非表示ノード・点無効ノード・標高未解決ノードは含めない。closed の重複末尾点は除外する。
+     * pointermove ごとに呼ばれるため、`out` の要素オブジェクトを再利用して割り当て/GC を抑える。
+     * 呼び出し側は返り値の件数ぶん（`out[0..count)`）のみ参照すること。
      */
-    getPickablePoints(): GlobePolygonPickablePoint[];
+    getPickablePoints(out: GlobePolygonPickablePoint[]): number;
     dispose(): void;
 }
 
@@ -697,9 +699,12 @@ export const createGlobePolygonManager = (
         }
     };
 
-    const getPickablePoints = (): GlobePolygonPickablePoint[] => {
-        if (disposed) return [];
-        const result: GlobePolygonPickablePoint[] = [];
+    const getPickablePoints = (out: GlobePolygonPickablePoint[]): number => {
+        let n = 0;
+        if (disposed) {
+            out.length = 0;
+            return 0;
+        }
         for (const node of nodes.values()) {
             if (!node.enabled || !node.elevationResolved || !node.pointsEnabled) {
                 continue;
@@ -709,17 +714,22 @@ export const createGlobePolygonManager = (
                 const entry = node.pointMeshes[i];
                 if (!entry) continue;
                 const top = node.top[i];
-                result.push({
-                    polygonId: node.id,
-                    index: i,
-                    x: top.x,
-                    y: top.y,
-                    z: top.z,
-                    radius: node.pointWorldRadius,
-                });
+                // 既存スロットを再利用し、無ければ 1 度だけ生成する（割り当て抑制）。
+                let slot = out[n];
+                if (!slot) {
+                    slot = { polygonId: "", index: 0, x: 0, y: 0, z: 0, radius: 0 };
+                    out[n] = slot;
+                }
+                slot.polygonId = node.id;
+                slot.index = i;
+                slot.x = top.x;
+                slot.y = top.y;
+                slot.z = top.z;
+                slot.radius = node.pointWorldRadius;
+                n++;
             }
         }
-        return result;
+        return n;
     };
 
     const dispose = (): void => {
