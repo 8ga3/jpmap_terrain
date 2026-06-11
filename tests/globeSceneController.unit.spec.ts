@@ -438,6 +438,36 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         expect(drags.map((d) => d.polygonId)).toEqual(["gpA", "gpZ"]);
     });
 
+    it("drag 系を全解除すると activeDragPublicId がクリアされ、再購読後に stale id を残さない", () => {
+        // 購読ライフサイクル境界（全解除→再購読）で前ジェスチャの id が残らないことを検証する。
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const pe = {} as PointerEvent;
+        const base = {
+            index: 0,
+            pointerEvent: pe,
+            lat: 35.1,
+            lon: 139.2,
+            groundAltitude: 50,
+            planeLat: 35.11,
+            planeLon: 139.21,
+            pointerAltitude: 80,
+        };
+        // ジェスチャ途中（dragStart→drag）で購読解除する（dragEnd を経ずに activeDragPublicId が残る状況）。
+        const drags1: PolygonPointDragEvent[] = [];
+        const unsubStart = c.subscribePolygonPointDragStart(() => {});
+        const unsubDrag = c.subscribePolygonPointDrag((e) => drags1.push(e));
+        stub.triggerPolygonDragStart({ ...base, polygonId: "gpA" });
+        stub.triggerPolygonDrag({ ...base, polygonId: "gpA" });
+        unsubStart();
+        unsubDrag();
+        // 再購読し、dragStart を経由しない drag が来ても stale "gpA" を橋渡ししない。
+        const drags2: PolygonPointDragEvent[] = [];
+        c.subscribePolygonPointDrag((e) => drags2.push(e));
+        stub.triggerPolygonDrag({ ...base, polygonId: "gpZ" });
+        expect(drags2.map((d) => d.polygonId)).toEqual(["gpZ"]);
+    });
+
     it("subscribePolygonPointDrag は null 許容フィールドをそのまま橋渡しする", () => {
         const stub = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(stub.gc, "std");

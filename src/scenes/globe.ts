@@ -1327,7 +1327,12 @@ export class GlobeScene {
             const gesture = polygonPointGesture;
             if (!gesture || gesture.pointerId !== e.pointerId) return;
             polygonPointGesture = null;
-            canvas.releasePointerCapture?.(e.pointerId);
+            // lostpointercapture は「既に capture を失った」通知でもあり、その場合に
+            // releasePointerCapture を呼ぶとブラウザによっては例外になる。capture 保持を
+            // 確認してから release する。
+            if (canvas.hasPointerCapture?.(e.pointerId)) {
+                canvas.releasePointerCapture?.(e.pointerId);
+            }
             // planar (resetPointerState) と同契約: ドラッグ中に pointercancel /
             // lostpointercapture で中断された場合も dragEnd を通知する。これにより
             // デモ側の状態（altitudeDragStart クリア・rAF flush 等）が取りこぼされない。

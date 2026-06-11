@@ -1141,6 +1141,9 @@ export const createGlobeSceneController = (
         ) {
             dragEndUnsub();
             dragEndUnsub = null;
+            // 購読ライフサイクル境界で stale id を残さない（解除→再購読で dragStart を
+            // 経由しない drag が来ても前ジェスチャの id を橋渡ししない）。
+            activeDragPublicId = null;
         }
     };
 
