@@ -792,8 +792,9 @@ export class GlobeScene {
             enforceGroundClearance(camEcef, camGeo);
             // マーカーの接地・距離スケール更新（フレーム共有の camEcef を渡す）。
             markerManager.update(camEcef);
-            // ポリゴン・サークルの地形再ドレープ（アウトライン・壁）。
+            // ポリゴンの地形再ドレープ（アウトライン・壁）と距離スケール更新（点/ラベル配置）。
             polygonManager.update(camEcef);
+            // サークルの地形再ドレープ。
             circleManager.update();
             // モデルの接地・起立更新。
             modelManager.update();

@@ -33,6 +33,12 @@ const SUBTERRAIN_RENDERING_GROUP_ID = 0;
 const LABEL_MAX_DT_SIZE = 1024;
 const LABEL_MIN_DT_SIZE = 32;
 
+// placeNode の毎フレーム配置ループで使い回すスクラッチ Vector3（割り当て削減のため）。
+const scratchUp = new Vector3();
+const scratchMid = new Vector3();
+const scratchBottomMid = new Vector3();
+const scratchEdgeUp = new Vector3();
+
 interface GlobePolygonPoint extends LatLonPoint {
     altitude?: number;
 }
@@ -364,9 +370,9 @@ export const createGlobePolygonManager = (
         for (let i = 0; i < node.points.length; i++) {
             const top = node.top[i];
             const bottom = node.bottom[i];
-            const up = top.subtract(bottom);
-            if (up.lengthSquared() < 1e-12) top.normalizeToRef(up);
-            else up.normalize();
+            top.subtractToRef(bottom, scratchUp);
+            if (scratchUp.lengthSquared() < 1e-12) top.normalizeToRef(scratchUp);
+            else scratchUp.normalize();
 
             const point = node.pointMeshes[i];
             if (point) {
@@ -393,7 +399,7 @@ export const createGlobePolygonManager = (
                 label.mesh.position
                     .copyFrom(top)
                     .addInPlace(
-                        up.scaleInPlace(
+                        scratchUp.scaleInPlace(
                             pointRadius + label.heightWorld * distScale * 0.5 + labelGap,
                         ),
                     );
@@ -424,18 +430,22 @@ export const createGlobePolygonManager = (
                 if (!label) continue;
                 const a = node.top[i];
                 const b = node.top[(i + 1) % node.points.length];
-                const mid = a.add(b).scaleInPlace(0.5);
-                const bottomMid = node.bottom[i]
-                    .add(node.bottom[(i + 1) % node.points.length])
-                    .scaleInPlace(0.5);
-                const up = mid.subtract(bottomMid);
-                if (up.lengthSquared() < 1e-12) mid.normalizeToRef(up);
-                else up.normalize();
+                a.addToRef(b, scratchMid);
+                scratchMid.scaleInPlace(0.5);
+                node.bottom[i].addToRef(
+                    node.bottom[(i + 1) % node.points.length],
+                    scratchBottomMid,
+                );
+                scratchBottomMid.scaleInPlace(0.5);
+                scratchMid.subtractToRef(scratchBottomMid, scratchEdgeUp);
+                if (scratchEdgeUp.lengthSquared() < 1e-12)
+                    scratchMid.normalizeToRef(scratchEdgeUp);
+                else scratchEdgeUp.normalize();
                 label.mesh.scaling.setAll(distScale);
                 label.mesh.position
-                    .copyFrom(mid)
+                    .copyFrom(scratchMid)
                     .addInPlace(
-                        up.scaleInPlace(
+                        scratchEdgeUp.scaleInPlace(
                             Math.max(node.style.lineWidth, 0.001) +
                                 label.heightWorld * distScale * 0.5 +
                                 labelGap,
