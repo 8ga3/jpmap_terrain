@@ -390,6 +390,67 @@ describe("createGlobeTileManager", () => {
         expect(mgr.getMapType()).toBe("std");
     });
 
+    it("初回テクスチャ in-flight 中の setMapType: 旧種別 onLoad は無視し再テクスチャ側が描画可能化する (#275 P4-1)", async () => {
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        await flush(); // 標高到着
+        mgr.sync(syncParams()); // LOD メッシュ生成、初回テクスチャ in-flight
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+        const lodMesh = MeshMock.mock.results[0].value as {
+            material: { diffuseTexture: unknown };
+            isEnabled: () => boolean;
+        };
+        // 初回テクスチャ未到着: 非表示・未 idle。
+        expect(lodMesh.isEnabled()).toBe(false);
+        expect(mgr.isIdle()).toBe(false);
+
+        const initialTex = capturedTextures[0]; // std, in-flight
+        const before = capturedTextures.length;
+        mgr.setMapType("photo"); // loaded を最初に再テクスチャ
+        const retexTex = capturedTextures[before]; // LOD photo
+
+        // 旧種別(std)の初回 onLoad が遅れて発火 → currentMapType(photo) と不一致で破棄・非適用。
+        initialTex.onLoad?.();
+        expect(initialTex.dispose).toHaveBeenCalled();
+        expect(lodMesh.isEnabled()).toBe(false);
+        expect(mgr.isIdle()).toBe(false);
+
+        // 再テクスチャ(photo) onLoad で未 ready メッシュを描画可能化（タイル欠け・idle 永続 false 防止）。
+        retexTex.onLoad?.();
+        expect(lodMesh.material.diffuseTexture).toBe(retexTex);
+        expect(lodMesh.isEnabled()).toBe(true);
+        expect(mgr.isIdle()).toBe(true);
+    });
+
+    it("ベースレイヤ初回テクスチャ in-flight 中の setMapType: 旧種別 onLoad は適用しない (#275 P4-1)", () => {
+        // ベースレイヤはコンストラクタで生成されるため、makeManager のクリアを通さず直接構築する。
+        MeshMock.mockClear();
+        MaterialMock.mockClear();
+        capturedTextures.length = 0;
+        const mgr = createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        // 全球 z2 = 16 枚のベース初回テクスチャが in-flight。
+        expect(capturedTextures.length).toBe(16);
+        const baseInitial = capturedTextures[0]; // std, in-flight
+        const baseMat = MaterialMock.mock.results[0].value as {
+            diffuseTexture: unknown;
+        };
+        expect(baseMat.diffuseTexture).toBeNull();
+
+        mgr.setMapType("photo"); // 16 枚を photo で再テクスチャ
+
+        // 旧種別(std)のベース初回 onLoad が遅れて発火 → 不一致で破棄・非適用（切り戻り防止）。
+        baseInitial.onLoad?.();
+        expect(baseInitial.dispose).toHaveBeenCalled();
+        expect(baseMat.diffuseTexture).toBeNull();
+    });
+
     it("前景タイルを非ピッカブルにする（内蔵パンとの二重操作=ガタつきを防ぐ, #337）", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
