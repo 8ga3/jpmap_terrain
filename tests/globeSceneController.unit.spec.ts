@@ -716,6 +716,18 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
                 expect(() => m.add("x", { points: PTS })).toThrow(/disposed/);
                 warn.mockRestore();
             });
+
+            it("resolvePublicPolygonId は内部 globeId を公開 id へ逆引きする", () => {
+                const stub = makeGlobePolygonStub();
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS });
+                const globeId = stub.added[stub.added.length - 1].id;
+                expect(m.resolvePublicPolygonId(globeId)).toBe("poly");
+                expect(m.resolvePublicPolygonId("unknown")).toBeNull();
+                // remove 後は逆引きできない。
+                m.remove("poly");
+                expect(m.resolvePublicPolygonId(globeId)).toBeNull();
+            });
         });
 
 const makeGlobeCircleStub = (): {

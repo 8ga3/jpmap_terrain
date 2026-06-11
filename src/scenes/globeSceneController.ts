@@ -82,8 +82,9 @@ import type { PolygonPointDragEvent } from "../lib/types";
 /** globe のドラッグイベントを公開 {@link PolygonPointDragEvent} へ変換する（#275 P4）。 */
 const toPublicDragEvent = (
     e: GlobePolygonPointDragEvent,
+    polygonId: string,
 ): PolygonPointDragEvent => ({
-    polygonId: e.polygonId,
+    polygonId,
     index: e.index,
     pointerEvent: e.pointerEvent,
     lat: e.lat,
@@ -369,10 +370,19 @@ const toGlobePolygonOptions = (entry: PolygonAdapterEntry): GlobePolygonOptions 
     wallsEnabled: entry.wallsEnabled,
 });
 
+/**
+ * 公開 `PolygonManager` に globe 専用の逆引き（内部 globeId → 公開 id）を加えたアダプタ型。
+ * polygon-point イベントの polygonId を公開 id へ翻訳するために使う（#275 P4）。
+ */
+export interface GlobePolygonManagerAdapter extends PolygonManager {
+    /** 内部 globeId に対応する公開ポリゴン id を返す。未知なら null。 */
+    resolvePublicPolygonId(globeId: string): string | null;
+}
+
 export const createGlobePolygonManagerAdapter = (
     globeMgr: GlobePolygonManager,
     terrainElevAt: (latDeg: number, lonDeg: number) => number | null,
-): PolygonManager => {
+): GlobePolygonManagerAdapter => {
     const entries = new Map<string, PolygonAdapterEntry>();
     let disposed = false;
 
@@ -655,6 +665,12 @@ export const createGlobePolygonManagerAdapter = (
         },
         list(): readonly string[] {
             return Array.from(entries.keys());
+        },
+        resolvePublicPolygonId(globeId: string): string | null {
+            for (const [publicId, e] of entries) {
+                if (e.globeId === globeId) return publicId;
+            }
+            return null;
         },
         dispose(): void {
             if (disposed) return;
@@ -1065,6 +1081,11 @@ export const createGlobeSceneController = (
         (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
     );
 
+    // polygon-point イベントが運ぶ内部 globeId を公開ポリゴン id へ翻訳する。
+    // デモ側は公開 id（例: distance の POLYGON_ID）で照合するため必須（#275 P4）。
+    const resolvePolygonPublicId = (globeId: string): string =>
+        polygonManager.resolvePublicPolygonId(globeId) ?? globeId;
+
     /** 現在の注視点（地表 lat/lon）。 */
     const currentGeodetic = (): { latDeg: number; lonDeg: number } => {
         const g = ecefToGeodetic(camera.center);
@@ -1404,7 +1425,7 @@ export const createGlobeSceneController = (
                     e === null
                         ? null
                         : {
-                              polygonId: e.polygonId,
+                              polygonId: resolvePolygonPublicId(e.polygonId),
                               index: e.index,
                               pointerEvent: e.pointerEvent,
                           },
@@ -1413,16 +1434,22 @@ export const createGlobeSceneController = (
         subscribePolygonPointClick: (listener: PolygonPointClickListener) =>
             gc.subscribePolygonPointClick((e) =>
                 listener({
-                    polygonId: e.polygonId,
+                    polygonId: resolvePolygonPublicId(e.polygonId),
                     index: e.index,
                     pointerEvent: e.pointerEvent,
                 }),
             ),
         subscribePolygonPointDragStart: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDragStart((e) => listener(toPublicDragEvent(e))),
+            gc.subscribePolygonPointDragStart((e) =>
+                listener(toPublicDragEvent(e, resolvePolygonPublicId(e.polygonId))),
+            ),
         subscribePolygonPointDrag: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDrag((e) => listener(toPublicDragEvent(e))),
+            gc.subscribePolygonPointDrag((e) =>
+                listener(toPublicDragEvent(e, resolvePolygonPublicId(e.polygonId))),
+            ),
         subscribePolygonPointDragEnd: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDragEnd((e) => listener(toPublicDragEvent(e))),
+            gc.subscribePolygonPointDragEnd((e) =>
+                listener(toPublicDragEvent(e, resolvePolygonPublicId(e.polygonId))),
+            ),
     };
 };
