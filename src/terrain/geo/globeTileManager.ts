@@ -980,7 +980,11 @@ export const createGlobeTileManager = (
             // GPU テクスチャが確実に生成された onLoad 内で diffuseTexture を設定する
             // （WebGPU の "null gpu texture bind" を避ける。平面版 tileManager と同様）。
             // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
-            // 孤立テクスチャを破棄する。
+            // 孤立テクスチャを破棄する。ロードは非同期なので、ロード中に setMapType で地図種別が
+            // 変わった場合は、この（旧種別の）テクスチャを適用すると誤表示になる。生成時の種別を
+            // 捕捉し、完了時に currentMapType と一致する場合のみ適用する（不一致なら破棄。描画可能化は
+            // setMapType が起動した再テクスチャ側 onLoad/onError が担う）。
+            const builtFor = currentMapType;
             const tex = new Texture(
                 textureUrl(currentMapType, t.zoom, t.x, t.y),
                 scene,
@@ -988,7 +992,7 @@ export const createGlobeTileManager = (
                 true,
                 Texture.TRILINEAR_SAMPLINGMODE,
                 () => {
-                    if (mesh.isDisposed()) {
+                    if (mesh.isDisposed() || currentMapType !== builtFor) {
                         tex.dispose();
                         return;
                     }
@@ -1005,9 +1009,10 @@ export const createGlobeTileManager = (
                 // pendingRelease 中の hiddenChild は即表示しない（onLoad と同様）。即表示すると
                 // 親と子が同時に見えて原子スワップ（重なりちらつき防止）が壊れる。readyMeshes に
                 // 登録するのでカバー判定が成立し、enableDescendants 経由でスワップ時に表示される。
+                // 種別不一致（ロード中に setMapType）の場合は再テクスチャ側に委ねる。
                 () => {
                     tex.dispose();
-                    if (mesh.isDisposed()) return;
+                    if (mesh.isDisposed() || currentMapType !== builtFor) return;
                     readyMeshes.add(mesh);
                     if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
                     checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
@@ -1226,7 +1231,10 @@ export const createGlobeTileManager = (
 
                 // GPU テクスチャ生成完了（onLoad）で diffuseTexture を設定する（WebGPU の
                 // "null gpu texture bind" 回避。LOD タイルと同様）。ベースは常時表示なので
-                // setEnabled の出し入れはしない。
+                // setEnabled の出し入れはしない。ロード中に setMapType で地図種別が変わった場合は
+                // 旧種別の適用を避けるため、生成時の種別を捕捉して一致時のみ適用する（不一致なら
+                // 破棄。新種別の適用は setMapType の再テクスチャ側が担う）。
+                const builtFor = currentMapType;
                 const tex = new Texture(
                     textureUrl(currentMapType, BASE_LAYER_ZOOM, x, y),
                     scene,
@@ -1234,7 +1242,7 @@ export const createGlobeTileManager = (
                     true,
                     Texture.TRILINEAR_SAMPLINGMODE,
                     () => {
-                        if (mesh.isDisposed()) {
+                        if (mesh.isDisposed() || currentMapType !== builtFor) {
                             tex.dispose();
                             return;
                         }
@@ -1290,6 +1298,9 @@ export const createGlobeTileManager = (
      * 新テクスチャの onLoad で diffuseTexture を張り替え、旧テクスチャを破棄する
      * （張替え前にちらつかないよう、新テクスチャ準備完了まで旧テクスチャを保持）。
      * base レイヤはテクスチャ適用時に海色ティントを白へ戻す（buildBaseLayer と同様）。
+     * 初回テクスチャ未到着（setEnabled(false)・readyMeshes 未登録）の LOD メッシュに対して
+     * setMapType された場合も、ここで描画可能化（readyMeshes 登録・表示・カバー判定）を行う。
+     * これがないとタイルが永続的に非表示になり isIdle も false のままになる。
      */
     const retextureMesh = (
         mesh: Mesh,
@@ -1301,10 +1312,18 @@ export const createGlobeTileManager = (
         const mat = mesh.material as StandardMaterial | null;
         if (!mat) return;
         const oldTex = mat.diffuseTexture;
+        const k = tileKey(zoom, x, y);
         // ロードは非同期。setMapType を短時間に複数回呼ぶと（例: 地図切替の連打）
         // 旧種別のテクスチャが後から完了して選択と不一致になりうるため、
         // 生成時の種別を捕捉し、完了時に currentMapType と一致する場合のみ適用する。
         const builtFor = currentMapType;
+        // base 以外（LOD/pendingRelease）は未 ready のメッシュを描画可能化する。
+        const markReady = (): void => {
+            if (isBase) return;
+            readyMeshes.add(mesh);
+            if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
+            checkAndReleaseCoveredTiles({ zoom, x, y });
+        };
         const tex = new Texture(
             textureUrl(currentMapType, zoom, x, y),
             scene,
@@ -1318,11 +1337,17 @@ export const createGlobeTileManager = (
                 }
                 mat.diffuseTexture = tex;
                 if (isBase) mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
+                else markReady();
                 // 新テクスチャ適用後に旧テクスチャを破棄（GPU リソースリーク防止）。
                 oldTex?.dispose();
             },
             // onError: 取得失敗時は新テクスチャを破棄し、旧テクスチャ（現状表示）を保持する。
-            () => tex.dispose(),
+            // ただし未 ready の LOD メッシュは白のままでも描画可能化する（ホールより良い）。
+            () => {
+                tex.dispose();
+                if (mesh.isDisposed() || currentMapType !== builtFor) return;
+                if (!isBase && !readyMeshes.has(mesh)) markReady();
+            },
         );
         tex.wrapU = Texture.CLAMP_ADDRESSMODE;
         tex.wrapV = Texture.CLAMP_ADDRESSMODE;
