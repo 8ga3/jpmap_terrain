@@ -249,6 +249,13 @@ export class GlobeSceneAdapter {
 
         const controller = createGlobeSceneController(gc, mapType);
         options?.onReady?.(controller);
+
+        // JpmapTerrain.initAsync は初期フラッシュ防止のため canvas を visibility:hidden で
+        // マウントし、planar(DefaultScene)は初回レンダ後に復帰させる(#225)。globe バックエンドでも
+        // 同様に初回レンダ後へ可視化を復帰しないと canvas が hidden のままで真っ白になる。
+        gc.scene.onAfterRenderObservable.addOnce(() => {
+            canvas.style.visibility = "";
+        });
         return gc.scene;
     };
 }
