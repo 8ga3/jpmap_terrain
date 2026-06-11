@@ -40,7 +40,7 @@ import {
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
-import { createGlobePolygonManager, type GlobePolygonManager } from "../terrain/geo/globePolygonManager";
+import { createGlobePolygonManager, type GlobePolygonManager, type GlobePolygonPickablePoint } from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
 import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
 
@@ -967,6 +967,8 @@ export class GlobeScene {
         const ppUp = new Vector3();
         const ppScratch = new Vector3();
         const ppClosest = new Vector3();
+        // getPickablePoints の書き込み先（要素を再利用して毎 move の割り当てを避ける）。
+        const ppPickBuffer: GlobePolygonPickablePoint[] = [];
 
         /**
          * カーソル下の頂点を幾何ピックする（最も手前の点）。floating origin 非依存。
@@ -976,8 +978,8 @@ export class GlobeScene {
             pxCss: number,
             pyCss: number,
         ): { polygonId: string; index: number; world: Vector3 } | null => {
-            const points = polygonManager.getPickablePoints();
-            if (points.length === 0) return null;
+            const count = polygonManager.getPickablePoints(ppPickBuffer);
+            if (count === 0) return null;
             ppOrigin.copyFrom(computeCameraEcef());
             computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
             // 楕円体（海面）近交点までの距離。これより十分奥の点は裏側として除外する。
@@ -1000,7 +1002,8 @@ export class GlobeScene {
             let bestY = 0;
             let bestZ = 0;
             let bestT = Number.POSITIVE_INFINITY;
-            for (const p of points) {
+            for (let i = 0; i < count; i++) {
+                const p = ppPickBuffer[i];
                 const vx = p.x - ppOrigin.x;
                 const vy = p.y - ppOrigin.y;
                 const vz = p.z - ppOrigin.z;
@@ -1314,11 +1317,19 @@ export class GlobeScene {
             }
         };
         const onPolygonPointerCancel = (e: PointerEvent): void => {
-            if (
-                polygonPointGesture &&
-                polygonPointGesture.pointerId === e.pointerId
-            ) {
-                polygonPointGesture = null;
+            const gesture = polygonPointGesture;
+            if (!gesture || gesture.pointerId !== e.pointerId) return;
+            polygonPointGesture = null;
+            canvas.releasePointerCapture?.(e.pointerId);
+            // planar (resetPointerState) と同契約: ドラッグ中に pointercancel /
+            // lostpointercapture で中断された場合も dragEnd を通知する。これにより
+            // デモ側の状態（altitudeDragStart クリア・rAF flush 等）が取りこぼされない。
+            if (gesture.dragging) {
+                dispatchPolygonDrag(
+                    polygonPointDragEndListeners,
+                    buildPolygonDragEvent(gesture, e),
+                    "onPolygonPointDragEnd",
+                );
             }
         };
 
@@ -1330,6 +1341,11 @@ export class GlobeScene {
             canvas.addEventListener("pointermove", onPolygonPointerMove);
             canvas.addEventListener("pointerup", onPolygonPointerUp);
             canvas.addEventListener("pointercancel", onPolygonPointerCancel);
+            // setPointerCapture を使うため、ブラウザ都合の capture 喪失でも確実に
+            // ジェスチャをリセットする（planar と同様に pointercancel と両方で reset）。
+            // pointerup は releasePointerCapture 前に gesture を null 化するため、
+            // ここでの lostpointercapture では二重に dragEnd が発火しない。
+            canvas.addEventListener("lostpointercapture", onPolygonPointerCancel);
             polygonPointHandlersAttached = true;
         };
         const detachPolygonPointHandlers = (): void => {
@@ -1338,6 +1354,7 @@ export class GlobeScene {
             canvas.removeEventListener("pointermove", onPolygonPointerMove);
             canvas.removeEventListener("pointerup", onPolygonPointerUp);
             canvas.removeEventListener("pointercancel", onPolygonPointerCancel);
+            canvas.removeEventListener("lostpointercapture", onPolygonPointerCancel);
             polygonPointGesture = null;
             if (polygonPointHoverState !== null) {
                 polygonPointHoverState = null;

@@ -384,6 +384,9 @@ export const createGlobePolygonManagerAdapter = (
     terrainElevAt: (latDeg: number, lonDeg: number) => number | null,
 ): GlobePolygonManagerAdapter => {
     const entries = new Map<string, PolygonAdapterEntry>();
+    // 内部 globeId → 公開 id の逆引き（resolvePublicPolygonId を O(1) にする）。
+    // add/commitRebuild/remove/dispose で entries と同期する。
+    const globeIdToPublicId = new Map<string, string>();
     let disposed = false;
 
     const assertNotDisposed = (): void => {
@@ -431,7 +434,9 @@ export const createGlobePolygonManagerAdapter = (
     ): PolygonAdapterEntry => {
         const globeId = globeMgr.add(toGlobePolygonOptions(next));
         globeMgr.remove(prev.globeId);
+        globeIdToPublicId.delete(prev.globeId);
         next.globeId = globeId;
+        globeIdToPublicId.set(globeId, id);
         entries.set(id, next);
         return next;
     };
@@ -480,6 +485,7 @@ export const createGlobePolygonManagerAdapter = (
             const tmp = createEntry(options, "");
             const globeId = globeMgr.add(toGlobePolygonOptions(tmp));
             tmp.globeId = globeId;
+            globeIdToPublicId.set(globeId, id);
             entries.set(id, tmp);
             return buildHandle(id, tmp);
         },
@@ -538,6 +544,7 @@ export const createGlobePolygonManagerAdapter = (
                 return;
             }
             globeMgr.remove(e.globeId);
+            globeIdToPublicId.delete(e.globeId);
             entries.delete(id);
         },
         setEnabled(id: string, enabled: boolean): void {
@@ -667,10 +674,7 @@ export const createGlobePolygonManagerAdapter = (
             return Array.from(entries.keys());
         },
         resolvePublicPolygonId(globeId: string): string | null {
-            for (const [publicId, e] of entries) {
-                if (e.globeId === globeId) return publicId;
-            }
-            return null;
+            return globeIdToPublicId.get(globeId) ?? null;
         },
         dispose(): void {
             if (disposed) return;
@@ -684,6 +688,7 @@ export const createGlobePolygonManagerAdapter = (
                 globeMgr.remove(e.globeId);
             }
             entries.clear();
+            globeIdToPublicId.clear();
         },
     };
 };
