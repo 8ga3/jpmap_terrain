@@ -16,6 +16,7 @@ import {
     createGlobeCircleManagerAdapter,
 } from "../src/scenes/globeSceneController";
 import type { GlobeSceneController } from "../src/scenes/globe";
+import type { TerrainClickEvent } from "../src/lib/types";
 import type {
     GlobeTerrainClickEvent,
     GlobeTerrainClickListener,
@@ -181,20 +182,28 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
     it("subscribeTerrainClick は gc のクリックを公開 TerrainClickEvent へ橋渡しし、unsubscribe で解除する", () => {
         const stub = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(stub.gc, "std");
-        const received: Array<{ lat: number; lon: number; altitude: number }> = [];
+        const received: TerrainClickEvent[] = [];
         const off = c.subscribeTerrainClick((e) => {
-            received.push({ lat: e.lat, lon: e.lon, altitude: e.altitude });
+            received.push(e);
         });
         expect(stub.clickListenerCount()).toBe(1);
         const pe = {} as PointerEvent;
+        const world = { x: 1, y: 2, z: 3 };
         stub.triggerTerrainClick({
             lat: 35.5,
             lon: 139.5,
             altitude: 120,
-            world: { x: 1, y: 2, z: 3 },
+            world,
             pointerEvent: pe,
         });
-        expect(received).toEqual([{ lat: 35.5, lon: 139.5, altitude: 120 }]);
+        expect(received).toHaveLength(1);
+        expect(received[0].lat).toBe(35.5);
+        expect(received[0].lon).toBe(139.5);
+        expect(received[0].altitude).toBe(120);
+        // world / pointerEvent も橋渡しされる（参照同一性も確認）。
+        expect(received[0].world).toEqual({ x: 1, y: 2, z: 3 });
+        expect(received[0].world).toBe(world);
+        expect(received[0].pointerEvent).toBe(pe);
         // unsubscribe 後はイベントが届かない。
         off();
         expect(stub.clickListenerCount()).toBe(0);
