@@ -207,4 +207,35 @@ describe("globe UI コントロールパネル配線 (#275 P4-1)", () => {
         expect(camera.pitch).toBe(pitchAfter);
         expect(rafCallbacks.length).toBe(0);
     });
+
+    it("dispose 後は現在地取得のコールバックが camera を更新しない", () => {
+        const camera = makeCamera();
+        const { gc } = makeGcWithScene(camera);
+
+        let successCb: ((p: unknown) => void) | null = null;
+        let errorCb: ((e: unknown) => void) | null = null;
+        // @ts-expect-error jsdom には geolocation が無いため最小スタブを差し込む。
+        navigator.geolocation = {
+            getCurrentPosition: (s: (p: unknown) => void, e: (e: unknown) => void) => {
+                successCb = s;
+                errorCb = e;
+            },
+        };
+
+        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const locateMe = document.querySelector(
+            '[aria-label="現在地を表示"]',
+        ) as HTMLElement;
+        expect(locateMe).not.toBeNull();
+        locateMe.dispatchEvent(new Event("click"));
+        expect(successCb).not.toBeNull();
+
+        const centerBefore = { ...camera.center };
+        c.dispose();
+        // dispose 後に成功コールバックが返っても camera.center を更新しない。
+        successCb!({ coords: { latitude: 36, longitude: 140 } });
+        expect(camera.center).toEqual(centerBefore);
+        // error コールバックも例外なく早期 return する。
+        expect(() => errorCb!({ message: "denied" })).not.toThrow();
+    });
 });

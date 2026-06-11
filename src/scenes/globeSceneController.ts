@@ -456,6 +456,7 @@ export const createGlobeSceneController = (
             }
             navigator.geolocation.getCurrentPosition(
                 (position) => {
+                    if (uiDisposed) return;
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
                     // GSI 地形タイルは日本域のみ。域外は背景球のみ表示になる旨を通知する。
@@ -472,6 +473,7 @@ export const createGlobeSceneController = (
                     setCenterLatLon(lat, lon);
                 },
                 (error) => {
+                    if (uiDisposed) return;
                     console.warn(
                         `[globeSceneController] Geolocation error: ${error.message}`,
                     );
