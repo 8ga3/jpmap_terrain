@@ -129,6 +129,12 @@ const PAN_KEYS = new Set(["w", "a", "s", "d"]);
 const MAX_TILT_DEG = 89;
 
 /**
+ * 地形クリック判定のドラッグしきい値 [CSS px]。pointerdown→pointerup の移動量がこれ以下なら
+ * クリック、超えればパン/回転とみなしてクリック通知しない（平面版 default.ts と同方針）。
+ */
+const GLOBE_TERRAIN_CLICK_DRAG_THRESHOLD_PX = 6;
+
+/**
  * 地球楕円体スフィア（背景＋地平線リファレンス, Issue #335）を海面より沈める量 [m]。
  * 地形（標高>=0）との z-fighting はスフィアの深度書き込み無効化（disableDepthWrite, 後述）で
  * 原理的に解消する。
@@ -185,6 +191,25 @@ export interface GlobeSceneSyncInfo extends GlobeTileSyncStats {
     pitch: number;
 }
 
+/**
+ * 地形クリックイベント（globe 版）。`scene.pick` 非依存で求めた緯度経度・標高・ECEF 交点を持つ。
+ * 公開 `TerrainClickEvent`（lib/types）と構造互換で、アダプタ（globeSceneController）が橋渡しする。
+ */
+export interface GlobeTerrainClickEvent {
+    /** クリック地点の緯度 [deg]。 */
+    lat: number;
+    /** クリック地点の経度 [deg]。 */
+    lon: number;
+    /** クリック地点の標高 [m]（地形標高。取得不可時は楕円体高）。 */
+    altitude: number;
+    /** 真の ECEF 交点 [m]（floating origin のレンダリング座標ではない）。 */
+    world: { x: number; y: number; z: number };
+    /** 元の `PointerEvent`。 */
+    pointerEvent: PointerEvent;
+}
+
+export type GlobeTerrainClickListener = (event: GlobeTerrainClickEvent) => void;
+
 export interface GlobeSceneController {
     scene: Scene;
     camera: GeospatialCamera;
@@ -197,6 +222,11 @@ export interface GlobeSceneController {
     circleManager: GlobeCircleManager;
     /** グローブ用モデル（Phase 3）。glb/gltf を接地し地心 up へ起立。 */
     modelManager: GlobeModelManager;
+    /**
+     * 地形クリック購読（pick 非依存・floating origin 対応）。クリック地点の緯度経度・標高を
+     * リスナーへ通知する。戻り値で購読解除する。
+     */
+    subscribeTerrainClick: (listener: GlobeTerrainClickListener) => () => void;
     dispose: () => void;
 }
 
@@ -530,7 +560,11 @@ export class GlobeScene {
         // フレーム毎に揺らぐ。これがズーム目標点をブレさせる精度要因。そこで行列を介さず、yaw/pitch
         // から forward を、camera.upVector から up/right を二重精度で求め、画素 NDC オフセットと
         // 垂直 FOV・アスペクトから解析的にレイ方向を構築する（中心画素は厳密に forward に一致）。
-        const computeCursorRayDirToRef = (ref: Vector3): Vector3 => {
+        const computeRayDirForPixelToRef = (
+            pxCss: number,
+            pyCss: number,
+            ref: Vector3,
+        ): Vector3 => {
             // 注意: computeCameraEcef は共有 lookAt バッファを radius 倍して破壊するため専用バッファに計算する。
             ComputeLookAtFromYawPitchToRef(
                 camera.yaw,
@@ -556,8 +590,8 @@ export class GlobeScene {
             const hsl = engine.getHardwareScalingLevel();
             const w = engine.getRenderWidth();
             const h = engine.getRenderHeight();
-            const ndcx = (scene.pointerX / hsl / w) * 2 - 1;
-            const ndcy = 1 - (scene.pointerY / hsl / h) * 2;
+            const ndcx = (pxCss / hsl / w) * 2 - 1;
+            const ndcy = 1 - (pyCss / hsl / h) * 2;
             const tanY = Math.tan(camera.fov / 2);
             const tanX = tanY * (w / h);
             ref.copyFrom(rayFwd)
@@ -566,6 +600,10 @@ export class GlobeScene {
                 .normalize();
             return ref;
         };
+
+        // ズーム（zoom-to-cursor）は現在のポインタ位置（scene.pointerX/Y）のレイを使う。
+        const computeCursorRayDirToRef = (ref: Vector3): Vector3 =>
+            computeRayDirForPixelToRef(scene.pointerX, scene.pointerY, ref);
 
         movement.handleZoom = (zoomDelta: number): void => {
             if (zoomDelta === 0) return;
@@ -675,6 +713,122 @@ export class GlobeScene {
         camera.zoomToPoint = (targetPoint, distance): void => {
             origZoomToPoint(targetPoint, distance);
             recalculateCenterPublic();
+        };
+
+        // ---- 地形クリック通知（pick 非依存・floating origin 対応, #275 P4-0 後続スライス） ----
+        // 平面版（default.ts）は scene.pick で地形メッシュをヒットするが、floating origin 下では
+        // レンダリング座標と真の ECEF メッシュ位置がずれてピックがブレる。そこでズーム/パンと同じく
+        // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で 1 回反復）と交差させて
+        // 緯度経度・標高を求める。ドラッグ（パン/回転）はしきい値で除外する。
+        const terrainClickListeners: GlobeTerrainClickListener[] = [];
+        let clickStart: {
+            pointerId: number;
+            x: number;
+            y: number;
+            modifier: boolean;
+        } | null = null;
+        const clickRayDir = new Vector3();
+        const clickHit = new Vector3();
+
+        /** カーソル方向のレイ × 地形楕円体の交点から緯度経度・標高を求める。空（ミス）は null。 */
+        const computeTerrainClick = (e: PointerEvent): GlobeTerrainClickEvent | null => {
+            const rect = canvas.getBoundingClientRect();
+            const pxCss = e.clientX - rect.left;
+            const pyCss = e.clientY - rect.top;
+            computeRayDirForPixelToRef(pxCss, pyCss, clickRayDir);
+            const camEcef = computeCameraEcef();
+            // 1) 海面（h=0）の楕円体と交差させて概略の緯度経度を得る。
+            if (
+                !rayEllipsoidNearHitToRef(
+                    camEcef,
+                    clickRayDir,
+                    ellipsoidSemiMajor,
+                    ellipsoidSemiMajor,
+                    ellipsoidSemiMinor,
+                    clickHit,
+                )
+            ) {
+                return null; // 空（地球外）を指している
+            }
+            let geo = ecefToGeodetic(clickHit);
+            // 2) その地点の地形標高で楕円体面を持ち上げ、1 回だけ交点を補正する（斜面での誤差低減）。
+            const elev = tileManager.terrainElevAt(geo.latDeg, geo.lonDeg);
+            const hasElev = elev !== null && Number.isFinite(elev);
+            if (hasElev) {
+                if (
+                    rayEllipsoidNearHitToRef(
+                        camEcef,
+                        clickRayDir,
+                        ellipsoidSemiMajor + elev,
+                        ellipsoidSemiMajor + elev,
+                        ellipsoidSemiMinor + elev,
+                        clickHit,
+                    )
+                ) {
+                    geo = ecefToGeodetic(clickHit);
+                }
+            }
+            return {
+                lat: geo.latDeg,
+                lon: geo.lonDeg,
+                altitude: hasElev ? elev : geo.altMeters,
+                // world は真の ECEF 交点（floating origin のレンダリング座標ではない）。
+                world: { x: clickHit.x, y: clickHit.y, z: clickHit.z },
+                pointerEvent: e,
+            };
+        };
+
+        const onClickPointerDown = (e: PointerEvent): void => {
+            if (e.button !== 0) return;
+            clickStart = {
+                pointerId: e.pointerId,
+                x: e.clientX,
+                y: e.clientY,
+                modifier: e.ctrlKey || e.metaKey,
+            };
+        };
+        const cancelClick = (e: PointerEvent): void => {
+            if (clickStart && clickStart.pointerId === e.pointerId) clickStart = null;
+        };
+        const onClickPointerUp = (e: PointerEvent): void => {
+            const start = clickStart;
+            clickStart = null;
+            if (!start || start.pointerId !== e.pointerId) return;
+            // Ctrl/Cmd 併用はカメラ操作扱い（平面版と同じ）。pointerup 時点の修飾キーも確認する。
+            if (start.modifier || e.ctrlKey || e.metaKey) return;
+            if (terrainClickListeners.length === 0) return;
+            const dx = e.clientX - start.x;
+            const dy = e.clientY - start.y;
+            if (
+                Math.abs(dx) > GLOBE_TERRAIN_CLICK_DRAG_THRESHOLD_PX ||
+                Math.abs(dy) > GLOBE_TERRAIN_CLICK_DRAG_THRESHOLD_PX
+            ) {
+                return; // ドラッグ（パン/回転）はクリックとみなさない
+            }
+            const event = computeTerrainClick(e);
+            if (!event) return;
+            // iterate 中の add/remove 安全のため slice
+            for (const listener of terrainClickListeners.slice()) {
+                try {
+                    listener(event);
+                } catch (err) {
+                    console.error("[globe] terrain click listener threw:", err);
+                }
+            }
+        };
+        canvas.addEventListener("pointerdown", onClickPointerDown);
+        canvas.addEventListener("pointerup", onClickPointerUp);
+        canvas.addEventListener("pointercancel", cancelClick);
+        canvas.addEventListener("lostpointercapture", cancelClick);
+
+        const subscribeTerrainClick = (
+            listener: GlobeTerrainClickListener,
+        ): (() => void) => {
+            terrainClickListeners.push(listener);
+            return () => {
+                const i = terrainClickListeners.indexOf(listener);
+                if (i >= 0) terrainClickListeners.splice(i, 1);
+            };
         };
 
 
@@ -814,6 +968,11 @@ export class GlobeScene {
             canvas.removeEventListener("pointerup", onPointerUp);
             canvas.removeEventListener("pointercancel", endDrag);
             canvas.removeEventListener("pointermove", onPointerMove);
+            canvas.removeEventListener("pointerdown", onClickPointerDown);
+            canvas.removeEventListener("pointerup", onClickPointerUp);
+            canvas.removeEventListener("pointercancel", cancelClick);
+            canvas.removeEventListener("lostpointercapture", cancelClick);
+            terrainClickListeners.length = 0;
             markerManager.dispose();
             polygonManager.dispose();
             circleManager.dispose();
@@ -830,6 +989,7 @@ export class GlobeScene {
             polygonManager,
             circleManager,
             modelManager,
+            subscribeTerrainClick,
             dispose,
         };
     }

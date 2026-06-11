@@ -17,6 +17,10 @@ import {
 } from "../src/scenes/globeSceneController";
 import type { GlobeSceneController } from "../src/scenes/globe";
 import type {
+    GlobeTerrainClickEvent,
+    GlobeTerrainClickListener,
+} from "../src/scenes/globe";
+import type {
     GlobeMarkerManager,
     GlobeMarkerOptions,
 } from "../src/terrain/geo/globeMarkerManager";
@@ -38,7 +42,12 @@ const makeStub = (
     yaw: number,
     pitch: number,
     idle = true,
-): { gc: GlobeSceneController; disposed: () => boolean } => {
+): {
+    gc: GlobeSceneController;
+    disposed: () => boolean;
+    triggerTerrainClick: (e: GlobeTerrainClickEvent) => void;
+    clickListenerCount: () => number;
+} => {
     let disposedFlag = false;
     const camera = {
         center: geodeticToEcef(lat, lon, 0),
@@ -46,6 +55,7 @@ const makeStub = (
         yaw,
         pitch,
     };
+    const clickListeners: GlobeTerrainClickListener[] = [];
     const gc = {
         camera,
         // isTerrainIdle / marker アダプタ / mapType 切替が参照する tileManager スタブ。
@@ -54,11 +64,25 @@ const makeStub = (
             terrainElevAt: () => null,
             setMapType: jest.fn(),
         },
+        subscribeTerrainClick: (listener: GlobeTerrainClickListener) => {
+            clickListeners.push(listener);
+            return () => {
+                const i = clickListeners.indexOf(listener);
+                if (i >= 0) clickListeners.splice(i, 1);
+            };
+        },
         dispose: () => {
             disposedFlag = true;
         },
     } as unknown as GlobeSceneController;
-    return { gc, disposed: () => disposedFlag };
+    return {
+        gc,
+        disposed: () => disposedFlag,
+        triggerTerrainClick: (e) => {
+            for (const l of clickListeners.slice()) l(e);
+        },
+        clickListenerCount: () => clickListeners.length,
+    };
 };
 
 describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
@@ -154,18 +178,34 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         warn.mockRestore();
     });
 
-    it("subscribeTerrainClick は未対応を一度だけ warn し、unsubscribe を返す", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-        const { gc } = makeStub(35, 139, 1000, 0, 0);
-        const c = createGlobeSceneController(gc, "std");
-        const off1 = c.subscribeTerrainClick(() => {});
-        const off2 = c.subscribeTerrainClick(() => {});
-        expect(typeof off1).toBe("function");
-        expect(typeof off2).toBe("function");
-        expect(() => off1()).not.toThrow();
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0][0]).toMatch(/subscribeTerrainClick is not yet supported/);
-        warn.mockRestore();
+    it("subscribeTerrainClick は gc のクリックを公開 TerrainClickEvent へ橋渡しし、unsubscribe で解除する", () => {
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const received: Array<{ lat: number; lon: number; altitude: number }> = [];
+        const off = c.subscribeTerrainClick((e) => {
+            received.push({ lat: e.lat, lon: e.lon, altitude: e.altitude });
+        });
+        expect(stub.clickListenerCount()).toBe(1);
+        const pe = {} as PointerEvent;
+        stub.triggerTerrainClick({
+            lat: 35.5,
+            lon: 139.5,
+            altitude: 120,
+            world: { x: 1, y: 2, z: 3 },
+            pointerEvent: pe,
+        });
+        expect(received).toEqual([{ lat: 35.5, lon: 139.5, altitude: 120 }]);
+        // unsubscribe 後はイベントが届かない。
+        off();
+        expect(stub.clickListenerCount()).toBe(0);
+        stub.triggerTerrainClick({
+            lat: 0,
+            lon: 0,
+            altitude: 0,
+            world: { x: 0, y: 0, z: 0 },
+            pointerEvent: pe,
+        });
+        expect(received).toHaveLength(1);
     });
 
     it("isTerrainIdle は tileManager.isIdle へ委譲する（true/false）", () => {
