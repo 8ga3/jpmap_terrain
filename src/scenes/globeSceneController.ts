@@ -1102,6 +1102,11 @@ export const createGlobeSceneController = (
     // 全リスナーへ配送し終えてから activeDragPublicId をクリアし、stale id を次ジェスチャへ
     // 持ち越さない。drag/dragEnd でも解決できた publicId で更新するため、dragStart を購読
     // しない利用者が drag だけ購読しても publicId が安定する。
+    //
+    // activeDragPublicId のクリアは内部 gc dragEnd 購読の中で行う。利用者が dragEnd を購読
+    // しなくても（drag/dragStart のみでも）id が確実にクリアされるよう、drag 系のいずれかの
+    // public リスナーが存在する間は内部 dragEnd 購読を必ず張る（ensureDragEndBridge）。
+    // 解除は drag 系すべての public リスナーが居なくなったときのみ（releaseDragEndBridgeIfIdle）。
     let activeDragPublicId: string | null = null;
     const dragStartListeners: PolygonPointDragListener[] = [];
     const dragListeners: PolygonPointDragListener[] = [];
@@ -1109,6 +1114,32 @@ export const createGlobeSceneController = (
     let dragStartUnsub: (() => void) | null = null;
     let dragUnsub: (() => void) | null = null;
     let dragEndUnsub: (() => void) | null = null;
+
+    // drag 系のいずれかの public リスナーがある間は内部 gc dragEnd 購読を維持する。
+    // dragEnd を購読しない利用者（drag/dragStart のみ）でも activeDragPublicId が確実に
+    // クリアされるようにするため。
+    const ensureDragEndBridge = (): void => {
+        if (dragEndUnsub) return;
+        dragEndUnsub = gc.subscribePolygonPointDragEnd((e) => {
+            const id = activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
+            const ev = toPublicDragEvent(e, id);
+            for (const l of dragEndListeners.slice()) l(ev);
+            // 全リスナー配送後にクリアし、次ジェスチャへ stale id を持ち越さない。
+            activeDragPublicId = null;
+        });
+    };
+    // drag 系の public リスナーがすべて無くなったときのみ内部 dragEnd 購読を解除する。
+    const releaseDragEndBridgeIfIdle = (): void => {
+        if (
+            dragEndUnsub &&
+            dragStartListeners.length === 0 &&
+            dragListeners.length === 0 &&
+            dragEndListeners.length === 0
+        ) {
+            dragEndUnsub();
+            dragEndUnsub = null;
+        }
+    };
 
     /** 現在の注視点（地表 lat/lon）。 */
     const currentGeodetic = (): { latDeg: number; lonDeg: number } => {
@@ -1465,6 +1496,7 @@ export const createGlobeSceneController = (
             ),
         subscribePolygonPointDragStart: (listener: PolygonPointDragListener) => {
             dragStartListeners.push(listener);
+            ensureDragEndBridge();
             if (!dragStartUnsub) {
                 dragStartUnsub = gc.subscribePolygonPointDragStart((e) => {
                     activeDragPublicId = resolvePolygonPublicId(e.polygonId);
@@ -1479,10 +1511,12 @@ export const createGlobeSceneController = (
                     dragStartUnsub();
                     dragStartUnsub = null;
                 }
+                releaseDragEndBridgeIfIdle();
             };
         },
         subscribePolygonPointDrag: (listener: PolygonPointDragListener) => {
             dragListeners.push(listener);
+            ensureDragEndBridge();
             if (!dragUnsub) {
                 dragUnsub = gc.subscribePolygonPointDrag((e) => {
                     const id =
@@ -1499,27 +1533,16 @@ export const createGlobeSceneController = (
                     dragUnsub();
                     dragUnsub = null;
                 }
+                releaseDragEndBridgeIfIdle();
             };
         },
         subscribePolygonPointDragEnd: (listener: PolygonPointDragListener) => {
             dragEndListeners.push(listener);
-            if (!dragEndUnsub) {
-                dragEndUnsub = gc.subscribePolygonPointDragEnd((e) => {
-                    const id =
-                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
-                    const ev = toPublicDragEvent(e, id);
-                    for (const l of dragEndListeners.slice()) l(ev);
-                    // 全リスナー配送後にクリアし、次ジェスチャへ stale id を持ち越さない。
-                    activeDragPublicId = null;
-                });
-            }
+            ensureDragEndBridge();
             return () => {
                 const i = dragEndListeners.indexOf(listener);
                 if (i >= 0) dragEndListeners.splice(i, 1);
-                if (dragEndListeners.length === 0 && dragEndUnsub) {
-                    dragEndUnsub();
-                    dragEndUnsub = null;
-                }
+                releaseDragEndBridgeIfIdle();
             };
         },
     };
