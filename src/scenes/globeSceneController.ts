@@ -1086,6 +1086,13 @@ export const createGlobeSceneController = (
     const resolvePolygonPublicId = (globeId: string): string =>
         polygonManager.resolvePublicPolygonId(globeId) ?? globeId;
 
+    // ドラッグ中に公開 id を固定する。distance デモは onPolygonPointDrag のたびに
+    // removePolygon→addPolygon でポリゴンを作り直すため、内部 globeId が毎フレーム
+    // 変わり、ジェスチャが dragstart 時に掴んだ内部 id は途中で失効する。dragstart 時点で
+    // 解決した公開 id を drag/dragEnd まで使い回し、id 失効でデモが更新を無視するのを防ぐ。
+    // 次の dragstart で必ず上書きされるため明示クリアは不要（複数リスナー時の取りこぼし回避）。
+    let activeDragPublicId: string | null = null;
+
     /** 現在の注視点（地表 lat/lon）。 */
     const currentGeodetic = (): { latDeg: number; lonDeg: number } => {
         const g = ecefToGeodetic(camera.center);
@@ -1440,16 +1447,27 @@ export const createGlobeSceneController = (
                 }),
             ),
         subscribePolygonPointDragStart: (listener: PolygonPointDragListener) =>
-            gc.subscribePolygonPointDragStart((e) =>
-                listener(toPublicDragEvent(e, resolvePolygonPublicId(e.polygonId))),
-            ),
+            gc.subscribePolygonPointDragStart((e) => {
+                activeDragPublicId = resolvePolygonPublicId(e.polygonId);
+                listener(toPublicDragEvent(e, activeDragPublicId));
+            }),
         subscribePolygonPointDrag: (listener: PolygonPointDragListener) =>
             gc.subscribePolygonPointDrag((e) =>
-                listener(toPublicDragEvent(e, resolvePolygonPublicId(e.polygonId))),
+                listener(
+                    toPublicDragEvent(
+                        e,
+                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId),
+                    ),
+                ),
             ),
         subscribePolygonPointDragEnd: (listener: PolygonPointDragListener) =>
             gc.subscribePolygonPointDragEnd((e) =>
-                listener(toPublicDragEvent(e, resolvePolygonPublicId(e.polygonId))),
+                listener(
+                    toPublicDragEvent(
+                        e,
+                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId),
+                    ),
+                ),
             ),
     };
 };
