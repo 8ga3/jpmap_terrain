@@ -1198,6 +1198,10 @@ export class GlobeScene {
                 startAltMeters: startGeo.altMeters,
             };
             canvas.setPointerCapture?.(e.pointerId);
+            // パン handler はこの pointerdown で既に dragging=true / pointer capture を
+            // 設定済み（登録順が先）。頂点ジェスチャ中はパンを完全に無効化する。これにより
+            // 万一ジェスチャが途中で解除されてもカメラがパンしない（#275 P4 ドラッグ競合対策）。
+            dragging = false;
             // terrain-click 抑制（登録順非依存）: 進行中の terrain クリック開始判定を破棄する。
             clickStart = null;
             // 後続リスナー（同一 canvas の terrain-click 等）への配送も止める。
@@ -1310,7 +1314,6 @@ export class GlobeScene {
             canvas.addEventListener("pointermove", onPolygonPointerMove);
             canvas.addEventListener("pointerup", onPolygonPointerUp);
             canvas.addEventListener("pointercancel", onPolygonPointerCancel);
-            canvas.addEventListener("lostpointercapture", onPolygonPointerCancel);
             polygonPointHandlersAttached = true;
         };
         const detachPolygonPointHandlers = (): void => {
@@ -1319,7 +1322,6 @@ export class GlobeScene {
             canvas.removeEventListener("pointermove", onPolygonPointerMove);
             canvas.removeEventListener("pointerup", onPolygonPointerUp);
             canvas.removeEventListener("pointercancel", onPolygonPointerCancel);
-            canvas.removeEventListener("lostpointercapture", onPolygonPointerCancel);
             polygonPointGesture = null;
             if (polygonPointHoverState !== null) {
                 polygonPointHoverState = null;
