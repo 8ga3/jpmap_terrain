@@ -33,6 +33,10 @@ const SUBTERRAIN_RENDERING_GROUP_ID = 0;
 const LABEL_MAX_DT_SIZE = 1024;
 const LABEL_MIN_DT_SIZE = 32;
 
+// 点／辺ラベルを地心 up 方向へ押し出すギャップ（フォント高さに対する比率、距離スケール反映）。
+// 球トップや辺の上にラベルが重ならないよう、わずかにオフセットする（planar の同名定数と対応）。
+const LABEL_GAP_FONT_RATIO = 0.05;
+
 // placeNode の毎フレーム配置ループで使い回すスクラッチ Vector3（割り当て削減のため）。
 const scratchUp = new Vector3();
 const scratchMid = new Vector3();
@@ -316,11 +320,14 @@ export const createGlobePolygonManager = (
                 const p = node.points[i];
                 const terrain = terrainElevAt(p.lat, p.lon);
                 if (terrain === null) {
+                    // 1 点でも未解決ならポリゴン全体を非表示にするため、残りの terrainElevAt
+                    // クエリは不要。早期終了して毎フレームの標高クエリ回数を抑える
+                    // （頂点数が多い circle 委譲などで効く）。planar 実装と parity。
                     resolved = false;
                     node.elevs[i] = 0;
-                } else {
-                    node.elevs[i] = terrain + (p.altitude ?? 0);
+                    break;
                 }
+                node.elevs[i] = terrain + (p.altitude ?? 0);
             }
         }
         if (resolved) {
@@ -366,7 +373,7 @@ export const createGlobePolygonManager = (
             : 1;
         const pointDiameter = Math.max(node.style.pointDiameter, 0.001);
         const pointRadius = pointDiameter * distScale * 0.5;
-        const labelGap = node.style.labelFontSize * distScale * 0.05;
+        const labelGap = node.style.labelFontSize * distScale * LABEL_GAP_FONT_RATIO;
         for (let i = 0; i < node.points.length; i++) {
             const top = node.top[i];
             const bottom = node.bottom[i];
