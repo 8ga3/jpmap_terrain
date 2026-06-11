@@ -19,8 +19,17 @@ import type {
     GlobeSceneController,
     GlobeTerrainClickEvent,
     GlobeTerrainClickListener,
+    GlobePolygonPointEvent,
+    GlobePolygonPointDragEvent,
+    GlobePolygonPointListener,
+    GlobePolygonPointClickListener,
+    GlobePolygonPointDragListener,
 } from "../src/scenes/globe";
-import type { TerrainClickEvent } from "../src/lib/types";
+import type {
+    TerrainClickEvent,
+    PolygonPointPointerEvent,
+    PolygonPointDragEvent,
+} from "../src/lib/types";
 import type {
     GlobeMarkerManager,
     GlobeMarkerOptions,
@@ -48,6 +57,12 @@ const makeStub = (
     disposed: () => boolean;
     triggerTerrainClick: (e: GlobeTerrainClickEvent) => void;
     clickListenerCount: () => number;
+    triggerPolygonHover: (e: GlobePolygonPointEvent | null) => void;
+    triggerPolygonClick: (e: GlobePolygonPointEvent) => void;
+    triggerPolygonDragStart: (e: GlobePolygonPointDragEvent) => void;
+    triggerPolygonDrag: (e: GlobePolygonPointDragEvent) => void;
+    triggerPolygonDragEnd: (e: GlobePolygonPointDragEvent) => void;
+    polygonHoverListenerCount: () => number;
 } => {
     let disposedFlag = false;
     const camera = {
@@ -57,6 +72,20 @@ const makeStub = (
         pitch,
     };
     const clickListeners: GlobeTerrainClickListener[] = [];
+    const hoverListeners: GlobePolygonPointListener[] = [];
+    const pointClickListeners: GlobePolygonPointClickListener[] = [];
+    const dragStartListeners: GlobePolygonPointDragListener[] = [];
+    const dragListeners: GlobePolygonPointDragListener[] = [];
+    const dragEndListeners: GlobePolygonPointDragListener[] = [];
+    const makeSub =
+        <T>(arr: T[]) =>
+        (listener: T) => {
+            arr.push(listener);
+            return () => {
+                const i = arr.indexOf(listener);
+                if (i >= 0) arr.splice(i, 1);
+            };
+        };
     const gc = {
         camera,
         // isTerrainIdle / marker アダプタ / mapType 切替が参照する tileManager スタブ。
@@ -72,6 +101,11 @@ const makeStub = (
                 if (i >= 0) clickListeners.splice(i, 1);
             };
         },
+        subscribePolygonPointHover: makeSub(hoverListeners),
+        subscribePolygonPointClick: makeSub(pointClickListeners),
+        subscribePolygonPointDragStart: makeSub(dragStartListeners),
+        subscribePolygonPointDrag: makeSub(dragListeners),
+        subscribePolygonPointDragEnd: makeSub(dragEndListeners),
         dispose: () => {
             disposedFlag = true;
         },
@@ -83,6 +117,22 @@ const makeStub = (
             for (const l of clickListeners.slice()) l(e);
         },
         clickListenerCount: () => clickListeners.length,
+        triggerPolygonHover: (e) => {
+            for (const l of hoverListeners.slice()) l(e);
+        },
+        triggerPolygonClick: (e) => {
+            for (const l of pointClickListeners.slice()) l(e);
+        },
+        triggerPolygonDragStart: (e) => {
+            for (const l of dragStartListeners.slice()) l(e);
+        },
+        triggerPolygonDrag: (e) => {
+            for (const l of dragListeners.slice()) l(e);
+        },
+        triggerPolygonDragEnd: (e) => {
+            for (const l of dragEndListeners.slice()) l(e);
+        },
+        polygonHoverListenerCount: () => hoverListeners.length,
     };
 };
 
@@ -215,6 +265,109 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
             pointerEvent: pe,
         });
         expect(received).toHaveLength(1);
+    });
+
+    it("subscribePolygonPointHover は gc の hover を公開 PolygonPointPointerEvent|null へ橋渡しする", () => {
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const received: (PolygonPointPointerEvent | null)[] = [];
+        const off = c.subscribePolygonPointHover((e) => {
+            received.push(e);
+        });
+        expect(stub.polygonHoverListenerCount()).toBe(1);
+        const pe = {} as PointerEvent;
+        stub.triggerPolygonHover({ polygonId: "p1", index: 2, pointerEvent: pe });
+        stub.triggerPolygonHover(null);
+        expect(received).toHaveLength(2);
+        expect(received[0]).toEqual({ polygonId: "p1", index: 2, pointerEvent: pe });
+        expect(received[0]?.pointerEvent).toBe(pe);
+        expect(received[1]).toBeNull();
+        off();
+        expect(stub.polygonHoverListenerCount()).toBe(0);
+        stub.triggerPolygonHover({ polygonId: "p1", index: 0, pointerEvent: pe });
+        expect(received).toHaveLength(2);
+    });
+
+    it("subscribePolygonPointClick は gc のクリックを公開イベントへ橋渡しする", () => {
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const received: PolygonPointPointerEvent[] = [];
+        c.subscribePolygonPointClick((e) => {
+            received.push(e);
+        });
+        const pe = {} as PointerEvent;
+        stub.triggerPolygonClick({ polygonId: "p2", index: 5, pointerEvent: pe });
+        expect(received).toHaveLength(1);
+        expect(received[0]).toEqual({ polygonId: "p2", index: 5, pointerEvent: pe });
+    });
+
+    it("subscribePolygonPointDrag* は lat/lon/groundAltitude/planeLat/planeLon/pointerAltitude を橋渡しする", () => {
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const starts: PolygonPointDragEvent[] = [];
+        const drags: PolygonPointDragEvent[] = [];
+        const ends: PolygonPointDragEvent[] = [];
+        c.subscribePolygonPointDragStart((e) => {
+            starts.push(e);
+        });
+        c.subscribePolygonPointDrag((e) => {
+            drags.push(e);
+        });
+        c.subscribePolygonPointDragEnd((e) => {
+            ends.push(e);
+        });
+        const pe = {} as PointerEvent;
+        const ev: GlobePolygonPointDragEvent = {
+            polygonId: "p3",
+            index: 1,
+            pointerEvent: pe,
+            lat: 35.1,
+            lon: 139.2,
+            groundAltitude: 50,
+            planeLat: 35.11,
+            planeLon: 139.21,
+            pointerAltitude: 80,
+        };
+        stub.triggerPolygonDragStart(ev);
+        stub.triggerPolygonDrag(ev);
+        stub.triggerPolygonDragEnd(ev);
+        for (const arr of [starts, drags, ends]) {
+            expect(arr).toHaveLength(1);
+            expect(arr[0]).toEqual({
+                polygonId: "p3",
+                index: 1,
+                pointerEvent: pe,
+                lat: 35.1,
+                lon: 139.2,
+                groundAltitude: 50,
+                planeLat: 35.11,
+                planeLon: 139.21,
+                pointerAltitude: 80,
+            });
+        }
+    });
+
+    it("subscribePolygonPointDrag は null 許容フィールドをそのまま橋渡しする", () => {
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const drags: PolygonPointDragEvent[] = [];
+        c.subscribePolygonPointDrag((e) => {
+            drags.push(e);
+        });
+        stub.triggerPolygonDrag({
+            polygonId: "p4",
+            index: 0,
+            pointerEvent: {} as PointerEvent,
+            lat: null,
+            lon: null,
+            groundAltitude: null,
+            planeLat: null,
+            planeLon: null,
+            pointerAltitude: null,
+        });
+        expect(drags).toHaveLength(1);
+        expect(drags[0].lat).toBeNull();
+        expect(drags[0].pointerAltitude).toBeNull();
     });
 
     it("isTerrainIdle は tileManager.isIdle へ委譲する（true/false）", () => {

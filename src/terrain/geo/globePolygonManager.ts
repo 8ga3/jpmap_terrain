@@ -157,6 +157,8 @@ interface GlobePolygonNode {
     top: Vector3[];
     bottom: Vector3[];
     elevs: number[];
+    /** 直近 placeNode で算出した点スフィアのワールド半径 [m]（幾何ピック用, #275 P4）。 */
+    pointWorldRadius: number;
 }
 
 export interface GlobePolygonManager {
@@ -165,7 +167,27 @@ export interface GlobePolygonManager {
     setEnabled(id: string, enabled: boolean): void;
     /** 毎フレーム: 地形標高へ再ドレープし、距離スケールを更新する。 */
     update(cameraEcef?: Vector3): void;
+    /**
+     * 現在表示中・ピック可能な頂点（点メッシュ）の真の ECEF 位置と当該フレームの
+     * ワールド半径を列挙する（floating origin 非依存の幾何ピック用, #275 P4）。
+     * 非表示ノード・点無効ノード・標高未解決ノードは含めない。closed の重複末尾点は除外する。
+     */
+    getPickablePoints(): GlobePolygonPickablePoint[];
     dispose(): void;
+}
+
+/** {@link GlobePolygonManager.getPickablePoints} の戻り要素。 */
+export interface GlobePolygonPickablePoint {
+    /** ポリゴン id。 */
+    polygonId: string;
+    /** 頂点 index（0-based）。 */
+    index: number;
+    /** 頂点の真の ECEF 位置 [m]。 */
+    x: number;
+    y: number;
+    z: number;
+    /** 当該フレームの点スフィアのワールド半径 [m]（画面ほぼ定サイズ）。 */
+    radius: number;
 }
 
 const toColor3 = (color: string, fallbackHex: string): Color3 => {
@@ -384,6 +406,7 @@ export const createGlobePolygonManager = (
         }
         const pointDiameter = Math.max(node.style.pointDiameter, 0.001);
         const pointRadius = pointDiameter * distScale * 0.5;
+        node.pointWorldRadius = pointRadius;
         const labelGap = node.style.labelFontSize * distScale * LABEL_GAP_FONT_RATIO;
         for (let i = 0; i < node.points.length; i++) {
             const top = node.top[i];
@@ -616,6 +639,7 @@ export const createGlobePolygonManager = (
             top: Array.from({ length: pathLen }, () => new Vector3()),
             bottom: Array.from({ length: pathLen }, () => new Vector3()),
             elevs: opts.points.map(() => 0),
+            pointWorldRadius: Math.max(style.pointDiameter, 0.001) * 0.5,
         };
         nodes.set(id, node);
         placeNode(node);
@@ -673,11 +697,36 @@ export const createGlobePolygonManager = (
         }
     };
 
+    const getPickablePoints = (): GlobePolygonPickablePoint[] => {
+        if (disposed) return [];
+        const result: GlobePolygonPickablePoint[] = [];
+        for (const node of nodes.values()) {
+            if (!node.enabled || !node.elevationResolved || !node.pointsEnabled) {
+                continue;
+            }
+            // closed の重複末尾点（top[points.length]）は対象外。点メッシュ数ぶんのみ。
+            for (let i = 0; i < node.points.length; i++) {
+                const entry = node.pointMeshes[i];
+                if (!entry) continue;
+                const top = node.top[i];
+                result.push({
+                    polygonId: node.id,
+                    index: i,
+                    x: top.x,
+                    y: top.y,
+                    z: top.z,
+                    radius: node.pointWorldRadius,
+                });
+            }
+        }
+        return result;
+    };
+
     const dispose = (): void => {
         if (disposed) return;
         disposed = true;
         for (const id of [...nodes.keys()]) remove(id);
     };
 
-    return { add, remove, setEnabled, update, dispose };
+    return { add, remove, setEnabled, update, getPickablePoints, dispose };
 };

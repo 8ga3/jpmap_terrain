@@ -30,7 +30,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
 import type { MapType } from "../terrain/gsiTile";
-import { TERRAIN_CLICK_DRAG_THRESHOLD_PX } from "../lib/types";
+import { TERRAIN_CLICK_DRAG_THRESHOLD_PX, POLYGON_POINT_DRAG_THRESHOLD_PX } from "../lib/types";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
 import {
     cameraTangentBasisToRef,
@@ -205,6 +205,48 @@ export interface GlobeTerrainClickEvent {
 
 export type GlobeTerrainClickListener = (event: GlobeTerrainClickEvent) => void;
 
+/**
+ * ポリゴン頂点ポインタイベント（globe 版）。公開 `PolygonPointPointerEvent`（lib/types）と
+ * 構造互換で、アダプタ（globeSceneController）が橋渡しする。
+ */
+export interface GlobePolygonPointEvent {
+    /** 対象ポリゴンの id。 */
+    polygonId: string;
+    /** 対象頂点の index（0-based）。 */
+    index: number;
+    /** 元の `PointerEvent`。 */
+    pointerEvent: PointerEvent;
+}
+
+/**
+ * ポリゴン頂点ドラッグイベント（globe 版）。公開 `PolygonPointDragEvent` と構造互換。
+ * 各幾何量は floating origin 非依存に真の ECEF レイ × 楕円体/垂直線で求める。
+ */
+export interface GlobePolygonPointDragEvent extends GlobePolygonPointEvent {
+    /** カーソル位置の地形交点の緯度（ヒットなし null）。 */
+    lat: number | null;
+    /** カーソル位置の地形交点の経度（ヒットなし null）。 */
+    lon: number | null;
+    /** カーソル位置の地表標高 [m]（ヒットなし null）。 */
+    groundAltitude: number | null;
+    /** ドラッグ開始時の頂点高度を保つ面とカーソルレイの交点の緯度（得られない場合 null）。 */
+    planeLat: number | null;
+    /** 同経度（得られない場合 null）。 */
+    planeLon: number | null;
+    /** 頂点の鉛直線とカーソルレイ最近接点の標高 [m]（得られない場合 null）。 */
+    pointerAltitude: number | null;
+}
+
+export type GlobePolygonPointListener = (
+    event: GlobePolygonPointEvent | null,
+) => void;
+export type GlobePolygonPointClickListener = (
+    event: GlobePolygonPointEvent,
+) => void;
+export type GlobePolygonPointDragListener = (
+    event: GlobePolygonPointDragEvent,
+) => void;
+
 export interface GlobeSceneController {
     scene: Scene;
     camera: GeospatialCamera;
@@ -222,6 +264,26 @@ export interface GlobeSceneController {
      * リスナーへ通知する。戻り値で購読解除する。
      */
     subscribeTerrainClick: (listener: GlobeTerrainClickListener) => () => void;
+    /** ポリゴン頂点 hover 購読（pick 非依存）。hover 開始/切替でイベント、解除で null。 */
+    subscribePolygonPointHover: (
+        listener: GlobePolygonPointListener,
+    ) => () => void;
+    /** ポリゴン頂点 click 購読（pick 非依存）。 */
+    subscribePolygonPointClick: (
+        listener: GlobePolygonPointClickListener,
+    ) => () => void;
+    /** ポリゴン頂点ドラッグ開始購読（pick 非依存）。 */
+    subscribePolygonPointDragStart: (
+        listener: GlobePolygonPointDragListener,
+    ) => () => void;
+    /** ポリゴン頂点ドラッグ中購読（pick 非依存）。 */
+    subscribePolygonPointDrag: (
+        listener: GlobePolygonPointDragListener,
+    ) => () => void;
+    /** ポリゴン頂点ドラッグ終了購読（pick 非依存）。 */
+    subscribePolygonPointDragEnd: (
+        listener: GlobePolygonPointDragListener,
+    ) => () => void;
     dispose: () => void;
 }
 
@@ -344,6 +406,21 @@ export class GlobeScene {
         let dragging = false;
         let lastX = 0;
         let lastY = 0;
+        // ---- ポリゴン頂点インタラクション状態（#275 P4） ----
+        // パン handler（onPointerDown/Move）から参照するため早期に宣言する。実体の購読 API・
+        // 幾何ピック・ドラッグハンドラはカメラ/レイ補助関数（後述）の後で定義・遅延登録する。
+        let polygonPointGesture: {
+            pointerId: number;
+            polygonId: string;
+            index: number;
+            startClientX: number;
+            startClientY: number;
+            dragging: boolean;
+            /** ドラッグ開始時の頂点 ECEF 位置（複製。manager の top[] は毎フレーム更新されるため）。 */
+            startWorld: Vector3;
+            /** ドラッグ開始時の頂点測地高度 [m]（水平面交点の基準）。 */
+            startAltMeters: number;
+        } | null = null;
         const onPointerDown = (e: PointerEvent): void => {
             canvas.focus(); // WASD のためにフォーカスを確保（右/左/中ボタンいずれでも）
             if (e.button !== 0) return;
@@ -366,6 +443,13 @@ export class GlobeScene {
         const panned = new Vector3();
 
         const onPointerMove = (e: PointerEvent): void => {
+            // ポリゴン頂点ジェスチャ進行中はパンしない（#275 P4）。ドラッグ処理は専用 handler が行う。
+            if (
+                polygonPointGesture &&
+                polygonPointGesture.pointerId === e.pointerId
+            ) {
+                return;
+            }
             if (!dragging) return;
             const dx = e.clientX - lastX;
             const dy = e.clientY - lastY;
@@ -853,6 +937,423 @@ export class GlobeScene {
             };
         };
 
+        // ---- ポリゴン頂点インタラクション（pick 非依存・floating origin 対応, #275 P4） ----
+        // 平面版（default.ts）は scene.pick で頂点メッシュをヒットするが、floating origin 下では
+        // レンダリング座標がずれてピックがブレうる。そこで terrain-click と同じく、真の ECEF カメラ
+        // 位置からカーソル方向のレイを作り、各頂点 ECEF（globePolygonManager.getPickablePoints）との
+        // 幾何関係（レイ最近接距離 ≤ 点スフィア半径）でヒット判定する。ドラッグ中の幾何量も
+        // 真の ECEF レイ × 楕円体/鉛直線で求める。
+        const polygonPointHoverListeners: GlobePolygonPointListener[] = [];
+        const polygonPointClickListeners: GlobePolygonPointClickListener[] = [];
+        const polygonPointDragStartListeners: GlobePolygonPointDragListener[] = [];
+        const polygonPointDragListeners: GlobePolygonPointDragListener[] = [];
+        const polygonPointDragEndListeners: GlobePolygonPointDragListener[] = [];
+        let polygonPointHoverState: { polygonId: string; index: number } | null =
+            null;
+
+        const hasPolygonPointGestureListeners = (): boolean =>
+            polygonPointClickListeners.length > 0 ||
+            polygonPointDragStartListeners.length > 0 ||
+            polygonPointDragListeners.length > 0 ||
+            polygonPointDragEndListeners.length > 0;
+        const hasAnyPolygonPointListener = (): boolean =>
+            polygonPointHoverListeners.length > 0 ||
+            hasPolygonPointGestureListeners();
+
+        // ピック/幾何計算用の再利用バッファ（毎 move での割り当てを避ける）。
+        const ppOrigin = new Vector3();
+        const ppRayDir = new Vector3();
+        const ppEllipHit = new Vector3();
+        const ppUp = new Vector3();
+        const ppScratch = new Vector3();
+        const ppClosest = new Vector3();
+
+        /**
+         * カーソル下の頂点を幾何ピックする（最も手前の点）。floating origin 非依存。
+         * 地球の裏側に隠れた点は楕円体近交点距離との比較で除外する。
+         */
+        const pickPolygonPoint = (
+            pxCss: number,
+            pyCss: number,
+        ): { polygonId: string; index: number; world: Vector3 } | null => {
+            const points = polygonManager.getPickablePoints();
+            if (points.length === 0) return null;
+            ppOrigin.copyFrom(computeCameraEcef());
+            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            // 楕円体（海面）近交点までの距離。これより十分奥の点は裏側として除外する。
+            let tEllip = Number.POSITIVE_INFINITY;
+            if (
+                rayEllipsoidNearHitToRef(
+                    ppOrigin,
+                    ppRayDir,
+                    ellipsoidSemiMajor,
+                    ellipsoidSemiMajor,
+                    ellipsoidSemiMinor,
+                    ppEllipHit,
+                )
+            ) {
+                tEllip = Vector3.Distance(ppOrigin, ppEllipHit);
+            }
+            let best: { polygonId: string; index: number; world: Vector3 } | null =
+                null;
+            let bestT = Number.POSITIVE_INFINITY;
+            for (const p of points) {
+                const vx = p.x - ppOrigin.x;
+                const vy = p.y - ppOrigin.y;
+                const vz = p.z - ppOrigin.z;
+                const t = vx * ppRayDir.x + vy * ppRayDir.y + vz * ppRayDir.z;
+                if (t <= 0) continue; // カメラ背後
+                if (t > tEllip + p.radius) continue; // 地球裏側に隠れている
+                const perp2 = vx * vx + vy * vy + vz * vz - t * t;
+                if (perp2 > p.radius * p.radius) continue; // レイがスフィアを外れている
+                if (t < bestT) {
+                    bestT = t;
+                    best = {
+                        polygonId: p.polygonId,
+                        index: p.index,
+                        world: new Vector3(p.x, p.y, p.z),
+                    };
+                }
+            }
+            return best;
+        };
+
+        /** カーソルレイ × 地形楕円体の交点（terrain-click と同方針）。 */
+        const computeDragGroundHit = (
+            pxCss: number,
+            pyCss: number,
+        ): { lat: number | null; lon: number | null; groundAltitude: number | null } => {
+            ppOrigin.copyFrom(computeCameraEcef());
+            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            if (
+                !rayEllipsoidNearHitToRef(
+                    ppOrigin,
+                    ppRayDir,
+                    ellipsoidSemiMajor,
+                    ellipsoidSemiMajor,
+                    ellipsoidSemiMinor,
+                    ppEllipHit,
+                )
+            ) {
+                return { lat: null, lon: null, groundAltitude: null };
+            }
+            let geo = ecefToGeodetic(ppEllipHit);
+            const elev = tileManager.terrainElevAt(geo.latDeg, geo.lonDeg);
+            if (elev !== null && Number.isFinite(elev)) {
+                if (
+                    rayEllipsoidNearHitToRef(
+                        ppOrigin,
+                        ppRayDir,
+                        ellipsoidSemiMajor + elev,
+                        ellipsoidSemiMajor + elev,
+                        ellipsoidSemiMinor + elev,
+                        ppScratch,
+                    )
+                ) {
+                    geo = ecefToGeodetic(ppScratch);
+                }
+                return { lat: geo.latDeg, lon: geo.lonDeg, groundAltitude: elev };
+            }
+            return { lat: geo.latDeg, lon: geo.lonDeg, groundAltitude: geo.altMeters };
+        };
+
+        /**
+         * カーソルレイ × 「ドラッグ開始時の頂点高度を保つ楕円体面」の交点。平面版の水平面交点に相当。
+         */
+        const computeDragPlaneHit = (
+            pxCss: number,
+            pyCss: number,
+            startAltMeters: number,
+        ): { planeLat: number | null; planeLon: number | null } => {
+            ppOrigin.copyFrom(computeCameraEcef());
+            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            const eqr = ellipsoidSemiMajor + startAltMeters;
+            const pol = ellipsoidSemiMinor + startAltMeters;
+            if (
+                !rayEllipsoidNearHitToRef(ppOrigin, ppRayDir, eqr, eqr, pol, ppScratch)
+            ) {
+                return { planeLat: null, planeLon: null };
+            }
+            const geo = ecefToGeodetic(ppScratch);
+            return { planeLat: geo.latDeg, planeLon: geo.lonDeg };
+        };
+
+        /**
+         * 頂点の測地鉛直線（地心 up 方向）とカーソルレイの最近接点の測地高度。平面版の
+         * 鉛直線最近接に相当。カメラがほぼ鉛直線方向を向くと退化し null。
+         */
+        const computeDragVerticalHit = (
+            pxCss: number,
+            pyCss: number,
+            startWorld: Vector3,
+        ): number | null => {
+            ppOrigin.copyFrom(computeCameraEcef());
+            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            const startGeo = ecefToGeodetic(startWorld);
+            // 測地 up = ecef(alt+1) - ecef(alt) を正規化（楕円体法線。地心方向と微差）。
+            geodeticToEcefToRef(
+                startGeo.latDeg,
+                startGeo.lonDeg,
+                startGeo.altMeters + 1,
+                ppUp,
+            );
+            ppUp.subtractInPlace(startWorld);
+            const upLen = ppUp.length();
+            if (upLen < 1e-9) return null;
+            ppUp.scaleInPlace(1 / upLen);
+            // 二直線（鉛直線 d1=ppUp、レイ d2=ppRayDir、いずれも単位）の最近接点。
+            const b = Vector3.Dot(ppUp, ppRayDir);
+            const denom = 1 - b * b;
+            if (Math.abs(denom) < 1e-6) return null;
+            const wx = startWorld.x - ppOrigin.x;
+            const wy = startWorld.y - ppOrigin.y;
+            const wz = startWorld.z - ppOrigin.z;
+            const d = ppUp.x * wx + ppUp.y * wy + ppUp.z * wz; // d1·w0
+            const eDot = ppRayDir.x * wx + ppRayDir.y * wy + ppRayDir.z * wz; // d2·w0
+            const s = (b * eDot - d) / denom;
+            ppClosest
+                .copyFrom(startWorld)
+                .addInPlace(ppScratch.copyFrom(ppUp).scaleInPlace(s));
+            return ecefToGeodetic(ppClosest).altMeters;
+        };
+
+        const dispatchPolygonHover = (
+            event: GlobePolygonPointEvent | null,
+        ): void => {
+            for (const l of polygonPointHoverListeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error("[globe] polygon point hover listener threw:", err);
+                }
+            }
+        };
+        const dispatchPolygonPoint = (
+            listeners: GlobePolygonPointClickListener[],
+            event: GlobePolygonPointEvent,
+            label: string,
+        ): void => {
+            for (const l of listeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error(`[globe] ${label} listener threw:`, err);
+                }
+            }
+        };
+        const dispatchPolygonDrag = (
+            listeners: GlobePolygonPointDragListener[],
+            event: GlobePolygonPointDragEvent,
+            label: string,
+        ): void => {
+            for (const l of listeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error(`[globe] ${label} listener threw:`, err);
+                }
+            }
+        };
+
+        const buildPolygonDragEvent = (
+            gesture: NonNullable<typeof polygonPointGesture>,
+            e: PointerEvent,
+        ): GlobePolygonPointDragEvent => {
+            const rect = canvas.getBoundingClientRect();
+            const sx = e.clientX - rect.left;
+            const sy = e.clientY - rect.top;
+            const ground = computeDragGroundHit(sx, sy);
+            const plane = computeDragPlaneHit(sx, sy, gesture.startAltMeters);
+            const pointerAltitude = computeDragVerticalHit(
+                sx,
+                sy,
+                gesture.startWorld,
+            );
+            return {
+                polygonId: gesture.polygonId,
+                index: gesture.index,
+                pointerEvent: e,
+                ...ground,
+                ...plane,
+                pointerAltitude,
+            };
+        };
+
+        const onPolygonPointerDown = (e: PointerEvent): void => {
+            if (e.button !== 0) return;
+            if (!hasPolygonPointGestureListeners()) return;
+            if (e.ctrlKey || e.metaKey) return;
+            const rect = canvas.getBoundingClientRect();
+            const hit = pickPolygonPoint(e.clientX - rect.left, e.clientY - rect.top);
+            if (!hit) return;
+            const startGeo = ecefToGeodetic(hit.world);
+            polygonPointGesture = {
+                pointerId: e.pointerId,
+                polygonId: hit.polygonId,
+                index: hit.index,
+                startClientX: e.clientX,
+                startClientY: e.clientY,
+                dragging: false,
+                startWorld: hit.world,
+                startAltMeters: startGeo.altMeters,
+            };
+            canvas.setPointerCapture?.(e.pointerId);
+            // terrain-click 抑制（登録順非依存）: 進行中の terrain クリック開始判定を破棄する。
+            clickStart = null;
+            // 後続リスナー（同一 canvas の terrain-click 等）への配送も止める。
+            e.stopImmediatePropagation();
+        };
+        const onPolygonPointerMove = (e: PointerEvent): void => {
+            const gesture = polygonPointGesture;
+            if (gesture && gesture.pointerId === e.pointerId) {
+                if (!gesture.dragging) {
+                    const dx = e.clientX - gesture.startClientX;
+                    const dy = e.clientY - gesture.startClientY;
+                    if (
+                        Math.abs(dx) >= POLYGON_POINT_DRAG_THRESHOLD_PX ||
+                        Math.abs(dy) >= POLYGON_POINT_DRAG_THRESHOLD_PX
+                    ) {
+                        gesture.dragging = true;
+                        dispatchPolygonDrag(
+                            polygonPointDragStartListeners,
+                            buildPolygonDragEvent(gesture, e),
+                            "onPolygonPointDragStart",
+                        );
+                    }
+                }
+                if (gesture.dragging) {
+                    dispatchPolygonDrag(
+                        polygonPointDragListeners,
+                        buildPolygonDragEvent(gesture, e),
+                        "onPolygonPointDrag",
+                    );
+                }
+                return;
+            }
+            // hover 検出（パン/ジェスチャ中でなく、hover リスナーがある場合）。
+            if (dragging || polygonPointHoverListeners.length === 0) return;
+            const rect = canvas.getBoundingClientRect();
+            const hit = pickPolygonPoint(e.clientX - rect.left, e.clientY - rect.top);
+            if (hit) {
+                if (
+                    !polygonPointHoverState ||
+                    polygonPointHoverState.polygonId !== hit.polygonId ||
+                    polygonPointHoverState.index !== hit.index
+                ) {
+                    polygonPointHoverState = {
+                        polygonId: hit.polygonId,
+                        index: hit.index,
+                    };
+                    canvas.style.cursor = "pointer";
+                    dispatchPolygonHover({
+                        polygonId: hit.polygonId,
+                        index: hit.index,
+                        pointerEvent: e,
+                    });
+                }
+            } else if (polygonPointHoverState !== null) {
+                polygonPointHoverState = null;
+                canvas.style.cursor = "";
+                dispatchPolygonHover(null);
+            }
+        };
+        const onPolygonPointerUp = (e: PointerEvent): void => {
+            const gesture = polygonPointGesture;
+            if (!gesture || gesture.pointerId !== e.pointerId) return;
+            polygonPointGesture = null;
+            canvas.releasePointerCapture?.(e.pointerId);
+            if (gesture.dragging) {
+                dispatchPolygonDrag(
+                    polygonPointDragEndListeners,
+                    buildPolygonDragEvent(gesture, e),
+                    "onPolygonPointDragEnd",
+                );
+                return;
+            }
+            // 未ドラッグ: 修飾キーはカメラ操作扱い。pointerup 位置が同一頂点上のときのみ click。
+            if (e.ctrlKey || e.metaKey) return;
+            const rect = canvas.getBoundingClientRect();
+            const picked = pickPolygonPoint(
+                e.clientX - rect.left,
+                e.clientY - rect.top,
+            );
+            if (
+                picked &&
+                picked.polygonId === gesture.polygonId &&
+                picked.index === gesture.index
+            ) {
+                dispatchPolygonPoint(
+                    polygonPointClickListeners,
+                    {
+                        polygonId: gesture.polygonId,
+                        index: gesture.index,
+                        pointerEvent: e,
+                    },
+                    "onPolygonPointClick",
+                );
+            }
+        };
+        const onPolygonPointerCancel = (e: PointerEvent): void => {
+            if (
+                polygonPointGesture &&
+                polygonPointGesture.pointerId === e.pointerId
+            ) {
+                polygonPointGesture = null;
+            }
+        };
+
+        // ポリゴン頂点 handler は購読者がいる間だけ canvas に登録する（terrain-click と同方針）。
+        let polygonPointHandlersAttached = false;
+        const attachPolygonPointHandlers = (): void => {
+            if (polygonPointHandlersAttached) return;
+            canvas.addEventListener("pointerdown", onPolygonPointerDown);
+            canvas.addEventListener("pointermove", onPolygonPointerMove);
+            canvas.addEventListener("pointerup", onPolygonPointerUp);
+            canvas.addEventListener("pointercancel", onPolygonPointerCancel);
+            canvas.addEventListener("lostpointercapture", onPolygonPointerCancel);
+            polygonPointHandlersAttached = true;
+        };
+        const detachPolygonPointHandlers = (): void => {
+            if (!polygonPointHandlersAttached) return;
+            canvas.removeEventListener("pointerdown", onPolygonPointerDown);
+            canvas.removeEventListener("pointermove", onPolygonPointerMove);
+            canvas.removeEventListener("pointerup", onPolygonPointerUp);
+            canvas.removeEventListener("pointercancel", onPolygonPointerCancel);
+            canvas.removeEventListener("lostpointercapture", onPolygonPointerCancel);
+            polygonPointGesture = null;
+            if (polygonPointHoverState !== null) {
+                polygonPointHoverState = null;
+                canvas.style.cursor = "";
+            }
+            polygonPointHandlersAttached = false;
+        };
+        const makePolygonPointSubscribe =
+            <T>(listeners: T[]) =>
+            (listener: T): (() => void) => {
+                listeners.push(listener);
+                attachPolygonPointHandlers();
+                return () => {
+                    const i = listeners.indexOf(listener);
+                    if (i >= 0) listeners.splice(i, 1);
+                    if (!hasAnyPolygonPointListener()) detachPolygonPointHandlers();
+                };
+            };
+        const subscribePolygonPointHover = makePolygonPointSubscribe(
+            polygonPointHoverListeners,
+        );
+        const subscribePolygonPointClick = makePolygonPointSubscribe(
+            polygonPointClickListeners,
+        );
+        const subscribePolygonPointDragStart = makePolygonPointSubscribe(
+            polygonPointDragStartListeners,
+        );
+        const subscribePolygonPointDrag = makePolygonPointSubscribe(
+            polygonPointDragListeners,
+        );
+        const subscribePolygonPointDragEnd = makePolygonPointSubscribe(
+            polygonPointDragEndListeners,
+        );
+
 
         // ズーム中（ホイール入力〜慣性減衰）か否かを判定する。ホイールが idle かつ radius が
         // フレーム間で settle したら「ズーム終了」とみなし seat を復帰させる（Issue #327）。
@@ -992,6 +1493,12 @@ export class GlobeScene {
             canvas.removeEventListener("pointermove", onPointerMove);
             detachClickHandlers();
             terrainClickListeners.length = 0;
+            detachPolygonPointHandlers();
+            polygonPointHoverListeners.length = 0;
+            polygonPointClickListeners.length = 0;
+            polygonPointDragStartListeners.length = 0;
+            polygonPointDragListeners.length = 0;
+            polygonPointDragEndListeners.length = 0;
             markerManager.dispose();
             polygonManager.dispose();
             circleManager.dispose();
@@ -1009,6 +1516,11 @@ export class GlobeScene {
             circleManager,
             modelManager,
             subscribeTerrainClick,
+            subscribePolygonPointHover,
+            subscribePolygonPointClick,
+            subscribePolygonPointDragStart,
+            subscribePolygonPointDrag,
+            subscribePolygonPointDragEnd,
             dispose,
         };
     }

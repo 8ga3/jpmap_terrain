@@ -49,6 +49,9 @@ import type {
     CircleCenterOptions,
     CircleStyleOptions,
     AltitudeMode,
+    PolygonPointHoverListener,
+    PolygonPointClickListener,
+    PolygonPointDragListener,
 } from "../lib/types";
 import {
     MARKER_DEFAULTS,
@@ -73,6 +76,23 @@ import type {
     MarkerContext,
 } from "./default";
 import { GlobeScene, type GlobeSceneController } from "./globe";
+import type { GlobePolygonPointDragEvent } from "./globe";
+import type { PolygonPointDragEvent } from "../lib/types";
+
+/** globe のドラッグイベントを公開 {@link PolygonPointDragEvent} へ変換する（#275 P4）。 */
+const toPublicDragEvent = (
+    e: GlobePolygonPointDragEvent,
+): PolygonPointDragEvent => ({
+    polygonId: e.polygonId,
+    index: e.index,
+    pointerEvent: e.pointerEvent,
+    lat: e.lat,
+    lon: e.lon,
+    groundAltitude: e.groundAltitude,
+    planeLat: e.planeLat,
+    planeLon: e.planeLon,
+    pointerAltitude: e.pointerAltitude,
+});
 
 /** lib の MapType（"standard"/"photo"）→ globe の MapType（"std"/"photo"）。 */
 const toGlobeMapType = (mapType: "standard" | "photo" | undefined): MapType =>
@@ -1375,10 +1395,34 @@ export const createGlobeSceneController = (
                     pointerEvent: e.pointerEvent,
                 }),
             ),
-        subscribePolygonPointHover: () => () => {},
-        subscribePolygonPointClick: () => () => {},
-        subscribePolygonPointDragStart: () => () => {},
-        subscribePolygonPointDrag: () => () => {},
-        subscribePolygonPointDragEnd: () => () => {},
+        // ---- ポリゴン頂点インタラクション購読（pick 非依存・floating origin 対応, #275 P4・実装済み） ----
+        // globe シーン（globe.ts）が真の ECEF レイ × 頂点 ECEF/楕円体/鉛直線で求めた hover/click/drag を、
+        // 公開 PolygonPointPointerEvent / PolygonPointDragEvent へ橋渡しする（構造互換だが型を明示する）。
+        subscribePolygonPointHover: (listener: PolygonPointHoverListener) =>
+            gc.subscribePolygonPointHover((e) =>
+                listener(
+                    e === null
+                        ? null
+                        : {
+                              polygonId: e.polygonId,
+                              index: e.index,
+                              pointerEvent: e.pointerEvent,
+                          },
+                ),
+            ),
+        subscribePolygonPointClick: (listener: PolygonPointClickListener) =>
+            gc.subscribePolygonPointClick((e) =>
+                listener({
+                    polygonId: e.polygonId,
+                    index: e.index,
+                    pointerEvent: e.pointerEvent,
+                }),
+            ),
+        subscribePolygonPointDragStart: (listener: PolygonPointDragListener) =>
+            gc.subscribePolygonPointDragStart((e) => listener(toPublicDragEvent(e))),
+        subscribePolygonPointDrag: (listener: PolygonPointDragListener) =>
+            gc.subscribePolygonPointDrag((e) => listener(toPublicDragEvent(e))),
+        subscribePolygonPointDragEnd: (listener: PolygonPointDragListener) =>
+            gc.subscribePolygonPointDragEnd((e) => listener(toPublicDragEvent(e))),
     };
 };
