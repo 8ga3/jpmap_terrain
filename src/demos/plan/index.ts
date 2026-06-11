@@ -18,6 +18,7 @@ import { CIRCLE_RADIUS_MAX_M } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
+    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import { parsePlan } from "./parsePlan";
 import type { ParsedPlan } from "./parsePlan";
@@ -276,6 +277,7 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
+    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraState = parseCameraStateFromUrl(location.href) ?? undefined;
     const mapType = parseMapTypeFromUrl(location.href);
     const defaultCamera = {
@@ -288,6 +290,7 @@ const start = async (): Promise<void> => {
 
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
+        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
         showViewModeButton: false,

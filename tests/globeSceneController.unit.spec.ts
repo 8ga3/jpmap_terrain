@@ -13,6 +13,7 @@ import { createGlobeSceneController } from "../src/scenes/globeSceneController";
 import {
     createGlobeMarkerManagerAdapter,
     createGlobePolygonManagerAdapter,
+    createGlobeCircleManagerAdapter,
 } from "../src/scenes/globeSceneController";
 import type { GlobeSceneController } from "../src/scenes/globe";
 import type {
@@ -23,6 +24,10 @@ import type {
     GlobePolygonManager,
     GlobePolygonOptions,
 } from "../src/terrain/geo/globePolygonManager";
+import type {
+    GlobeCircleManager,
+    GlobeCircleOptions,
+} from "../src/terrain/geo/globeCircleManager";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 
 /** camera のみ参照する軽量スタブ GlobeSceneController を作る。 */
@@ -510,3 +515,152 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
                 warn.mockRestore();
             });
         });
+
+const makeGlobeCircleStub = (): {
+    mgr: GlobeCircleManager;
+    added: { id: string; opts: GlobeCircleOptions }[];
+    removed: string[];
+    enabledCalls: { id: string; enabled: boolean }[];
+    disposed: () => boolean;
+} => {
+    let seq = 0;
+    let disposedFlag = false;
+    const added: { id: string; opts: GlobeCircleOptions }[] = [];
+    const removed: string[] = [];
+    const enabledCalls: { id: string; enabled: boolean }[] = [];
+    const mgr = {
+        add: (opts: GlobeCircleOptions): string => {
+            const id = `gc${seq++}`;
+            added.push({ id, opts });
+            return id;
+        },
+        remove: (id: string): void => {
+            removed.push(id);
+        },
+        setEnabled: (id: string, enabled: boolean): void => {
+            enabledCalls.push({ id, enabled });
+        },
+        update: (): void => {},
+        dispose: (): void => {
+            disposedFlag = true;
+        },
+    } as unknown as GlobeCircleManager;
+    return { mgr, added, removed, enabledCalls, disposed: () => disposedFlag };
+};
+
+describe("createGlobeCircleManagerAdapter (P4-0 Slice 2b-2 circle overlay)", () => {
+    const CENTER = { lat: 35.36, lon: 138.72 };
+
+    it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {
+        const stub = makeGlobeCircleStub();
+        const m = createGlobeCircleManagerAdapter(stub.mgr, () => 10);
+        const h = m.add("c1", {
+            center: CENTER,
+            radius: 5000,
+            style: { pointColor: "#00ff00" },
+        });
+        expect(h.id).toBe("c1");
+        expect(h.radius).toBe(5000);
+        expect(h.segments).toBe(64);
+        expect(h.altitudeMode).toBe("terrain");
+        expect(h.pointEnabled).toBe(true);
+        expect(h.lineEnabled).toBe(true);
+        expect(h.wallEnabled).toBe(true);
+        expect(h.labelEnabled).toBe(true);
+        expect(h.style.pointColor).toBe("#00ff00");
+        expect(h.style.lineColor).toBe("#ff0000");
+        // label undefined は自動生成（lat/lon/alt/radius の 4 行）。
+        expect(h.label).toContain("radius: 5000.0 m");
+        expect(h.elevationResolved).toBe(true);
+        expect(m.get("c1")?.id).toBe("c1");
+        expect(m.list()).toEqual(["c1"]);
+        expect(stub.added[0].opts.radiusMeters).toBe(5000);
+    });
+
+    it("label=null は非表示、string はカスタム文字列を保持する", () => {
+        const stub = makeGlobeCircleStub();
+        const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
+        expect(m.add("a", { center: CENTER, radius: 100, label: null }).label).toBeNull();
+        expect(
+            m.add("b", { center: CENTER, radius: 100, label: "custom" }).label,
+        ).toBe("custom");
+    });
+
+    it("terrain 未解決なら elevationResolved=false、absolute は altitude 必須かつ常に true", () => {
+        const terrainStub = makeGlobeCircleStub();
+        const terrain = createGlobeCircleManagerAdapter(terrainStub.mgr, () => null);
+        expect(terrain.add("t", { center: CENTER, radius: 100 }).elevationResolved).toBe(
+            false,
+        );
+        const absStub = makeGlobeCircleStub();
+        const abs = createGlobeCircleManagerAdapter(absStub.mgr, () => null);
+        expect(
+            abs.add("a", {
+                center: { ...CENTER, altitude: 50 },
+                radius: 100,
+                altitudeMode: "absolute",
+            }).elevationResolved,
+        ).toBe(true);
+        expect(() =>
+            abs.add("bad", { center: CENTER, radius: 100, altitudeMode: "absolute" }),
+        ).toThrow(/requires center.altitude/);
+    });
+
+    it("radius/segments の検証で throw する", () => {
+        const stub = makeGlobeCircleStub();
+        const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
+        expect(() => m.add("x", { center: CENTER, radius: 0 })).toThrow(/radius/);
+        expect(() => m.add("y", { center: CENTER, radius: 100, segments: 2 })).toThrow(
+            /segments/,
+        );
+    });
+
+    it("update と各トグルは add-then-remove で内部ノードを作り直す", () => {
+        const stub = makeGlobeCircleStub();
+        const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
+        m.add("c", { center: CENTER, radius: 100 });
+        const h = m.update("c", { radius: 200, labelEnabled: false });
+        expect(h.radius).toBe(200);
+        expect(h.labelEnabled).toBe(false);
+        expect(stub.removed).toEqual(["gc0"]);
+        m.setWallEnabled("c", false);
+        expect(stub.removed).toEqual(["gc0", "gc1"]);
+        expect(m.get("c")?.wallEnabled).toBe(false);
+        m.setPointEnabled("c", false);
+        m.setLineEnabled("c", false);
+        m.setLabelEnabled("c", true);
+        expect(m.get("c")?.pointEnabled).toBe(false);
+        expect(m.get("c")?.lineEnabled).toBe(false);
+        expect(m.get("c")?.labelEnabled).toBe(true);
+    });
+
+    it("自動ラベルは center/radius 変更に追従して再生成する", () => {
+        const stub = makeGlobeCircleStub();
+        const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
+        m.add("c", { center: CENTER, radius: 100 });
+        const h = m.update("c", { radius: 300 });
+        expect(h.label).toContain("radius: 300.0 m");
+    });
+
+    it("setEnabled は委譲し、remove/dispose は内部マネージャを破棄しない", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const stub = makeGlobeCircleStub();
+        const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
+        m.add("c", { center: CENTER, radius: 100 });
+        m.setEnabled("c", false);
+        expect(stub.enabledCalls).toEqual([{ id: "gc0", enabled: false }]);
+        expect(m.get("c")?.enabled).toBe(false);
+        expect(() => m.add("c", { center: CENTER, radius: 100 })).toThrow(/already exists/);
+        m.remove("c");
+        expect(m.list()).toEqual([]);
+        m.remove("missing");
+        expect(warn).toHaveBeenCalled();
+        m.add("c2", { center: CENTER, radius: 100 });
+        const aliveId = stub.added[stub.added.length - 1].id;
+        m.dispose();
+        expect(stub.disposed()).toBe(false);
+        expect(stub.removed).toContain(aliveId);
+        expect(() => m.add("x", { center: CENTER, radius: 100 })).toThrow(/disposed/);
+        warn.mockRestore();
+    });
+});

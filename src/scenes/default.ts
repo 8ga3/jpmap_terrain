@@ -39,6 +39,7 @@ import {
 } from "../lib/types";
 import type { MarkerManager } from "../terrain/markerManager";
 import type { PolygonManager } from "../terrain/polygonManager";
+import type { CircleManager } from "../terrain/circleManager";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = TILE_MAX_ZOOM;
@@ -284,6 +285,11 @@ export interface DefaultSceneController {
      * planar 実装は `getMarkerContext()` 経由で構築するため optional。
      */
     getPolygonManager?(): PolygonManager | null;
+    /**
+     * globe バックエンド専用フック。公開 `CircleManager` 互換のアダプタを返す。
+     * planar 実装は `getMarkerContext()` 経由で構築するため optional。
+     */
+    getCircleManager?(): CircleManager | null;
 
     /**
      * 地形タイルへのクリック通知を購読する (Issue #183)。

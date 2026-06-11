@@ -794,8 +794,8 @@ export class GlobeScene {
             markerManager.update(camEcef);
             // ポリゴンの地形再ドレープ（アウトライン・壁）と距離スケール更新（点/ラベル配置）。
             polygonManager.update(camEcef);
-            // サークルの地形再ドレープ。
-            circleManager.update();
+            // サークルの地形再ドレープと距離スケール更新（点/ラベル配置）。
+            circleManager.update(camEcef);
             // モデルの接地・起立更新。
             modelManager.update();
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();

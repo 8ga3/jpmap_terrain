@@ -1,16 +1,25 @@
 /**
- * グローブ用サークルマネージャ (Issue #275 Phase 3, circle スライス)。
+ * グローブ用サークルマネージャ (Issue #275 Phase 3 / Phase 4 Slice 2b-2)。
  *
  * 平面版（`circleManager` + `circle`）に対する **並行構築** のグローブ実装。中心 + 半径 + 分割数から
- * 円周上の lat/lon 点列を生成し、**閉じたポリゴン**として `globePolygonManager` に委譲して描画する
- * （アウトライン＋地心 up カーテン壁・地形ドレープ・深度交差は polygon と共通）。これにより
- * 円専用の描画コードを重複させず、polygon の堅牢化（dispose ガード等）をそのまま享受する。
+ * 円周上の lat/lon 点列を生成し、内部の `GlobePolygonManager` に委譲して描画する。
+ *
+ * 1 サークルは 2 つのポリゴンノードで構成する:
+ * - **ring ノード**: 円周（閉ポリゴン）。アウトライン（線）＋カーテン壁。頂点マーカー/垂線/ラベルは無効。
+ * - **center ノード**: 中心 1 点。中心点マーカー＋中心ラベル。線/壁/垂線は無効。
+ *
+ * これにより planar の「中心点・中心ラベル・円周線・壁」パリティを保ちつつ、polygon の堅牢化
+ * （dispose ガード・距離スケール・地形ドレープ）をそのまま享受する。
  */
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+
 import {
     createGlobePolygonManager,
+    type GlobePolygonManager,
     type GlobePolygonManagerDeps,
 } from "./globePolygonManager";
 import { generateGeodesicRing } from "./overlayPlacement";
+import type { AltitudeMode, PolygonStyleOptions } from "../../lib/types";
 
 /** サークルの分割数の既定・範囲。 */
 const DEFAULT_SEGMENTS = 64;
@@ -26,18 +35,34 @@ export interface GlobeCircleOptions {
     radiusMeters: number;
     /** 円周の分割数（既定 64、[3, 512]）。 */
     segments?: number;
-    /** アウトライン色（hex）。 */
+    /** 高度モード。default terrain。 */
+    altitudeMode?: AltitudeMode;
+    /** 中心高度 [m]。terrain では地表からのオフセット、absolute では楕円体高度。 */
+    centerAltitudeMeters?: number;
+    /** 中心ラベル文言。null/undefined はラベル無し。 */
+    label?: string | null;
+    /** スタイル（polygon と共通のキー）。 */
+    style?: PolygonStyleOptions;
+    /** 旧 API 互換。style.lineColor より優先度は低い（ring のアウトライン色）。 */
     outlineColor?: string;
-    /** 壁色（hex）。 */
+    /** 旧 API 互換。style.wallColor より優先度は低い。 */
     wallColor?: string;
-    /** 壁の不透明度 [0,1]。 */
+    /** 旧 API 互換。style.wallOpacity より優先度は低い。 */
     wallOpacity?: number;
-    /** 壁（カーテン）の表示。default true。 */
-    wallsEnabled?: boolean;
-    /** top を固定する楕円体高度[m]（未指定なら地形ドレープ）。 */
+    /** 旧 API 互換。top を固定する楕円体高度[m]（未指定なら地形ドレープ）。 */
     topAltitudeMeters?: number;
-    /** default true。 */
+    /** 円全体の表示。default true。 */
     enabled?: boolean;
+    /** 中心点マーカーの表示。default true。 */
+    pointEnabled?: boolean;
+    /** 円周線（アウトライン）の表示。default true。 */
+    lineEnabled?: boolean;
+    /** 壁（カーテン）の表示。default true。 */
+    wallEnabled?: boolean;
+    /** 旧 API 互換の壁表示フラグ（wallEnabled と同義、指定時は wallEnabled より優先）。 */
+    wallsEnabled?: boolean;
+    /** 中心ラベルの表示。default true。 */
+    labelEnabled?: boolean;
 }
 
 export type GlobeCircleManagerDeps = GlobePolygonManagerDeps;
@@ -47,12 +72,17 @@ export interface GlobeCircleManager {
     add(opts: GlobeCircleOptions): string;
     /** サークルを削除する。 */
     remove(id: string): void;
-    /** 表示/非表示を切り替える。 */
+    /** 表示/非表示を切り替える（中心点・円周線・壁・ラベルをまとめて）。 */
     setEnabled(id: string, enabled: boolean): void;
-    /** 毎フレーム: 地形へ再ドレープ。 */
-    update(): void;
+    /** 毎フレーム: 地形へ再ドレープし距離スケールを更新する。 */
+    update(cameraEcef?: Vector3): void;
     /** 全サークルを破棄する。 */
     dispose(): void;
+}
+
+interface CircleEntry {
+    ringId: string;
+    centerId: string;
 }
 
 /**
@@ -62,9 +92,13 @@ export const createGlobeCircleManager = (
     deps: GlobeCircleManagerDeps,
 ): GlobeCircleManager => {
     // サークル専用のポリゴンマネージャ（ユーザーポリゴンとは別インスタンス）。
-    const polygons = createGlobePolygonManager(deps);
+    const polygons: GlobePolygonManager = createGlobePolygonManager(deps);
+    const entries = new Map<string, CircleEntry>();
+    let seq = 0;
+    let disposed = false;
 
     const add = (opts: GlobeCircleOptions): string => {
+        if (disposed) throw new Error("GlobeCircleManager.add: called after dispose");
         if (!(opts.radiusMeters > 0)) {
             throw new Error(
                 `GlobeCircleManager.add: radiusMeters must be > 0 (got ${opts.radiusMeters})`,
@@ -76,33 +110,88 @@ export const createGlobeCircleManager = (
                 `GlobeCircleManager.add: segments must be an integer in [${MIN_SEGMENTS}, ${MAX_SEGMENTS}] (got ${segments})`,
             );
         }
-        const points = generateGeodesicRing(
+        const altitudeMode = opts.altitudeMode ?? "terrain";
+        const altitude = opts.centerAltitudeMeters;
+        const enabled = opts.enabled ?? true;
+        const wallEnabled = opts.wallsEnabled ?? opts.wallEnabled ?? true;
+        const ringPoints = generateGeodesicRing(
             opts.centerLat,
             opts.centerLon,
             opts.radiusMeters,
             segments,
-        );
-        // 閉じたポリゴンとして描画（始点・終点を結ぶ）。スタイルはそのまま委譲。
-        return polygons.add({
-            points,
+        ).map((p) => ({ lat: p.lat, lon: p.lon, altitude }));
+
+        // ring ノード: 円周線 + 壁。頂点マーカー/垂線/ラベルは無効。
+        const ringId = polygons.add({
+            points: ringPoints,
             closed: true,
+            altitudeMode,
+            topAltitudeMeters: opts.topAltitudeMeters,
+            style: opts.style,
             outlineColor: opts.outlineColor,
             wallColor: opts.wallColor,
             wallOpacity: opts.wallOpacity,
             pointsEnabled: false,
             verticalsEnabled: false,
             labelsEnabled: false,
-            wallsEnabled: opts.wallsEnabled,
-            topAltitudeMeters: opts.topAltitudeMeters,
-            enabled: opts.enabled,
+            lineEnabled: opts.lineEnabled ?? true,
+            wallsEnabled: wallEnabled,
+            enabled,
         });
+
+        // center ノード: 中心点マーカー + 中心ラベル。線/壁/垂線は無効。
+        const hasLabel = opts.label != null && (opts.labelEnabled ?? true);
+        const centerId = polygons.add({
+            points: [{ lat: opts.centerLat, lon: opts.centerLon, altitude }],
+            closed: false,
+            altitudeMode,
+            topAltitudeMeters: opts.topAltitudeMeters,
+            style: opts.style,
+            outlineColor: opts.outlineColor,
+            labels: hasLabel ? [opts.label as string] : undefined,
+            pointsEnabled: opts.pointEnabled ?? true,
+            verticalsEnabled: false,
+            labelsEnabled: hasLabel,
+            lineEnabled: false,
+            wallsEnabled: false,
+            enabled,
+        });
+
+        const id = `globe-circle-${seq++}`;
+        entries.set(id, { ringId, centerId });
+        return id;
+    };
+
+    const remove = (id: string): void => {
+        const e = entries.get(id);
+        if (!e) {
+            console.warn(`[globe-circle] remove: id "${id}" not found`);
+            return;
+        }
+        polygons.remove(e.ringId);
+        polygons.remove(e.centerId);
+        entries.delete(id);
+    };
+
+    const setEnabled = (id: string, enabled: boolean): void => {
+        const e = entries.get(id);
+        if (!e) {
+            console.warn(`[globe-circle] setEnabled: id "${id}" not found`);
+            return;
+        }
+        polygons.setEnabled(e.ringId, enabled);
+        polygons.setEnabled(e.centerId, enabled);
     };
 
     return {
         add,
-        remove: (id) => polygons.remove(id),
-        setEnabled: (id, enabled) => polygons.setEnabled(id, enabled),
-        update: () => polygons.update(),
-        dispose: () => polygons.dispose(),
+        remove,
+        setEnabled,
+        update: (cameraEcef) => polygons.update(cameraEcef),
+        dispose: () => {
+            disposed = true;
+            polygons.dispose();
+            entries.clear();
+        },
     };
 };
