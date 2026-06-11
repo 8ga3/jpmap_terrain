@@ -328,6 +328,68 @@ describe("createGlobeTileManager", () => {
         expect(mgr.isIdle()).toBe(true);
     });
 
+    it("setMapType は実行時にロード済み LOD・ベースレイヤを新 mapType で再テクスチャする (#275 P4-1)", async () => {
+        const textureUrlMock = gsiMock.textureUrl as jest.Mock;
+        const mgr = makeManager();
+        expect(mgr.getMapType()).toBe("std");
+
+        mgr.sync(syncParams());
+        await flush(); // 標高到着
+        mgr.sync(syncParams()); // LOD メッシュ 1 枚生成
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+
+        textureUrlMock.mockClear();
+        const before = capturedTextures.length;
+        mgr.setMapType("photo");
+
+        expect(mgr.getMapType()).toBe("photo");
+        // 再テクスチャの URL はすべて新 mapType("photo")。
+        expect(textureUrlMock).toHaveBeenCalled();
+        expect(textureUrlMock.mock.calls.every((c) => c[0] === "photo")).toBe(
+            true,
+        );
+        // ロード済み LOD(1) + 常時表示ベースレイヤ(z2=16) = 17 枚を再テクスチャする。
+        expect(capturedTextures.length - before).toBe(17);
+        // 新テクスチャ onLoad で旧テクスチャを破棄しても例外を投げない。
+        expect(() => capturedTextures[before].onLoad?.()).not.toThrow();
+
+        // 同値再 set は no-op（再テクスチャしない）。
+        textureUrlMock.mockClear();
+        mgr.setMapType("photo");
+        expect(textureUrlMock).not.toHaveBeenCalled();
+    });
+
+    it("setMapType 連打時、追い越された旧種別テクスチャは適用せず破棄し最後の選択を保つ (#275 P4-1)", async () => {
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        await flush(); // 標高到着
+        mgr.sync(syncParams()); // LOD メッシュ 1 枚生成
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+
+        const lodMesh = MeshMock.mock.results[0].value as {
+            material: { diffuseTexture: unknown };
+        };
+        // 初回テクスチャ（std）を適用しておく。
+        capturedTextures[0].onLoad?.();
+
+        // std → photo → std を素早く切り替える（テクスチャは非同期ロードで未適用）。
+        const beforePhoto = capturedTextures.length;
+        mgr.setMapType("photo"); // T_photo 生成（builtFor=photo）
+        const lodPhotoTex = capturedTextures[beforePhoto];
+        const beforeStd = capturedTextures.length;
+        mgr.setMapType("std"); // T_std 生成（builtFor=std）
+        const lodStdTex = capturedTextures[beforeStd];
+
+        // 到着順が逆転しても（photo が後着）、現在選択(std)と不一致なら適用せず破棄する。
+        lodStdTex.onLoad?.();
+        expect(lodMesh.material.diffuseTexture).toBe(lodStdTex);
+        lodPhotoTex.onLoad?.();
+        expect(lodPhotoTex.dispose).toHaveBeenCalled();
+        // 追い越された photo テクスチャは適用されない（誤表示しない）。
+        expect(lodMesh.material.diffuseTexture).toBe(lodStdTex);
+        expect(mgr.getMapType()).toBe("std");
+    });
+
     it("前景タイルを非ピッカブルにする（内蔵パンとの二重操作=ガタつきを防ぐ, #337）", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
