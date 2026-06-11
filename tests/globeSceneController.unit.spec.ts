@@ -347,6 +347,41 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         }
     });
 
+    it("ドラッグ中は dragStart 時の公開 id を維持し、内部 globeId 失効後の drag も同一 id で橋渡しする", () => {
+        // distance デモはドラッグ中に removePolygon→addPolygon で内部 globeId を
+        // 毎フレーム作り直すため、ジェスチャが掴んだ内部 id は途中で失効する。
+        // dragStart 時に解決した公開 id を drag/dragEnd まで使い回すことを検証する。
+        const stub = makeStub(35, 139, 1000, 0, 0);
+        const c = createGlobeSceneController(stub.gc, "std");
+        const starts: PolygonPointDragEvent[] = [];
+        const drags: PolygonPointDragEvent[] = [];
+        const ends: PolygonPointDragEvent[] = [];
+        c.subscribePolygonPointDragStart((e) => starts.push(e));
+        c.subscribePolygonPointDrag((e) => drags.push(e));
+        c.subscribePolygonPointDragEnd((e) => ends.push(e));
+        const pe = {} as PointerEvent;
+        const base = {
+            index: 0,
+            pointerEvent: pe,
+            lat: 35.1,
+            lon: 139.2,
+            groundAltitude: 50,
+            planeLat: 35.11,
+            planeLon: 139.21,
+            pointerAltitude: 80,
+        };
+        // dragStart は内部 id "gpA"。以降の drag/dragEnd は失効後の別 id "gpB"/"gpC"。
+        stub.triggerPolygonDragStart({ ...base, polygonId: "gpA" });
+        stub.triggerPolygonDrag({ ...base, polygonId: "gpB" });
+        stub.triggerPolygonDrag({ ...base, polygonId: "gpC" });
+        stub.triggerPolygonDragEnd({ ...base, polygonId: "gpC" });
+        expect(starts[0].polygonId).toBe("gpA");
+        // entries が空のため resolve はフォールバックで生 id を返すが、dragStart で
+        // 固定された "gpA" が drag/dragEnd まで維持される（失効 id へすり替わらない）。
+        expect(drags.map((d) => d.polygonId)).toEqual(["gpA", "gpA"]);
+        expect(ends[0].polygonId).toBe("gpA");
+    });
+
     it("subscribePolygonPointDrag は null 許容フィールドをそのまま橋渡しする", () => {
         const stub = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(stub.gc, "std");
