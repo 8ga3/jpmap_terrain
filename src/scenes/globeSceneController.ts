@@ -28,6 +28,7 @@ import {
 } from "../terrain/controlPanel";
 import { createUiVisibilityController } from "../terrain/uiVisibility";
 import type { MarkerManager } from "../terrain/markerManager";
+import type { PolygonManager } from "../terrain/polygonManager";
 import type {
     MarkerHandle,
     MarkerOptions,
@@ -35,9 +36,20 @@ import type {
     MarkerIconOptions,
     MarkerTextOptions,
     MarkerLineOptions,
+    PolygonHandle,
+    PolygonOptions,
+    PolygonPointOptions,
+    PolygonPointPartial,
+    PolygonStyleOptions,
+    PolygonUpdate,
+    AltitudeMode,
 } from "../lib/types";
-import { MARKER_DEFAULTS } from "../lib/types";
+import { MARKER_DEFAULTS, POLYGON_DEFAULTS } from "../lib/types";
 import type { GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
+import type {
+    GlobePolygonManager,
+    GlobePolygonOptions,
+} from "../terrain/geo/globePolygonManager";
 import type {
     DefaultSceneController,
     DefaultSceneInitOptions,
@@ -54,6 +66,7 @@ const fromGlobeMapType = (mapType: MapType): "standard" | "photo" =>
     mapType === "photo" ? "photo" : "standard";
 
 const ERROR_PREFIX = "marker";
+const POLYGON_ERROR_PREFIX = "JpmapTerrain.addPolygon";
 
 /** 公開 `MarkerLineOptions` を既定値で埋める（`marker.ts` の非公開 `resolveLine` 相当）。 */
 const resolveLine = (
@@ -242,6 +255,357 @@ export const createGlobeMarkerManagerAdapter = (
     };
 };
 
+interface PolygonAdapterEntry {
+    globeId: string;
+    points: PolygonPointOptions[];
+    closed: boolean;
+    altitudeMode: AltitudeMode;
+    labels: (string | undefined)[];
+    hasLabels: boolean;
+    edgeLabels: (string | undefined)[];
+    hasEdgeLabels: boolean;
+    style: Required<PolygonStyleOptions>;
+    enabled: boolean;
+    verticalsEnabled: boolean;
+    labelsEnabled: boolean;
+    wallsEnabled: boolean;
+}
+
+const resolvePolygonStyle = (
+    style: PolygonStyleOptions | undefined,
+): Required<PolygonStyleOptions> => ({
+    lineColor: style?.lineColor ?? POLYGON_DEFAULTS.style.lineColor,
+    lineWidth: style?.lineWidth ?? POLYGON_DEFAULTS.style.lineWidth,
+    lineOpacity: style?.lineOpacity ?? POLYGON_DEFAULTS.style.lineOpacity,
+    pointDiameter: style?.pointDiameter ?? POLYGON_DEFAULTS.style.pointDiameter,
+    pointColor: style?.pointColor ?? POLYGON_DEFAULTS.style.pointColor,
+    pointOpacity: style?.pointOpacity ?? POLYGON_DEFAULTS.style.pointOpacity,
+    dropLineColor: style?.dropLineColor ?? POLYGON_DEFAULTS.style.dropLineColor,
+    dropLineWidth: style?.dropLineWidth ?? POLYGON_DEFAULTS.style.dropLineWidth,
+    dropLineOpacity: style?.dropLineOpacity ?? POLYGON_DEFAULTS.style.dropLineOpacity,
+    labelColor: style?.labelColor ?? POLYGON_DEFAULTS.style.labelColor,
+    labelBackgroundColor:
+        style?.labelBackgroundColor ?? POLYGON_DEFAULTS.style.labelBackgroundColor,
+    labelFontSize: style?.labelFontSize ?? POLYGON_DEFAULTS.style.labelFontSize,
+    wallColor: style?.wallColor ?? POLYGON_DEFAULTS.style.wallColor,
+    wallOpacity: style?.wallOpacity ?? POLYGON_DEFAULTS.style.wallOpacity,
+});
+
+const polygonEdgeCount = (pointCount: number, closed: boolean): number =>
+    closed && pointCount >= 2 ? pointCount : Math.max(0, pointCount - 1);
+
+const validatePolygonPoints = (
+    points: readonly PolygonPointOptions[],
+    altitudeMode: AltitudeMode,
+    prefix: string,
+): void => {
+    if (!points || points.length < 1) {
+        throw new Error(
+            `${prefix}: points must contain at least 1 entry (got ${points?.length ?? 0})`,
+        );
+    }
+    for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        assertLatLonInBounds(p.lat, p.lon, `${prefix}[${i}]`);
+        if (altitudeMode === "absolute" && p.altitude === undefined) {
+            throw new Error(
+                `${prefix}: altitudeMode="absolute" requires altitude on every point (missing at index ${i})`,
+            );
+        }
+    }
+};
+
+const toGlobePolygonOptions = (entry: PolygonAdapterEntry): GlobePolygonOptions => ({
+    points: entry.points.map((p) => ({ lat: p.lat, lon: p.lon, altitude: p.altitude })),
+    closed: entry.closed,
+    altitudeMode: entry.altitudeMode,
+    labels: entry.hasLabels ? entry.labels : undefined,
+    edgeLabels: entry.hasEdgeLabels ? entry.edgeLabels : undefined,
+    style: entry.style,
+    enabled: entry.enabled,
+    verticalsEnabled: entry.verticalsEnabled,
+    labelsEnabled: entry.labelsEnabled,
+    wallsEnabled: entry.wallsEnabled,
+});
+
+export const createGlobePolygonManagerAdapter = (
+    globeMgr: GlobePolygonManager,
+    terrainElevAt: (latDeg: number, lonDeg: number) => number | null,
+): PolygonManager => {
+    const entries = new Map<string, PolygonAdapterEntry>();
+    let disposed = false;
+
+    const assertNotDisposed = (): void => {
+        if (disposed) throw new Error("PolygonManager has been disposed");
+    };
+
+    const buildHandle = (id: string, e: PolygonAdapterEntry): PolygonHandle => ({
+        id,
+        points: e.points.map((p) => ({ ...p })),
+        closed: e.closed,
+        altitudeMode: e.altitudeMode,
+        labels: e.hasLabels ? Object.freeze([...e.labels]) : undefined,
+        edgeLabels: e.hasEdgeLabels ? Object.freeze([...e.edgeLabels]) : undefined,
+        style: { ...e.style },
+        enabled: e.enabled,
+        verticalsEnabled: e.verticalsEnabled,
+        labelsEnabled: e.labelsEnabled,
+        wallsEnabled: e.wallsEnabled,
+        elevationResolved:
+            e.altitudeMode === "absolute" ||
+            e.points.every((p) => terrainElevAt(p.lat, p.lon) !== null),
+    });
+
+    const requireEntry = (id: string): PolygonAdapterEntry => {
+        const e = entries.get(id);
+        if (!e) throw new Error(`Polygon id "${id}" not found`);
+        return e;
+    };
+
+    const replaceGlobeNode = (entry: PolygonAdapterEntry): void => {
+        const globeId = globeMgr.add(toGlobePolygonOptions(entry));
+        globeMgr.remove(entry.globeId);
+        entry.globeId = globeId;
+    };
+
+    const createEntry = (options: PolygonOptions, globeId: string): PolygonAdapterEntry => {
+        const closed = options.closed ?? POLYGON_DEFAULTS.closed;
+        const altitudeMode = options.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode;
+        validatePolygonPoints(options.points, altitudeMode, POLYGON_ERROR_PREFIX);
+        const points = options.points.map((p) => ({
+            lat: p.lat,
+            lon: p.lon,
+            altitude: p.altitude,
+        }));
+        const labels = points.map((_p, i) => options.labels?.[i]);
+        const eCount = polygonEdgeCount(points.length, closed);
+        const edgeLabels = Array.from(
+            { length: eCount },
+            (_v, i) => options.edgeLabels?.[i],
+        );
+        return {
+            globeId,
+            points,
+            closed,
+            altitudeMode,
+            labels,
+            hasLabels: options.labels !== undefined,
+            edgeLabels,
+            hasEdgeLabels: options.edgeLabels !== undefined,
+            style: resolvePolygonStyle(options.style),
+            enabled: options.enabled ?? POLYGON_DEFAULTS.enabled,
+            verticalsEnabled:
+                options.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled,
+            labelsEnabled: options.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled,
+            wallsEnabled: options.wallsEnabled ?? POLYGON_DEFAULTS.wallsEnabled,
+        };
+    };
+
+    return {
+        add(id: string, options: PolygonOptions): PolygonHandle {
+            assertNotDisposed();
+            if (entries.has(id)) {
+                throw new Error(
+                    `JpmapTerrain.addPolygon: id "${id}" already exists`,
+                );
+            }
+            const tmp = createEntry(options, "");
+            const globeId = globeMgr.add(toGlobePolygonOptions(tmp));
+            tmp.globeId = globeId;
+            entries.set(id, tmp);
+            return buildHandle(id, tmp);
+        },
+        get(id: string): PolygonHandle | null {
+            const e = entries.get(id);
+            return e ? buildHandle(id, e) : null;
+        },
+        update(id: string, partial: PolygonUpdate): PolygonHandle {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const closed = partial.closed ?? prev.closed;
+            const altitudeMode = partial.altitudeMode ?? prev.altitudeMode;
+            const points = (partial.points ?? prev.points).map((p) => ({ ...p }));
+            validatePolygonPoints(
+                points,
+                altitudeMode,
+                `JpmapTerrain.updatePolygon[${id}]`,
+            );
+            const eCount = polygonEdgeCount(points.length, closed);
+            const labels =
+                partial.labels !== undefined
+                    ? points.map((_p, i) => partial.labels?.[i])
+                    : points.map((_p, i) => prev.labels[i]);
+            const edgeLabels =
+                partial.edgeLabels !== undefined
+                    ? Array.from({ length: eCount }, (_v, i) => partial.edgeLabels?.[i])
+                    : Array.from({ length: eCount }, (_v, i) => prev.edgeLabels[i]);
+            const next: PolygonAdapterEntry = {
+                ...prev,
+                points,
+                closed,
+                altitudeMode,
+                labels,
+                hasLabels: partial.labels !== undefined ? true : prev.hasLabels,
+                edgeLabels,
+                hasEdgeLabels:
+                    partial.edgeLabels !== undefined ? true : prev.hasEdgeLabels,
+                style:
+                    partial.style !== undefined
+                        ? resolvePolygonStyle(partial.style)
+                        : prev.style,
+                enabled: partial.enabled ?? prev.enabled,
+                verticalsEnabled:
+                    partial.verticalsEnabled ?? prev.verticalsEnabled,
+                labelsEnabled: partial.labelsEnabled ?? prev.labelsEnabled,
+                wallsEnabled: partial.wallsEnabled ?? prev.wallsEnabled,
+            };
+            replaceGlobeNode(next);
+            entries.set(id, next);
+            return buildHandle(id, next);
+        },
+        remove(id: string): void {
+            const e = entries.get(id);
+            if (!e) {
+                console.warn(
+                    `[jpmap-terrain] removePolygon: id "${id}" not found`,
+                );
+                return;
+            }
+            globeMgr.remove(e.globeId);
+            entries.delete(id);
+        },
+        setEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            globeMgr.setEnabled(e.globeId, enabled);
+            e.enabled = enabled;
+        },
+        setVerticalsEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            e.verticalsEnabled = enabled;
+            replaceGlobeNode(e);
+        },
+        setLabelsEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            e.labelsEnabled = enabled;
+            replaceGlobeNode(e);
+        },
+        setWallsEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            e.wallsEnabled = enabled;
+            replaceGlobeNode(e);
+        },
+        insertPoint(id: string, index: number, point: PolygonPointOptions): PolygonHandle {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            if (!Number.isInteger(index) || index < 0 || index > e.points.length) {
+                throw new RangeError(
+                    `JpmapTerrain.insertPolygonPoint[${id}]: index out of range (got ${index}, length=${e.points.length})`,
+                );
+            }
+            validatePolygonPoints(
+                [point],
+                e.altitudeMode,
+                `JpmapTerrain.insertPolygonPoint[${id}]`,
+            );
+            e.points.splice(index, 0, { ...point });
+            e.labels.splice(index, 0, undefined);
+            const eCount = polygonEdgeCount(e.points.length, e.closed);
+            e.edgeLabels.splice(index, 0, undefined);
+            e.edgeLabels.length = eCount;
+            replaceGlobeNode(e);
+            return buildHandle(id, e);
+        },
+        removePoint(id: string, index: number): PolygonHandle {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            if (!Number.isInteger(index) || index < 0 || index >= e.points.length) {
+                throw new RangeError(
+                    `JpmapTerrain.removePolygonPoint[${id}]: index out of range (got ${index}, length=${e.points.length})`,
+                );
+            }
+            if (e.points.length <= 1) {
+                throw new Error(
+                    `JpmapTerrain.removePolygonPoint[${id}]: cannot remove (must keep at least 1 point)`,
+                );
+            }
+            e.points.splice(index, 1);
+            e.labels.splice(index, 1);
+            if (e.edgeLabels.length > 0) {
+                e.edgeLabels.splice(Math.min(index, e.edgeLabels.length - 1), 1);
+            }
+            e.edgeLabels.length = polygonEdgeCount(e.points.length, e.closed);
+            replaceGlobeNode(e);
+            return buildHandle(id, e);
+        },
+        updatePoint(
+            id: string,
+            index: number,
+            partial: PolygonPointPartial,
+        ): PolygonHandle {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            if (!Number.isInteger(index) || index < 0 || index >= e.points.length) {
+                throw new RangeError(
+                    `JpmapTerrain.updatePolygonPoint[${id}]: index out of range (got ${index}, length=${e.points.length})`,
+                );
+            }
+            const current = e.points[index];
+            const next = {
+                lat: partial.lat ?? current.lat,
+                lon: partial.lon ?? current.lon,
+                altitude:
+                    partial.altitude !== undefined
+                        ? partial.altitude
+                        : current.altitude,
+            };
+            validatePolygonPoints(
+                [next],
+                e.altitudeMode,
+                `JpmapTerrain.updatePolygonPoint[${id}][${index}]`,
+            );
+            e.points[index] = next;
+            if (partial.label !== undefined) {
+                e.labels[index] = partial.label === null ? undefined : partial.label;
+                if (partial.label !== null) e.hasLabels = true;
+            }
+            replaceGlobeNode(e);
+            return buildHandle(id, e);
+        },
+        replacePoints(id: string, points: readonly PolygonPointOptions[]): PolygonHandle {
+            assertNotDisposed();
+            const e = requireEntry(id);
+            validatePolygonPoints(
+                points,
+                e.altitudeMode,
+                `JpmapTerrain.replacePolygonPoints[${id}]`,
+            );
+            e.points = points.map((p) => ({ ...p }));
+            e.labels = e.points.map(() => undefined);
+            e.hasLabels = false;
+            e.edgeLabels = Array.from(
+                { length: polygonEdgeCount(e.points.length, e.closed) },
+                () => undefined,
+            );
+            e.hasEdgeLabels = false;
+            replaceGlobeNode(e);
+            return buildHandle(id, e);
+        },
+        list(): readonly string[] {
+            return Array.from(entries.keys());
+        },
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            globeMgr.dispose();
+            entries.clear();
+        },
+    };
+};
+
 /**
  * `DefaultScene` と同一シグネチャの `createScene` を提供する globe シーンファクトリ。
  * `JpmapTerrain.initAsync` は `terrainEngine` に応じて `DefaultScene` か本クラスを選ぶ。
@@ -295,10 +659,13 @@ export const createGlobeSceneController = (
     let viewModeWarned = false;
     let terrainClickWarned = false;
 
-    // 公開 MarkerManager 互換アダプタ（P4-0 Slice 2a）。polygon/circle/model は globe
-    // マネージャの機能不足（ラベル/垂線/altitudeMode 等）で parity 未達のため後続スライス。
+    // 公開 overlay manager 互換アダプタ（P4-0 Slice 2a / 2b-1）。
     const markerManager = createGlobeMarkerManagerAdapter(
         gc.markerManager,
+        (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
+    );
+    const polygonManager = createGlobePolygonManagerAdapter(
+        gc.polygonManager,
         (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
     );
 
@@ -608,15 +975,14 @@ export const createGlobeSceneController = (
 
         getMarkerContext: (): MarkerContext => {
             // 平面版 MarkerContext（world XZ 前提）は globe（ECEF + 地心 up）に適合しない。
-            // marker は getMarkerManager（専用アダプタ）で対応する。polygon/circle/model の
-            // 公開 parity は globe マネージャ拡張を伴うため P4-0 後続スライスで対応する。
+            // marker/polygon は専用アダプタで対応する。
             throw new Error(
-                "[globeSceneController] getMarkerContext is not supported on the globe backend; use getMarkerManager for markers (polygon/circle/model: P4-0 follow-up).",
+                "[globeSceneController] getMarkerContext is not supported on the globe backend; use dedicated overlay managers.",
             );
         },
 
-        // marker のみ globe 専用アダプタ経由で公開 MarkerManager 互換を提供する（P4-0 Slice 2a）。
         getMarkerManager: () => markerManager,
+        getPolygonManager: () => polygonManager,
 
         // ---- イベント購読（floating-origin 対応の pick 非依存実装は P4-0 後続スライス） ----
         // インターフェース通り listener を受け取るが globe では未対応のため無視する（no-op）。

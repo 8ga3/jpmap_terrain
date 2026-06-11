@@ -10,12 +10,19 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { jest } from "@jest/globals";
 
 import { createGlobeSceneController } from "../src/scenes/globeSceneController";
-import { createGlobeMarkerManagerAdapter } from "../src/scenes/globeSceneController";
+import {
+    createGlobeMarkerManagerAdapter,
+    createGlobePolygonManagerAdapter,
+} from "../src/scenes/globeSceneController";
 import type { GlobeSceneController } from "../src/scenes/globe";
 import type {
     GlobeMarkerManager,
     GlobeMarkerOptions,
 } from "../src/terrain/geo/globeMarkerManager";
+import type {
+    GlobePolygonManager,
+    GlobePolygonOptions,
+} from "../src/terrain/geo/globePolygonManager";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 
 /** camera のみ参照する軽量スタブ GlobeSceneController を作る。 */
@@ -211,6 +218,38 @@ const makeGlobeMarkerStub = (): {
     return { mgr, added, removed, enabledCalls, disposed: () => disposedFlag };
 };
 
+const makeGlobePolygonStub = (): {
+    mgr: GlobePolygonManager;
+    added: { id: string; opts: GlobePolygonOptions }[];
+    removed: string[];
+    enabledCalls: { id: string; enabled: boolean }[];
+    disposed: () => boolean;
+} => {
+    let seq = 0;
+    let disposedFlag = false;
+    const added: { id: string; opts: GlobePolygonOptions }[] = [];
+    const removed: string[] = [];
+    const enabledCalls: { id: string; enabled: boolean }[] = [];
+    const mgr = {
+        add: (opts: GlobePolygonOptions): string => {
+            const id = `gp${seq++}`;
+            added.push({ id, opts });
+            return id;
+        },
+        remove: (id: string): void => {
+            removed.push(id);
+        },
+        setEnabled: (id: string, enabled: boolean): void => {
+            enabledCalls.push({ id, enabled });
+        },
+        update: (): void => {},
+        dispose: (): void => {
+            disposedFlag = true;
+        },
+    } as unknown as GlobePolygonManager;
+    return { mgr, added, removed, enabledCalls, disposed: () => disposedFlag };
+};
+
 describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () => {
     const VALID_LAT = 35.36;
     const VALID_LON = 138.72;
@@ -226,6 +265,7 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
             icon: { url: "https://example.com/i.png" },
             text: { value: "hello" },
         });
+
         expect(h.id).toBe("p1");
         expect(h.lat).toBeCloseTo(VALID_LAT, 6);
         expect(h.lon).toBeCloseTo(VALID_LON, 6);
@@ -354,3 +394,94 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
         expect(() => m.add("p2", { ...BASE })).toThrow(/disposed/);
     });
 });
+
+        describe("createGlobePolygonManagerAdapter (P4-0 Slice 2b-1 polygon overlay)", () => {
+            const PTS = [
+                { lat: 35.36, lon: 138.72, altitude: 100 },
+                { lat: 35.37, lon: 138.73, altitude: 120 },
+            ];
+
+            it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {
+                const stub = makeGlobePolygonStub();
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 10);
+                const h = m.add("poly", {
+                    points: PTS,
+                    labels: ["A", "B"],
+                    edgeLabels: ["AB"],
+                    style: { pointColor: "#00ff00" },
+                });
+                expect(h.id).toBe("poly");
+                expect(h.points).toHaveLength(2);
+                expect(h.closed).toBe(false);
+                expect(h.altitudeMode).toBe("terrain");
+                expect(h.labels).toEqual(["A", "B"]);
+                expect(h.edgeLabels).toEqual(["AB"]);
+                expect(h.style.pointColor).toBe("#00ff00");
+                expect(h.style.lineColor).toBe("#ff0000");
+                expect(h.elevationResolved).toBe(true);
+                expect(m.get("poly")?.id).toBe("poly");
+                expect(m.list()).toEqual(["poly"]);
+                expect(stub.added[0].opts.points).toHaveLength(2);
+            });
+
+            it("terrain 未解決なら elevationResolved=false、absolute は altitude 必須かつ常に true", () => {
+                const terrainStub = makeGlobePolygonStub();
+                const terrain = createGlobePolygonManagerAdapter(terrainStub.mgr, () => null);
+                expect(terrain.add("t", { points: PTS }).elevationResolved).toBe(false);
+                const absStub = makeGlobePolygonStub();
+                const abs = createGlobePolygonManagerAdapter(absStub.mgr, () => null);
+                expect(
+                    abs.add("a", { points: PTS, altitudeMode: "absolute" }).elevationResolved,
+                ).toBe(true);
+                expect(() =>
+                    abs.add("bad", {
+                        points: [{ lat: 35.36, lon: 138.72 }],
+                        altitudeMode: "absolute",
+                    }),
+                ).toThrow(/requires altitude/);
+            });
+
+            it("update と表示フラグ変更は add-then-remove で内部ノードを作り直す", () => {
+                const stub = makeGlobePolygonStub();
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS });
+                const h = m.update("poly", { closed: true, labelsEnabled: false });
+                expect(h.closed).toBe(true);
+                expect(h.labelsEnabled).toBe(false);
+                expect(stub.removed).toEqual(["gp0"]);
+                m.setWallsEnabled("poly", false);
+                expect(stub.removed).toEqual(["gp0", "gp1"]);
+                expect(m.get("poly")?.wallsEnabled).toBe(false);
+            });
+
+            it("setEnabled は委譲し、点編集 API はハンドルを再構築する", () => {
+                const stub = makeGlobePolygonStub();
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS });
+                m.setEnabled("poly", false);
+                expect(stub.enabledCalls).toEqual([{ id: "gp0", enabled: false }]);
+                expect(m.get("poly")?.enabled).toBe(false);
+                expect(m.insertPoint("poly", 1, { lat: 35.365, lon: 138.725 }).points).toHaveLength(3);
+                expect(m.updatePoint("poly", 1, { label: "mid" }).labels?.[1]).toBe("mid");
+                expect(m.removePoint("poly", 1).points).toHaveLength(2);
+                expect(m.replacePoints("poly", [{ lat: 35.36, lon: 138.72 }]).points).toHaveLength(1);
+                expect(m.get("poly")?.labels).toBeUndefined();
+            });
+
+            it("remove/list/dispose とエラー条件", () => {
+                const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+                const stub = makeGlobePolygonStub();
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                expect(() => m.add("bad", { points: [] })).toThrow(/at least 1/);
+                m.add("poly", { points: PTS });
+                expect(() => m.add("poly", { points: PTS })).toThrow(/already exists/);
+                m.remove("poly");
+                expect(m.list()).toEqual([]);
+                m.remove("missing");
+                expect(warn).toHaveBeenCalled();
+                m.dispose();
+                expect(stub.disposed()).toBe(true);
+                expect(() => m.add("x", { points: PTS })).toThrow(/disposed/);
+                warn.mockRestore();
+            });
+        });
