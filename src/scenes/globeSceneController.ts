@@ -407,7 +407,12 @@ export const createGlobeSceneController = (
         getMarkerManager: () => markerManager,
 
         // ---- イベント購読（floating-origin 対応の pick 非依存実装は P4-0 後続スライス） ----
-        subscribeTerrainClick: () => {
+        // インターフェース通り listener を受け取るが globe では未対応のため無視する（no-op）。
+        // 引数を明示することで「未対応で listener を無視している」意図をコード上に残す。
+        subscribeTerrainClick: (listener) => {
+            // globe では未対応のため listener を無視する（no-op）。引数を明示的に受け取り
+            // `void` でデバッグ容易性のため「未対応で listener を無視している」意図を残す。
+            void listener;
             // 他 no-op（setMapType/setViewMode）と同様、未対応をデバッグしやすいよう一度だけ warn する。
             if (!terrainClickWarned) {
                 terrainClickWarned = true;

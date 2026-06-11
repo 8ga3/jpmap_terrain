@@ -197,7 +197,8 @@ export interface GlobeTileManager {
     /**
      * 地形が idle（安定）かを返す。テスト用（ビジュアル回帰の安定待ち）。
      * 初回 sync 済み かつ 標高ロード中タイルが無い（loadingCount===0）かつ
-     * LOD 遷移で残している pendingRelease が無い（pendingCount===0）とき true。
+     * LOD 遷移で残している pendingRelease が無い（pendingCount===0）かつ
+     * 現在の希望タイル(desiredKeys)がすべてロード済み＆テクスチャ適用済み（readyMeshes）のとき true。
      * 平面版 `tileManager.isIdle` 相当の安定判定を globe で提供する。
      */
     isIdle: () => boolean;
@@ -1269,8 +1270,20 @@ export const createGlobeTileManager = (
         desiredKeys = new Set<string>();
     };
 
-    const isIdle = (): boolean =>
-        syncedAtLeastOnce && loading.size === 0 && pendingRelease.size === 0;
+    const isIdle = (): boolean => {
+        if (!syncedAtLeastOnce) return false;
+        // 標高ロード中・LOD 遷移の残置タイルがある間は安定とみなさない。
+        if (loading.size > 0 || pendingRelease.size > 0) return false;
+        // さらに、現在の希望タイル(desiredKeys)がすべて loaded かつテクスチャ適用済み(readyMeshes)で
+        // あることを要求する。loading/pendingRelease だけでは、メッシュ生成済みでもテクスチャの
+        // onLoad/onError 到達前（白メッシュ）に「安定」と誤判定しうるため（ビジュアル回帰の
+        // waitForTerrainStable がテクスチャ適用前にスクショを撮るのを防ぐ）。
+        for (const key of desiredKeys) {
+            const mesh = loaded.get(key);
+            if (!mesh || !readyMeshes.has(mesh)) return false;
+        }
+        return true;
+    };
 
     // 常時表示の粗いベースレイヤを一度だけ構築する（Issue #341）。
     buildBaseLayer();

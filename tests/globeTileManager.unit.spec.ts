@@ -308,6 +308,26 @@ describe("createGlobeTileManager", () => {
         expect(mesh.isEnabled()).toBe(true);
     });
 
+    it("isIdle はテクスチャ適用前は false、適用後（readyMeshes 入り）で true になる", async () => {
+        const mgr = makeManager();
+        // 初回 sync 前は未同期 → false。
+        expect(mgr.isIdle()).toBe(false);
+
+        mgr.sync(syncParams());
+        // 標高ロード中（loading 有り）→ false。
+        expect(mgr.isIdle()).toBe(false);
+
+        await flush(); // 標高到着
+        mgr.sync(syncParams()); // メッシュ生成（テクスチャ読込開始）
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+        // テクスチャ onLoad 前: メッシュは loaded だが readyMeshes 未登録 → false。
+        expect(mgr.isIdle()).toBe(false);
+
+        // テクスチャ onLoad 後: readyMeshes に登録され idle。
+        capturedTextures[0].onLoad?.();
+        expect(mgr.isIdle()).toBe(true);
+    });
+
     it("前景タイルを非ピッカブルにする（内蔵パンとの二重操作=ガタつきを防ぐ, #337）", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
