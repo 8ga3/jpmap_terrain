@@ -52,6 +52,7 @@ import type {
     PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
+    PolygonPointDragEvent,
 } from "../lib/types";
 import {
     MARKER_DEFAULTS,
@@ -75,9 +76,11 @@ import type {
     DefaultSceneInitOptions,
     MarkerContext,
 } from "./default";
-import { GlobeScene, type GlobeSceneController } from "./globe";
-import type { GlobePolygonPointDragEvent } from "./globe";
-import type { PolygonPointDragEvent } from "../lib/types";
+import {
+    GlobeScene,
+    type GlobeSceneController,
+    type GlobePolygonPointDragEvent,
+} from "./globe";
 
 /** globe のドラッグイベントを公開 {@link PolygonPointDragEvent} へ変換する（#275 P4）。 */
 const toPublicDragEvent = (
