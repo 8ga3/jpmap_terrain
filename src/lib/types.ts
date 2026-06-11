@@ -20,12 +20,26 @@ export type MapType = "standard" | "photo";
 export type ViewMode = "3d" | "2d";
 
 /**
+ * 地形描画バックエンド (Issue #349 / #275 Phase 4)。
+ * - `"planar"` (既定): 従来の平面ワールド（`scenes/default.ts`）。
+ * - `"globe"`: ECEF 楕円体 + GeospatialCamera + floating origin（`scenes/globe.ts`）。
+ *   P4-0 段階では overlay / UI パネル / 2D / 太陽影 / external frustum は順次対応中。
+ */
+export type TerrainEngine = "planar" | "globe";
+
+/**
  * `JpmapTerrain.create` 初期化オプション。
  * すべて任意指定で、未指定時は spec/package.md §3.2 のデフォルト値が適用される。
  */
 export interface JpmapTerrainOptions {
     /** 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバックする */
     engine?: EngineType;
+    /**
+     * 地形描画バックエンド (Issue #349 / #275 Phase 4)。
+     * - `"planar"` (既定): 従来の平面ワールド。
+     * - `"globe"`: ECEF 楕円体 + GeospatialCamera（移行中。overlay/UI/2D 等は順次対応）。
+     */
+    terrainEngine?: TerrainEngine;
     /** 緯度（度） */
     lat?: number;
     /** 経度（度） */
@@ -106,6 +120,7 @@ export interface FlyToOptions {
  */
 export const JPMAP_TERRAIN_DEFAULTS = {
     engine: "webgpu" as EngineType,
+    terrainEngine: "planar" as TerrainEngine,
     lat: 35.681236,
     lon: 139.767125,
     altitude: 2000,

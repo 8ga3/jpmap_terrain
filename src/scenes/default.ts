@@ -37,6 +37,7 @@ import {
     type PolygonPointDragListener,
     type ViewMode,
 } from "../lib/types";
+import type { MarkerManager } from "../terrain/markerManager";
 
 const TERRAIN_SUBDIVISIONS = 128;
 const MAX_ZOOM = TILE_MAX_ZOOM;
@@ -271,6 +272,12 @@ export interface DefaultSceneController {
 
     /** @internal MarkerManager 構築用コンテキスト (Issue #167) */
     getMarkerContext(): MarkerContext;
+    /**
+     * globe バックエンド（#275 Phase 4 / P4-0）専用フック。公開 `MarkerManager` 互換の
+     * アダプタを返す。planar 実装は `getMarkerContext()` 経由で manager を構築するため
+     * 本メソッドは実装せず（undefined）、`JpmapTerrain` は planar/globe を呼び分ける。
+     */
+    getMarkerManager?(): MarkerManager | null;
 
     /**
      * 地形タイルへのクリック通知を購読する (Issue #183)。
