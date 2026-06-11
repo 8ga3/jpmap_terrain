@@ -92,7 +92,11 @@ export const createGlobeMarkerManagerAdapter = (
         if (disposed) throw new Error("MarkerManager has been disposed");
     };
 
-    const buildHandle = (id: string, e: AdapterEntry): MarkerHandle => ({
+    const buildHandle = (
+        id: string,
+        e: AdapterEntry,
+        elevationResolvedOverride?: boolean,
+    ): MarkerHandle => ({
         id,
         lat: e.lat,
         lon: e.lon,
@@ -100,7 +104,11 @@ export const createGlobeMarkerManagerAdapter = (
         icon: e.icon,
         text: e.text,
         line: e.line,
-        elevationResolved: terrainElevAt(e.lat, e.lon) !== null,
+        // planar(markerManager) は lat/lon を変更する update 直後、次フレームの再解決まで
+        // elevationResolved=false とする契約。呼び出し側がそれに合わせて override を渡せるようにし、
+        // 通常は terrainElevAt!==null で best-effort 判定する（override は false 明示にも対応）。
+        elevationResolved:
+            elevationResolvedOverride ?? (terrainElevAt(e.lat, e.lon) !== null),
     });
 
     const requireEntry = (id: string): AdapterEntry => {
@@ -158,7 +166,9 @@ export const createGlobeMarkerManagerAdapter = (
             const prev = requireEntry(id);
             const lat = partial.lat ?? prev.lat;
             const lon = partial.lon ?? prev.lon;
-            if (partial.lat !== undefined || partial.lon !== undefined) {
+            const latLonChanged =
+                partial.lat !== undefined || partial.lon !== undefined;
+            if (latLonChanged) {
                 assertLatLonInBounds(lat, lon, ERROR_PREFIX);
             }
             const icon =
@@ -190,7 +200,8 @@ export const createGlobeMarkerManagerAdapter = (
                 line,
             };
             entries.set(id, entry);
-            return buildHandle(id, entry);
+            // planar parity: lat/lon を変更した直後は次フレーム再解決まで未解決として返す。
+            return buildHandle(id, entry, latLonChanged ? false : undefined);
         },
         remove(id: string): void {
             const e = entries.get(id);
@@ -270,9 +281,10 @@ export const createGlobeSceneController = (
     initialMapType: MapType,
 ): DefaultSceneController => {
     const { camera } = gc;
-    let currentMapType: MapType = initialMapType;
+    const currentMapType: MapType = initialMapType;
     let mapTypeWarned = false;
     let viewModeWarned = false;
+    let terrainClickWarned = false;
 
     // 公開 MarkerManager 互換アダプタ（P4-0 Slice 2a）。polygon/circle/model は globe
     // マネージャの機能不足（ラベル/垂線/altitudeMode 等）で parity 未達のため後続スライス。
@@ -341,8 +353,8 @@ export const createGlobeSceneController = (
             const next = toGlobeMapType(value);
             if (next === currentMapType) return;
             // GlobeTileManager は生成時に mapType を固定しており実行時切替 API が無い（要シーン再構築）。
-            // P4-0 後続スライスで対応する。ここでは状態のみ保持し描画は変更しない。
-            currentMapType = next;
+            // P4-0 後続スライスで対応する。実行時切替が未対応の間は currentMapType を更新せず
+            // （getMapType が実描画＝生成時固定値と乖離しないように）、warn のみに留める。
             if (!mapTypeWarned) {
                 mapTypeWarned = true;
                 console.warn(
@@ -376,8 +388,9 @@ export const createGlobeSceneController = (
         setSunState: () => {},
         setSunShadows: () => {},
 
-        // テスト用の idle 判定。globe は同期統計を本 API に露出していないため暫定 true。
-        isTerrainIdle: () => true,
+        // テスト用の idle 判定。globe タイルマネージャの実 idle 状態
+        // （初回 sync 済み かつ 標高ロード中タイル無し かつ LOD 遷移の pendingRelease 無し）を返す。
+        isTerrainIdle: () => gc.tileManager.isIdle(),
 
         dispose: () => gc.dispose(),
 
@@ -394,7 +407,16 @@ export const createGlobeSceneController = (
         getMarkerManager: () => markerManager,
 
         // ---- イベント購読（floating-origin 対応の pick 非依存実装は P4-0 後続スライス） ----
-        subscribeTerrainClick: () => () => {},
+        subscribeTerrainClick: () => {
+            // 他 no-op（setMapType/setViewMode）と同様、未対応をデバッグしやすいよう一度だけ warn する。
+            if (!terrainClickWarned) {
+                terrainClickWarned = true;
+                console.warn(
+                    "[globeSceneController] subscribeTerrainClick is not yet supported on the globe backend (pick-independent terrain click pending; P4-0 follow-up).",
+                );
+            }
+            return () => {};
+        },
         subscribePolygonPointHover: () => () => {},
         subscribePolygonPointClick: () => () => {},
         subscribePolygonPointDragStart: () => () => {},
