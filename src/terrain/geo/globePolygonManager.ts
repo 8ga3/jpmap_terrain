@@ -209,7 +209,7 @@ const createLabelMesh = (
     const strokePx = Math.max(2, Math.round(fontSize * 0.12));
     const lineHeightPx = fontSize * 1.2;
     const probe = new DynamicTexture(
-        `globe-polygon-${id}-${prefix}-probe-${index}`,
+        `${id}-${prefix}-probe-${index}`,
         { width: 16, height: 16 },
         scene,
         false,
@@ -234,7 +234,7 @@ const createLabelMesh = (
         Math.min(LABEL_MAX_DT_SIZE, Math.ceil(innerH * dpr)),
     );
     const texture = new DynamicTexture(
-        `globe-polygon-${id}-${prefix}-${index}`,
+        `${id}-${prefix}-${index}`,
         { width: dtWidth, height: dtHeight },
         scene,
         false,
@@ -269,7 +269,7 @@ const createLabelMesh = (
     const widthWorld = dtWidth / dpr;
     const heightWorld = dtHeight / dpr;
     const mesh = CreatePlane(
-        `globe-polygon-${id}-${prefix}-${index}`,
+        `${id}-${prefix}-${index}`,
         { width: widthWorld, height: heightWorld },
         scene,
     );
@@ -277,7 +277,7 @@ const createLabelMesh = (
     mesh.renderingGroupId = RENDERING_GROUP_ID;
     mesh.isPickable = false;
     const material = new StandardMaterial(
-        `globe-polygon-${id}-${prefix}-mat-${index}`,
+        `${id}-${prefix}-mat-${index}`,
         scene,
     );
     material.disableLighting = true;

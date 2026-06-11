@@ -18,14 +18,11 @@
  * 開発デモ層につき `src/lib/**` には依存型のみ依存し、内部実装は触らない。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
-import type {
-    JpmapTerrainOptions,
-    PolygonOptions,
-    TerrainEngine,
-} from "../../lib/types";
+import type { JpmapTerrainOptions, PolygonOptions } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
+    resolveTerrainEngine,
 } from "../../terrain/urlState";
 
 const DEMO_MOUNT_ID = "root";
@@ -38,16 +35,6 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
     const value = new URLSearchParams(search).get("engine");
     if (value === "webgpu") return "webgpu";
     if (value === "webgl" || value === "webgl2") return "webgl2";
-    return undefined;
-};
-
-/** `?terrainEngine=` クエリ文字列から地形バックエンドを解決する（viewer デモと同規則）。 */
-export const resolveTerrainEngine = (
-    search: string,
-): TerrainEngine | undefined => {
-    const value = new URLSearchParams(search).get("terrainEngine");
-    if (value === "globe") return "globe";
-    if (value === "planar") return "planar";
     return undefined;
 };
 
