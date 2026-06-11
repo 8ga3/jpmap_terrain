@@ -876,9 +876,12 @@ export const createGlobeCircleManagerAdapter = (
                 altitudeMode,
                 `JpmapTerrain.updateCircle[${id}]`,
             );
-            // label の再解決:
-            // - partial.label 指定あり: undefined=自動 / null=非表示 / string=カスタム
-            // - 未指定: 自動なら center/radius 変化に追従して再生成、それ以外は維持。
+            // label の再解決（CircleUpdate.label は string | null）:
+            // - partial.label === null: 非表示（auto 解除）
+            // - partial.label === string: カスタム文字列（auto 解除）
+            // - partial.label 未指定(undefined): 変更なし。元が自動生成なら center/radius の
+            //   変化に追従してテキストを再生成、それ以外は現状維持。
+            //   ※ undefined を渡して「自動生成へ戻す」操作は型上表現できない（= 維持扱い）。
             let labelAuto = prev.labelAuto;
             let labelText = prev.labelText;
             if (partial.label !== undefined) {
