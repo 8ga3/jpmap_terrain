@@ -15,10 +15,18 @@ import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import type { Scene } from "@babylonjs/core/scene";
 
 import type { MapType } from "../terrain/gsiTile";
+import { JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { geodeticToEcef, ecefToGeodetic } from "../terrain/geo/ecef";
 import { uiToYawPitch, yawPitchToUi } from "../terrain/geo/cameraMapping";
 import { assertLatLonInBounds } from "../terrain/overlayCoords";
 import { resolveIcon, resolveText } from "../terrain/marker";
+import {
+    createControlPanel,
+    snapScale,
+    formatScale,
+    showToast,
+} from "../terrain/controlPanel";
+import { createUiVisibilityController } from "../terrain/uiVisibility";
 import type { MarkerManager } from "../terrain/markerManager";
 import type {
     MarkerHandle,
@@ -258,7 +266,7 @@ export class GlobeSceneAdapter {
             },
         );
 
-        const controller = createGlobeSceneController(gc, mapType);
+        const controller = createGlobeSceneController(gc, mapType, options, canvas);
         options?.onReady?.(controller);
 
         // JpmapTerrain.initAsync は初期フラッシュ防止のため canvas を visibility:hidden で
@@ -279,10 +287,11 @@ export class GlobeSceneAdapter {
 export const createGlobeSceneController = (
     gc: GlobeSceneController,
     initialMapType: MapType,
+    options?: DefaultSceneInitOptions,
+    canvas?: HTMLCanvasElement,
 ): DefaultSceneController => {
     const { camera } = gc;
-    const currentMapType: MapType = initialMapType;
-    let mapTypeWarned = false;
+    let currentMapType: MapType = initialMapType;
     let viewModeWarned = false;
     let terrainClickWarned = false;
 
@@ -303,6 +312,197 @@ export const createGlobeSceneController = (
     const setCenterLatLon = (latDeg: number, lonDeg: number): void => {
         camera.center = geodeticToEcef(latDeg, lonDeg, 0);
     };
+
+    // ---- UI コントロールパネル配線（#275 Phase 4 / P4-1） ----
+    // canvas が渡された実行時のみ DOM コントロールパネルを生成・配線する（単体テストの
+    // 軽量スタブ呼び出しでは canvas 未指定で no-op）。
+    let uiSetVisibility: (
+        target: Parameters<DefaultSceneController["setUiVisibility"]>[0],
+        visible: boolean,
+    ) => void = () => {};
+    let uiDispose: () => void = () => {};
+    let updateMapToggleLabel: ((m: MapType) => void) | undefined;
+
+    /**
+     * 地図種別を切り替える共通処理（UI ボタン / `controller.setMapType` の双方から呼ぶ）。
+     * 同値なら no-op。タイルマネージャを実行時切替し、ラベル更新と onMapTypeChange 通知を行う。
+     */
+    const applyMapType = (next: MapType, fireChange: boolean): void => {
+        if (next === currentMapType) return;
+        currentMapType = next;
+        gc.tileManager.setMapType(next);
+        updateMapToggleLabel?.(next);
+        if (fireChange) options?.onMapTypeChange?.(fromGlobeMapType(next));
+    };
+
+    if (canvas && typeof document !== "undefined") {
+        const ui = createControlPanel();
+        // globe は 2D(ortho) を持たないため視点切替ボタンは常時非表示にする（#275 P4-1）。
+        // createUiVisibilityController は生成時の display を初期値として捕捉するため、
+        // 先に "none" にしておけば setUiVisibility("viewModeButton", true) でも再表示されない。
+        ui.viewModeButton.style.display = "none";
+
+        // 地図切替ボタンのラベル/aria を現在の mapType に合わせて更新する。
+        updateMapToggleLabel = (m: MapType): void => {
+            ui.mapToggle.textContent = m === "std" ? "写真" : "標準";
+            ui.mapToggle.setAttribute(
+                "aria-label",
+                m === "std" ? "地図切替: 写真地図に変更" : "地図切替: 標準地図に変更",
+            );
+        };
+        updateMapToggleLabel(currentMapType);
+
+        // コンパス回転 + スケールバーをフレーム毎に更新する（変化時のみ DOM を書く）。
+        const SCALE_BAR_BASE_PX = 100;
+        let prevCompassDeg = Number.NaN;
+        let prevScaleText = "";
+        const updateOverlayUi = (): void => {
+            // コンパス: 北矢印が実際の北を指すよう azimuth の逆回転を適用する。
+            const az = yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg;
+            const deg = -az;
+            if (deg !== prevCompassDeg) {
+                ui.compass.style.transform = `rotate(${deg}deg)`;
+                prevCompassDeg = deg;
+            }
+            // スケールバー: 視野中心の地表サンプリング（fov 高 / ビュー高さ[px]）から m/px を概算する。
+            const h = canvas.clientHeight || canvas.height;
+            if (h > 0) {
+                const metersPerPx =
+                    (2 * camera.radius * Math.tan(camera.fov / 2)) / h;
+                const rawMeters = metersPerPx * SCALE_BAR_BASE_PX;
+                if (Number.isFinite(rawMeters) && rawMeters > 0) {
+                    const snapped = snapScale(rawMeters);
+                    const barPx = Math.round(snapped / metersPerPx);
+                    const text = formatScale(snapped);
+                    if (text !== prevScaleText) {
+                        ui.scaleBar.label.textContent = text;
+                        prevScaleText = text;
+                    }
+                    ui.scaleBar.bar.style.width = `${barPx}px`;
+                }
+            }
+        };
+        const overlayObserver =
+            gc.scene.onBeforeRenderObservable.add(updateOverlayUi);
+        updateOverlayUi();
+
+        // コンパスクリック: 北向き・真下（azimuth=0 / tilt=0）へスムーズに戻す。
+        ui.compass.style.cursor = "pointer";
+        const resetCompassView = (): void => {
+            const startYaw = camera.yaw;
+            const startPitch = camera.pitch;
+            const targetYaw = uiToYawPitch(0, 0).yaw;
+            const targetPitch = uiToYawPitch(0, 0).pitch;
+            // yaw は最短経路（±π に正規化）で回す。
+            let dYaw = targetYaw - startYaw;
+            dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
+            const duration = 400;
+            const startTime = performance.now();
+            const animate = (now: number): void => {
+                const t = Math.min((now - startTime) / duration, 1);
+                const ease = 1 - Math.pow(1 - t, 3);
+                camera.yaw = startYaw + dYaw * ease;
+                camera.pitch = startPitch + (targetPitch - startPitch) * ease;
+                if (t < 1) requestAnimationFrame(animate);
+            };
+            requestAnimationFrame(animate);
+        };
+        ui.compass.addEventListener("click", resetCompassView);
+        ui.compass.addEventListener("keydown", (e: KeyboardEvent) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                resetCompassView();
+            }
+        });
+
+        // ズームボタン: camera.radius（高度相当）を係数で滑らかに増減する。
+        const zoomByFactor = (factor: number): void => {
+            const startR = camera.radius;
+            const targetR = startR * factor;
+            const duration = 250;
+            const startTime = performance.now();
+            const animate = (now: number): void => {
+                const t = Math.min((now - startTime) / duration, 1);
+                const ease = 1 - Math.pow(1 - t, 3);
+                camera.radius = startR + (targetR - startR) * ease;
+                if (t < 1) requestAnimationFrame(animate);
+            };
+            requestAnimationFrame(animate);
+        };
+        ui.zoomIn.addEventListener("click", () => zoomByFactor(0.7));
+        ui.zoomOut.addEventListener("click", () => zoomByFactor(1 / 0.7));
+
+        // 現在地ボタン: Geolocation で取得した地点へ注視点を移す。
+        ui.locateMe.addEventListener("click", () => {
+            if (!navigator.geolocation) {
+                console.warn(
+                    "[globeSceneController] Geolocation API is not supported by this browser.",
+                );
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    // GSI 地形タイルは日本域のみ。域外は背景球のみ表示になる旨を通知する。
+                    if (
+                        lat < JAPAN_BOUNDS.minLat ||
+                        lat > JAPAN_BOUNDS.maxLat ||
+                        lon < JAPAN_BOUNDS.minLon ||
+                        lon > JAPAN_BOUNDS.maxLon
+                    ) {
+                        showToast(
+                            "現在地は対応エリア外のため、地形が表示されない場合があります",
+                        );
+                    }
+                    setCenterLatLon(lat, lon);
+                },
+                (error) => {
+                    console.warn(
+                        `[globeSceneController] Geolocation error: ${error.message}`,
+                    );
+                },
+            );
+        });
+
+        // 地図切替ボタン: std ↔ photo を実行時に切り替える（#275 P4-1）。
+        ui.mapToggle.addEventListener("click", () => {
+            applyMapType(currentMapType === "std" ? "photo" : "std", true);
+        });
+
+        uiSetVisibility = createUiVisibilityController({
+            compass: ui.compass,
+            locateMe: ui.locateMe,
+            zoomIn: ui.zoomIn,
+            zoomOut: ui.zoomOut,
+            scaleBarBar: ui.scaleBar.bar,
+            scaleBarLabel: ui.scaleBar.label,
+            mapToggle: ui.mapToggle,
+            viewModeButton: ui.viewModeButton,
+            attribution: ui.scaleBar.attribution,
+        });
+
+        // dispose: フレーム購読を解除し、controlPanel が body に追加した UI 要素を除去する。
+        const removeFromParent = (el: HTMLElement | null): void => {
+            el?.parentElement?.removeChild(el);
+        };
+        uiDispose = (): void => {
+            gc.scene.onBeforeRenderObservable.remove(overlayObserver);
+            removeFromParent(ui.compass);
+            removeFromParent(ui.mapToggle);
+            removeFromParent(ui.viewModeButton);
+            // locateMe / zoomIn / zoomOut / scaleBar.* は共通の親コンテナ配下。
+            const zoomContainer = ui.zoomIn.parentElement;
+            if (zoomContainer) {
+                removeFromParent(zoomContainer);
+            } else {
+                removeFromParent(ui.locateMe);
+                removeFromParent(ui.zoomIn);
+                removeFromParent(ui.zoomOut);
+                removeFromParent(ui.scaleBar.container);
+            }
+        };
+    }
 
     return {
         getLat: () => currentGeodetic().latDeg,
@@ -350,17 +550,8 @@ export const createGlobeSceneController = (
         // ---- mapType ----
         getMapType: () => fromGlobeMapType(currentMapType),
         setMapType: (value: "standard" | "photo") => {
-            const next = toGlobeMapType(value);
-            if (next === currentMapType) return;
-            // GlobeTileManager は生成時に mapType を固定しており実行時切替 API が無い（要シーン再構築）。
-            // P4-0 後続スライスで対応する。実行時切替が未対応の間は currentMapType を更新せず
-            // （getMapType が実描画＝生成時固定値と乖離しないように）、warn のみに留める。
-            if (!mapTypeWarned) {
-                mapTypeWarned = true;
-                console.warn(
-                    "[globeSceneController] setMapType is not yet applied on the globe backend (runtime map switch pending; P4-0 follow-up).",
-                );
-            }
+            // UI ボタンと同じ共通処理で実行時切替する（#275 P4-1）。onMapTypeChange も発火する。
+            applyMapType(toGlobeMapType(value), true);
         },
 
         // ---- viewMode ----
@@ -381,8 +572,8 @@ export const createGlobeSceneController = (
         attachTileCamera: () => {},
         setExternalCompassDegrees: () => {},
 
-        // ---- UI コントロールパネル（globe 未実装, P4-0 後続スライス） ----
-        setUiVisibility: () => {},
+        // ---- UI コントロールパネル（#275 P4-1 で配線。canvas 未指定時は no-op） ----
+        setUiVisibility: (target, visible) => uiSetVisibility(target, visible),
 
         // ---- 太陽 / 影（globe ライティング統合は P4-0 後続スライス） ----
         setSunState: () => {},
@@ -393,7 +584,10 @@ export const createGlobeSceneController = (
         //  希望タイル desiredKeys がすべて loaded かつテクスチャ適用済み readyMeshes）を返す。
         isTerrainIdle: () => gc.tileManager.isIdle(),
 
-        dispose: () => gc.dispose(),
+        dispose: () => {
+            uiDispose();
+            gc.dispose();
+        },
 
         getMarkerContext: (): MarkerContext => {
             // 平面版 MarkerContext（world XZ 前提）は globe（ECEF + 地心 up）に適合しない。

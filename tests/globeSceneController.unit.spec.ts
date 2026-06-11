@@ -36,10 +36,11 @@ const makeStub = (
     };
     const gc = {
         camera,
-        // isTerrainIdle / marker アダプタが参照する tileManager スタブ。
+        // isTerrainIdle / marker アダプタ / mapType 切替が参照する tileManager スタブ。
         tileManager: {
             isIdle: () => idle,
             terrainElevAt: () => null,
+            setMapType: jest.fn(),
         },
         dispose: () => {
             disposedFlag = true;
@@ -108,16 +109,21 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         expect(c2.getMapType()).toBe("standard");
     });
 
-    it("setMapType は実描画未適用のため getMapType は生成時固定値のまま、warn は一度だけ", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    it("setMapType は実行時切替を tileManager に委譲し getMapType に反映、onMapTypeChange を発火する (#275 P4-1)", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
-        const c = createGlobeSceneController(gc, "std");
+        const setMapTypeSpy = (
+            gc.tileManager as unknown as { setMapType: jest.Mock }
+        ).setMapType;
+        const onMapTypeChange = jest.fn();
+        const c = createGlobeSceneController(gc, "std", { onMapTypeChange });
         c.setMapType("photo");
-        c.setMapType("photo"); // 実行時切替未対応のため状態は変えず、warn も増やさない
-        // 実描画と乖離させないため currentMapType は生成時固定値("std"→"standard")のまま。
-        expect(c.getMapType()).toBe("standard");
-        expect(warn).toHaveBeenCalledTimes(1);
-        warn.mockRestore();
+        expect(setMapTypeSpy).toHaveBeenCalledWith("photo");
+        expect(c.getMapType()).toBe("photo");
+        expect(onMapTypeChange).toHaveBeenCalledWith("photo");
+        // 同値再 set は no-op（委譲も通知もしない）。
+        c.setMapType("photo");
+        expect(setMapTypeSpy).toHaveBeenCalledTimes(1);
+        expect(onMapTypeChange).toHaveBeenCalledTimes(1);
     });
 
     it("getMarkerContext は globe 未対応のため throw する", () => {

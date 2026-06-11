@@ -202,6 +202,16 @@ export interface GlobeTileManager {
      * 平面版 `tileManager.isIdle` 相当の安定判定を globe で提供する。
      */
     isIdle: () => boolean;
+    /** 現在の地図種別（"std"/"photo"）。 */
+    getMapType: () => MapType;
+    /**
+     * 地図種別を実行時に切り替える (#275 Phase 4 / P4-1)。
+     * 現在ロード済みの LOD タイル・LOD 遷移中の pendingRelease タイル・常時表示ベースレイヤの
+     * 各メッシュのテクスチャを新しい mapType の URL で差し替える（新テクスチャ onLoad で適用し
+     * 旧テクスチャを破棄）。以降に sync が新規生成するタイルも新 mapType の URL を参照する。
+     * 同値なら no-op。
+     */
+    setMapType: (mapType: MapType) => void;
     /** 全メッシュ・キャッシュを破棄する。 */
     dispose: () => void;
 }
@@ -212,7 +222,10 @@ export interface GlobeTileManager {
 export const createGlobeTileManager = (
     opts: GlobeTileManagerOptions,
 ): GlobeTileManager => {
-    const { scene, mapType, minZoom, geomMaxZoom, segments, snapEnabled } = opts;
+    const { scene, minZoom, geomMaxZoom, segments, snapEnabled } = opts;
+    // 地図種別は実行時に切替可能（#275 P4-1）。buildTile / buildBaseLayer のテクスチャ URL は
+    // この可変値を参照するため、以降の新規タイルは切替後の mapType を使う。
+    let currentMapType: MapType = opts.mapType;
 
     const loaded = new Map<string, Mesh>();
     // 常時表示の粗いベースレイヤのメッシュ（Issue #341, key="z/x/y"）。LOD の loaded とは別管理で
@@ -969,7 +982,7 @@ export const createGlobeTileManager = (
             // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
             // 孤立テクスチャを破棄する。
             const tex = new Texture(
-                textureUrl(mapType, t.zoom, t.x, t.y),
+                textureUrl(currentMapType, t.zoom, t.x, t.y),
                 scene,
                 false,
                 true,
@@ -1215,7 +1228,7 @@ export const createGlobeTileManager = (
                 // "null gpu texture bind" 回避。LOD タイルと同様）。ベースは常時表示なので
                 // setEnabled の出し入れはしない。
                 const tex = new Texture(
-                    textureUrl(mapType, BASE_LAYER_ZOOM, x, y),
+                    textureUrl(currentMapType, BASE_LAYER_ZOOM, x, y),
                     scene,
                     false,
                     true,
@@ -1270,6 +1283,73 @@ export const createGlobeTileManager = (
         desiredKeys = new Set<string>();
     };
 
+    const getMapType = (): MapType => currentMapType;
+
+    /**
+     * 指定メッシュのテクスチャを現在の currentMapType の URL で差し替える。
+     * 新テクスチャの onLoad で diffuseTexture を張り替え、旧テクスチャを破棄する
+     * （張替え前にちらつかないよう、新テクスチャ準備完了まで旧テクスチャを保持）。
+     * base レイヤはテクスチャ適用時に海色ティントを白へ戻す（buildBaseLayer と同様）。
+     */
+    const retextureMesh = (
+        mesh: Mesh,
+        zoom: number,
+        x: number,
+        y: number,
+        isBase: boolean,
+    ): void => {
+        const mat = mesh.material as StandardMaterial | null;
+        if (!mat) return;
+        const oldTex = mat.diffuseTexture;
+        // ロードは非同期。setMapType を短時間に複数回呼ぶと（例: 地図切替の連打）
+        // 旧種別のテクスチャが後から完了して選択と不一致になりうるため、
+        // 生成時の種別を捕捉し、完了時に currentMapType と一致する場合のみ適用する。
+        const builtFor = currentMapType;
+        const tex = new Texture(
+            textureUrl(currentMapType, zoom, x, y),
+            scene,
+            false,
+            true,
+            Texture.TRILINEAR_SAMPLINGMODE,
+            () => {
+                if (mesh.isDisposed() || currentMapType !== builtFor) {
+                    tex.dispose();
+                    return;
+                }
+                mat.diffuseTexture = tex;
+                if (isBase) mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
+                // 新テクスチャ適用後に旧テクスチャを破棄（GPU リソースリーク防止）。
+                oldTex?.dispose();
+            },
+            // onError: 取得失敗時は新テクスチャを破棄し、旧テクスチャ（現状表示）を保持する。
+            () => tex.dispose(),
+        );
+        tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+        tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    };
+
+    const setMapType = (next: MapType): void => {
+        if (next === currentMapType) return;
+        currentMapType = next;
+        // key="z/x/y"。ロード済み LOD・LOD 遷移中の pendingRelease・常時表示ベースレイヤを再テクスチャする。
+        const parseKey = (k: string): [number, number, number] => {
+            const [z, x, y] = k.split("/").map(Number);
+            return [z, x, y];
+        };
+        for (const [k, mesh] of loaded) {
+            const [z, x, y] = parseKey(k);
+            retextureMesh(mesh, z, x, y, false);
+        }
+        for (const [k, pending] of pendingRelease) {
+            const [z, x, y] = parseKey(k);
+            retextureMesh(pending.mesh, z, x, y, false);
+        }
+        for (const [k, mesh] of baseLoaded) {
+            const [z, x, y] = parseKey(k);
+            retextureMesh(mesh, z, x, y, true);
+        }
+    };
+
     const isIdle = (): boolean => {
         if (!syncedAtLeastOnce) return false;
         // 標高ロード中・LOD 遷移の残置タイルがある間は安定とみなさない。
@@ -1288,5 +1368,5 @@ export const createGlobeTileManager = (
     // 常時表示の粗いベースレイヤを一度だけ構築する（Issue #341）。
     buildBaseLayer();
 
-    return { sync, terrainElevAt, isIdle, dispose };
+    return { sync, terrainElevAt, isIdle, getMapType, setMapType, dispose };
 };
