@@ -724,6 +724,7 @@ export class GlobeScene {
         } | null = null;
         const clickRayDir = new Vector3();
         const clickHit = new Vector3();
+        const clickHitElev = new Vector3();
 
         /** カーソル方向のレイ × 地形楕円体の交点から緯度経度・標高を求める。空（ミス）は null。 */
         const computeTerrainClick = (e: PointerEvent): GlobeTerrainClickEvent | null => {
@@ -746,7 +747,12 @@ export class GlobeScene {
                 return null; // 空（地球外）を指している
             }
             let geo = ecefToGeodetic(clickHit);
+            // 採用する交点（既定は海面交点）と標高を、最終的に整合した1組として決める。
+            let adopted = clickHit;
+            let altitude = geo.altMeters;
             // 2) その地点の地形標高で楕円体面を持ち上げ、1 回だけ交点を補正する（斜面での誤差低減）。
+            //    再交差は別の一時ベクトルへ出力し、成功時のみ adopted/geo/altitude を差し替える
+            //    （失敗時に海面交点が破壊されず altitude/world/geo の整合が保たれる）。
             const elev = tileManager.terrainElevAt(geo.latDeg, geo.lonDeg);
             const hasElev = elev !== null && Number.isFinite(elev);
             if (hasElev) {
@@ -757,18 +763,20 @@ export class GlobeScene {
                         ellipsoidSemiMajor + elev,
                         ellipsoidSemiMajor + elev,
                         ellipsoidSemiMinor + elev,
-                        clickHit,
+                        clickHitElev,
                     )
                 ) {
-                    geo = ecefToGeodetic(clickHit);
+                    adopted = clickHitElev;
+                    geo = ecefToGeodetic(clickHitElev);
+                    altitude = elev;
                 }
             }
             return {
                 lat: geo.latDeg,
                 lon: geo.lonDeg,
-                altitude: hasElev ? elev : geo.altMeters,
-                // world は真の ECEF 交点（floating origin のレンダリング座標ではない）。
-                world: { x: clickHit.x, y: clickHit.y, z: clickHit.z },
+                altitude,
+                // world は採用した真の ECEF 交点（floating origin のレンダリング座標ではない）。
+                world: { x: adopted.x, y: adopted.y, z: adopted.z },
                 pointerEvent: e,
             };
         };
@@ -968,6 +976,7 @@ export class GlobeScene {
             canvas.removeEventListener("pointercancel", cancelClick);
             canvas.removeEventListener("lostpointercapture", cancelClick);
             terrainClickListeners.length = 0;
+            clickStart = null;
             markerManager.dispose();
             polygonManager.dispose();
             circleManager.dispose();
