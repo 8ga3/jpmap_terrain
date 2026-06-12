@@ -7,12 +7,14 @@
  * - Model API (`addModel` / `updateModel` / `playModelAnimation`) を使用
  * - Polygon API (`addPolygon`, `closed: true`) でリージョン境界を描画
  * - 地形追従 (`altitudeMode: "terrain"`, `gravity: true`)
+ * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 planar, #275 Phase 4 / P4-2）
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
+    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import {
     type BoidState,
@@ -52,10 +54,12 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
+    const terrainEngine = resolveTerrainEngine(location.search);
     const region = DEFAULT_REGION;
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
+        ...(terrainEngine ? { terrainEngine } : {}),
         lat: camera?.lat ?? region.centerLat,
         lon: camera?.lon ?? region.centerLon,
         altitude: camera?.altitude ?? 800,
@@ -188,7 +192,6 @@ const start = async (): Promise<void> => {
 
     // --- UI 要素の取得 ---
     const regionCenterDisplay = document.getElementById("region-center") as HTMLSpanElement | null;
-    const boidCountDisplay = document.getElementById("boid-count-display") as HTMLSpanElement | null;
     const boidCountValue = document.getElementById("boid-count-value") as HTMLSpanElement | null;
     const boidCountSlider = document.getElementById("boid-count-slider") as HTMLInputElement | null;
     const togglePauseBtn = document.getElementById("toggle-pause") as HTMLButtonElement | null;
@@ -200,7 +203,6 @@ const start = async (): Promise<void> => {
             regionCenterDisplay.textContent =
                 `${region.centerLat.toFixed(4)}, ${region.centerLon.toFixed(4)}`;
         }
-        if (boidCountDisplay) boidCountDisplay.textContent = `${boidCount}`;
         if (boidCountValue) boidCountValue.textContent = `${boidCount}`;
     };
     updateDisplay();
