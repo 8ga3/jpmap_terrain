@@ -286,10 +286,9 @@ export class JpmapTerrain {
                         controller.setSunShadows(true);
                     }
                     // マーカー (Issue #167)。境界コンテキスト経由で manager を構築する。
-                    // globe バックエンドでは marker（P4-0）/ polygon（Slice 2b-1）/ circle（Slice 2b-2）が
-                    // 専用アダプタ（getMarkerManager / getPolygonManager / getCircleManager）経由で
-                    // 公開 interface に対応する。model は globe マネージャの機能不足で parity 未達のため
-                    // 後続スライス（未対応）。
+                    // globe バックエンドでは marker（P4-0）/ polygon（Slice 2b-1）/ circle（Slice 2b-2）/
+                    // model（P4-2）が専用アダプタ（getMarkerManager / getPolygonManager /
+                    // getCircleManager / getModelManager）経由で公開 interface に対応する。
                     if (this._terrainEngine === "planar") {
                         this._markerManager = createMarkerManager(
                             controller.getMarkerContext(),
@@ -313,6 +312,9 @@ export class JpmapTerrain {
                             controller.getPolygonManager?.() ?? null;
                         this._circleManager =
                             controller.getCircleManager?.() ?? null;
+                        // 3Dモデル (Issue #243 / #275 Phase 4 P4-2)。globe 専用アダプタ経由。
+                        this._modelManager =
+                            controller.getModelManager?.() ?? null;
                     }
                 },
             });

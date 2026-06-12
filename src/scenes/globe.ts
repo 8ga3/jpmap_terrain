@@ -1536,7 +1536,7 @@ export class GlobeScene {
             // サークルの地形再ドレープと距離スケール更新（点/ラベル配置）。
             circleManager.update(camEcef);
             // モデルの接地・起立更新。
-            modelManager.update();
+            modelManager.tick();
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             frame++;
         });

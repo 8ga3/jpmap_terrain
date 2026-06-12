@@ -14,6 +14,7 @@ import {
     createGlobeMarkerManagerAdapter,
     createGlobePolygonManagerAdapter,
     createGlobeCircleManagerAdapter,
+    createGlobeModelManagerAdapter,
 } from "../src/scenes/globeSceneController";
 import type {
     GlobeSceneController,
@@ -42,6 +43,12 @@ import type {
     GlobeCircleManager,
     GlobeCircleOptions,
 } from "../src/terrain/geo/globeCircleManager";
+import type {
+    GlobeModelManager,
+    GlobeModelOptions,
+    GlobeModelUpdate,
+    GlobeModelState,
+} from "../src/terrain/geo/globeModelManager";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 
 /** camera のみ参照する軽量スタブ GlobeSceneController を作る。 */
@@ -996,6 +1003,177 @@ describe("createGlobeCircleManagerAdapter (P4-0 Slice 2b-2 circle overlay)", () 
         expect(stub.disposed()).toBe(false);
         expect(stub.removed).toContain(aliveId);
         expect(() => m.add("x", { center: CENTER, radius: 100 })).toThrow(/disposed/);
+        warn.mockRestore();
+    });
+});
+/** GlobeModelManager の軽量スタブ。in-place 更新・get・animation を備える。 */
+const makeGlobeModelStub = (): {
+    mgr: GlobeModelManager;
+    added: { id: string; opts: GlobeModelOptions }[];
+    removed: string[];
+    importCount: () => number;
+    disposed: () => boolean;
+} => {
+    let seq = 0;
+    let disposedFlag = false;
+    let imports = 0;
+    const added: { id: string; opts: GlobeModelOptions }[] = [];
+    const removed: string[] = [];
+    const states = new Map<string, GlobeModelState>();
+    const mgr = {
+        add: (opts: GlobeModelOptions): string => {
+            const id = `gm${seq++}`;
+            imports++;
+            added.push({ id, opts });
+            states.set(id, {
+                url: opts.url,
+                lat: opts.lat,
+                lon: opts.lon,
+                altitude: opts.altitude ?? 0,
+                altitudeMode: opts.altitudeMode ?? "terrain",
+                rotation: {
+                    x: opts.rotation?.x ?? 0,
+                    y: opts.rotation?.y ?? 0,
+                    z: opts.rotation?.z ?? 0,
+                },
+                scaling: {
+                    x: opts.scaling?.x ?? 1,
+                    y: opts.scaling?.y ?? 1,
+                    z: opts.scaling?.z ?? 1,
+                },
+                enabled: opts.enabled ?? true,
+                gravity: opts.gravity ?? true,
+                loaded: true,
+                elevationResolved: (opts.altitudeMode ?? "terrain") === "absolute",
+                animationNames: ["walk"],
+            });
+            return id;
+        },
+        get: (id: string): GlobeModelState | null => states.get(id) ?? null,
+        update: (id: string, partial: GlobeModelUpdate): void => {
+            const s = states.get(id);
+            if (!s) return;
+            if (partial.lat !== undefined) s.lat = partial.lat;
+            if (partial.lon !== undefined) s.lon = partial.lon;
+            if (partial.altitude !== undefined) s.altitude = partial.altitude;
+            if (partial.altitudeMode !== undefined) s.altitudeMode = partial.altitudeMode;
+            if (partial.scaling !== undefined) {
+                s.scaling = {
+                    x: partial.scaling.x ?? s.scaling.x,
+                    y: partial.scaling.y ?? s.scaling.y,
+                    z: partial.scaling.z ?? s.scaling.z,
+                };
+            }
+            if (partial.enabled !== undefined) s.enabled = partial.enabled;
+        },
+        remove: (id: string): void => {
+            removed.push(id);
+            states.delete(id);
+        },
+        setEnabled: (id: string, enabled: boolean): void => {
+            const s = states.get(id);
+            if (s) s.enabled = enabled;
+        },
+        list: (): readonly string[] => Array.from(states.keys()),
+        playAnimation: (): void => {},
+        stopAnimation: (): void => {},
+        tick: (): void => {},
+        dispose: (): void => {
+            disposedFlag = true;
+        },
+    } as unknown as GlobeModelManager;
+    return {
+        mgr,
+        added,
+        removed,
+        importCount: () => imports,
+        disposed: () => disposedFlag,
+    };
+};
+
+describe("createGlobeModelManagerAdapter (P4-2 model overlay)", () => {
+    const POS = { lat: 35.681236, lon: 139.767125 };
+
+    it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 100);
+        const h = m.add("human", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        expect(h.id).toBe("human");
+        expect(h.altitudeMode).toBe("terrain");
+        expect(h.gravity).toBe(true);
+        expect(h.scaling).toEqual({ x: 1, y: 1, z: 1 });
+        expect(h.rotation).toEqual({ x: 0, y: 0, z: 0 });
+        expect(h.elevationResolved).toBe(true);
+        expect(h.animationNames).toEqual(["walk"]);
+        expect(m.get("human")?.id).toBe("human");
+        expect(m.list()).toEqual(["human"]);
+    });
+
+    it("重複 id は throw、lat/lon 範囲外は throw", () => {
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
+        m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        expect(() => m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon })).toThrow(
+            /already exists/,
+        );
+        expect(() => m.add("b", { url: "a.glb", lat: 999, lon: POS.lon })).toThrow();
+    });
+
+    it("absolute は altitude 必須、terrain 未解決なら elevationResolved=false", () => {
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => null);
+        expect(() =>
+            m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon, altitudeMode: "absolute" }),
+        ).toThrow(/requires altitude/);
+        const h = m.add("t", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        expect(h.elevationResolved).toBe(false);
+    });
+
+    it("update は in-place（import 再実行なし）で反映し、ハンドルを返す", () => {
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 100);
+        m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        const before = stub.importCount();
+        const h = m.update("a", {
+            lat: 36,
+            altitude: 5,
+            scaling: { x: 2, y: 2, z: 2 },
+        });
+        expect(h.lat).toBe(36);
+        expect(h.altitude).toBe(5);
+        expect(h.scaling.x).toBe(2);
+        expect(stub.importCount()).toBe(before); // 再ロードなし
+    });
+
+    it("absolute へ切替える update は altitude 明示が必要", () => {
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 100);
+        m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        expect(() => m.update("a", { altitudeMode: "absolute" })).toThrow(
+            /requires explicit altitude/,
+        );
+        expect(() =>
+            m.update("a", { altitudeMode: "absolute", altitude: 50 }),
+        ).not.toThrow();
+    });
+
+    it("setEnabled は委譲し、remove/dispose は内部マネージャを破棄しない", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
+        m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        m.setEnabled("a", false);
+        expect(m.get("a")?.enabled).toBe(false);
+        m.remove("a");
+        expect(m.list()).toEqual([]);
+        m.remove("missing");
+        expect(warn).toHaveBeenCalled();
+        m.add("b", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        m.dispose();
+        expect(stub.disposed()).toBe(false);
+        expect(() => m.add("c", { url: "a.glb", lat: POS.lat, lon: POS.lon })).toThrow(
+            /disposed/,
+        );
         warn.mockRestore();
     });
 });
