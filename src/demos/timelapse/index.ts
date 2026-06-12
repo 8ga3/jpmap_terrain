@@ -7,6 +7,7 @@
  *
  * URL 規約:
  * - `?engine=webgpu|webgl|webgl2`（既存と互換）
+ * - `?terrainEngine=globe|planar`（既定 planar, #275 Phase 4 / P4-1。globe では太陽方向が時刻追従する）
  * - `?lat=`, `?lon=` 等のカメラ初期値（viewer デモと共通の `parseCameraStateFromUrl`）
  * - `?start=<ISO8601>`: シミュレーション開始時刻（UTC として解釈）
  * - `?speed=<秒>`: 24h を何秒に圧縮するか（0 以下は 60s にフォールバック）
@@ -24,6 +25,7 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
     createUrlUpdater,
+    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import { mountClock } from "./clockOverlay";
 import {
@@ -43,6 +45,16 @@ const UPDATE_INTERVAL_MS = 200;
  */
 const TIMELAPSE_CAMERA_DEFAULTS = {
     azimuth: 270,
+    tilt: 75,
+} as const;
+
+/**
+ * globe バックエンド用のカメラ初期値。globe（GeospatialCamera）は平面版と方位の符号規約が逆で、
+ * 同じ azimuth では反対方向（西）を向くため、平面版の意図（日の出が正面に見える）を再現するには
+ * 日の出方位（東京の夏至前後で概ね ENE ≒ 65°）を向ける必要がある。tilt は平面版と同じ。
+ */
+const TIMELAPSE_GLOBE_CAMERA_DEFAULTS = {
+    azimuth: 65,
     tilt: 75,
 } as const;
 
@@ -102,6 +114,12 @@ export const resolveEngine = (search: string): EngineType | undefined => {
     return undefined;
 };
 
+/**
+ * `?terrainEngine=` クエリから地形バックエンドを解決する（viewer #352 / model #361 に倣う）。
+ * 実装は `terrain/urlState` に集約し、既存 import 互換のため再 export する（#368 / P4-1）。
+ */
+export { resolveTerrainEngine };
+
 /** `?showSunShadows=false` のときのみ false を返す。それ以外は既定 true。 */
 export const resolveShowSunShadows = (search: string): boolean => {
     const raw = new URLSearchParams(search).get("showSunShadows");
@@ -115,6 +133,7 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
+    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraInit = resolveCameraInit(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
     const showSunShadows = resolveShowSunShadows(location.search);
@@ -123,7 +142,10 @@ const start = async (): Promise<void> => {
     const opts: JpmapTerrainOptions = {
         // タイムラプス固有のカメラデフォルト（URLで明示指定された値のみ上書きされる）。
         ...TIMELAPSE_CAMERA_DEFAULTS,
+        // globe では方位規約が逆のため、日の出が正面に見えるよう globe 専用デフォルトで上書きする。
+        ...(terrainEngine === "globe" ? TIMELAPSE_GLOBE_CAMERA_DEFAULTS : {}),
         ...(engine ? { engine } : {}),
+        ...(terrainEngine ? { terrainEngine } : {}),
         ...cameraInit,
         ...(mapType !== null ? { mapType } : {}),
         // タイムラプスでは autoSunPosition は必ず OFF（dateTime を毎フレーム駆動するため）。
