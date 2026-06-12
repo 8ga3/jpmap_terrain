@@ -31,10 +31,12 @@ export const longitudeToOffsetMs = (lonDeg: number): number => {
 
 /** UTC オフセット (ms) を `UTC±H[:MM]` 形式のラベルへ整形する。 */
 export const formatUtcOffsetLabel = (offsetMs: number): string => {
-    const sign = offsetMs < 0 ? "-" : "+";
-    const totalMin = Math.round(Math.abs(offsetMs) / 60000);
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
+    // 符号は丸め後の分で判定する。-1ms のような「ほぼ 0 の負値」でも totalMin=0 なら UTC+0 に正規化する。
+    const totalMin = Math.round(offsetMs / 60000);
+    const sign = totalMin < 0 ? "-" : "+";
+    const absMin = Math.abs(totalMin);
+    const h = Math.floor(absMin / 60);
+    const m = absMin % 60;
     return m === 0
         ? `UTC${sign}${h}`
         : `UTC${sign}${h}:${String(m).padStart(2, "0")}`;
