@@ -77,6 +77,7 @@ const makeStub = (
         radius,
         yaw,
         pitch,
+        maxZ: 1_000_000,
     };
     const clickListeners: GlobeTerrainClickListener[] = [];
     const hoverListeners: GlobePolygonPointListener[] = [];
@@ -95,6 +96,14 @@ const makeStub = (
         };
     const gc = {
         camera,
+        // 太陽方向・明るさ反映（setSunState）が参照するライト/メッシュの最小スタブ。
+        sunLight: { direction: new Vector3(0, 1, 0), intensity: 0 },
+        hemiLight: { intensity: 0 },
+        sunMesh: {
+            position: new Vector3(),
+            scaling: new Vector3(1, 1, 1),
+            setEnabled: jest.fn(),
+        },
         // 太陽メッシュの毎フレーム再配置オブザーバ登録/解除に必要な最小 scene スタブ。
         scene: {
             onBeforeRenderObservable: {
@@ -517,6 +526,19 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         const c = createGlobeSceneController(gc, "std");
         c.dispose();
         expect(disposed()).toBe(true);
+    });
+
+    it("setSunState(null) は決定的フォールバック日時で太陽を反映する（planar と挙動一致, #370 レビュー対応）", () => {
+        const { gc } = makeStub(35, 139, 1000, 0, 0);
+        const sunLight = (gc as unknown as { sunLight: { direction: Vector3; intensity: number } }).sunLight;
+        const hemiLight = (gc as unknown as { hemiLight: { intensity: number } }).hemiLight;
+        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: jest.Mock } }).sunMesh;
+        const c = createGlobeSceneController(gc, "std");
+        c.setSunState(null);
+        // null フォールバックでも太陽計算が走り、ライト強度が一定値へ更新される（早期 return しない）。
+        expect(sunLight.intensity).toBeGreaterThan(0);
+        expect(hemiLight.intensity).toBeGreaterThan(0);
+        expect(sunMesh.setEnabled).toHaveBeenCalledWith(true);
     });
 });
 

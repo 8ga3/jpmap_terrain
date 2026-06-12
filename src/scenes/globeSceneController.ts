@@ -73,6 +73,7 @@ import {
     CIRCLE_SEGMENTS_MIN,
     CIRCLE_SEGMENTS_MAX,
     MODEL_DEFAULTS,
+    SUN_FALLBACK_DATETIME_ISO,
 } from "../lib/types";
 import type { GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import type {
@@ -1375,7 +1376,11 @@ export const createGlobeSceneController = (
     // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)を再計算して `globe-sun` ライトへ適用する。
     // 太陽方向は computeSunPosition（平面シーン scenes/default.ts と同じ）で求める。明るさは globe では
     // 時刻に依らず一定で、昼夜の境界は指向性ライトの幾何で表現する（applyGlobeSunState 参照）。
+    // `dateTime` 未指定（null）のときは planar と同様、決定的フォールバック日時
+    // （SUN_FALLBACK_DATETIME_ISO）で太陽位置を計算する。これにより初期化時（既定 dateTime=null）でも
+    // globe / planar の太陽反映が一致する。
     let currentSunDateTime: Date | null = null;
+    const fallbackSunDate = new Date(SUN_FALLBACK_DATETIME_ISO);
     const scratchSunDir = new Vector3();
     let globeShadowsWarned = false;
     // 太陽メッシュの配置: planar 同様に infiniteDistance を利用する。infiniteDistance 有効時、
@@ -1430,9 +1435,9 @@ export const createGlobeSceneController = (
     };
 
     const applyGlobeSunState = (): void => {
-        // 固定モードで dateTime 未指定（null）のときは、初期ライト設定を保持する。
-        if (currentSunDateTime === null) return;
-        if (Number.isNaN(currentSunDateTime.getTime())) {
+        // dateTime 未指定（null）のときは決定的フォールバック日時で計算する（planar と挙動を一致させる）。
+        const dateForCalc = currentSunDateTime ?? fallbackSunDate;
+        if (Number.isNaN(dateForCalc.getTime())) {
             console.warn(
                 "[globeSceneController] sun position computation skipped (invalid dateTime)",
             );
@@ -1442,7 +1447,7 @@ export const createGlobeSceneController = (
         const { altitudeDeg, azimuthDeg } = computeSunPosition(
             latDeg,
             lonDeg,
-            currentSunDateTime,
+            dateForCalc,
         );
         if (!Number.isFinite(altitudeDeg) || !Number.isFinite(azimuthDeg)) {
             console.warn(
