@@ -262,7 +262,7 @@ export interface GlobeSceneController {
     modelManager: GlobeModelManager;
     /** 太陽光（指向性ライト）。時刻連動の太陽方向駆動（#368 / P4-1）に用いる。 */
     sunLight: DirectionalLight;
-    /** 環境光（半球ライト）。昼夜係数で強度を補間する（#368 / P4-1）。 */
+    /** 環境光（半球ライト）。強度は時刻に依らず一定（昼夜の境界は指向性ライトの幾何で表現, #368 / P4-1）。 */
     hemiLight: HemisphericLight;
     /** 太陽メッシュ（発光球）。時刻連動で太陽方向に配置・表示する（#368 / P4-1）。 */
     sunMesh: Mesh;
