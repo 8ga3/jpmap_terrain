@@ -1456,8 +1456,9 @@ export const createGlobeSceneController = (
             return;
         }
         // 太陽方向(ECEF, 地表→太陽)を求め、指向性ライトには符号反転(太陽→地表)を渡す。
+        // sunLight.direction を in-place 更新し、高頻度呼び出し（timelapse）でのアロケーションを避ける。
         sunDirectionEcefToRef(latDeg, lonDeg, altitudeDeg, azimuthDeg, scratchSunDir);
-        gc.sunLight.direction = scratchSunDir.scale(-1);
+        gc.sunLight.direction.copyFrom(scratchSunDir).scaleInPlace(-1);
         // 明るさは時刻に依らず一定（昼夜の境界は指向性ライトの幾何で生じる。上記コメント参照）。
         // 注視点の昼夜でシーン全体を減光しないことで、地球の裏側の昼領域が一律に暗くなる不自然さを避ける。
         gc.sunLight.intensity = GLOBE_SUN_LIGHT_INTENSITY;
