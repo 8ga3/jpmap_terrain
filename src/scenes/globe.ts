@@ -566,11 +566,17 @@ export class GlobeScene {
         // 広域ズームでは地球が深度バッファへ寄与せず、太陽メッシュ（後段）が地球の裏側にあっても深度
         // テストで隠れない。そこで「色を書かず深度のみ書く」ソリッド楕円体を地球と同位置に重ね、太陽を
         // 地球シルエットで画素単位に遮蔽する（地球の縁(limb)で太陽ディスクが滑らかに欠ける）。
-        // 色を書かない（disableColorWrite）ので地形/オーバーレイ/背景球の見た目は不変。海面より沈めた
-        // earthSink により地形/オーバーレイ（手前）を深度で誤って棄却しない（背景球と同じ #335 の保険）。
-        // 同一レンダリンググループ（RG_BACKGROUND）内では不透明メッシュはマテリアルの uniqueId 昇順で
-        // 描画される（Babylon PainterSortCompare）。この occluder のマテリアルを太陽メッシュより先に
-        // 生成することで occluder が先に深度を書き、続く太陽が深度テストで正しく遮蔽される。
+        // 色を書かない（disableColorWrite）ので見た目は不変。太陽メッシュと同じく地形と同一グループ
+        // （RG_BACKGROUND）に置くことが重要で、これにより低高度では実際の地形タイル（深度を書く LOD）が
+        // 太陽を遮蔽し、太陽が地面の手前へ突き抜けて見えるのを防ぐ。広域ズームでは地形タイルが深度を
+        // 書かない（ベースレイヤ）ため、このオクルーダが地球シルエットを供給する。
+        // オクルーダ深度が背景球・ベースレイヤ（同じ半径・深度非書き込み）と等深度で争い、広域ズームの
+        // 低い深度精度で z-fighting（背景の青球がチラつく / #335）するのを防ぐため、zOffset でオクルーダの
+        // 深度をわずかに奥へバイアスする。これにより背景球/ベースレイヤが常に手前に描かれて勝つ（チラつき
+        // 解消）一方、はるか遠方（far クリップ手前）の太陽より十分手前に留まるため遮蔽は維持される。
+        // RG_BACKGROUND 内では不透明メッシュはマテリアルの uniqueId 昇順で描画される（Babylon
+        // PainterSortCompare）。この occluder のマテリアルを太陽メッシュより先に生成することで occluder が
+        // 先に深度を書き、続く太陽が深度テストで正しく遮蔽される。
         const sunOccluder = CreateSphere(
             "globe-sun-occluder",
             { diameter: 2, segments: 128 },
@@ -584,6 +590,8 @@ export class GlobeScene {
         sunOccluderMat.backFaceCulling = true;
         // 色は一切書かず深度のみ書く（不可視のオクルーダ）。depthWrite は既定で有効。
         sunOccluderMat.disableColorWrite = true;
+        // 等深度の背景球/ベースレイヤより確実に「奥」に居させ z-fighting を避ける（上記コメント参照）。
+        sunOccluderMat.zOffset = 8;
         sunOccluder.material = sunOccluderMat;
 
         // 太陽メッシュ（#368 / P4-1）。発光する球を planar 同様に infiniteDistance で配置する。
@@ -593,6 +601,9 @@ export class GlobeScene {
         // 座標リベースに影響されずカメラ相対で常に太陽方向の空へ描画される。地球による遮蔽は上記
         // occluder の深度で画素単位に処理する。時刻連動の位置/スケール/表示は globeSceneController。
         // occluder と同じ RG_BACKGROUND に置き、マテリアルは occluder より後に生成する（描画順を保証）。
+        // 太陽は地形と同一グループの共有深度で描かれるため、occluder（地球シルエット）と実際の地形タイル
+        // （深度を書く LOD）の双方に画素単位で遮蔽される。マーカー等（group 1）は太陽より後に描かれるので
+        // 常に太陽の手前に表示される。
         const sunMesh = CreateSphere(
             "globe-sun-mesh",
             { diameter: 1, segments: 12 },

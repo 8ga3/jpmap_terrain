@@ -9,7 +9,8 @@
  * - `?engine=webgpu|webgl|webgl2`（既存と互換）
  * - `?terrainEngine=globe|planar`（既定 planar, #275 Phase 4 / P4-1。globe では太陽方向が時刻追従する）
  * - `?lat=`, `?lon=` 等のカメラ初期値（viewer デモと共通の `parseCameraStateFromUrl`）
- * - `?start=<ISO8601>`: シミュレーション開始時刻（UTC として解釈）
+ * - `?start=<ISO8601>`: シミュレーション開始時刻（タイムゾーン無指定は UTC として解釈。`+09:00` の
+ *   ような正オフセットは URL では `%2B09:00` とエンコードするか、`Z` 付き UTC を推奨）
  * - `?speed=<秒>`: 24h を何秒に圧縮するか（0 以下は 60s にフォールバック）
  * - `?paused` または `?paused=true`: 一時停止（テスト用）
  *
@@ -27,7 +28,7 @@ import {
     createUrlUpdater,
     resolveTerrainEngine,
 } from "../../terrain/urlState";
-import { mountClock } from "./clockOverlay";
+import { longitudeToOffsetMs, mountClock } from "./clockOverlay";
 import {
     computeSimulatedDate,
     parseTimelapseQuery,
@@ -156,11 +157,35 @@ const start = async (): Promise<void> => {
 
     const viewer = await JpmapTerrain.create(mount, opts);
 
+    // 時計表示は「表示中の地点の地方平均太陽時」を反映する（経度から導出。太陽の南中≒正午）。
+    // カメラの注視点経度に追従させるため、現在経度と最後に表示した時刻を保持する。
+    let currentLon = viewer.lon;
+    let lastDisplayedDate = timelapse.startUtc;
+
+    // 時計オーバーレイをマウント。
+    const clockSvg = document.getElementById(CLOCK_ELEMENT_ID);
+    const clockLabel = document.getElementById(CLOCK_LABEL_ID);
+    let clockHandle: ReturnType<typeof mountClock> | null = null;
+    const refreshClock = (date: Date): void => {
+        lastDisplayedDate = date;
+        clockHandle?.update(date, longitudeToOffsetMs(currentLon));
+    };
+    if (clockSvg instanceof SVGSVGElement) {
+        clockHandle = mountClock(
+            clockSvg,
+            clockLabel instanceof HTMLElement ? clockLabel : null,
+        );
+        refreshClock(timelapse.startUtc);
+    }
+
     // URL 同期: カメラ変化のたびに URL を更新する (Issue #155)。
     // 2D モードでは `@lat,lon,Xz`、3D では `@lat,lon,altitude,azimuth,tilt` (#254)。
     // 既存クエリ（?engine=, ?start=, ?speed= など）は `createUrlUpdater` 内で保持される。
+    // あわせて注視点経度を更新し、時計の地方時表示を追従させる（停止中のパンでも反映）。
     const urlUpdater = createUrlUpdater(200);
-    viewer.onCameraChange((event) =>
+    viewer.onCameraChange((event) => {
+        currentLon = event.lon;
+        refreshClock(lastDisplayedDate);
         urlUpdater({
             lat: event.lat,
             lon: event.lon,
@@ -168,20 +193,8 @@ const start = async (): Promise<void> => {
             azimuth: event.azimuth,
             tilt: event.tilt,
             zoomLevel: event.zoomLevel,
-        }),
-    );
-
-    // 時計オーバーレイをマウント。
-    const clockSvg = document.getElementById(CLOCK_ELEMENT_ID);
-    const clockLabel = document.getElementById(CLOCK_LABEL_ID);
-    let clockHandle: ReturnType<typeof mountClock> | null = null;
-    if (clockSvg instanceof SVGSVGElement) {
-        clockHandle = mountClock(
-            clockSvg,
-            clockLabel instanceof HTMLElement ? clockLabel : null,
-        );
-        clockHandle.update(timelapse.startUtc);
-    }
+        });
+    });
 
     // タイムラプスループ。
     const startedAt = performance.now();
@@ -196,7 +209,7 @@ const start = async (): Promise<void> => {
         // setter 連打を避けるため UPDATE_INTERVAL_MS 周期に間引く。
         if (nowMs - lastApplied >= UPDATE_INTERVAL_MS) {
             viewer.dateTime = simulated;
-            clockHandle?.update(simulated);
+            refreshClock(simulated);
             lastApplied = nowMs;
         }
         window.requestAnimationFrame(tick);

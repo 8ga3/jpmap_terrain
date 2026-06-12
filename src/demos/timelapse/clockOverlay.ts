@@ -16,8 +16,28 @@ export interface ClockAngles {
     minuteDeg: number;
 }
 
-/** JST (UTC+9) のオフセット (ms) */
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+/**
+ * 経度 [deg] から地方平均太陽時のUTCオフセット (ms) を導出する。
+ * 経度 15° ごとに 1 時間（= 経度 1° あたり 4 分）。これにより太陽の南中（経線通過）が
+ * おおよそ地方時の正午に一致する。経度は (-180, 180] に正規化する。
+ */
+export const longitudeToOffsetMs = (lonDeg: number): number => {
+    if (!Number.isFinite(lonDeg)) return 0;
+    const normalized = (((lonDeg + 180) % 360) + 360) % 360 - 180;
+    // 1° = 24h/360 = 240000 ms。
+    return normalized * 240000;
+};
+
+/** UTC オフセット (ms) を `UTC±H[:MM]` 形式のラベルへ整形する。 */
+export const formatUtcOffsetLabel = (offsetMs: number): string => {
+    const sign = offsetMs < 0 ? "-" : "+";
+    const totalMin = Math.round(Math.abs(offsetMs) / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return m === 0
+        ? `UTC${sign}${h}`
+        : `UTC${sign}${h}:${String(m).padStart(2, "0")}`;
+};
 
 /**
  * `Date` から各針の角度を算出する純粋関数。
@@ -25,20 +45,23 @@ const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
  * - 時針は分に応じて連続的に回転する（12 時間で 360°）。
  * - 分針は秒に応じて連続的に回転する（60 分で 360°）。
  *
- * 表示は日本標準時 (JST = UTC+9) 基準。シミュレーション時刻は UTC で保持されるため、
- * ここで +9h オフセットを加えてから UTC ゲッタで分解する。
+ * `offsetMs` は表示先タイムゾーンのUTCオフセット (ms)。シミュレーション時刻は UTC で保持される
+ * ため、ここで `offsetMs` を加えてから UTC ゲッタで分解する（既定 0 = UTC）。
  *
  * `Invalid Date` が渡された場合は 0° を返す（呼び出し側でフォールバック値を期待しないよう注意）。
  */
-export const computeClockAngles = (date: Date): ClockAngles => {
+export const computeClockAngles = (
+    date: Date,
+    offsetMs = 0,
+): ClockAngles => {
     if (Number.isNaN(date.getTime())) {
         return { hourDeg: 0, minuteDeg: 0 };
     }
-    const jst = new Date(date.getTime() + JST_OFFSET_MS);
-    const ms = jst.getUTCMilliseconds();
-    const s = jst.getUTCSeconds() + ms / 1000;
-    const m = jst.getUTCMinutes() + s / 60;
-    const h = (jst.getUTCHours() % 12) + m / 60;
+    const local = new Date(date.getTime() + offsetMs);
+    const ms = local.getUTCMilliseconds();
+    const s = local.getUTCSeconds() + ms / 1000;
+    const m = local.getUTCMinutes() + s / 60;
+    const h = (local.getUTCHours() % 12) + m / 60;
     return {
         hourDeg: h * 30, // 360 / 12
         minuteDeg: m * 6, // 360 / 60
@@ -46,14 +69,16 @@ export const computeClockAngles = (date: Date): ClockAngles => {
 };
 
 /**
- * シミュレーション時刻の表示用ラベル（HH:MM JST）を整形する。
+ * シミュレーション時刻の表示用ラベル（`HH:MM UTC±H`）を整形する。
+ * `offsetMs` は表示先タイムゾーンのUTCオフセット (ms、既定 0 = UTC)。
  */
-export const formatClockLabel = (date: Date): string => {
-    if (Number.isNaN(date.getTime())) return "--:-- JST";
-    const jst = new Date(date.getTime() + JST_OFFSET_MS);
-    const hh = String(jst.getUTCHours()).padStart(2, "0");
-    const mm = String(jst.getUTCMinutes()).padStart(2, "0");
-    return `${hh}:${mm} JST`;
+export const formatClockLabel = (date: Date, offsetMs = 0): string => {
+    const offsetLabel = formatUtcOffsetLabel(offsetMs);
+    if (Number.isNaN(date.getTime())) return `--:-- ${offsetLabel}`;
+    const local = new Date(date.getTime() + offsetMs);
+    const hh = String(local.getUTCHours()).padStart(2, "0");
+    const mm = String(local.getUTCMinutes()).padStart(2, "0");
+    return `${hh}:${mm} ${offsetLabel}`;
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -101,8 +126,8 @@ export const renderClockSvg = (angles: ClockAngles): string =>
 
 /** マウント済みクロックを更新するためのハンドル。 */
 export interface ClockHandle {
-    /** シミュレーション時刻に基づき針位置を更新する */
-    update(date: Date): void;
+    /** シミュレーション時刻と表示先UTCオフセット (ms) に基づき針位置・ラベルを更新する */
+    update(date: Date, offsetMs?: number): void;
 }
 
 /**
@@ -155,8 +180,8 @@ export const mountClock = (
     svg.appendChild(center);
 
     return {
-        update(date: Date): void {
-            const angles = computeClockAngles(date);
+        update(date: Date, offsetMs = 0): void {
+            const angles = computeClockAngles(date, offsetMs);
             hourHand.setAttribute(
                 "transform",
                 `rotate(${angles.hourDeg} 50 50)`,
@@ -165,7 +190,7 @@ export const mountClock = (
                 "transform",
                 `rotate(${angles.minuteDeg} 50 50)`,
             );
-            if (labelEl) labelEl.textContent = formatClockLabel(date);
+            if (labelEl) labelEl.textContent = formatClockLabel(date, offsetMs);
         },
     };
 };
