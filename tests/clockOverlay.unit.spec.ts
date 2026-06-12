@@ -35,6 +35,9 @@ describe("longitudeToOffsetMs", () => {
     it("(-180,180] へ正規化する", () => {
         expect(longitudeToOffsetMs(190)).toBe(longitudeToOffsetMs(-170));
         expect(longitudeToOffsetMs(360)).toBe(0);
+        // 経度 180° は -180° へ折り返さず +180°（UTC+12）として扱う（#370 レビュー対応）。
+        expect(longitudeToOffsetMs(180)).toBe(12 * H);
+        expect(longitudeToOffsetMs(-180)).toBe(12 * H);
     });
 
     it("非有限値は 0", () => {
