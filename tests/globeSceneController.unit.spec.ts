@@ -1119,6 +1119,14 @@ describe("createGlobeModelManagerAdapter (P4-2 model overlay)", () => {
         expect(() => m.add("b", { url: "a.glb", lat: 999, lon: POS.lon })).toThrow();
     });
 
+    it("url 未指定/空文字は throw（planar 契約と整合）", () => {
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
+        expect(() => m.add("a", { url: "", lat: POS.lat, lon: POS.lon })).toThrow(
+            /url is required/,
+        );
+    });
+
     it("absolute は altitude 必須、terrain 未解決なら elevationResolved=false", () => {
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => null);
