@@ -95,6 +95,13 @@ const makeStub = (
         };
     const gc = {
         camera,
+        // 太陽メッシュの毎フレーム再配置オブザーバ登録/解除に必要な最小 scene スタブ。
+        scene: {
+            onBeforeRenderObservable: {
+                add: jest.fn(() => ({})),
+                remove: jest.fn(),
+            },
+        },
         // isTerrainIdle / marker アダプタ / mapType 切替が参照する tileManager スタブ。
         tileManager: {
             isIdle: () => idle,

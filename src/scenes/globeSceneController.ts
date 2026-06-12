@@ -17,7 +17,15 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { MapType } from "../terrain/gsiTile";
 import { JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { geodeticToEcef, ecefToGeodetic } from "../terrain/geo/ecef";
-import { uiToYawPitch, yawPitchToUi } from "../terrain/geo/cameraMapping";
+import { sunDirectionEcefToRef } from "../terrain/geo/sunDirectionEcef";
+import { computeSunPosition } from "../terrain/sunPosition";
+import { deriveSunState } from "../terrain/sunState";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
+import {
+    uiToYawPitch,
+    yawPitchToUi,
+} from "../terrain/geo/cameraMapping";
 import { assertLatLonInBounds } from "../terrain/overlayCoords";
 import { resolveIcon, resolveText } from "../terrain/marker";
 import {
@@ -1363,6 +1371,97 @@ export const createGlobeSceneController = (
         camera.center = geodeticToEcef(latDeg, lonDeg, 0);
     };
 
+    // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
+    // timelapse デモは `dateTime` を毎フレーム駆動し setSunState を連打するため、
+    // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)・昼夜の明るさを再計算して
+    // `globe-sun` / `globe-hemi` ライトへ適用する。平面シーン（scenes/default.ts）の
+    // applySunStateForCurrent と同じ太陽計算（computeSunPosition / deriveSunState）を共有する。
+    let currentSunDateTime: Date | null = null;
+    const scratchSunDir = new Vector3();
+    let globeShadowsWarned = false;
+    // 太陽メッシュの配置: planar 同様に infiniteDistance を利用する。infiniteDistance 有効時、
+    // Babylon は毎フレーム mesh.position にカメラのワールド位置を加算してワールド位置を決めるため
+    // （transformNode: worldTranslation = position + cameraWorldPosition）、ここでは mesh.position に
+    // 「太陽方向ベクトル × 距離 D」を設定するだけでよい。これによりカメラがどこに/どの座標系
+    // （floating origin のリベース後でも）あっても、見かけ方向は常に太陽方向そのものになり、
+    // カメラが動いた次フレームでも自動でカメラ相対に追従する（stale 化しない）。
+    // 太陽メッシュのカメラからの距離 D は遠クリップ面 maxZ（高度追従, GeospatialClippingBehavior）の
+    // 手前に収める。GeospatialClippingBehavior は maxZ = horizonDist + planetRadius*0.1 と設定する
+    // （horizonDist = √(|P|²-R²) = カメラから地平線（地球楕円体への接線）までの距離）。太陽メッシュを
+    // この地平線距離に置くと、太陽が地球の縁(limb)へ回り込んだとき occluder（深度のみ楕円体, globe.ts）
+    // の深度とちょうど接し、地球の裏へ進むほど太陽が occluder より奥になって画素単位に遮蔽される。
+    // D を maxZ*0.5 など近くに置くと limb より内側まで太陽が手前に残り「中央が裏に回るまで見える」
+    // 不自然さになるため、地平線距離（maxZ に近い）を採用する。far クリップ余裕のため maxZ*0.97 で上限。
+    const SUN_PLANET_RADIUS = Wgs84Ellipsoid.semiMajorAxis;
+    const SUN_MESH_MAX_FAR_RATIO = 0.97;
+    // 最後に算出した太陽方向(ECEF, 地表→太陽)と、太陽状態が有効か。距離 D / 見かけサイズは
+    // カメラ（ズーム・高度）に依存するため、dateTime 更新時だけでなく毎フレーム再評価する。
+    const currentSunDirEcef = new Vector3();
+    let sunStateValid = false;
+
+    // 太陽メッシュを現在のカメラ状態に合わせて毎フレーム更新する。
+    // 地球による遮蔽は occluder（深度のみ楕円体, globe.ts）の深度テストが画素単位に行うため、ここでは
+    // 位置（太陽方向 × 地平線距離 D）と見かけサイズ（視角一定）のみを設定する。D=地平線距離により太陽は
+    // 地球の縁から滑らかに欠け、地球の裏側では完全に隠れる（カメラが地表近傍なら「地平線下」、宇宙なら
+    // 「地球の背面」を深度で統一的に扱える）。
+    const placeSunMesh = (): void => {
+        if (!sunStateValid) return;
+        gc.sunMesh.setEnabled(true);
+        // maxZ = 地平線距離 + R*0.1 なので、地平線距離 = maxZ - R*0.1。far クリップに太陽ディスクが
+        // 触れないよう maxZ*0.97 を上限にクランプする。
+        const horizonDist = camera.maxZ - SUN_PLANET_RADIUS * 0.1;
+        const sunDist = Math.max(
+            1,
+            Math.min(horizonDist, camera.maxZ * SUN_MESH_MAX_FAR_RATIO),
+        );
+        gc.sunMesh.position.copyFrom(currentSunDirEcef).scaleInPlace(sunDist);
+        // 見かけの大きさ（視角）を一定に保つため、カメラからの距離（= sunDist）に比例させる。
+        const meshScale = sunDist * 0.04;
+        gc.sunMesh.scaling.set(meshScale, meshScale, meshScale);
+    };
+
+    const applyGlobeSunState = (): void => {
+        // 固定モードで dateTime 未指定（null）のときは、初期ライト設定を保持する。
+        if (currentSunDateTime === null) return;
+        if (Number.isNaN(currentSunDateTime.getTime())) {
+            console.warn(
+                "[globeSceneController] sun position computation skipped (invalid dateTime)",
+            );
+            return;
+        }
+        const { latDeg, lonDeg } = currentGeodetic();
+        const { altitudeDeg, azimuthDeg } = computeSunPosition(
+            latDeg,
+            lonDeg,
+            currentSunDateTime,
+        );
+        if (!Number.isFinite(altitudeDeg) || !Number.isFinite(azimuthDeg)) {
+            console.warn(
+                `[globeSceneController] sun position computation failed (lat=${latDeg}, lon=${lonDeg}); skipping update`,
+            );
+            return;
+        }
+        // 太陽方向(ECEF, 地表→太陽)を求め、指向性ライトには符号反転(太陽→地表)を渡す。
+        sunDirectionEcefToRef(latDeg, lonDeg, altitudeDeg, azimuthDeg, scratchSunDir);
+        gc.sunLight.direction = scratchSunDir.scale(-1);
+        // 昼夜係数で明るさを補間する（平面シーンと同方針）。dayFactor は注視点の太陽高度に基づく
+        // シーン全体の明るさで、太陽メッシュの表示可否（地球遮蔽）とは別管理。
+        const { dayFactor } = deriveSunState(altitudeDeg, azimuthDeg);
+        gc.sunLight.intensity = dayFactor;
+        gc.hemiLight.intensity = 0.2 + 0.8 * dayFactor;
+        // 太陽メッシュ（発光球）。infiniteDistance がカメラ位置を加算するため、position には
+        // 太陽方向×距離（カメラからのオフセット）だけを設定する。距離・サイズ・遮蔽は placeSunMesh
+        // が毎フレーム評価する。
+        currentSunDirEcef.copyFrom(scratchSunDir);
+        sunStateValid = true;
+        placeSunMesh();
+    };
+
+    // ズームのみの操作（dateTime 不変）でも太陽の距離・見かけサイズが maxZ に追従するよう毎フレーム
+    // 再配置する。これがないと、ズームイン時に算出した小さな距離・サイズが stale 化し、ズームアウト
+    // 時に太陽が極小化して見えなくなる（地球の弧が見える広域ズームで顕著）。
+    const sunMeshObserver = gc.scene.onBeforeRenderObservable.add(placeSunMesh);
+
     // ---- UI コントロールパネル配線（#275 Phase 4 / P4-1） ----
     // canvas が渡された実行時のみ DOM コントロールパネルを生成・配線する（単体テストの
     // 軽量スタブ呼び出しでは canvas 未指定で no-op）。
@@ -1642,9 +1741,22 @@ export const createGlobeSceneController = (
         // ---- UI コントロールパネル（#275 P4-1 で配線。canvas 未指定時は no-op） ----
         setUiVisibility: (target, visible) => uiSetVisibility(target, visible),
 
-        // ---- 太陽 / 影（globe ライティング統合は P4-0 後続スライス） ----
-        setSunState: () => {},
-        setSunShadows: () => {},
+        // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
+        // setSunState: 適用すべき日時を保存し、現在の注視点基準で太陽方向・明るさを即時反映する。
+        setSunState: (dateTime) => {
+            currentSunDateTime = dateTime;
+            applyGlobeSunState();
+        },
+        // setSunShadows: globe は floating origin × 地球規模フラスタムのため影投影は未対応。
+        // 太陽方向追従（setSunState）は機能するため、有効化要求時は一度だけ警告して no-op とする。
+        setSunShadows: (enabled) => {
+            if (enabled && !globeShadowsWarned) {
+                globeShadowsWarned = true;
+                console.warn(
+                    "[globeSceneController] sun shadows are not supported on the globe backend; sun direction still follows dateTime.",
+                );
+            }
+        },
 
         // テスト用の idle 判定。globe タイルマネージャの実 idle 状態
         // （初回 sync 済み / 標高ロード中タイル無し / LOD 遷移の pendingRelease 無し に加え、
@@ -1652,6 +1764,7 @@ export const createGlobeSceneController = (
         isTerrainIdle: () => gc.tileManager.isIdle(),
 
         dispose: () => {
+            gc.scene.onBeforeRenderObservable.remove(sunMeshObserver);
             uiDispose();
             gc.dispose();
         },

@@ -26,6 +26,7 @@ import {
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
@@ -259,6 +260,12 @@ export interface GlobeSceneController {
     circleManager: GlobeCircleManager;
     /** グローブ用モデル（Phase 3）。glb/gltf を接地し地心 up へ起立。 */
     modelManager: GlobeModelManager;
+    /** 太陽光（指向性ライト）。時刻連動の太陽方向駆動（#368 / P4-1）に用いる。 */
+    sunLight: DirectionalLight;
+    /** 環境光（半球ライト）。昼夜係数で強度を補間する（#368 / P4-1）。 */
+    hemiLight: HemisphericLight;
+    /** 太陽メッシュ（発光球）。時刻連動で太陽方向に配置・表示する（#368 / P4-1）。 */
+    sunMesh: Mesh;
     /**
      * 地形クリック購読（pick 非依存・floating origin 対応）。クリック地点の緯度経度・標高を
      * リスナーへ通知する。戻り値で購読解除する。
@@ -553,6 +560,54 @@ export class GlobeScene {
         // 依存しない（#335）。海面より僅かに沈めた earthSink は、深度等値での取り合いを避ける保険。
         earthMat.disableDepthWrite = true;
         earth.material = earthMat;
+
+        // ---- 太陽メッシュ遮蔽用の深度オンリー楕円体（#368 / P4-1） ----
+        // 背景球・ベースレイヤは深度を書かない（disableDepthWrite, 上記 / globeTileManager）ため、
+        // 広域ズームでは地球が深度バッファへ寄与せず、太陽メッシュ（後段）が地球の裏側にあっても深度
+        // テストで隠れない。そこで「色を書かず深度のみ書く」ソリッド楕円体を地球と同位置に重ね、太陽を
+        // 地球シルエットで画素単位に遮蔽する（地球の縁(limb)で太陽ディスクが滑らかに欠ける）。
+        // 色を書かない（disableColorWrite）ので地形/オーバーレイ/背景球の見た目は不変。海面より沈めた
+        // earthSink により地形/オーバーレイ（手前）を深度で誤って棄却しない（背景球と同じ #335 の保険）。
+        // 同一レンダリンググループ（RG_BACKGROUND）内では不透明メッシュはマテリアルの uniqueId 昇順で
+        // 描画される（Babylon PainterSortCompare）。この occluder のマテリアルを太陽メッシュより先に
+        // 生成することで occluder が先に深度を書き、続く太陽が深度テストで正しく遮蔽される。
+        const sunOccluder = CreateSphere(
+            "globe-sun-occluder",
+            { diameter: 2, segments: 128 },
+            scene,
+        );
+        sunOccluder.scaling.copyFrom(earth.scaling);
+        sunOccluder.isPickable = false;
+        sunOccluder.renderingGroupId = RG_BACKGROUND;
+        const sunOccluderMat = new StandardMaterial("globe-sun-occluder-mat", scene);
+        sunOccluderMat.disableLighting = true;
+        sunOccluderMat.backFaceCulling = true;
+        // 色は一切書かず深度のみ書く（不可視のオクルーダ）。depthWrite は既定で有効。
+        sunOccluderMat.disableColorWrite = true;
+        sunOccluder.material = sunOccluderMat;
+
+        // 太陽メッシュ（#368 / P4-1）。発光する球を planar 同様に infiniteDistance で配置する。
+        // infiniteDistance 有効時、Babylon は毎フレーム mesh.position にカメラのワールド位置を
+        // 加算してワールド位置を決める（transformNode: position + cameraWorldPosition）。
+        // よって mesh.position に太陽方向ベクトル×距離を設定すれば、floating origin の
+        // 座標リベースに影響されずカメラ相対で常に太陽方向の空へ描画される。地球による遮蔽は上記
+        // occluder の深度で画素単位に処理する。時刻連動の位置/スケール/表示は globeSceneController。
+        // occluder と同じ RG_BACKGROUND に置き、マテリアルは occluder より後に生成する（描画順を保証）。
+        const sunMesh = CreateSphere(
+            "globe-sun-mesh",
+            { diameter: 1, segments: 12 },
+            scene,
+        );
+        const sunMeshMat = new StandardMaterial("globe-sun-mesh-mat", scene);
+        sunMeshMat.emissiveColor = new Color3(1, 0.95, 0.8);
+        sunMeshMat.disableLighting = true;
+        sunMesh.material = sunMeshMat;
+        sunMesh.isPickable = false;
+        sunMesh.infiniteDistance = true;
+        sunMesh.renderingGroupId = RG_BACKGROUND;
+        // infiniteDistance 利用時はフラスタムカリングの取りこぼしを避けて常時アクティブ化する。
+        sunMesh.alwaysSelectAsActiveMesh = true;
+        sunMesh.setEnabled(false);
 
         // ---- 地形タイルマネージャ ----
         const tileManager = createGlobeTileManager({
@@ -1577,6 +1632,9 @@ export class GlobeScene {
             polygonManager,
             circleManager,
             modelManager,
+            sunLight: sun,
+            hemiLight: hemi,
+            sunMesh,
             subscribeTerrainClick,
             subscribePolygonPointHover,
             subscribePolygonPointClick,
