@@ -171,7 +171,8 @@ export const createGlobeModelManager = (
                 node.rotation.z * DEG2RAD,
                 localQuat,
             );
-            // surface * local: モデル局所軸で tilt してから地表へ起立させる。
+            // surface * local（後置乗算 = intrinsic 合成）: 地表へ起立させた姿勢の
+            // 局所軸で pitch/roll を後から合成する。
             quat.multiplyToRef(localQuat, quat);
         }
         if (!node.root.rotationQuaternion) {
@@ -256,6 +257,11 @@ export const createGlobeModelManager = (
 
     const add = (opts: GlobeModelOptions): string => {
         if (disposed) throw new Error("GlobeModelManager.add: called after dispose");
+        const altitudeMode = opts.altitudeMode ?? "terrain";
+        // absolute モードは海抜高度を意図するため、暗黙の 0m を契約違反として弾く。
+        if (altitudeMode === "absolute" && opts.altitude === undefined) {
+            throw new Error('GlobeModelManager.add: altitudeMode="absolute" requires altitude');
+        }
         const id = `globe-model-${seq++}`;
         const root = new TransformNode(`${id}-root`, scene);
         root.rotationQuaternion = new Quaternion();
@@ -265,7 +271,7 @@ export const createGlobeModelManager = (
             lat: opts.lat,
             lon: opts.lon,
             altitude: opts.altitude ?? 0,
-            altitudeMode: opts.altitudeMode ?? "terrain",
+            altitudeMode,
             rotation: resolveVec3(opts.rotation, { x: 0, y: 0, z: 0 }),
             scaling: resolveVec3(opts.scaling, { x: 1, y: 1, z: 1 }),
             enabled: opts.enabled ?? true,
@@ -316,7 +322,20 @@ export const createGlobeModelManager = (
         if (partial.lat !== undefined) node.lat = partial.lat;
         if (partial.lon !== undefined) node.lon = partial.lon;
         if (partial.altitude !== undefined) node.altitude = partial.altitude;
-        if (partial.altitudeMode !== undefined) node.altitudeMode = partial.altitudeMode;
+        if (partial.altitudeMode !== undefined) {
+            // absolute への切替時は、同じ update 呼び出しで altitude の明示指定を要求する
+            // （node.altitude は常に数値のため、暗黙の 0m が海抜高度として通るのを防ぐ）。
+            if (
+                partial.altitudeMode === "absolute" &&
+                node.altitudeMode !== "absolute" &&
+                partial.altitude === undefined
+            ) {
+                throw new Error(
+                    'GlobeModelManager.update: switching to altitudeMode="absolute" requires explicit altitude',
+                );
+            }
+            node.altitudeMode = partial.altitudeMode;
+        }
         if (partial.gravity !== undefined) node.gravity = partial.gravity;
         if (partial.rotation !== undefined) {
             node.rotation = resolveVec3(partial.rotation, node.rotation);

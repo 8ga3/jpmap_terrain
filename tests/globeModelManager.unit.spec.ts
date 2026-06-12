@@ -213,6 +213,25 @@ describe("altitude / 接地", () => {
         expect(mgr.get(id)?.elevationResolved).toBe(false);
         expect(createdRoots[0].enabled).toBe(false);
     });
+
+    it('add で altitudeMode="absolute" かつ altitude 未指定は throw する', () => {
+        const { mgr } = makeManager();
+        expect(() =>
+            mgr.add({ url: "x.glb", lat: 35, lon: 139, altitudeMode: "absolute" }),
+        ).toThrow(/requires altitude/);
+    });
+
+    it('update で absolute へ切替時に altitude 未指定は throw する', async () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await completeLoad();
+        expect(() => mgr.update(id, { altitudeMode: "absolute" })).toThrow(
+            /requires explicit altitude/,
+        );
+        // altitude を同時に指定すれば切替できる。
+        expect(() => mgr.update(id, { altitudeMode: "absolute", altitude: 50 })).not.toThrow();
+        expect(mgr.get(id)?.altitudeMode).toBe("absolute");
+    });
 });
 
 describe("animation", () => {
