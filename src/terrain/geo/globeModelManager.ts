@@ -110,8 +110,6 @@ interface GlobeModelNode {
     cancelled: boolean;
     /** 地表標高が解決済みなら true（absolute 時は常に true）。 */
     elevationResolved: boolean;
-    /** 直近に取得できた地形標高[m]（null=未取得）。 */
-    lastElev: number | null;
     /** 前フレームの可視状態キャッシュ（冗長な setEnabled を削減）。 */
     lastVisible: boolean | null;
 }
@@ -199,7 +197,6 @@ export const createGlobeModelManager = (
                 setVisible(node, false);
                 return;
             }
-            node.lastElev = elev;
             node.elevationResolved = true;
             geodeticToEcefToRef(node.lat, node.lon, elev + node.altitude, node.root.position);
         } else {
@@ -282,7 +279,6 @@ export const createGlobeModelManager = (
             loaded: false,
             cancelled: false,
             elevationResolved: false,
-            lastElev: null,
             lastVisible: null,
         };
         // ロード完了までは非表示（原点表示のチラつき防止）。
