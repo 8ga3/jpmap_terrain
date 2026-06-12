@@ -30,6 +30,7 @@ import { createUiVisibilityController } from "../terrain/uiVisibility";
 import type { MarkerManager } from "../terrain/markerManager";
 import type { PolygonManager } from "../terrain/polygonManager";
 import type { CircleManager } from "../terrain/circleManager";
+import type { ModelManager } from "../terrain/modelManager";
 import type {
     MarkerHandle,
     MarkerOptions,
@@ -49,6 +50,9 @@ import type {
     CircleCenterOptions,
     CircleStyleOptions,
     AltitudeMode,
+    ModelHandle,
+    ModelOptions,
+    ModelUpdate,
     PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
@@ -61,6 +65,7 @@ import {
     CIRCLE_RADIUS_MAX_M,
     CIRCLE_SEGMENTS_MIN,
     CIRCLE_SEGMENTS_MAX,
+    MODEL_DEFAULTS,
 } from "../lib/types";
 import type { GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import type {
@@ -71,6 +76,7 @@ import type {
     GlobeCircleManager,
     GlobeCircleOptions,
 } from "../terrain/geo/globeCircleManager";
+import type { GlobeModelManager } from "../terrain/geo/globeModelManager";
 import type {
     DefaultSceneController,
     DefaultSceneInitOptions,
@@ -1060,6 +1066,183 @@ export class GlobeSceneAdapter {
     };
 }
 
+const MODEL_ERROR_PREFIX = "JpmapTerrain.addModel";
+const MODEL_UPDATE_ERROR_PREFIX = "JpmapTerrain.updateModel";
+
+/**
+ * `GlobeModelManager`（採番 id・in-place 更新対応）を公開 `ModelManager`
+ * （明示 id / `ModelHandle` 返却）へアダプトする (#275 Phase 4 / P4-2)。
+ *
+ * - 公開 id ↔ globe 内部 id の対応を保持する。`GlobeModelManager` は in-place 更新・get・
+ *   animation を備えるため、marker/polygon/circle アダプタと異なりノード再構築（remove+add）は
+ *   不要で、メッシュ再ロードを避けられる。
+ * - planar(`modelManager`) と同契約: 重複 id throw・lat/lon 範囲検証・`absolute` 切替時の
+ *   altitude 必須・`MODEL_DEFAULTS` 適用。
+ * - `elevationResolved` は `GlobeModelManager.get()` の値を用いる（フォールバックとして
+ *   `terrainElevAt!==null` を併用）。
+ *
+ * @internal テスト用に export する。
+ */
+export const createGlobeModelManagerAdapter = (
+    globeMgr: GlobeModelManager,
+    terrainElevAt: (latDeg: number, lonDeg: number) => number | null,
+): ModelManager => {
+    const ids = new Map<string, string>(); // public id -> globe 内部 id
+    let disposed = false;
+
+    const assertNotDisposed = (): void => {
+        if (disposed) throw new Error("ModelManager has been disposed");
+    };
+
+    const requireGlobeId = (id: string, prefix: string): string => {
+        const gid = ids.get(id);
+        if (gid === undefined) throw new Error(`${prefix}: id "${id}" not found`);
+        return gid;
+    };
+
+    const buildHandle = (id: string, gid: string): ModelHandle => {
+        const s = globeMgr.get(gid);
+        if (!s) {
+            // ids に存在するのに globe 側に無いのは内部不整合。
+            throw new Error(`ModelManager: internal state lost for id "${id}"`);
+        }
+        return {
+            id,
+            url: s.url,
+            lat: s.lat,
+            lon: s.lon,
+            altitude: s.altitude,
+            altitudeMode: s.altitudeMode,
+            rotation: { ...s.rotation },
+            scaling: { ...s.scaling },
+            enabled: s.enabled,
+            gravity: s.gravity,
+            loaded: s.loaded,
+            elevationResolved:
+                s.elevationResolved ||
+                s.altitudeMode === "absolute" ||
+                terrainElevAt(s.lat, s.lon) !== null,
+            animationNames: s.animationNames,
+        };
+    };
+
+    return {
+        add(id: string, options: ModelOptions): ModelHandle {
+            assertNotDisposed();
+            if (ids.has(id)) {
+                throw new Error(`${MODEL_ERROR_PREFIX}: id "${id}" already exists`);
+            }
+            assertLatLonInBounds(options.lat, options.lon, MODEL_ERROR_PREFIX);
+            const altitudeMode = options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode;
+            if (altitudeMode === "absolute" && options.altitude === undefined) {
+                throw new Error(
+                    `${MODEL_ERROR_PREFIX}: altitudeMode="absolute" requires altitude`,
+                );
+            }
+            const gid = globeMgr.add({
+                url: options.url,
+                lat: options.lat,
+                lon: options.lon,
+                altitude: options.altitude,
+                altitudeMode,
+                rotation: options.rotation,
+                scaling: options.scaling,
+                enabled: options.enabled,
+                gravity: options.gravity,
+            });
+            ids.set(id, gid);
+            return buildHandle(id, gid);
+        },
+
+        get(id: string): ModelHandle | null {
+            if (disposed) return null;
+            const gid = ids.get(id);
+            return gid === undefined ? null : buildHandle(id, gid);
+        },
+
+        update(id: string, partial: ModelUpdate): ModelHandle {
+            assertNotDisposed();
+            const gid = requireGlobeId(id, MODEL_UPDATE_ERROR_PREFIX);
+            const cur = globeMgr.get(gid);
+            // absolute へ切替える update では altitude の明示指定を要求する（planar 契約）。
+            if (
+                partial.altitudeMode === "absolute" &&
+                cur?.altitudeMode !== "absolute" &&
+                partial.altitude === undefined
+            ) {
+                throw new Error(
+                    `${MODEL_UPDATE_ERROR_PREFIX}: switching to altitudeMode="absolute" requires explicit altitude`,
+                );
+            }
+            if (partial.lat !== undefined || partial.lon !== undefined) {
+                const newLat = partial.lat ?? cur?.lat ?? 0;
+                const newLon = partial.lon ?? cur?.lon ?? 0;
+                assertLatLonInBounds(newLat, newLon, MODEL_UPDATE_ERROR_PREFIX);
+            }
+            globeMgr.update(gid, {
+                lat: partial.lat,
+                lon: partial.lon,
+                altitude: partial.altitude,
+                altitudeMode: partial.altitudeMode,
+                rotation: partial.rotation,
+                scaling: partial.scaling,
+                enabled: partial.enabled,
+                gravity: partial.gravity,
+            });
+            return buildHandle(id, gid);
+        },
+
+        remove(id: string): void {
+            const gid = ids.get(id);
+            if (gid === undefined) {
+                console.warn(`[jpmap-terrain] removeModel: id "${id}" not found`);
+                return;
+            }
+            globeMgr.remove(gid);
+            ids.delete(id);
+        },
+
+        setEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            globeMgr.setEnabled(
+                requireGlobeId(id, "JpmapTerrain.setModelEnabled"),
+                enabled,
+            );
+        },
+
+        list(): readonly string[] {
+            return Array.from(ids.keys());
+        },
+
+        playAnimation(id: string, name?: string): void {
+            assertNotDisposed();
+            globeMgr.playAnimation(
+                requireGlobeId(id, "JpmapTerrain.playModelAnimation"),
+                name,
+            );
+        },
+
+        stopAnimation(id: string, name?: string): void {
+            assertNotDisposed();
+            globeMgr.stopAnimation(
+                requireGlobeId(id, "JpmapTerrain.stopModelAnimation"),
+                name,
+            );
+        },
+
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            // 内部 GlobeModelManager はシーンが毎フレーム tick() で参照し GlobeScene.dispose() が
+            // 破棄する所有者であるため、ここでは破棄しない。このアダプタが追加したモデルのみ削除する。
+            for (const gid of ids.values()) {
+                globeMgr.remove(gid);
+            }
+            ids.clear();
+        },
+    };
+};
+
 /**
  * `GlobeSceneController` を `DefaultSceneController` 互換へ橋渡しする。
  *
@@ -1086,6 +1269,10 @@ export const createGlobeSceneController = (
     );
     const circleManager = createGlobeCircleManagerAdapter(
         gc.circleManager,
+        (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
+    );
+    const modelManager = createGlobeModelManagerAdapter(
+        gc.modelManager,
         (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
     );
 
@@ -1462,6 +1649,7 @@ export const createGlobeSceneController = (
         getMarkerManager: () => markerManager,
         getPolygonManager: () => polygonManager,
         getCircleManager: () => circleManager,
+        getModelManager: () => modelManager,
 
         // ---- 地形クリック購読（pick 非依存・floating origin 対応, #275 P4・実装済み） ----
         // globe シーン（globe.ts）が真の ECEF レイ × 地形楕円体で求めたクリック地点を、公開

@@ -41,7 +41,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/transformNode", () => ({
 }));
 
 // ImportMeshAsync は解決を手動制御できる deferred にする。
-type StubAg = { stop: () => void; dispose: () => void };
+type StubAg = { name?: string; stop: () => void; play?: (loop?: boolean) => void; dispose: () => void };
 let resolveImport:
     | ((meshes: { parent: unknown; dispose: () => void }[], ags?: StubAg[]) => void)
     | null = null;
@@ -53,6 +53,9 @@ const importMeshAsync = jest.fn(
 );
 jest.unstable_mockModule("@babylonjs/core/Loading/sceneLoader", () => ({
     ImportMeshAsync: importMeshAsync,
+}));
+jest.unstable_mockModule("@babylonjs/loaders/glTF/glTFFileLoader", () => ({
+    GLTFLoaderAnimationStartMode: { NONE: 0, FIRST: 1, ALL: 2 },
 }));
 
 const importLoaderForUrl = jest.fn(async () => {});
@@ -87,7 +90,7 @@ beforeEach(() => {
 describe("add / load", () => {
     it("add で root を生成し、ロード完了後に接地・起立する", async () => {
         const { mgr } = makeManager();
-        mgr.add({ url: "x.glb", lat: 35, lon: 139, scale: 10 });
+        mgr.add({ url: "x.glb", lat: 35, lon: 139, scaling: { x: 10, y: 10, z: 10 } });
         expect(createdRoots.length).toBe(1);
         await completeLoad();
         const root = createdRoots[0];
@@ -99,14 +102,14 @@ describe("add / load", () => {
         expect(root.scaling.x).toBe(10);
     });
 
-    it("ロード完了前は update しても位置は原点のまま（loaded ガード）", () => {
+    it("ロード完了前は tick しても位置は原点のまま（loaded ガード）", () => {
         const { mgr } = makeManager();
         mgr.add({ url: "x.glb", lat: 35, lon: 139 });
-        mgr.update(); // まだ loaded=false
+        mgr.tick(); // まだ loaded=false
         expect(createdRoots[0].position.length()).toBe(0);
     });
 
-    it("AnimationGroup はロード直後に stop+dispose される（リーク防止）", async () => {
+    it("AnimationGroup はロード直後に stop されるが保持される（dispose しない）", async () => {
         const { mgr } = makeManager();
         mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await new Promise((r) => setTimeout(r, 0));
@@ -115,7 +118,8 @@ describe("add / load", () => {
         resolveImport?.([mesh], [ag]);
         await new Promise((r) => setTimeout(r, 0));
         expect(ag.stop).toHaveBeenCalled();
-        expect(ag.dispose).toHaveBeenCalled();
+        // P4-2: play/stop 制御のため保持する（リーク防止は remove/dispose で行う）。
+        expect(ag.dispose).not.toHaveBeenCalled();
     });
 });
 
@@ -146,7 +150,84 @@ describe("ライフサイクル", () => {
         mgr.dispose();
         expect(() => mgr.add({ url: "x.glb", lat: 35, lon: 139 })).toThrow(/after dispose/);
         expect(() => mgr.setEnabled("x", true)).toThrow(/after dispose/);
-        expect(() => mgr.update()).toThrow(/after dispose/);
+        expect(() => mgr.tick()).toThrow(/after dispose/);
         expect(() => mgr.dispose()).not.toThrow();
+    });
+});
+
+describe("in-place update / get / list", () => {
+    it("get は解決済み状態を返し、update は lat/lon/altitude/scaling を反映する", async () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await completeLoad();
+        mgr.update(id, { lat: 36, lon: 140, altitude: 5, scaling: { x: 2, y: 2, z: 2 } });
+        const s = mgr.get(id);
+        expect(s).not.toBeNull();
+        expect(s?.lat).toBe(36);
+        expect(s?.lon).toBe(140);
+        expect(s?.altitude).toBe(5);
+        expect(s?.scaling.x).toBe(2);
+        expect(s?.loaded).toBe(true);
+        expect(createdRoots[0].scaling.x).toBe(2);
+        // 内部 id を 1 件保持する。
+        expect(mgr.list()).toHaveLength(1);
+    });
+
+    it("update は import を再実行しない（メッシュ再ロードなし）", async () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await completeLoad();
+        importMeshAsync.mockClear();
+        mgr.update(id, { lat: 36 });
+        expect(importMeshAsync).not.toHaveBeenCalled();
+    });
+
+    it("get は未存在 id で null、update は未存在 id で throw", () => {
+        const { mgr } = makeManager();
+        expect(mgr.get("nope")).toBeNull();
+        expect(() => mgr.update("nope", { lat: 1 })).toThrow(/not found/);
+    });
+});
+
+describe("altitude / 接地", () => {
+    it("absolute モードは地形標高に依らず配置し elevationResolved=true", async () => {
+        const terrainElevAt = jest.fn(() => null as number | null);
+        const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
+        const id = mgr.add({
+            url: "x.glb",
+            lat: 35,
+            lon: 139,
+            altitudeMode: "absolute",
+            altitude: 100,
+        });
+        await completeLoad();
+        expect(mgr.get(id)?.elevationResolved).toBe(true);
+        expect(createdRoots[0].position.length()).toBeGreaterThan(6_000_000);
+    });
+
+    it("terrain+gravity で標高未解決のあいだは非表示（elevationResolved=false）", async () => {
+        const terrainElevAt = jest.fn(() => null as number | null);
+        const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
+        const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await completeLoad();
+        expect(mgr.get(id)?.elevationResolved).toBe(false);
+        expect(createdRoots[0].enabled).toBe(false);
+    });
+});
+
+describe("animation", () => {
+    it("playAnimation/stopAnimation は保持した AnimationGroup を制御する", async () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await new Promise((r) => setTimeout(r, 0));
+        const ag = { name: "walk", stop: jest.fn(), play: jest.fn(), dispose: jest.fn() };
+        const mesh = { parent: null as unknown, dispose: jest.fn() };
+        resolveImport?.([mesh], [ag as unknown as StubAg]);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(mgr.get(id)?.animationNames).toEqual(["walk"]);
+        mgr.playAnimation(id, "walk");
+        expect(ag.play).toHaveBeenCalledWith(true);
+        mgr.stopAnimation(id, "walk");
+        expect(ag.stop).toHaveBeenCalled();
     });
 });

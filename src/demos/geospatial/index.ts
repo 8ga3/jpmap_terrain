@@ -254,7 +254,7 @@ const start = async (): Promise<void> => {
             url: humanGlbUrl,
             lat: 35.360625,
             lon: 138.727363,
-            scale: 400,
+            scaling: { x: 400, y: 400, z: 400 },
         });
     }
 
