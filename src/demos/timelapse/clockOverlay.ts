@@ -23,7 +23,8 @@ export interface ClockAngles {
  */
 export const longitudeToOffsetMs = (lonDeg: number): number => {
     if (!Number.isFinite(lonDeg)) return 0;
-    const normalized = (((lonDeg + 180) % 360) + 360) % 360 - 180;
+    // (-180, 180] へ正規化する（経度 180° は -180° へ折り返さず +180° = UTC+12 とする）。
+    const normalized = 180 - ((((180 - lonDeg) % 360) + 360) % 360);
     // 1° = 24h/360 = 240000 ms。
     return normalized * 240000;
 };
