@@ -9,6 +9,7 @@ import { describe, it, expect } from "@jest/globals";
 import {
     MS_PER_DAY,
     computeSimulatedDate,
+    parseStartDate,
     parseTimelapseQuery,
     sanitizeTimelapseOptions,
 } from "../src/demos/timelapse/timelapseClock";
@@ -73,6 +74,44 @@ describe("computeSimulatedDate", () => {
     });
 });
 
+describe("parseStartDate", () => {
+    it("Z 付き UTC をそのまま解釈する", () => {
+        expect(parseStartDate("2024-01-01T12:00:00Z")?.toISOString()).toBe(
+            "2024-01-01T12:00:00.000Z",
+        );
+    });
+
+    it("タイムゾーン無指定は UTC として解釈する", () => {
+        expect(parseStartDate("2024-06-01T09:30:00")?.toISOString()).toBe(
+            "2024-06-01T09:30:00.000Z",
+        );
+    });
+
+    it("秒なし日時もタイムゾーン無指定は UTC として解釈する", () => {
+        expect(parseStartDate("2024-06-01T09:30")?.toISOString()).toBe(
+            "2024-06-01T09:30:00.000Z",
+        );
+    });
+
+    it("空白へ化けた +hh:mm を復元する", () => {
+        expect(parseStartDate("2024-06-01T09:30:00 09:00")?.toISOString()).toBe(
+            "2024-06-01T00:30:00.000Z",
+        );
+    });
+
+    it("日付のみは UTC 0 時（ES 仕様どおり）", () => {
+        expect(parseStartDate("2024-06-01")?.toISOString()).toBe(
+            "2024-06-01T00:00:00.000Z",
+        );
+    });
+
+    it("空文字・解釈不能は undefined", () => {
+        expect(parseStartDate("")).toBeUndefined();
+        expect(parseStartDate("   ")).toBeUndefined();
+        expect(parseStartDate("not-a-date")).toBeUndefined();
+    });
+});
+
 describe("parseTimelapseQuery", () => {
     const now = isoUtc("2025-06-21T07:30:00Z");
 
@@ -86,6 +125,30 @@ describe("parseTimelapseQuery", () => {
     it("?start=ISO8601 を採用", () => {
         const r = parseTimelapseQuery("?start=2024-01-01T12:00:00Z", now);
         expect(r.startUtc.toISOString()).toBe("2024-01-01T12:00:00.000Z");
+    });
+
+    it("?start のタイムゾーン無指定はローカルではなく UTC として解釈する", () => {
+        const r = parseTimelapseQuery("?start=2024-06-01T09:30:00", now);
+        expect(r.startUtc.toISOString()).toBe("2024-06-01T09:30:00.000Z");
+    });
+
+    it("?start の +hh:mm オフセット（URL で空白へ化けた形）を復元して解釈する", () => {
+        // URLSearchParams は '+' を空白へデコードするため、生値は '...T09:30:00 09:00' になる。
+        const r = parseTimelapseQuery("?start=2024-06-01T09:30:00 09:00", now);
+        expect(r.startUtc.toISOString()).toBe("2024-06-01T00:30:00.000Z");
+    });
+
+    it("?start の %2B エンコード済み +hh:mm オフセットを解釈する", () => {
+        const r = parseTimelapseQuery(
+            "?start=2024-06-01T09:30:00%2B09:00",
+            now,
+        );
+        expect(r.startUtc.toISOString()).toBe("2024-06-01T00:30:00.000Z");
+    });
+
+    it("?start の -hh:mm オフセットを解釈する", () => {
+        const r = parseTimelapseQuery("?start=2024-06-01T09:30:00-05:00", now);
+        expect(r.startUtc.toISOString()).toBe("2024-06-01T14:30:00.000Z");
     });
 
     it("?speed=120 が反映される", () => {

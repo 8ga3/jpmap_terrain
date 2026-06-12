@@ -19,7 +19,6 @@ import { JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { geodeticToEcef, ecefToGeodetic } from "../terrain/geo/ecef";
 import { sunDirectionEcefToRef } from "../terrain/geo/sunDirectionEcef";
 import { computeSunPosition } from "../terrain/sunPosition";
-import { deriveSunState } from "../terrain/sunState";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import {
@@ -1373,9 +1372,9 @@ export const createGlobeSceneController = (
 
     // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
     // timelapse デモは `dateTime` を毎フレーム駆動し setSunState を連打するため、
-    // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)・昼夜の明るさを再計算して
-    // `globe-sun` / `globe-hemi` ライトへ適用する。平面シーン（scenes/default.ts）の
-    // applySunStateForCurrent と同じ太陽計算（computeSunPosition / deriveSunState）を共有する。
+    // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)を再計算して `globe-sun` ライトへ適用する。
+    // 太陽方向は computeSunPosition（平面シーン scenes/default.ts と同じ）で求める。明るさは globe では
+    // 時刻に依らず一定で、昼夜の境界は指向性ライトの幾何で表現する（applyGlobeSunState 参照）。
     let currentSunDateTime: Date | null = null;
     const scratchSunDir = new Vector3();
     let globeShadowsWarned = false;
@@ -1385,34 +1384,44 @@ export const createGlobeSceneController = (
     // 「太陽方向ベクトル × 距離 D」を設定するだけでよい。これによりカメラがどこに/どの座標系
     // （floating origin のリベース後でも）あっても、見かけ方向は常に太陽方向そのものになり、
     // カメラが動いた次フレームでも自動でカメラ相対に追従する（stale 化しない）。
-    // 太陽メッシュのカメラからの距離 D は遠クリップ面 maxZ（高度追従, GeospatialClippingBehavior）の
-    // 手前に収める。GeospatialClippingBehavior は maxZ = horizonDist + planetRadius*0.1 と設定する
-    // （horizonDist = √(|P|²-R²) = カメラから地平線（地球楕円体への接線）までの距離）。太陽メッシュを
-    // この地平線距離に置くと、太陽が地球の縁(limb)へ回り込んだとき occluder（深度のみ楕円体, globe.ts）
-    // の深度とちょうど接し、地球の裏へ進むほど太陽が occluder より奥になって画素単位に遮蔽される。
-    // D を maxZ*0.5 など近くに置くと limb より内側まで太陽が手前に残り「中央が裏に回るまで見える」
-    // 不自然さになるため、地平線距離（maxZ に近い）を採用する。far クリップ余裕のため maxZ*0.97 で上限。
+    // 太陽メッシュのカメラからの距離 D は、地球（occluder）の地平線より「奥」かつ遠クリップ面 maxZ の
+    // 手前に置く。GeospatialClippingBehavior は maxZ = horizonDist + planetRadius*0.1 と設定する
+    // （horizonDist = √(|P|²-R²) = カメラから地平線（地球楕円体への接線）までの距離）。
+    //   - D が horizonDist「ちょうど」だと、低高度では horizonDist が小さく（高度1kmで ~113km）、太陽が
+    //     地平線の地形と同じ距離に来て地面へ刺さって見える（ズームイン時の不具合）。
+    //   - そこで D を horizonDist より planetRadius*0.05 だけ奥に置く（= maxZ - planetRadius*0.05）。
+    //     occluder の地表（最遠 t = horizonDist）より必ず奥になるため、地平線より下の方向の太陽は深度で
+    //     遮蔽され、地平線の上（空）の方向では遮蔽されない＝地平線でちょうど切れる。
+    //   - far クリップに太陽ディスク（半径 ≒ D*0.02）が触れないよう maxZ*0.979 を上限にする。
     const SUN_PLANET_RADIUS = Wgs84Ellipsoid.semiMajorAxis;
-    const SUN_MESH_MAX_FAR_RATIO = 0.97;
+    const SUN_HORIZON_MARGIN = SUN_PLANET_RADIUS * 0.05;
+    const SUN_MESH_MAX_FAR_RATIO = 0.979;
+    // globe は地球全体が画面に入るため、昼夜の境界（ターミネータ）は太陽方向の指向性ライトの幾何
+    // （面の向きと太陽方向の内積）で自然に生じる。注視点の太陽高度（dayFactor）でシーン全体を減光すると、
+    // 画面外・地球の裏側で昼の領域まで一律に暗くなり不自然なため、ライト強度は時刻に依らず一定にする。
+    const GLOBE_SUN_LIGHT_INTENSITY = 1.2;
+    const GLOBE_HEMI_LIGHT_INTENSITY = 0.35;
     // 最後に算出した太陽方向(ECEF, 地表→太陽)と、太陽状態が有効か。距離 D / 見かけサイズは
     // カメラ（ズーム・高度）に依存するため、dateTime 更新時だけでなく毎フレーム再評価する。
     const currentSunDirEcef = new Vector3();
     let sunStateValid = false;
 
     // 太陽メッシュを現在のカメラ状態に合わせて毎フレーム更新する。
-    // 地球による遮蔽は occluder（深度のみ楕円体, globe.ts）の深度テストが画素単位に行うため、ここでは
-    // 位置（太陽方向 × 地平線距離 D）と見かけサイズ（視角一定）のみを設定する。D=地平線距離により太陽は
-    // 地球の縁から滑らかに欠け、地球の裏側では完全に隠れる（カメラが地表近傍なら「地平線下」、宇宙なら
-    // 「地球の背面」を深度で統一的に扱える）。
+    // 地球・地形による遮蔽は、太陽メッシュを地形と同一レンダリンググループ（共有深度）に置いたうえで、
+    // occluder（深度のみ楕円体, globe.ts）と実際の地形タイル（深度を書く LOD）の深度テストが画素単位に
+    // 行う。ここでは位置（太陽方向 × 距離 D）と見かけサイズ（視角一定）のみを設定する。D を地形より十分
+    // 奥（地平線より奥・far クリップ手前）に置くことで、太陽は手前の地形や地球の縁から滑らかに欠け、地球の
+    // 裏側では完全に隠れる。
     const placeSunMesh = (): void => {
         if (!sunStateValid) return;
         gc.sunMesh.setEnabled(true);
-        // maxZ = 地平線距離 + R*0.1 なので、地平線距離 = maxZ - R*0.1。far クリップに太陽ディスクが
-        // 触れないよう maxZ*0.97 を上限にクランプする。
-        const horizonDist = camera.maxZ - SUN_PLANET_RADIUS * 0.1;
+        // 地平線より SUN_HORIZON_MARGIN だけ奥（= maxZ - R*0.05）に置き、far クリップ手前へクランプする。
         const sunDist = Math.max(
             1,
-            Math.min(horizonDist, camera.maxZ * SUN_MESH_MAX_FAR_RATIO),
+            Math.min(
+                camera.maxZ - SUN_HORIZON_MARGIN,
+                camera.maxZ * SUN_MESH_MAX_FAR_RATIO,
+            ),
         );
         gc.sunMesh.position.copyFrom(currentSunDirEcef).scaleInPlace(sunDist);
         // 見かけの大きさ（視角）を一定に保つため、カメラからの距離（= sunDist）に比例させる。
@@ -1444,11 +1453,10 @@ export const createGlobeSceneController = (
         // 太陽方向(ECEF, 地表→太陽)を求め、指向性ライトには符号反転(太陽→地表)を渡す。
         sunDirectionEcefToRef(latDeg, lonDeg, altitudeDeg, azimuthDeg, scratchSunDir);
         gc.sunLight.direction = scratchSunDir.scale(-1);
-        // 昼夜係数で明るさを補間する（平面シーンと同方針）。dayFactor は注視点の太陽高度に基づく
-        // シーン全体の明るさで、太陽メッシュの表示可否（地球遮蔽）とは別管理。
-        const { dayFactor } = deriveSunState(altitudeDeg, azimuthDeg);
-        gc.sunLight.intensity = dayFactor;
-        gc.hemiLight.intensity = 0.2 + 0.8 * dayFactor;
+        // 明るさは時刻に依らず一定（昼夜の境界は指向性ライトの幾何で生じる。上記コメント参照）。
+        // 注視点の昼夜でシーン全体を減光しないことで、地球の裏側の昼領域が一律に暗くなる不自然さを避ける。
+        gc.sunLight.intensity = GLOBE_SUN_LIGHT_INTENSITY;
+        gc.hemiLight.intensity = GLOBE_HEMI_LIGHT_INTENSITY;
         // 太陽メッシュ（発光球）。infiniteDistance がカメラ位置を加算するため、position には
         // 太陽方向×距離（カメラからのオフセット）だけを設定する。距離・サイズ・遮蔽は placeSunMesh
         // が毎フレーム評価する。

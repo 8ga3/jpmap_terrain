@@ -68,9 +68,36 @@ export const computeSimulatedDate = (
     return new Date(options.startUtc.getTime() + offsetMs);
 };
 
+// 日時部分（`T` 以降に時刻を含む）にタイムゾーン指定（`Z` または `±hh:mm` / `±hhmm`）が
+// 付いているか判定する。
+const HAS_TZ_DESIGNATOR = /T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/;
+// `URLSearchParams` が `+hh:mm` の `+` を空白へデコードした形（`...T09:30:00 09:00`）を捉える。
+const PLUS_OFFSET_AS_SPACE =
+    /^(.*T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?) (\d{2}:?\d{2})$/;
+
+/**
+ * `?start=` の生文字列を `Date` に解釈する。`start` は仕様上 UTC として解釈する（決定的表示）。
+ * - `URLSearchParams` は `application/x-www-form-urlencoded` 規約で `+` を空白へデコードするため、
+ *   `+09:00` のような正のタイムゾーンオフセットが空白に化けて `Invalid Date` になる。日時の後ろに
+ *   ` hh:mm` が続く形を検出し、`+hh:mm` へ復元する（`%2B` で明示エンコードされた場合は既に `+`）。
+ * - タイムゾーン指定（`Z` / `±hh:mm`）が無いベア日時は、ECMAScript では実行環境のローカル時刻として
+ *   解釈され非決定的になる。仕様（UTC 解釈）に合わせて末尾に `Z` を補う。日付のみ（時刻なし）は
+ *   ES 仕様で既に UTC 扱いのため変更しない。
+ * @returns 解釈できた `Date`。空文字や解釈不能なら `undefined`。
+ */
+export const parseStartDate = (raw: string): Date | undefined => {
+    let s = raw.trim();
+    if (s === "") return undefined;
+    const spaceOffset = PLUS_OFFSET_AS_SPACE.exec(s);
+    if (spaceOffset) s = `${spaceOffset[1]}+${spaceOffset[2]}`;
+    if (s.includes("T") && !HAS_TZ_DESIGNATOR.test(s)) s = `${s}Z`;
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? undefined : d;
+};
+
 /**
  * URL クエリ文字列からタイムラプス設定を解決する。
- * - `?start=` ISO 8601。失敗時は本日 0 時 (UTC)
+ * - `?start=` ISO 8601（タイムゾーン無指定は UTC として解釈）。失敗時は本日 0 時 (UTC)
  * - `?speed=` 数値秒（24h を何秒で再生するか）。0 以下や NaN は 60s にフォールバック
  * - `?paused`（値なし）または `?paused=true` で停止
  */
@@ -85,8 +112,7 @@ export const parseTimelapseQuery = (
     let startUtc: Date | undefined;
     const startRaw = params.get("start");
     if (startRaw !== null) {
-        const d = new Date(startRaw);
-        if (!Number.isNaN(d.getTime())) startUtc = d;
+        startUtc = parseStartDate(startRaw);
     }
     if (!startUtc) {
         // 当日 0 時 UTC を既定値にする（決定的な見やすい初期表示）。
