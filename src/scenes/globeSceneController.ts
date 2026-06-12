@@ -1132,6 +1132,9 @@ export const createGlobeModelManagerAdapter = (
             if (ids.has(id)) {
                 throw new Error(`${MODEL_ERROR_PREFIX}: id "${id}" already exists`);
             }
+            if (!options.url) {
+                throw new Error(`${MODEL_ERROR_PREFIX}: url is required`);
+            }
             assertLatLonInBounds(options.lat, options.lon, MODEL_ERROR_PREFIX);
             const altitudeMode = options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode;
             if (altitudeMode === "absolute" && options.altitude === undefined) {
