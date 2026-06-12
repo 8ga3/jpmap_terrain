@@ -1219,18 +1219,33 @@ export const createGlobeModelManagerAdapter = (
 
         playAnimation(id: string, name?: string): void {
             assertNotDisposed();
-            globeMgr.playAnimation(
-                requireGlobeId(id, "JpmapTerrain.playModelAnimation"),
-                name,
-            );
+            const gid = requireGlobeId(id, "JpmapTerrain.playModelAnimation");
+            // planar(`ModelManager.playAnimation`) と同契約: 公開 id・`[jpmap-terrain]`
+            // prefix で warn し、未ロード/名前不一致では委譲しない。
+            const state = globeMgr.get(gid);
+            if (!state?.loaded) {
+                console.warn(
+                    `[jpmap-terrain] playModelAnimation: model "${id}" is not loaded yet`,
+                );
+                return;
+            }
+            if (name !== undefined && !state.animationNames.includes(name)) {
+                console.warn(
+                    `[jpmap-terrain] playModelAnimation: animation "${name}" not found in model "${id}"`,
+                );
+                return;
+            }
+            globeMgr.playAnimation(gid, name);
         },
 
         stopAnimation(id: string, name?: string): void {
             assertNotDisposed();
-            globeMgr.stopAnimation(
-                requireGlobeId(id, "JpmapTerrain.stopModelAnimation"),
-                name,
-            );
+            const gid = requireGlobeId(id, "JpmapTerrain.stopModelAnimation");
+            // planar と同契約: 未ロード時は警告せず no-op、名前不一致も静かに無視する。
+            const state = globeMgr.get(gid);
+            if (!state?.loaded) return;
+            if (name !== undefined && !state.animationNames.includes(name)) return;
+            globeMgr.stopAnimation(gid, name);
         },
 
         dispose(): void {

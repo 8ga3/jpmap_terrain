@@ -1013,12 +1013,17 @@ const makeGlobeModelStub = (): {
     removed: string[];
     importCount: () => number;
     disposed: () => boolean;
+    playCalls: { id: string; name?: string }[];
+    stopCalls: { id: string; name?: string }[];
+    setLoaded: (id: string, loaded: boolean) => void;
 } => {
     let seq = 0;
     let disposedFlag = false;
     let imports = 0;
     const added: { id: string; opts: GlobeModelOptions }[] = [];
     const removed: string[] = [];
+    const playCalls: { id: string; name?: string }[] = [];
+    const stopCalls: { id: string; name?: string }[] = [];
     const states = new Map<string, GlobeModelState>();
     const mgr = {
         add: (opts: GlobeModelOptions): string => {
@@ -1075,8 +1080,12 @@ const makeGlobeModelStub = (): {
             if (s) s.enabled = enabled;
         },
         list: (): readonly string[] => Array.from(states.keys()),
-        playAnimation: (): void => {},
-        stopAnimation: (): void => {},
+        playAnimation: (id: string, name?: string): void => {
+            playCalls.push({ id, name });
+        },
+        stopAnimation: (id: string, name?: string): void => {
+            stopCalls.push({ id, name });
+        },
         tick: (): void => {},
         dispose: (): void => {
             disposedFlag = true;
@@ -1088,6 +1097,12 @@ const makeGlobeModelStub = (): {
         removed,
         importCount: () => imports,
         disposed: () => disposedFlag,
+        playCalls,
+        stopCalls,
+        setLoaded: (id: string, loaded: boolean): void => {
+            const s = states.get(id);
+            if (s) s.loaded = loaded;
+        },
     };
 };
 
@@ -1182,6 +1197,56 @@ describe("createGlobeModelManagerAdapter (P4-2 model overlay)", () => {
         expect(() => m.add("c", { url: "a.glb", lat: POS.lat, lon: POS.lon })).toThrow(
             /disposed/,
         );
+        warn.mockRestore();
+    });
+
+    it("playAnimation は公開 id・[jpmap-terrain] prefix で warn し、条件を満たすときのみ委譲する", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
+        m.add("human", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        const gid = stub.added[0].id;
+
+        // 未ロード時は warn して委譲しない（公開 id を含む）。
+        stub.setLoaded(gid, false);
+        m.playAnimation("human", "walk");
+        expect(warn).toHaveBeenCalledWith(
+            '[jpmap-terrain] playModelAnimation: model "human" is not loaded yet',
+        );
+        expect(stub.playCalls).toHaveLength(0);
+
+        // 名前不一致は warn して委譲しない。
+        stub.setLoaded(gid, true);
+        m.playAnimation("human", "missing");
+        expect(warn).toHaveBeenCalledWith(
+            '[jpmap-terrain] playModelAnimation: animation "missing" not found in model "human"',
+        );
+        expect(stub.playCalls).toHaveLength(0);
+
+        // 条件を満たせば内部 gid で委譲する。
+        m.playAnimation("human", "walk");
+        expect(stub.playCalls).toEqual([{ id: gid, name: "walk" }]);
+        warn.mockRestore();
+    });
+
+    it("stopAnimation は未ロード/名前不一致では委譲せず warn もしない", () => {
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const stub = makeGlobeModelStub();
+        const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
+        m.add("human", { url: "a.glb", lat: POS.lat, lon: POS.lon });
+        const gid = stub.added[0].id;
+
+        stub.setLoaded(gid, false);
+        m.stopAnimation("human");
+        expect(stub.stopCalls).toHaveLength(0);
+
+        stub.setLoaded(gid, true);
+        m.stopAnimation("human", "missing");
+        expect(stub.stopCalls).toHaveLength(0);
+
+        m.stopAnimation("human", "walk");
+        expect(stub.stopCalls).toEqual([{ id: gid, name: "walk" }]);
+        expect(warn).not.toHaveBeenCalled();
         warn.mockRestore();
     });
 });
