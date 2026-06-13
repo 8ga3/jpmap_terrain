@@ -5,6 +5,15 @@ export const TILE_SIZE = 256;
 /** 地理院タイルの最大ズームレベル */
 export const TILE_MAX_ZOOM = 18;
 
+/**
+ * 地理院テクスチャ（std/seamlessphoto）が世界全域を被覆する最大ズームレベル。
+ *
+ * これより高いズームは日本周辺（おおむね `JAPAN_BOUNDS`）のみ配信され、域外は 404 を返す。
+ * 全球ビューで域外をズームインしてもタイルが欠けないよう、域外タイルの細分化上限に用いる
+ * （Issue #347）。
+ */
+export const WORLD_TEXTURE_MAX_ZOOM = 8;
+
 export const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 } as const;
 
 const DEM_LAYERS = ["dem5a_png", "dem5b_png", "dem_png"] as const;

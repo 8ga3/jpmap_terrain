@@ -351,6 +351,40 @@ describe("selectGlobeTiles", () => {
         });
         expect(hasForeground).toBe(true);
     });
+
+    describe("日本被覆域外のテクスチャ上限クランプ (#347)", () => {
+        // 日本外（米ニューヨーク付近）。GSI テクスチャは z9 以上が存在しないため、
+        // 近接カメラでも z8 までしか細分化されないこと。
+        const NY_LAT = 40.7128;
+        const NY_LON = -74.006;
+
+        const overseasOpts = (altMeters: number): GlobeLodOptions => ({
+            ...baseOpts(altMeters, {
+                cameraEcef: geodeticToEcef(NY_LAT, NY_LON, altMeters),
+                centerLat: NY_LAT,
+                centerLon: NY_LON,
+                minZoom: 11,
+                maxZoom: 18,
+                rootZoomFloor: 2,
+            }),
+        });
+
+        it("日本外は近接カメラでも z8 までに制限される（root が minZoom>8 でも丸める）", () => {
+            const tiles = selectGlobeTiles(overseasOpts(3000));
+            expect(tiles.length).toBeGreaterThan(0);
+            const maxZ = Math.max(...tiles.map((t) => t.zoom));
+            expect(maxZ).toBeLessThanOrEqual(8);
+        });
+
+        it("日本国内は従来通り z8 を超えて細分化される", () => {
+            const tiles = selectGlobeTiles(
+                baseOpts(3000, { minZoom: 11, maxZoom: 18, rootZoomFloor: 2 }),
+            );
+            expect(tiles.length).toBeGreaterThan(0);
+            const maxZ = Math.max(...tiles.map((t) => t.zoom));
+            expect(maxZ).toBeGreaterThan(8);
+        });
+    });
 });
 
 describe("selectGlobeRootTiles", () => {
