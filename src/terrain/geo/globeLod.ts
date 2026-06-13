@@ -15,7 +15,7 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters } from "../gsiTile";
+import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters, JAPAN_BOUNDS, WORLD_TEXTURE_MAX_ZOOM } from "../gsiTile";
 import { ecefToGeodetic, geodeticToEcefToRef } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
 
@@ -438,6 +438,32 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
 };
 
 /**
+ * タイル (zoom,x,y) の地理範囲が日本テクスチャ被覆域（`JAPAN_BOUNDS`）と交差するか判定する。
+ *
+ * 地理院テクスチャ（std/seamlessphoto）は世界全域を z0–`WORLD_TEXTURE_MAX_ZOOM` まで、それより
+ * 高ズームは日本周辺のみ配信する。域外を高ズーム細分化するとタイルが 404 で欠けるため、交差判定で
+ * 域外タイルの細分化上限をクランプする（Issue #347）。タイルの北西・南東角の緯度経度から範囲を
+ * 求め、`JAPAN_BOUNDS` と AABB 交差するかを返す。
+ */
+const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
+    // 角の緯度経度（タイル境界）。tileCenterLatLon は中心を返すため、+0.5 オフセットを打ち消す形で
+    // 角を直接算出する。
+    const n = 2 ** zoom;
+    const lonWest = (x / n) * 360 - 180;
+    const lonEast = ((x + 1) / n) * 360 - 180;
+    const latNorth =
+        (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
+    const latSouth =
+        (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180) / Math.PI;
+    return (
+        lonEast >= JAPAN_BOUNDS.minLon &&
+        lonWest <= JAPAN_BOUNDS.maxLon &&
+        latNorth >= JAPAN_BOUNDS.minLat &&
+        latSouth <= JAPAN_BOUNDS.maxLat
+    );
+};
+
+/**
  * グローブ向け Quadtree+SSE でカメラ近傍の可視タイルを選択する。
  *
  * root は `selectGlobeRootTiles` が選ぶ「nadir→center→地平線」の帯（Issue #329）。
@@ -521,8 +547,17 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
 
         // 受容条件: SSE（距離累進）を満たし、かつ「タイル 1 辺 ≤ カメラ距離」（巨大タイルが
         // 近景を内包して整形で誤除去されるのを防ぐ粗さ上限）。maxZoom 到達時はそれ以上分割不可。
+        // 日本テクスチャ被覆域外のタイルは z>WORLD_TEXTURE_MAX_ZOOM のテクスチャが存在せず 404 で
+        // 欠けるため、実効 maxZoom を WORLD_TEXTURE_MAX_ZOOM にクランプして低レベル表示を維持する
+        // （Issue #347）。交差判定は z>=WORLD_TEXTURE_MAX_ZOOM のノードに限定してコストを抑える。
+        const effMaxZoom =
+            zoom >= WORLD_TEXTURE_MAX_ZOOM &&
+            maxZoom > WORLD_TEXTURE_MAX_ZOOM &&
+            !tileIntersectsJapan(zoom, x, y)
+                ? WORLD_TEXTURE_MAX_ZOOM
+                : maxZoom;
         const accept =
-            zoom >= maxZoom ||
+            zoom >= effMaxZoom ||
             ((tileSizeMeters * viewportHeight) /
                 (Math.max(1, distance) * sseDenomBase) <=
                 effectiveSseThreshold(sseThreshold, distance, camAlt) &&
@@ -558,7 +593,22 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         verticalFov,
         sseThreshold,
     });
-    for (const r of roots) traverse(r.zoom, r.x, r.y);
+    // root シードを traverse 開始点とする。日本被覆域外の root が minZoom(>WORLD_TEXTURE_MAX_ZOOM)
+    // で生成されると、それ以上分割しなくても root タイル自体のテクスチャが存在せず(404)白く欠ける。
+    // そこで域外 root は WORLD_TEXTURE_MAX_ZOOM の祖先に丸めて開始する（Issue #347）。複数 root が
+    // 同一祖先へ collapse しても acceptedKeys の重複排除で吸収される。
+    for (const r of roots) {
+        if (
+            r.zoom > WORLD_TEXTURE_MAX_ZOOM &&
+            maxZoom > WORLD_TEXTURE_MAX_ZOOM &&
+            !tileIntersectsJapan(r.zoom, r.x, r.y)
+        ) {
+            const dz = r.zoom - WORLD_TEXTURE_MAX_ZOOM;
+            traverse(WORLD_TEXTURE_MAX_ZOOM, r.x >> dz, r.y >> dz);
+        } else {
+            traverse(r.zoom, r.x, r.y);
+        }
+    }
 
     // 正しい quadtree カットへ整える（#335）: 距離適応で root の zoom が位置ごとに変わるため、
     // ズーム遷移の継ぎ目で粗いタイルと、その中に含まれる細いタイル（子孫）が同じ地表を二重に
