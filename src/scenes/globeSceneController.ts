@@ -19,6 +19,7 @@ import { JAPAN_BOUNDS } from "../terrain/gsiTile";
 import { geodeticToEcef, ecefToGeodetic } from "../terrain/geo/ecef";
 import { sunDirectionEcefToRef } from "../terrain/geo/sunDirectionEcef";
 import { computeSunPosition } from "../terrain/sunPosition";
+import { deriveSkyColor } from "../terrain/sunState";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import {
@@ -1463,6 +1464,9 @@ export const createGlobeSceneController = (
         // 注視点の昼夜でシーン全体を減光しないことで、地球の裏側の昼領域が一律に暗くなる不自然さを避ける。
         gc.sunLight.intensity = GLOBE_SUN_LIGHT_INTENSITY;
         gc.hemiLight.intensity = GLOBE_HEMI_LIGHT_INTENSITY;
+        // 時刻連動の背景基調色（Issue #380）。注視点の太陽高度から昼=青/夜=紺/日の出入り=茜 を導き、
+        // globe.ts の clearColor ループが毎フレームこの色から宇宙黒へ高度連動で lerp する。
+        gc.skyBaseColor.copyFrom(deriveSkyColor(altitudeDeg));
         // 太陽メッシュ（発光球）。infiniteDistance がカメラ位置を加算するため、position には
         // 太陽方向×距離（カメラからのオフセット）だけを設定する。距離・サイズ・遮蔽は placeSunMesh
         // が毎フレーム評価する。
@@ -1475,6 +1479,28 @@ export const createGlobeSceneController = (
     // 再配置する。これがないと、ズームイン時に算出した小さな距離・サイズが stale 化し、ズームアウト
     // 時に太陽が極小化して見えなくなる（地球の弧が見える広域ズームで顕著）。
     const sunMeshObserver = gc.scene.onBeforeRenderObservable.add(placeSunMesh);
+
+    // 注視点の移動（パン）でも背景色が昼夜境界（ターミネータ）を跨いで追従するよう、中心の
+    // 緯度経度が変化したら太陽状態を再計算する（planar が centerChanged で再計算するのと挙動を揃える, #380）。
+    // 太陽の ECEF 方向は dateTime 固定なら中心移動に対して実質不変だが、注視点のローカル太陽高度は
+    // 変わるため skyBaseColor の更新が必要。毎フレームの天文計算を避けるため中心変化時のみ実行する。
+    let lastSunCenterLat = Number.NaN;
+    let lastSunCenterLon = Number.NaN;
+    const skyColorObserver = gc.scene.onBeforeRenderObservable.add(() => {
+        // 太陽未初期化（setSunState 未呼び出し）の間は no-op（placeSunMesh と同じ方針）。
+        // 実利用では JpmapTerrain 初期化時に必ず setSunState が呼ばれるため、初回反映後にパン追従する。
+        if (!sunStateValid) return;
+        const { latDeg, lonDeg } = currentGeodetic();
+        if (
+            Math.abs(latDeg - lastSunCenterLat) < 0.01 &&
+            Math.abs(lonDeg - lastSunCenterLon) < 0.01
+        ) {
+            return;
+        }
+        lastSunCenterLat = latDeg;
+        lastSunCenterLon = lonDeg;
+        applyGlobeSunState();
+    });
 
     // ---- UI コントロールパネル配線（#275 Phase 4 / P4-1） ----
     // canvas が渡された実行時のみ DOM コントロールパネルを生成・配線する（単体テストの
@@ -1779,6 +1805,7 @@ export const createGlobeSceneController = (
 
         dispose: () => {
             gc.scene.onBeforeRenderObservable.remove(sunMeshObserver);
+            gc.scene.onBeforeRenderObservable.remove(skyColorObserver);
             uiDispose();
             gc.dispose();
         },

@@ -19,6 +19,16 @@ const DEG2RAD = Math.PI / 180;
 const DAY_CLEAR_COLOR = new Color3(0.75, 0.86, 0.95);
 /** 夜の深い紺色。`Skybox` を非表示にした際に背景として見える */
 const NIGHT_CLEAR_COLOR = new Color3(0.02, 0.03, 0.08);
+/** 日の出・日の入りの茜色（暖色のオレンジ赤）。地平線付近でブレンドする（Issue #380） */
+const DUSK_CLEAR_COLOR = new Color3(0.8, 0.4, 0.22);
+
+/**
+ * 茜色が現れる太陽高度の半幅（度）。地平線（高度 0°）を中心に ±この範囲で茜色を強める。
+ * 民間薄明（±6°）よりやや広く取り、日の出/入り前後を滑らかに彩る。
+ */
+const DUSK_BAND_DEG = 8;
+/** 茜色ブレンドの最大強度（0..1）。1.0 だと地平線でほぼ完全に茜色になる。 */
+const DUSK_STRENGTH = 0.7;
 
 /** Scene へ適用する太陽パラメータ束。Babylon.js への依存はここで吸収する。 */
 export interface SunState {
@@ -106,4 +116,28 @@ export function deriveSunState(
         clearColor,
         visibleAboveHorizon,
     };
+}
+
+/**
+ * 太陽高度（度）から「時刻連動の背景（skybox）色」を導く純関数（Issue #380）。
+ *
+ * SkyMaterial を使わない globe シーン向けに、太陽位置だけで空色を決める。
+ * - 夜（高度 < -6°）: 深い紺（`NIGHT_CLEAR_COLOR`）
+ * - 昼（高度 > +6°）: 薄い青空（`DAY_CLEAR_COLOR`）
+ * - 日の出・日の入り（地平線付近）: 茜色（`DUSK_CLEAR_COLOR`）を重ねる
+ *
+ * planar シーン（`deriveSunState` + SkyMaterial）と色味の方向性を揃えつつ、
+ * 高度連動の宇宙黒化（`computeSpaceFactor`）は呼び出し側で別途合成する。
+ *
+ * @param altitudeDeg 太陽高度（度, -90..90, 地平線=0）。非有限値は昼色フォールバック。
+ */
+export function deriveSkyColor(altitudeDeg: number): Color3 {
+    if (!Number.isFinite(altitudeDeg)) return DAY_CLEAR_COLOR.clone();
+    // 夜→昼の基調色（紺→青）。薄明帯（-6°..+6°）で連続補間。
+    const dayFactor = smoothstep(-6, 6, altitudeDeg);
+    const base = Color3.Lerp(NIGHT_CLEAR_COLOR, DAY_CLEAR_COLOR, dayFactor);
+    // 地平線（高度 0°）を中心に三角プロファイルで茜色を強める。±DUSK_BAND_DEG の外では 0。
+    const duskFactor =
+        Math.max(0, 1 - Math.abs(altitudeDeg) / DUSK_BAND_DEG) * DUSK_STRENGTH;
+    return Color3.Lerp(base, DUSK_CLEAR_COLOR, duskFactor);
 }

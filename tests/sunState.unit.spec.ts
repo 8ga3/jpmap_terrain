@@ -8,6 +8,7 @@
 import { describe, it, expect } from "@jest/globals";
 
 import { deriveSunState } from "../src/terrain/sunState";
+import { deriveSkyColor } from "../src/terrain/sunState";
 
 describe("deriveSunState", () => {
     it("真昼（高度 60°）は dayFactor=1、skyLuminance≈1、太陽メッシュ可視", () => {
@@ -119,5 +120,49 @@ describe("deriveSunState", () => {
         expect(deriveSunState(0, 0).skyAzimuth).toBeCloseTo(0, 5);
         expect(deriveSunState(0, 90).skyAzimuth).toBeCloseTo(0.25, 5);
         expect(deriveSunState(0, 359.999).skyAzimuth).toBeLessThan(1);
+    });
+});
+
+describe("deriveSkyColor (Issue #380)", () => {
+    it("真昼（高度 60°）は青空色（青 > 赤）", () => {
+        const c = deriveSkyColor(60);
+        expect(c.r).toBeCloseTo(0.75, 5);
+        expect(c.g).toBeCloseTo(0.86, 5);
+        expect(c.b).toBeCloseTo(0.95, 5);
+        expect(c.b).toBeGreaterThan(c.r);
+    });
+
+    it("夜間（高度 -30°）は深い紺（暗く青寄り）", () => {
+        const c = deriveSkyColor(-30);
+        expect(c.r).toBeCloseTo(0.02, 5);
+        expect(c.g).toBeCloseTo(0.03, 5);
+        expect(c.b).toBeCloseTo(0.08, 5);
+    });
+
+    it("地平線付近（高度 0°）は茜色（赤が緑・青より強い暖色）", () => {
+        const c = deriveSkyColor(0);
+        expect(c.r).toBeGreaterThan(c.g);
+        expect(c.r).toBeGreaterThan(c.b);
+        // 昼の青空（青優勢）でも夜の紺でもないことを確認
+        expect(c.r).toBeGreaterThan(0.4);
+    });
+
+    it("茜色は地平線で最も強く、±DUSK_BAND_DEG(8°) の外では消える", () => {
+        // 茜色の強さは赤と青の差（r - b）で測る。地平線で最大、帯の外で 0。
+        const horizon = deriveSkyColor(0);
+        const mid = deriveSkyColor(4);
+        const outside = deriveSkyColor(20);
+        const redness = (c: { r: number; b: number }) => c.r - c.b;
+        expect(redness(horizon)).toBeGreaterThan(redness(mid));
+        expect(redness(mid)).toBeGreaterThan(0);
+        // 帯の外（高度 20°）は昼空色そのもの（茜ブレンド無し）
+        expect(outside.r).toBeCloseTo(0.75, 5);
+        expect(outside.b).toBeGreaterThan(outside.r);
+    });
+
+    it("非有限値は昼空色へフォールバックする", () => {
+        const c = deriveSkyColor(Number.NaN);
+        expect(c.r).toBeCloseTo(0.75, 5);
+        expect(c.b).toBeCloseTo(0.95, 5);
     });
 });
