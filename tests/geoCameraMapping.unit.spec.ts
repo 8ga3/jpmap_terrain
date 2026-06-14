@@ -315,4 +315,19 @@ describe("polePanSpeedMultiplier", () => {
         // 原点近傍（地心距離 < 1）は退化として 1 を返す。
         expect(polePanSpeedMultiplier(new Vector3(0, 0, 0), R)).toBe(1);
     });
+
+    it("非有限入力（NaN/Infinity）は NaN を返さず 1（退化扱い）", () => {
+        const badSamples: Array<[Vector3, number]> = [
+            [new Vector3(R, 0, 0), NaN],
+            [new Vector3(R, 0, 0), Infinity],
+            [new Vector3(NaN, 0, 0), R],
+            [new Vector3(0, 0, NaN), R],
+            [new Vector3(Infinity, 0, 0), R],
+        ];
+        for (const [center, h] of badSamples) {
+            const m = polePanSpeedMultiplier(center, h);
+            expect(Number.isNaN(m)).toBe(false);
+            expect(m).toBe(1);
+        }
+    });
 });
