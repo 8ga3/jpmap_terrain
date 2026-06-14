@@ -24,6 +24,9 @@ const ECEF_POLE = new Vector3(0, 0, 1);
 /** 接線基底が縮退（特異点）とみなす長さ二乗のしきい値。 */
 const DEGENERATE_EPS = 1e-12;
 
+/** パン減速の高さ（長さ次元[m]）方向の 0 除算回避用しきい値。`DEGENERATE_EPS`（長さ二乗）とは次元が異なる。 */
+const MIN_PAN_HEIGHT_EPS = 1e-6;
+
 /** 既存 UI の azimuth/tilt[deg] → `GeospatialCamera` の yaw/pitch[rad]。 */
 export const uiToYawPitch = (
     azimuthDeg: number,
@@ -126,7 +129,7 @@ export const polePanSpeedMultiplier = (
     const sineLat = Math.min(1, Math.max(-1, center.z / centerRadius));
     const cosLat = Math.sqrt(Math.max(0, 1 - sineLat * sineLat));
     const latitudeDampening = Math.sqrt(cosLat); // sqrt で赤道付近の効きを弱める
-    const height = Math.max(cameraHeight, DEGENERATE_EPS);
+    const height = Math.max(cameraHeight, MIN_PAN_HEIGHT_EPS);
     // 地表付近（height が小さい）では係数を 1 へ寄せ、緯度減速を無効化する。
     const latitudeDampeningScale = Math.max(1, centerRadius / height);
     const m = latitudeDampeningScale * latitudeDampening;
