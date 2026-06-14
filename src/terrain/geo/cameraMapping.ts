@@ -94,6 +94,36 @@ export const cameraTangentBasisToRef = (
 };
 
 /**
+ * 極付近のパン減速係数（[0,1]）を返す。極では東西の一定メートル移動が経度（極回りの方位角）の
+ * 巨大な変化に対応し、地球が高速回転して見える（#356）。Babylon 組み込みパン
+ * (`geospatialCameraMovement.computeCurrentFrameDeltas`) の緯度ダンピングと同等の式で、
+ * 独自パン（`scenes/globe.ts`）にも極減速を与える。
+ *
+ * - 赤道では 1.0（減速なし）、極へ近づくほど 0 へ漸近する（`sqrt(cos(lat))`）。
+ * - 高度が低い（`cameraHeight` が地心距離に対して小さい）ほど減速を緩め、地表付近では
+ *   緯度の影響を受けないようにする（`max(1, centerRadius/height)` でスケール）。
+ *
+ * @param center      注視点(ECEF)。`center.z/|center|` が球面緯度の sin。
+ * @param cameraHeight カメラの対地高度相当[m]（独自パンでは `camera.radius` を渡す）。
+ * @returns           [0,1] のパン速度係数。`center` が原点近傍など退化時は 1。
+ */
+export const polePanSpeedMultiplier = (
+    center: Vector3,
+    cameraHeight: number,
+): number => {
+    const centerRadius = center.length();
+    if (centerRadius < 1) return 1;
+    const sineLat = Math.min(1, Math.max(-1, center.z / centerRadius));
+    const cosLat = Math.sqrt(Math.max(0, 1 - sineLat * sineLat));
+    const latitudeDampening = Math.sqrt(cosLat); // sqrt で赤道付近の効きを弱める
+    const height = Math.max(cameraHeight, DEGENERATE_EPS);
+    // 地表付近（height が小さい）では係数を 1 へ寄せ、緯度減速を無効化する。
+    const latitudeDampeningScale = Math.max(1, centerRadius / height);
+    const m = latitudeDampeningScale * latitudeDampening;
+    return Math.min(1, Math.max(0, m));
+};
+
+/**
  * 注視点(center)を接線移動量 `tangentMove`[m] だけ動かし、地心距離 |center| を保つよう
  * 球面へ再投影した結果を `ref` に書き込む。パン共通の後処理。
  */

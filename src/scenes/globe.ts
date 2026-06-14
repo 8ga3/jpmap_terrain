@@ -36,6 +36,7 @@ import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geod
 import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
+    polePanSpeedMultiplier,
     clampRadiusForGroundClearance,
     rayEllipsoidNearHitToRef,
 } from "../terrain/geo/cameraMapping";
@@ -481,6 +482,8 @@ export class GlobeScene {
             // マップを掴んで引く挙動: 右ドラッグ→center 西（content 右へ）、下ドラッグ→center 北（前方）。
             tangent.copyFrom(dragRight).scaleInPlace(-dx * mpp);
             tangent.addInPlace(dragFwd.scaleInPlace(dy * mpp));
+            // 極付近の高速回転を抑える（#356）。極では東西の一定メートル移動が経度の巨大変化に対応する。
+            tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
         };
         canvas.addEventListener("pointerdown", onPointerDown);
@@ -520,6 +523,8 @@ export class GlobeScene {
             tangent.addInPlace(dragRight.scaleInPlace(side));
             if (tangent.lengthSquared() < 1e-12) return;
             tangent.normalize().scaleInPlace(step);
+            // 極付近の高速回転を抑える（#356）。左ドラッグパンと同一の減速を WASD にも適用する。
+            tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
         };
 
