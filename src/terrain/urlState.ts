@@ -196,14 +196,21 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  *
  * `options.terrainEngine` が `"globe"` の場合、緯度経度を {@link WORLD_BOUNDS}（全球）で
  * クランプする。未指定 / `"planar"` の場合は従来どおり {@link JAPAN_BOUNDS} でクランプする (#375)。
+ * `options` 未指定時は URL クエリ `?terrainEngine=` をフォールバックとして解決するため、
+ * 呼び出し側が options を渡さなくても globe URL を1本で正しく復元できる (#375)。
  */
 export const parseCameraStateFromUrl = (
     url: string,
     options?: { terrainEngine?: TerrainEngine },
 ): CameraUrlState | null => {
-    const bounds = resolveLatLonBounds(options?.terrainEngine);
     try {
         const parsed = new URL(url, "http://localhost");
+
+        // options 未指定時は URL クエリ `?terrainEngine=` をフォールバック解決する (#375)。
+        // これにより呼び出し側が options を渡し忘れても URL 1本で globe 復元できる。
+        const terrainEngine =
+            options?.terrainEngine ?? resolveTerrainEngine(parsed.search);
+        const bounds = resolveLatLonBounds(terrainEngine);
 
         // pathname + hash のみに @lat,lon を適用（userinfo やクエリ値の @ を誤検出しない）
         const target = parsed.pathname + parsed.hash;
