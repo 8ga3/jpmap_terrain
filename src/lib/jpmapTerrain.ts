@@ -92,6 +92,9 @@ export class JpmapTerrain {
     /** ドラッグによるマップのパン操作 (Issue #259)。既定 ON */
     private _enablePan: boolean;
 
+    /** WASD キーボードによるマップのパン操作（globe のみ）。既定 ON */
+    private _enableKeyboardPan: boolean;
+
     private _canvas: HTMLCanvasElement | null = null;
     private _engine: AbstractEngine | null = null;
     private _scene: Scene | null = null;
@@ -150,6 +153,9 @@ export class JpmapTerrain {
             options.showSunShadows ?? JPMAP_TERRAIN_DEFAULTS.showSunShadows;
         this._enablePan =
             options.enablePan ?? JPMAP_TERRAIN_DEFAULTS.enablePan;
+        this._enableKeyboardPan =
+            options.enableKeyboardPan ??
+            JPMAP_TERRAIN_DEFAULTS.enableKeyboardPan;
     }
 
     /**
@@ -235,6 +241,7 @@ export class JpmapTerrain {
                 viewMode: this._viewMode,
                 onViewModeChange: (next) => this._handleViewModeChange(next),
                 enablePan: this._enablePan,
+                enableKeyboardPan: this._enableKeyboardPan,
                 onCameraInteractionEnd: () => {
                     // #225: ドラッグリリース時にスナップショットを無効化し、
                     // 次フレームで新しいベースラインを取得させる。

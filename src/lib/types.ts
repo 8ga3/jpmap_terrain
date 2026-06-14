@@ -93,6 +93,13 @@ export interface JpmapTerrainOptions {
      * 砲撃ゲームのように戦場を常に中央へ固定したいデモで使用する。
      */
     enablePan?: boolean;
+    /**
+     * WASD キーボードによるマップのパン操作を有効にするかどうか（globe バックエンドのみ）。
+     * 既定 `true`。`false` を指定すると WASD によるカメラパンを無効化する（左ドラッグパン・
+     * 回転・ズームは有効のまま）。WASD を独自操作に使うデモ（avatar-controller など）で、
+     * 組み込みの WASD パンとの競合を避けるために使用する。planar では WASD パン自体が無いため無効。
+     */
+    enableKeyboardPan?: boolean;
 }
 
 /**
@@ -133,6 +140,7 @@ export const JPMAP_TERRAIN_DEFAULTS = {
     autoSunPosition: false as boolean,
     showSunShadows: false as boolean,
     enablePan: true as boolean,
+    enableKeyboardPan: true as boolean,
 } as const;
 
 /**
