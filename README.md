@@ -99,7 +99,7 @@ npm start
 **3D モード**
 
 - 形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-- `altitude`: カメラのワールド高度（m）。範囲 [50, 80000]
+- `altitude`: カメラのワールド高度（m）。範囲 [50, 25512548]（上限は globe バックエンドの最大 radius = planetRadius×4 に合わせる。planar は実質 ≈78776m まで）
 - `azimuth`: 方位角（度）。0 = 北、時計回り正
 - `tilt`: 仰角（度）。範囲 [約5.7, 75]
 - 省略した場合は既定値（altitude=2000, azimuth=0, tilt=45）で補完されます

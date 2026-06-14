@@ -31,12 +31,22 @@ const TILT_MIN_RAD = 0.1;
 const TILT_MIN_DEG = (TILT_MIN_RAD * 180) / Math.PI;
 
 /**
+ * altitude のクランプ上限 (m)。
+ * globe（GeospatialCamera）バックエンドはカメラの `radius` を altitude として URL に書き出す。
+ * GeospatialCamera の既定 `radiusMax` は planetRadius × 4（WGS84 semiMajorAxis 6,378,137m × 4
+ * = 25,512,548m）であり、高高度（全球視点）でもクランプで丸めないよう上限をこの値に合わせる (#369)。
+ * planar では camera.position.y が upperRadiusLimit（75km）で自前クランプされるため、
+ * 本上限の引き上げは planar の URL 復元挙動に影響しない（planar 由来の値は最大でも ≈ 78776m）。
+ */
+const ALTITUDE_MAX = 25_512_548;
+
+/**
  * altitude / tilt のクランプ範囲。
- * - altitude: camera.position.y（= target.y + radius·cos β）の最大が Mt.Fuji 3776m + 75000m radius ≈ 78776m に達するため [50, 80000] (m)
+ * - altitude: [50, {@link ALTITUDE_MAX}] (m)。上限は globe の最大 radius に合わせる (#369)。
  * - tilt: [{@link TILT_MIN_DEG}, 75]（deg）。下限は {@link TILT_MIN_RAD} rad を度換算した値
  */
 export const CAMERA_URL_LIMITS = {
-    altitude: { min: 50, max: 80000 },
+    altitude: { min: 50, max: ALTITUDE_MAX },
     tilt: { min: TILT_MIN_DEG, max: 75 },
     zoomLevel: { min: 5, max: 23 },
 } as const;
@@ -122,7 +132,7 @@ export const CAMERA_URL_DEFAULTS = {
 const AT_PATTERN =
     /@(-?\d+\.?\d*),(-?\d+\.?\d*)(?:,(-?\d+\.?\d*z?))?(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?/;
 
-/** altitude を [50, 80000] にクランプし整数化する */
+/** altitude を [50, {@link ALTITUDE_MAX}] にクランプし整数化する */
 export const clampAltitude = (v: number): number => {
     const c = clamp(v, CAMERA_URL_LIMITS.altitude.min, CAMERA_URL_LIMITS.altitude.max);
     return Math.round(c);
