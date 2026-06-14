@@ -399,9 +399,9 @@ interface MarkerOptions {
 **2D モードにおけるパス形式（Issue #254）:**
 
 - 3D モードのパス形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-  - `altitude` はカメラの高さ（m）。範囲 [50, 25512548]。バックエンドにより意味が異なる (#369):
+  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。バックエンドにより意味が異なる (#369):
     - planar: **カメラのワールド高度**（`camera.position.y`）。値は実質 ≈78776m（富士山頂 + upperRadiusLimit 75km）まで。
-    - globe（`terrainEngine=globe`）: **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）。上限 25,512,548m は globe の最大 radius = planetRadius×4 に由来する。
+    - globe（`terrainEngine=globe`）: **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）。上限は globe の最大 radius = planetRadius×4 に由来する。
 - 2D モードのパス形式: `/@<lat>,<lon>,<zoom>z`（Google Maps 互換）
   - `zoom` は Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]
   - 2D では平行投影のためカメラの海抜高度は表示範囲に影響しないため、altitude の代わりにズームレベルを使用する
