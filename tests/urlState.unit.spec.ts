@@ -439,6 +439,7 @@ describe("urlState", () => {
                 "http://localhost/viewer/@-120.0,200.0",
                 { terrainEngine: "globe" }
             );
+            expect(result).not.toBeNull();
             expect(result!.lat).toBe(-90);
             expect(result!.lon).toBe(180);
         });
@@ -448,12 +449,14 @@ describe("urlState", () => {
                 "http://localhost/viewer/@17.316969,38.639148",
                 { terrainEngine: "planar" }
             );
+            expect(planar).not.toBeNull();
             expect(planar!.lat).toBe(20);
             expect(planar!.lon).toBe(122);
 
             const noEngine = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148"
             );
+            expect(noEngine).not.toBeNull();
             expect(noEngine!.lat).toBe(20);
             expect(noEngine!.lon).toBe(122);
         });
@@ -463,6 +466,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148?terrainEngine=globe"
             );
+            expect(result).not.toBeNull();
             expect(result!.lat).toBeCloseTo(17.316969, 6);
             expect(result!.lon).toBeCloseTo(38.639148, 6);
         });
@@ -473,6 +477,7 @@ describe("urlState", () => {
                 "http://localhost/viewer/@17.316969,38.639148?terrainEngine=globe",
                 { terrainEngine: "planar" }
             );
+            expect(result).not.toBeNull();
             expect(result!.lat).toBe(20);
             expect(result!.lon).toBe(122);
         });
