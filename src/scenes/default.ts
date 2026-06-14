@@ -52,7 +52,7 @@ const HEIGHT_SCALE = 1.0;
 // から外れて表示されない。zoom 8（タイル辺 ≒ 128km）が遠方の山まで表示できる下限。
 const MIN_ZOOM = 8;
 // Quadtree root 探索範囲（minZoom タイル単位の ±N 格子）。
-// 最大 tilt（beta ≈ 75°）の水平視野は遠クリッピング（400km）近くまで達するため、zoom8 で ±4
+// 最大 tilt（beta ≈ 89°）の水平視野は遠クリッピング（400km）近くまで達するため、zoom8 で ±4
 // （9×9、概ね ±512km カバー）を既定とする。視錐台外の root は AABB カリングで即除外される。
 const ROOT_SEARCH_RADIUS = 4;
 
@@ -441,8 +441,8 @@ export class DefaultScene implements CreateSceneClass {
         // 2D モード中は lowerBetaLimit を 0 に変更するため、3D 復帰用に元の値を保持する。
         const lowerBetaLimit3d = 0.1;
 
-        // チルト制限（地面から15° = beta上限 5π/12）
-        camera.upperBetaLimit = Math.PI / 2 - Math.PI / 12;
+        // チルト制限（地面から1° = beta上限 89π/180）。実態として水平近くまで表示可能なため上限を 89° に合わせる (#377)。
+        camera.upperBetaLimit = Math.PI / 2 - Math.PI / 180;
         // beta=0（真下視点）はArcRotateCameraのジンバルロック・数値不安定を招くため最小値を設定
         camera.lowerBetaLimit = lowerBetaLimit3d;
 

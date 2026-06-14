@@ -64,7 +64,7 @@ describe("computeCameraControl", () => {
                 false,
                 45,
             );
-            // 0.5秒 × 60°/s = 30° 増加。45+30=75=MAX なのでクランプされずフル変化
+            // 0.5秒 × 60°/s = 30° 増加。45+30=75<MAX(89) なのでクランプされずフル変化
             expect(result.deltaTilt).toBeCloseTo(TILT_SPEED_DPS * 0.5, 1);
         });
 

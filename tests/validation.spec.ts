@@ -265,7 +265,7 @@ async function waitForSceneWithSkybox(
     await page.waitForLoadState("networkidle", { timeout: 30000 });
 
     // チルト最大に倒して画面上部に空を映す。
-    // `viewer.tilt` setter は内部で beta クランプ済み（upperBetaLimit ≈ 75°）。
+    // `viewer.tilt` setter は内部で beta クランプ済み（upperBetaLimit ≈ 89°）。
     await page.evaluate((tiltValue) => {
         (window as any).viewer.tilt = tiltValue;
     }, SKYBOX_TILT_DEG);
