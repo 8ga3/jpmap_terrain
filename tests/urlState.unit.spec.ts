@@ -457,6 +457,25 @@ describe("urlState", () => {
             expect(noEngine!.lat).toBe(20);
             expect(noEngine!.lon).toBe(122);
         });
+
+        // #375: options 未指定でも URL クエリ ?terrainEngine=globe をフォールバック解決する。
+        it("options 未指定でも URL の ?terrainEngine=globe でクランプ範囲が全球になる (#375)", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/viewer/@17.316969,38.639148?terrainEngine=globe"
+            );
+            expect(result!.lat).toBeCloseTo(17.316969, 6);
+            expect(result!.lon).toBeCloseTo(38.639148, 6);
+        });
+
+        it("options.terrainEngine は URL クエリより優先される (#375)", () => {
+            // URL は globe だが options で planar を明示 → JAPAN_BOUNDS でクランプ。
+            const result = parseCameraStateFromUrl(
+                "http://localhost/viewer/@17.316969,38.639148?terrainEngine=globe",
+                { terrainEngine: "planar" }
+            );
+            expect(result!.lat).toBe(20);
+            expect(result!.lon).toBe(122);
+        });
     });
 
     describe("clampAltitude / clampTilt / normalizeAzimuth", () => {
