@@ -368,7 +368,7 @@ describe("urlState", () => {
 
         it("altitude が範囲外の場合はクランプして整数化される", () => {
             const tooHigh = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,99999999,0,45"
+                `http://localhost/@35.0,139.0,${CAMERA_URL_LIMITS.altitude.max + 1},0,45`
             );
             expect(tooHigh!.altitude).toBe(CAMERA_URL_LIMITS.altitude.max);
 
@@ -427,7 +427,9 @@ describe("urlState", () => {
     describe("clampAltitude / clampTilt / normalizeAzimuth", () => {
         it("clampAltitude は範囲外をクランプし整数化する", () => {
             expect(clampAltitude(0)).toBe(CAMERA_URL_LIMITS.altitude.min);
-            expect(clampAltitude(99_999_999)).toBe(CAMERA_URL_LIMITS.altitude.max);
+            expect(clampAltitude(CAMERA_URL_LIMITS.altitude.max + 1)).toBe(
+                CAMERA_URL_LIMITS.altitude.max
+            );
             expect(clampAltitude(1234.7)).toBe(1235);
         });
 
