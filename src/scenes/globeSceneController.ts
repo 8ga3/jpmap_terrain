@@ -1059,6 +1059,8 @@ export class GlobeSceneAdapter {
                 azimuth: options?.azimuth,
                 tilt: options?.tilt,
                 mapType,
+                enablePan: options?.enablePan,
+                enableKeyboardPan: options?.enableKeyboardPan,
             },
         );
 

@@ -176,6 +176,18 @@ export interface GlobeSceneInitOptions {
     mapType?: MapType;
     /** クロスレベル標高スナップを有効化するか（既定 true）。 */
     snapEnabled?: boolean;
+    /**
+     * ユーザーによるマップのパン操作（左ドラッグ / WASD キーボード）を有効にするか（既定 true）。
+     * `false` の場合は組み込みのドラッグパン・WASD パンを無効化する（回転・ズームは有効のまま）。
+     * カメラを外部（例: アバター追従）から駆動するデモで、組み込みパンとの競合を避けるために使う。
+     */
+    enablePan?: boolean;
+    /**
+     * WASD キーボードによるマップのパン操作を有効にするか（既定 true）。
+     * `false` の場合は WASD パンのみ無効化する（左ドラッグパン・回転・ズームは有効のまま）。
+     * WASD を独自操作に使うデモ（avatar-controller など）で組み込み WASD パンとの競合を避けるために使う。
+     */
+    enableKeyboardPan?: boolean;
     /** 同期統計のコールバック（情報表示・テスト用）。 */
     onSyncStats?: (stats: GlobeSceneSyncInfo) => void;
 }
@@ -336,6 +348,12 @@ export class GlobeScene {
         const tilt = options.tilt ?? GLOBE_SCENE_DEFAULTS.tilt;
         const mapType: MapType = options.mapType ?? "std";
         const snapEnabled = options.snapEnabled ?? true;
+        // ユーザーパン（左ドラッグ / WASD）を有効にするか。外部からカメラを駆動する
+        // デモ（アバター追従など）では false にして組み込みパンとの競合を避ける。
+        const panEnabled = options.enablePan !== false;
+        // WASD キーボードパンの個別ゲート。ドラッグパンは有効のまま WASD だけ無効化したい
+        // デモ（avatar-controller）のために enablePan とは別に制御する。
+        const keyboardPanEnabled = options.enableKeyboardPan !== false;
 
         // Large World Rendering: 真の ECEF（百万 m オーダー）でも精度を保つため floating origin を有効化。
         const scene = new Scene(engine, { useFloatingOrigin: true });
@@ -471,6 +489,7 @@ export class GlobeScene {
                 return;
             }
             if (!dragging) return;
+            if (!panEnabled) return;
             const dx = e.clientX - lastX;
             const dy = e.clientY - lastY;
             lastX = e.clientX;
@@ -509,6 +528,7 @@ export class GlobeScene {
          * （北固定ではなく「画面で奥が W」）。真下視点では前後左右が定義できないためスキップ。
          */
         const applyKeyboardPan = (): void => {
+            if (!panEnabled || !keyboardPanEnabled) return;
             if (pressed.size === 0) return;
             let fwd = 0;
             let side = 0;

@@ -399,6 +399,11 @@ export interface DefaultSceneInitOptions {
      */
     enablePan?: boolean;
     /**
+     * WASD キーボードによるマップのパン操作を有効にするかどうか（globe バックエンドのみ有効）。
+     * 既定 `true`。planar では WASD パンが存在しないため無視される。
+     */
+    enableKeyboardPan?: boolean;
+    /**
      * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
      */
