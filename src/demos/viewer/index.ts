@@ -16,7 +16,7 @@
  * `window.showToast` を露出する。これらは公開 API ではない。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
-import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
+import type { EngineType, JpmapTerrainOptions, TerrainEngine } from "../../lib/types";
 import { showToast } from "../../terrain/controlPanel";
 import {
     parseCameraStateFromUrl,
@@ -28,7 +28,6 @@ import {
     resolveTerrainEngine,
     type CameraUrlState,
 } from "../../terrain/urlState";
-import type { TerrainEngine } from "../../lib/types";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -72,8 +71,9 @@ export const resolveCameraState = (
  */
 export const resolveLatLon = (
     url: string,
+    terrainEngine?: TerrainEngine,
 ): { lat: number; lon: number } | undefined => {
-    const state = resolveCameraState(url);
+    const state = resolveCameraState(url, terrainEngine);
     return state ? { lat: state.lat, lon: state.lon } : undefined;
 };
 
