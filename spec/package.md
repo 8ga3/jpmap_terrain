@@ -399,7 +399,7 @@ interface MarkerOptions {
 **2D モードにおけるパス形式（Issue #254）:**
 
 - 3D モードのパス形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-  - `altitude` はカメラのワールド高度（m）。範囲 [50, 80000]
+  - `altitude` はカメラのワールド高度（m）。範囲 [50, 25512548]（上限は globe バックエンドの最大 radius = planetRadius×4 ≈ 25,512,548m に合わせる。planar 由来の値は実質 ≈78776m まで。#369）
 - 2D モードのパス形式: `/@<lat>,<lon>,<zoom>z`（Google Maps 互換）
   - `zoom` は Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]
   - 2D では平行投影のためカメラの海抜高度は表示範囲に影響しないため、altitude の代わりにズームレベルを使用する
