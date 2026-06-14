@@ -72,7 +72,11 @@ export function createSkybox(scene: Scene): SkyboxHandle {
     skybox.infiniteDistance = true;
 
     const applySunToSky = (state: SunState, spaceFactor = 0): void => {
-        const f = Math.max(0, Math.min(1, spaceFactor));
+        // 非有限値（NaN/Infinity）は 0 扱いにしてから [0,1] へクランプし、NaN が
+        // luminance / rayleigh に流れて描画が破綻するのを防ぐ。
+        const f = Number.isFinite(spaceFactor)
+            ? Math.max(0, Math.min(1, spaceFactor))
+            : 0;
         skyMaterial.inclination = state.skyInclination;
         skyMaterial.azimuth = state.skyAzimuth;
         // 高度が上がるほど輝度とレイリー散乱を 0 へ落とし、空を黒（宇宙）へ近づける。

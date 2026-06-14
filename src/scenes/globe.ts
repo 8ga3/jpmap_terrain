@@ -1606,8 +1606,13 @@ export class GlobeScene {
             // 高度連動の背景暗化（高高度ほど宇宙の黒へ）。Issue #371。
             // 真の測地高度 altMeters を用い、約 12km から暗化開始・75km でほぼ黒に収束させる。
             const spaceFactor = computeSpaceFactor(camGeo.altMeters);
-            const bg = Color3.Lerp(DAY_SKY_COLOR, SPACE_SKY_COLOR, spaceFactor);
-            scene.clearColor.set(bg.r, bg.g, bg.b, 1);
+            // 毎フレーム Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
+            scene.clearColor.set(
+                DAY_SKY_COLOR.r + (SPACE_SKY_COLOR.r - DAY_SKY_COLOR.r) * spaceFactor,
+                DAY_SKY_COLOR.g + (SPACE_SKY_COLOR.g - DAY_SKY_COLOR.g) * spaceFactor,
+                DAY_SKY_COLOR.b + (SPACE_SKY_COLOR.b - DAY_SKY_COLOR.b) * spaceFactor,
+                1,
+            );
             // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
             seatCenterOnTerrain(camGeo.altMeters, isZoomActive());
             enforceGroundClearance(camEcef, camGeo);

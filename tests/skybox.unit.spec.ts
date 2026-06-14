@@ -53,10 +53,8 @@ jest.unstable_mockModule("@babylonjs/materials/sky/skyMaterial", () => ({
     SkyMaterial: jest.fn(() => mockSkyMaterialInstance),
 }));
 
-const { createSkybox } = await import("../src/terrain/skybox");
-const { computeSpaceFactor, SPACE_FADE_START_M, SPACE_FADE_END_M } = await import(
-    "../src/terrain/skybox"
-);
+const { createSkybox, computeSpaceFactor, SPACE_FADE_START_M, SPACE_FADE_END_M } =
+    await import("../src/terrain/skybox");
 const { CreateBox } = await import("@babylonjs/core/Meshes/Builders/boxBuilder");
 
 const mockScene = {} as never;
@@ -144,6 +142,12 @@ describe("createSkybox", () => {
         handle.applySunToSky(state, 0.5);
         expect(mockSkyMaterialInstance.luminance).toBeCloseTo(0.25, 5);
         expect(mockSkyMaterialInstance.rayleigh).toBeCloseTo(1, 5);
+        // 非有限値（NaN）は 0 扱いとし、NaN が SkyMaterial へ流れない。
+        handle.applySunToSky(state, Number.NaN);
+        expect(Number.isNaN(mockSkyMaterialInstance.luminance)).toBe(false);
+        expect(Number.isNaN(mockSkyMaterialInstance.rayleigh)).toBe(false);
+        expect(mockSkyMaterialInstance.luminance).toBeCloseTo(0.5, 5);
+        expect(mockSkyMaterialInstance.rayleigh).toBeCloseTo(2, 5);
     });
 });
 

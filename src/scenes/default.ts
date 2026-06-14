@@ -2385,8 +2385,13 @@ export class DefaultScene implements CreateSceneClass {
             // 夜は SkyMaterial の物理モデルが破綻するため Skybox を消し、`clearColor`（夜色）を背景に出す。
             skyboxHandle.mesh.setEnabled(state.skyVisible);
             // 背景色も高度に応じて黒へ寄せ、Skybox 非表示時（夜）でも宇宙の黒を表現する。
-            const bg = Color3.Lerp(state.clearColor, SPACE_CLEAR_COLOR, spaceFactor);
-            scene.clearColor.set(bg.r, bg.g, bg.b, 1);
+            // 毎更新で Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
+            scene.clearColor.set(
+                state.clearColor.r + (SPACE_CLEAR_COLOR.r - state.clearColor.r) * spaceFactor,
+                state.clearColor.g + (SPACE_CLEAR_COLOR.g - state.clearColor.g) * spaceFactor,
+                state.clearColor.b + (SPACE_CLEAR_COLOR.b - state.clearColor.b) * spaceFactor,
+                1,
+            );
             // 指向性ライト方向 = 太陽から地表向き = -sunDir
             sunLight.direction = state.sunDir.scale(-1);
             sunLight.intensity = state.dayFactor;
