@@ -274,6 +274,12 @@ export interface GlobeSceneController {
     /** 太陽メッシュ（発光球）。時刻連動で太陽方向に配置・表示する（#368 / P4-1）。 */
     sunMesh: Mesh;
     /**
+     * 時刻連動の背景（skybox）基調色（Issue #380）。`scene.clearColor` は毎フレーム
+     * この色から `SPACE_SKY_COLOR`（宇宙黒）へ高度連動で lerp して決まる。
+     * 太陽位置に応じた更新は controller（globeSceneController）が `deriveSkyColor` で行う。
+     */
+    skyBaseColor: Color3;
+    /**
      * 地形クリック購読（pick 非依存・floating origin 対応）。クリック地点の緯度経度・標高を
      * リスナーへ通知する。戻り値で購読解除する。
      */
@@ -1596,6 +1602,9 @@ export class GlobeScene {
         // 戻り値から代入される controller」をまだ初期化前に参照し TDZ エラーになるため。
         // frame=0 の最初のフレームで即同期し、以降は syncIntervalFrames ごとに再評価する。
         let frame = 0;
+        // 時刻連動の背景基調色（Issue #380）。controller が deriveSkyColor で更新する。
+        // 初期値は昼空色（dateTime 反映前のフォールバック）。
+        const skyBaseColor = DAY_SKY_COLOR.clone();
         const observer = scene.onBeforeRenderObservable.add(() => {
             applyKeyboardPan();
             // カメラ ECEF と測地座標・lookAt を 1 フレーム 1 回だけ計算し、seat と衝突で共有する
@@ -1607,10 +1616,11 @@ export class GlobeScene {
             // 真の測地高度 altMeters を用い、約 12km から暗化開始・75km でほぼ黒に収束させる。
             const spaceFactor = computeSpaceFactor(camGeo.altMeters);
             // 毎フレーム Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
+            // 基調色は時刻連動の skyBaseColor（昼=青/夜=紺/日の出入り=茜, Issue #380）。
             scene.clearColor.set(
-                DAY_SKY_COLOR.r + (SPACE_SKY_COLOR.r - DAY_SKY_COLOR.r) * spaceFactor,
-                DAY_SKY_COLOR.g + (SPACE_SKY_COLOR.g - DAY_SKY_COLOR.g) * spaceFactor,
-                DAY_SKY_COLOR.b + (SPACE_SKY_COLOR.b - DAY_SKY_COLOR.b) * spaceFactor,
+                skyBaseColor.r + (SPACE_SKY_COLOR.r - skyBaseColor.r) * spaceFactor,
+                skyBaseColor.g + (SPACE_SKY_COLOR.g - skyBaseColor.g) * spaceFactor,
+                skyBaseColor.b + (SPACE_SKY_COLOR.b - skyBaseColor.b) * spaceFactor,
                 1,
             );
             // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
@@ -1667,6 +1677,7 @@ export class GlobeScene {
             sunLight: sun,
             hemiLight: hemi,
             sunMesh,
+            skyBaseColor,
             subscribeTerrainClick,
             subscribePolygonPointHover,
             subscribePolygonPointClick,

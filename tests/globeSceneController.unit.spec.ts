@@ -6,6 +6,7 @@
  * 往復精度を確認する。overlay 未対応・viewMode "3d" 固定・mapType 切替の暫定挙動もあわせて検証する。
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 import { jest } from "@jest/globals";
 
@@ -104,6 +105,8 @@ const makeStub = (
             scaling: new Vector3(1, 1, 1),
             setEnabled: jest.fn(),
         },
+        // 時刻連動の背景基調色（#380）。applyGlobeSunState が copyFrom で更新する。
+        skyBaseColor: new Color3(0.75, 0.86, 0.95),
         // 太陽メッシュの毎フレーム再配置オブザーバ登録/解除に必要な最小 scene スタブ。
         scene: {
             onBeforeRenderObservable: {
