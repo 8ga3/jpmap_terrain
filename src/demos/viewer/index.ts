@@ -57,6 +57,9 @@ export { resolveTerrainEngine };
  * 内部的に {@link parseCameraStateFromUrl} を再利用する薄いラッパー。
  *
  * @param url 解析対象 URL（`location.href` 等）
+ * @param terrainEngine クランプ範囲を切り替える地形バックエンド (#375)。
+ *   `"globe"` なら全球（`WORLD_BOUNDS`）、`"planar"` なら日本域（`JAPAN_BOUNDS`）でクランプする。
+ *   未指定時は URL クエリ `?terrainEngine=` をフォールバック解決する（明示指定が優先）。
  * @returns 取得できた場合は `CameraUrlState`、取得できない場合は `undefined`
  */
 export const resolveCameraState = (
