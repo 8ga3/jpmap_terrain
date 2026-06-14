@@ -99,7 +99,9 @@ npm start
 **3D モード**
 
 - 形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-- `altitude`: カメラのワールド高度（m）。範囲 [50, 25512548]（上限は globe バックエンドの最大 radius = planetRadius×4 に合わせる。planar は実質 ≈78776m まで）
+- `altitude`: カメラの高さ（m）。範囲 [50, 25512548]
+  - planar バックエンドでは **カメラのワールド高度**（`camera.position.y`）を表す。値は実質 ≈78776m（富士山頂 + upperRadiusLimit 75km）まで。
+  - globe バックエンド（`terrainEngine=globe`）では意味が異なり、**GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）を表す。上限 25,512,548m は globe の最大 radius = planetRadius×4 に由来する。
 - `azimuth`: 方位角（度）。0 = 北、時計回り正
 - `tilt`: 仰角（度）。範囲 [約5.7, 75]
 - 省略した場合は既定値（altitude=2000, azimuth=0, tilt=45）で補完されます
