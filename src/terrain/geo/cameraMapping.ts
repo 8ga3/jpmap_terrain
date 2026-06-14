@@ -105,13 +105,23 @@ export const cameraTangentBasisToRef = (
  *
  * @param center      注視点(ECEF)。`center.z/|center|` が球面緯度の sin。
  * @param cameraHeight カメラの対地高度相当[m]（独自パンでは `camera.radius` を渡す）。
- * @returns           [0,1] のパン速度係数。`center` が原点近傍など退化時は 1。
+ * @returns           [0,1] のパン速度係数。`center` が原点近傍、または `center`/`cameraHeight` が
+ *                    非有限（NaN/Infinity）などの退化時は 1（呼び出し側で NaN が伝播しないよう保証）。
  */
 export const polePanSpeedMultiplier = (
     center: Vector3,
     cameraHeight: number,
 ): number => {
     const centerRadius = center.length();
+    // 非有限入力は NaN を返さず減速なし(1)に倒す（呼び出し側の tangent.scaleInPlace(NaN) で
+    // カメラ中心が壊れるのを防ぐ。Math.max/min は NaN を潰せないため明示ガードする）。
+    if (
+        !Number.isFinite(centerRadius) ||
+        !Number.isFinite(center.z) ||
+        !Number.isFinite(cameraHeight)
+    ) {
+        return 1;
+    }
     if (centerRadius < 1) return 1;
     const sineLat = Math.min(1, Math.max(-1, center.z / centerRadius));
     const cosLat = Math.sqrt(Math.max(0, 1 - sineLat * sineLat));
