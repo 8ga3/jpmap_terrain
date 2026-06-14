@@ -244,7 +244,7 @@ const SUNRISE_LAT = 35.690206;
 const SUNRISE_LON = 139.766166;
 
 /**
- * Skybox 比較用シーン準備：固定 dateTime でロード後、`viewer.tilt` を最大まで倒す。
+ * Skybox 比較用シーン準備：固定 dateTime でロード後、`viewer.tilt` を大きめ（75°）に倒す。
  */
 async function waitForSceneWithSkybox(
     page: import("@playwright/test").Page,
@@ -264,7 +264,7 @@ async function waitForSceneWithSkybox(
     );
     await page.waitForLoadState("networkidle", { timeout: 30000 });
 
-    // チルト最大に倒して画面上部に空を映す。
+    // チルトを大きめ（SKYBOX_TILT_DEG = 75°）に倒して画面上部に空を映す。
     // `viewer.tilt` setter は内部で beta クランプ済み（upperBetaLimit ≈ 89°）。
     await page.evaluate((tiltValue) => {
         (window as any).viewer.tilt = tiltValue;
