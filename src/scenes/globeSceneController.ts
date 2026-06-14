@@ -1483,29 +1483,35 @@ export const createGlobeSceneController = (
     // 注視点の移動（パン）でも背景色が昼夜境界（ターミネータ）を跨いで追従するよう、中心の
     // 緯度経度が変化したら太陽状態を再計算する（planar が centerChanged で再計算するのと挙動を揃える, #380）。
     // 太陽の ECEF 方向は dateTime 固定なら中心移動に対して実質不変だが、注視点のローカル太陽高度は
-    // 変わるため skyBaseColor の更新が必要。毎フレームの天文計算を避けるため中心変化時のみ実行する。
-    let lastSunCenterLat = Number.NaN;
-    let lastSunCenterLon = Number.NaN;
+    // 変わるため skyBaseColor の更新が必要。
+    // per-frame コスト削減のため、変化検出は ECEF 座標差分（三角関数なし）で行い、しきい値を超えた
+    // ときだけ applyGlobeSunState を呼ぶ（測地逆変換 ecefToGeodetic はその中で 1 回だけ走る）。
+    // しきい値 1km は緯度 0.01°（≒1.1km）相当で、従来の lat/lon 比較と同程度の感度。
+    const SUN_CENTER_MOVE_THRESHOLD_M = 1000;
+    const SUN_CENTER_MOVE_THRESHOLD_SQ =
+        SUN_CENTER_MOVE_THRESHOLD_M * SUN_CENTER_MOVE_THRESHOLD_M;
+    const lastSunCenterEcef = new Vector3();
+    let sunCenterInitialized = false;
     const skyColorObserver = gc.scene.onBeforeRenderObservable.add(() => {
         // 太陽未初期化（setSunState 未呼び出し）の間は no-op（placeSunMesh と同じ方針）。
         // 実利用では JpmapTerrain 初期化時に必ず setSunState が呼ばれるため、初回反映後にパン追従する。
         if (!sunStateValid) return;
-        const { latDeg, lonDeg } = currentGeodetic();
-        // 初回（last* が NaN）は setSunState が直前に applyGlobeSunState を実行済みのため、
-        // 比較用の中心だけ記録して return し、初期化直後の重複計算を避ける。
-        if (Number.isNaN(lastSunCenterLat) || Number.isNaN(lastSunCenterLon)) {
-            lastSunCenterLat = latDeg;
-            lastSunCenterLon = lonDeg;
+        const center = camera.center;
+        // 初回は setSunState が直前に applyGlobeSunState を実行済みのため、比較用の中心のみ
+        // 記録して return し、初期化直後の重複計算を避ける。
+        if (!sunCenterInitialized) {
+            lastSunCenterEcef.copyFrom(center);
+            sunCenterInitialized = true;
             return;
         }
+        // ECEF 座標差分で中心移動を検出（三角関数を伴う逆測地変換を毎フレーム走らせない）。
         if (
-            Math.abs(latDeg - lastSunCenterLat) < 0.01 &&
-            Math.abs(lonDeg - lastSunCenterLon) < 0.01
+            Vector3.DistanceSquared(center, lastSunCenterEcef) <
+            SUN_CENTER_MOVE_THRESHOLD_SQ
         ) {
             return;
         }
-        lastSunCenterLat = latDeg;
-        lastSunCenterLon = lonDeg;
+        lastSunCenterEcef.copyFrom(center);
         applyGlobeSunState();
     });
 
