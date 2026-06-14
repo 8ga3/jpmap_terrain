@@ -122,9 +122,11 @@ export function deriveSunState(
  * 太陽高度（度）から「時刻連動の背景（skybox）色」を導く純関数（Issue #380）。
  *
  * SkyMaterial を使わない globe シーン向けに、太陽位置だけで空色を決める。
- * - 夜（高度 < -6°）: 深い紺（`NIGHT_CLEAR_COLOR`）
- * - 昼（高度 > +6°）: 薄い青空（`DAY_CLEAR_COLOR`）
- * - 日の出・日の入り（地平線付近）: 茜色（`DUSK_CLEAR_COLOR`）を重ねる
+ * 紺→青の基調色は薄明帯（±6°）で連続補間し、さらに地平線付近（±`DUSK_BAND_DEG`=8°）で
+ * 茜色を重ねる。そのため色が変化する高度帯は、基調色（±6°）と茜色（±8°）の和集合になる。
+ * - 夜（高度 ≲ -8°）: 深い紺（`NIGHT_CLEAR_COLOR`）
+ * - 昼（高度 ≳ +8°）: 薄い青空（`DAY_CLEAR_COLOR`）
+ * - 日の出・日の入り（地平線付近 ±8°）: 上記基調色に茜色（`DUSK_CLEAR_COLOR`）をブレンド
  *
  * planar シーン（`deriveSunState` + SkyMaterial）と色味の方向性を揃えつつ、
  * 高度連動の宇宙黒化（`computeSpaceFactor`）は呼び出し側で別途合成する。

@@ -1491,6 +1491,13 @@ export const createGlobeSceneController = (
         // 実利用では JpmapTerrain 初期化時に必ず setSunState が呼ばれるため、初回反映後にパン追従する。
         if (!sunStateValid) return;
         const { latDeg, lonDeg } = currentGeodetic();
+        // 初回（last* が NaN）は setSunState が直前に applyGlobeSunState を実行済みのため、
+        // 比較用の中心だけ記録して return し、初期化直後の重複計算を避ける。
+        if (Number.isNaN(lastSunCenterLat) || Number.isNaN(lastSunCenterLon)) {
+            lastSunCenterLat = latDeg;
+            lastSunCenterLon = lonDeg;
+            return;
+        }
         if (
             Math.abs(latDeg - lastSunCenterLat) < 0.01 &&
             Math.abs(lonDeg - lastSunCenterLon) < 0.01
