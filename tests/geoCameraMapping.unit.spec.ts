@@ -19,6 +19,7 @@ import {
     geographicTangentBasisToRef,
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
+    polePanSpeedMultiplier,
     clampRadiusForGroundClearance,
     rayEllipsoidNearHitToRef,
 } from "../src/terrain/geo/cameraMapping";
@@ -257,5 +258,61 @@ describe("rayEllipsoidNearHitToRef", () => {
             expect(ref.x).toBe(123);
             expect(Number.isNaN(ref.x)).toBe(false);
         }
+    });
+});
+
+describe("polePanSpeedMultiplier", () => {
+    const R = 6378137; // WGS84 semi-major axis 相当
+
+    it("赤道では 1.0（減速なし）", () => {
+        const center = new Vector3(R, 0, 0);
+        expect(polePanSpeedMultiplier(center, R)).toBeCloseTo(1, 12);
+    });
+
+    it("高高度では極へ近づくほど 1 未満へ減速する", () => {
+        const eq = polePanSpeedMultiplier(new Vector3(R, 0, 0), R);
+        const mid = polePanSpeedMultiplier(
+            new Vector3(R * Math.cos(Math.PI / 4), 0, R * Math.sin(Math.PI / 4)),
+            R,
+        );
+        const high = polePanSpeedMultiplier(
+            new Vector3(R * Math.cos((80 * Math.PI) / 180), 0, R * Math.sin((80 * Math.PI) / 180)),
+            R,
+        );
+        expect(eq).toBeGreaterThan(mid);
+        expect(mid).toBeGreaterThan(high);
+        expect(high).toBeGreaterThan(0);
+        expect(high).toBeLessThan(1);
+    });
+
+    it("極（高高度）では 0 へ漸近する", () => {
+        const center = new Vector3(0, 0, R);
+        expect(polePanSpeedMultiplier(center, R)).toBeCloseTo(0, 12);
+    });
+
+    it("地表付近（低高度）では緯度に依らず 1（減速無効）", () => {
+        const nearPole = new Vector3(
+            R * Math.cos((80 * Math.PI) / 180),
+            0,
+            R * Math.sin((80 * Math.PI) / 180),
+        );
+        expect(polePanSpeedMultiplier(nearPole, 1000)).toBeCloseTo(1, 12);
+    });
+
+    it("常に [0,1] に収まる / 退化入力は 1", () => {
+        const samples: Array<[Vector3, number]> = [
+            [new Vector3(R, 0, 0), R],
+            [new Vector3(0, 0, R), R],
+            [new Vector3(0, 0, R), 1],
+            [new Vector3(-R, 0, 0), R * 10],
+            [new Vector3(0, 0, -R), R / 100],
+        ];
+        for (const [center, h] of samples) {
+            const m = polePanSpeedMultiplier(center, h);
+            expect(m).toBeGreaterThanOrEqual(0);
+            expect(m).toBeLessThanOrEqual(1);
+        }
+        // 原点近傍（地心距離 < 1）は退化として 1 を返す。
+        expect(polePanSpeedMultiplier(new Vector3(0, 0, 0), R)).toBe(1);
     });
 });
