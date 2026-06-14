@@ -31,14 +31,24 @@ const TILT_MIN_RAD = 0.1;
 const TILT_MIN_DEG = (TILT_MIN_RAD * 180) / Math.PI;
 
 /**
+ * WGS84 楕円体の長半径 (m)。`@babylonjs/core` の `Wgs84Ellipsoid.semiMajorAxis` と同値。
+ * 本モジュールを Babylon 非依存（jest を軽く保つ）に保つため数値として定義する。
+ */
+const WGS84_SEMI_MAJOR_AXIS_M = 6_378_137;
+
+/** GeospatialCamera 既定 `radiusMax` の planetRadius 倍率（planetRadius × 4）。 */
+const GLOBE_MAX_RADIUS_SCALE = 4;
+
+/**
  * altitude のクランプ上限 (m)。
  * globe（GeospatialCamera）バックエンドはカメラの `radius` を altitude として URL に書き出す。
- * GeospatialCamera の既定 `radiusMax` は planetRadius × 4（WGS84 semiMajorAxis 6,378,137m × 4
- * = 25,512,548m）であり、高高度（全球視点）でもクランプで丸めないよう上限をこの値に合わせる (#369)。
- * planar では camera.position.y が upperRadiusLimit（75km）で自前クランプされるため、
- * 本上限の引き上げは planar の URL 復元挙動に影響しない（planar 由来の値は最大でも ≈ 78776m）。
+ * GeospatialCamera の既定 `radiusMax` は planetRadius × 4（= {@link WGS84_SEMI_MAJOR_AXIS_M} ×
+ * {@link GLOBE_MAX_RADIUS_SCALE} = 25,512,548m）であり、高高度（全球視点）でもクランプで丸めない
+ * よう上限をこの値に合わせる (#369)。planar では camera.position.y が upperRadiusLimit（75km）で
+ * 自前クランプされるため、本上限の引き上げは planar の URL 復元挙動に影響しない
+ * （planar 由来の値は最大でも ≈ 78776m）。
  */
-const ALTITUDE_MAX = 25_512_548;
+const ALTITUDE_MAX = WGS84_SEMI_MAJOR_AXIS_M * GLOBE_MAX_RADIUS_SCALE;
 
 /**
  * altitude / tilt のクランプ範囲。
