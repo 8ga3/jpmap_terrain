@@ -19,7 +19,7 @@ import { createControlPanel, snapScale, formatScale, showToast } from "../terrai
 import { attachResizeRefresh } from "../terrain/resizeRefresh";
 import { createTileManager } from "../terrain/tileManager";
 import type { FrustumPlane } from "../terrain/visibleTiles";
-import { createSkybox } from "../terrain/skybox";
+import { createSkybox, computeSpaceFactor } from "../terrain/skybox";
 import { computeSunPosition } from "../terrain/sunPosition";
 import { deriveSunState } from "../terrain/sunState";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../terrain/cameraCollision";
@@ -62,6 +62,9 @@ const CAMERA_LOWER_RADIUS = 50;
 const CAMERA_UPPER_RADIUS = 75000;
 /** 遠クリッピング面（メートル） */
 const CAMERA_FAR_CLIP = 400000;
+
+/** 高高度（宇宙空間）の背景色。黒。Issue #371 の高度連動暗化で `clearColor` の到達点とする。 */
+const SPACE_CLEAR_COLOR = new Color3(0, 0, 0);
 
 /**
  * 2D (orthographic) モードでのカメラ最低高度（メートル）。
@@ -2375,16 +2378,15 @@ export class DefaultScene implements CreateSceneClass {
                 return;
             }
             const state = deriveSunState(altitudeDeg, azimuthDeg);
-            // SkyMaterial 更新
-            skyboxHandle.applySunToSky(state);
+            // 高度連動の暗化（高高度ほど空を黒く＝宇宙空間へ）。Issue #371。
+            const spaceFactor = computeSpaceFactor(camera.radius);
+            // SkyMaterial 更新（時刻連動 + 高度連動）
+            skyboxHandle.applySunToSky(state, spaceFactor);
             // 夜は SkyMaterial の物理モデルが破綻するため Skybox を消し、`clearColor`（夜色）を背景に出す。
             skyboxHandle.mesh.setEnabled(state.skyVisible);
-            scene.clearColor.set(
-                state.clearColor.r,
-                state.clearColor.g,
-                state.clearColor.b,
-                1,
-            );
+            // 背景色も高度に応じて黒へ寄せ、Skybox 非表示時（夜）でも宇宙の黒を表現する。
+            const bg = Color3.Lerp(state.clearColor, SPACE_CLEAR_COLOR, spaceFactor);
+            scene.clearColor.set(bg.r, bg.g, bg.b, 1);
             // 指向性ライト方向 = 太陽から地表向き = -sunDir
             sunLight.direction = state.sunDir.scale(-1);
             sunLight.intensity = state.dayFactor;

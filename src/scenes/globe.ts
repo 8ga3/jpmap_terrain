@@ -45,6 +45,7 @@ import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/ge
 import { createGlobePolygonManager, type GlobePolygonManager, type GlobePolygonPickablePoint } from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
 import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
+import { computeSpaceFactor } from "../terrain/skybox";
 
 /** グローブシーンの既定パラメータ（富士山周辺）。 */
 export const GLOBE_SCENE_DEFAULTS = {
@@ -123,6 +124,11 @@ const MIN_GROUND_CLEARANCE = 50;
 
 /** WASD パン対象キー。 */
 const PAN_KEYS = new Set(["w", "a", "s", "d"]);
+
+/** 低高度（地表付近）の背景色（青空）。`scene.clearColor` の初期値と一致。 */
+const DAY_SKY_COLOR = new Color3(0.75, 0.86, 0.95);
+/** 高高度（宇宙空間）の背景色（黒）。Issue #371 の高度連動暗化の到達点。 */
+const SPACE_SKY_COLOR = new Color3(0, 0, 0);
 
 /**
  * 最大チルト[deg]（pitch 上限, Issue #335 UX ガード）。完全水平（90°=地平線真正面）では
@@ -1597,6 +1603,11 @@ export class GlobeScene {
             // わずかに動かすため衝突はその直前のスナップショットを使うが、毎フレーム補正のため実用上問題ない。
             const camEcef = computeCameraEcef(); // lookAt バッファも更新される
             const camGeo = ecefToGeodetic(camEcef);
+            // 高度連動の背景暗化（高高度ほど宇宙の黒へ）。Issue #371。
+            // 真の測地高度 altMeters を用い、約 12km から暗化開始・75km でほぼ黒に収束させる。
+            const spaceFactor = computeSpaceFactor(camGeo.altMeters);
+            const bg = Color3.Lerp(DAY_SKY_COLOR, SPACE_SKY_COLOR, spaceFactor);
+            scene.clearColor.set(bg.r, bg.g, bg.b, 1);
             // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
             seatCenterOnTerrain(camGeo.altMeters, isZoomActive());
             enforceGroundClearance(camEcef, camGeo);
