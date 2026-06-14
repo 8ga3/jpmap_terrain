@@ -102,9 +102,10 @@ const start = async (): Promise<void> => {
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
         ...(terrainEngine ? { terrainEngine } : {}),
-        // globe は組み込みの WASD / ドラッグパンを持つ。本デモは WASD をアバター操作に
-        // 使い、カメラは自動スクロールでアバターを追従させるため、globe では組み込み
-        // ユーザーパンを無効化して二重スクロール（カメラ競合）を防ぐ。
+        // globe は組み込みの WASD キーボードパンを持つ。本デモは WASD をアバター操作に
+        // 使い、カメラは自動スクロールでアバターを追従させるため、globe では WASD パンのみ
+        // 無効化して二重スクロール（カメラ競合）を防ぐ。ドラッグパンは手動での視点移動用に
+        // 有効のまま残す。
         ...(isGlobe ? { enableKeyboardPan: false } : {}),
         lat: camera?.lat ?? TOKYO_STATION.lat,
         lon: camera?.lon ?? TOKYO_STATION.lon,
