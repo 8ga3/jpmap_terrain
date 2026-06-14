@@ -70,11 +70,12 @@ const ALTITUDE_MAX = WGS84_SEMI_MAJOR_AXIS_M * GLOBE_MAX_RADIUS_SCALE;
 /**
  * altitude / tilt のクランプ範囲。
  * - altitude: [50, {@link ALTITUDE_MAX}] (m)。上限は globe の最大 radius に合わせる (#369)。
- * - tilt: [{@link TILT_MIN_DEG}, 75]（deg）。下限は {@link TILT_MIN_RAD} rad を度換算した値
+ * - tilt: [{@link TILT_MIN_DEG}, 89]（deg）。下限は {@link TILT_MIN_RAD} rad を度換算した値。
+ *   上限はカメラの upperBetaLimit（≈ 89°）に合わせる (#377)。
  */
 export const CAMERA_URL_LIMITS = {
     altitude: { min: 50, max: ALTITUDE_MAX },
-    tilt: { min: TILT_MIN_DEG, max: 75 },
+    tilt: { min: TILT_MIN_DEG, max: 89 },
     zoomLevel: { min: 5, max: 23 },
 } as const;
 
@@ -169,7 +170,7 @@ export const clampAltitude = (v: number): number => {
 export const clampZoomLevel = (v: number): number =>
     clamp(v, CAMERA_URL_LIMITS.zoomLevel.min, CAMERA_URL_LIMITS.zoomLevel.max);
 
-/** tilt を [TILT_MIN_DEG, 75]（deg）にクランプする */
+/** tilt を [TILT_MIN_DEG, 89]（deg）にクランプする */
 export const clampTilt = (v: number): number =>
     clamp(v, CAMERA_URL_LIMITS.tilt.min, CAMERA_URL_LIMITS.tilt.max);
 
