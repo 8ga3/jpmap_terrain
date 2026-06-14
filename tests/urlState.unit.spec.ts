@@ -422,6 +422,41 @@ describe("urlState", () => {
                 tilt: CAMERA_URL_DEFAULTS.tilt,
             });
         });
+
+        // #375: globe では JAPAN_BOUNDS でクランプせず全球の緯度経度を許容する。
+        it("terrainEngine=globe では日本域外の緯度経度をクランプしない (#375)", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68",
+                { terrainEngine: "globe" }
+            );
+            expect(result).not.toBeNull();
+            expect(result!.lat).toBeCloseTo(17.316969, 6);
+            expect(result!.lon).toBeCloseTo(38.639148, 6);
+        });
+
+        it("terrainEngine=globe でも全球範囲外は WORLD_BOUNDS でクランプされる (#375)", () => {
+            const result = parseCameraStateFromUrl(
+                "http://localhost/viewer/@-120.0,200.0",
+                { terrainEngine: "globe" }
+            );
+            expect(result!.lat).toBe(-90);
+            expect(result!.lon).toBe(180);
+        });
+
+        it("terrainEngine=planar / 未指定では従来どおり JAPAN_BOUNDS でクランプする (#375)", () => {
+            const planar = parseCameraStateFromUrl(
+                "http://localhost/viewer/@17.316969,38.639148",
+                { terrainEngine: "planar" }
+            );
+            expect(planar!.lat).toBe(20);
+            expect(planar!.lon).toBe(122);
+
+            const noEngine = parseCameraStateFromUrl(
+                "http://localhost/viewer/@17.316969,38.639148"
+            );
+            expect(noEngine!.lat).toBe(20);
+            expect(noEngine!.lon).toBe(122);
+        });
     });
 
     describe("clampAltitude / clampTilt / normalizeAzimuth", () => {

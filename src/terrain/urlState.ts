@@ -9,6 +9,23 @@ export interface LatLon {
     lon: number;
 }
 
+/**
+ * globe バックエンド用の緯度経度クランプ範囲（全球）。
+ * planar は日本被覆域（{@link JAPAN_BOUNDS}）のみ描画するためクランプするが、
+ * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する (#375)。
+ */
+export const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
+
+/**
+ * terrainEngine に応じた緯度経度クランプ範囲を返す (#375)。
+ * - `globe` → {@link WORLD_BOUNDS}（全球）
+ * - それ以外（planar / 未指定）→ {@link JAPAN_BOUNDS}（日本被覆域）
+ */
+const resolveLatLonBounds = (
+    terrainEngine?: TerrainEngine,
+): typeof JAPAN_BOUNDS | typeof WORLD_BOUNDS =>
+    terrainEngine === "globe" ? WORLD_BOUNDS : JAPAN_BOUNDS;
+
 /** カメラ姿勢を含む URL 状態 (Issue #64) */
 export interface CameraUrlState extends LatLon {
     altitude: number;
@@ -156,8 +173,15 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  *
  * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）は Google Maps 互換の
  * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する (#254)。
+ *
+ * `options.terrainEngine` が `"globe"` の場合、緯度経度を {@link WORLD_BOUNDS}（全球）で
+ * クランプする。未指定 / `"planar"` の場合は従来どおり {@link JAPAN_BOUNDS} でクランプする (#375)。
  */
-export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
+export const parseCameraStateFromUrl = (
+    url: string,
+    options?: { terrainEngine?: TerrainEngine },
+): CameraUrlState | null => {
+    const bounds = resolveLatLonBounds(options?.terrainEngine);
     try {
         const parsed = new URL(url, "http://localhost");
 
@@ -168,8 +192,8 @@ export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
             const lat = Number(atMatch[1]);
             const lon = Number(atMatch[2]);
             if (isFinite(lat) && isFinite(lon)) {
-                const clampedLat = clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat);
-                const clampedLon = clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon);
+                const clampedLat = clamp(lat, bounds.minLat, bounds.maxLat);
+                const clampedLon = clamp(lon, bounds.minLon, bounds.maxLon);
 
                 const rawThird = atMatch[3];
                 if (rawThird !== undefined && rawThird.endsWith("z")) {
@@ -208,8 +232,8 @@ export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
             const lon = Number(lonStr);
             if (isFinite(lat) && isFinite(lon)) {
                 return {
-                    lat: clamp(lat, JAPAN_BOUNDS.minLat, JAPAN_BOUNDS.maxLat),
-                    lon: clamp(lon, JAPAN_BOUNDS.minLon, JAPAN_BOUNDS.maxLon),
+                    lat: clamp(lat, bounds.minLat, bounds.maxLat),
+                    lon: clamp(lon, bounds.minLon, bounds.maxLon),
                     altitude: clampAltitude(CAMERA_URL_DEFAULTS.altitude),
                     azimuth: normalizeAzimuth(CAMERA_URL_DEFAULTS.azimuth),
                     tilt: clampTilt(CAMERA_URL_DEFAULTS.tilt),
@@ -229,8 +253,11 @@ export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
  *
  * @deprecated 新規コードでは {@link parseCameraStateFromUrl} を使用してください。
  */
-export const parseLatLonFromUrl = (url: string): LatLon | null => {
-    const state = parseCameraStateFromUrl(url);
+export const parseLatLonFromUrl = (
+    url: string,
+    options?: { terrainEngine?: TerrainEngine },
+): LatLon | null => {
+    const state = parseCameraStateFromUrl(url, options);
     if (state === null) return null;
     return { lat: state.lat, lon: state.lon };
 };

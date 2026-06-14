@@ -154,7 +154,8 @@ npm start
 
 ### 緯度経度の扱い
 
-- 緯度経度は `JAPAN_BOUNDS`（緯度 20〜46、経度 122〜154）でクランプされます
+- 緯度経度は `JAPAN_BOUNDS`（緯度 20〜46、経度 122〜154）でクランプされます（`terrainEngine=planar` / 既定）
+- `terrainEngine=globe` の場合は全球を描画できるため、クランプ範囲を全球（緯度 -90〜90、経度 -180〜180）に拡張します（#375）
 - カメラ移動に追従して URL のパスが自動更新されます（既存のクエリパラメータは保持）
 
 実装の詳細は `src/demos/viewer/index.ts` および `src/terrain/urlState.ts` を参照してください。

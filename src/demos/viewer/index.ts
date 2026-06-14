@@ -28,6 +28,7 @@ import {
     resolveTerrainEngine,
     type CameraUrlState,
 } from "../../terrain/urlState";
+import type { TerrainEngine } from "../../lib/types";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -61,7 +62,9 @@ export { resolveTerrainEngine };
  */
 export const resolveCameraState = (
     url: string,
-): CameraUrlState | undefined => parseCameraStateFromUrl(url) ?? undefined;
+    terrainEngine?: TerrainEngine,
+): CameraUrlState | undefined =>
+    parseCameraStateFromUrl(url, { terrainEngine }) ?? undefined;
 
 /**
  * URL から初期表示の緯度経度を解決する。
@@ -146,7 +149,7 @@ const start = async (): Promise<void> => {
     }
     const engine = resolveEngine(location.search);
     const terrainEngine = resolveTerrainEngine(location.search);
-    const cameraState = resolveCameraState(location.href);
+    const cameraState = resolveCameraState(location.href, terrainEngine);
     const dateTime = resolveDateTime(location.search);
     const autoSunPosition = resolveAutoSunPosition(location.search);
     const showSunShadows = resolveShowSunShadows(location.search);
