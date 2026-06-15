@@ -24,6 +24,18 @@ const targets: { name: string; url: string }[] = [
 for (const target of targets) {
     test(`${target.name} loads scripts and renders canvas`, async ({ page }) => {
         const failedJsResponses: { url: string; status: number }[] = [];
+        // `/js/` チャンクの取得状況を追跡する。タイル取得が継続して
+        // `networkidle` に到達しない環境でも、スクリプト読み込みの完了だけを
+        // 根拠に判定できるようにする（Issue #157 の趣旨は /js/ ロード成功確認）。
+        let pendingJs = 0;
+        page.on("request", (request) => {
+            if (request.url().includes("/js/")) pendingJs++;
+        });
+        const onJsSettled = (request: { url(): string }) => {
+            if (request.url().includes("/js/")) pendingJs = Math.max(0, pendingJs - 1);
+        };
+        page.on("requestfinished", onJsSettled);
+        page.on("requestfailed", onJsSettled);
         page.on("response", (response) => {
             const url = response.url();
             if (url.includes("/js/") && !response.ok()) {
@@ -44,8 +56,6 @@ for (const target of targets) {
 
         // シーン起動完了を待つ（`src/demos/{viewer,timelapse}/index.ts` で
         // NODE_ENV!=='production' 時に `window.scene` を公開している）。
-        // `failedJsResponses` を判定する前に、遅延チャンクや初期タイル取得が
-        // 出揃うまで待機することでレースを防ぐ (Issue #157 PR レビュー対応)。
         await page.waitForFunction(
             () => {
                 const w = window as unknown as {
@@ -55,7 +65,13 @@ for (const target of targets) {
             },
             { timeout: 30000 },
         );
-        await page.waitForLoadState("networkidle", { timeout: 60000 });
+        // 遅延チャンクや初期タイル取得が出揃うまで待機することでレースを防ぐ
+        // (Issue #157 PR レビュー対応)。タイル取得は継続し得るため全体の
+        // `networkidle` ではなく、`/js/` チャンクの取得が完了する（in-flight が
+        // 0 に収束する）ことを待つ。
+        await expect
+            .poll(() => pendingJs, { timeout: 60000, intervals: [250, 500, 1000] })
+            .toBe(0);
 
         expect(failedJsResponses).toEqual([]);
     });

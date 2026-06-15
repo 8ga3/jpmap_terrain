@@ -60,6 +60,13 @@ const FLAT_SEA_ELEV = new Float32Array(TILE_SIZE * TILE_SIZE);
 const BASE_LAYER_ZOOM = 2;
 
 /**
+ * geom 標高タイルが全 DEM レイヤー 404 のとき、何段階まで粗ズーム DEM へフォールバックして
+ * 切り出すか（#384）。DEM5 非整備領域では dem_png の最大 zoom=14 を超える z15 geom が 404 に
+ * なるため、最低 1 段（z15→z14）で十分だが、深い欠落にも耐えるよう数段許す。失敗時のみ発動。
+ */
+const GEOM_ELEV_FALLBACK_DEPTH = 4;
+
+/**
  * ベースレイヤ 1 タイルあたりの分割数（Issue #341）。マネージャ既定（globe 32）より細かくする。
  * z2 タイルは 90° 角を張るため、分割が粗いとメッシュ（三角形弦）が真球面から大きく内側へたるみ
  * （32 分割で最大 ~3840m）、地平線（limb）でタイルが背景球より内側に退いて青球が縁から透ける。
@@ -298,6 +305,72 @@ export const createGlobeTileManager = (
         return { gz, gx: t.x >> d, gy: t.y >> d };
     };
 
+    /**
+     * 粗ズーム親 DEM から geom タイル (gz,gx,gy) 領域を最近傍で TILE_SIZE 角に切り出す（#384 globe 版）。
+     * 平面版 `tileManager.extractSubTileElevation` と同等。切り出した raster は (gz,gx,gy) タイル
+     * の地理範囲を表すため、`buildGlobeTileMeshData` から実 geom タイルと同一に扱える。
+     */
+    const extractSubTileElev = (
+        parent: Float32Array,
+        parentZoom: number,
+        gz: number,
+        gx: number,
+        gy: number,
+    ): Float32Array => {
+        const diff = gz - parentZoom;
+        const scale = 1 << diff;
+        const subX = gx - ((gx >> diff) << diff);
+        const subY = gy - ((gy >> diff) << diff);
+        const out = new Float32Array(TILE_SIZE * TILE_SIZE);
+        const subSize = TILE_SIZE / scale;
+        const originX = subX * subSize;
+        const originY = subY * subSize;
+        for (let y = 0; y < TILE_SIZE; y++) {
+            const sy = Math.min(
+                TILE_SIZE - 1,
+                Math.round(originY + (y / (TILE_SIZE - 1)) * (subSize - 1)),
+            );
+            for (let x = 0; x < TILE_SIZE; x++) {
+                const sx = Math.min(
+                    TILE_SIZE - 1,
+                    Math.round(originX + (x / (TILE_SIZE - 1)) * (subSize - 1)),
+                );
+                out[y * TILE_SIZE + x] = parent[sy * TILE_SIZE + sx];
+            }
+        }
+        return out;
+    };
+
+    /**
+     * geom タイル標高を取得する。geom zoom の DEM が全レイヤー 404（DEM5 非整備かつ dem_png の
+     * 最大 zoom=14 を超える領域。例: z15 をズームアップした山岳地帯）の場合、平面版 `tileManager`
+     * と同様に粗ズーム DEM へ段階フォールバックし、該当領域を切り出して返す（#384）。
+     *
+     * これが無いと globe は geom zoom 単一しか試さず、404 時に標高ロード失敗 → 暫定平坦化（代表標高
+     * /0m）へ倒れ、本来の地形が「ずっと下（≒0m）」へ落ちて見える。
+     */
+    const loadGeomElevation = async (
+        gz: number,
+        gx: number,
+        gy: number,
+    ): Promise<Float32Array> => {
+        try {
+            return await loadElevationTile(gz, gx, gy);
+        } catch (err) {
+            const floor = Math.max(0, gz - GEOM_ELEV_FALLBACK_DEPTH);
+            for (let cz = gz - 1; cz >= floor; cz--) {
+                const d = gz - cz;
+                try {
+                    const parent = await loadElevationTile(cz, gx >> d, gy >> d);
+                    return extractSubTileElev(parent, cz, gz, gx, gy);
+                } catch {
+                    // この粗ズームも未配信 → さらに 1 段粗く再試行。
+                }
+            }
+            throw err;
+        }
+    };
+
     const terrainElevAt = (latDeg: number, lonDeg: number): number | null => {
         // 探索は geomMaxZoom から下る。minZoom > geomMaxZoom（例: ?zoom=18）でもループが
         // 1 回は回るよう下限を min(minZoom, geomMaxZoom) とする（さもないと常に null を返し
@@ -329,7 +402,7 @@ export const createGlobeTileManager = (
         const prevFail = failedRetryAt.get(gk);
         if (prevFail !== undefined && Date.now() < prevFail.retryAt) return;
         loading.add(gk);
-        loadElevationTile(gz, gx, gy)
+        loadGeomElevation(gz, gx, gy)
             .then((elev) => {
                 // dispose() や sync() で loading から外された後の遅延 resolve は無視する
                 // （不要・dispose 済みマネージャの状態を書き戻さない）。

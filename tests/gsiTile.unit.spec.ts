@@ -375,6 +375,26 @@ const makeImageDataResult = (r: number, g: number, b: number): ImageData => ({
     colorSpace: "srgb",
 });
 
+/**
+ * size×size の ImageData を作るヘルパー。先頭 `noDataCount` ピクセルを no-data(128,0,0)、
+ * 残りを `rgb`（既定: 0,100,0 → 256.0m）にする。レイヤー合成の閾値判定検証に使う。
+ */
+const makeImageGrid = (
+    size: number,
+    noDataCount: number,
+    rgb: readonly [number, number, number] = [0, 100, 0],
+): ImageData => {
+    const data = new Uint8ClampedArray(size * size * 4);
+    for (let i = 0; i < size * size; i++) {
+        const [r, g, b] = i < noDataCount ? [128, 0, 0] : rgb;
+        data[i * 4] = r;
+        data[i * 4 + 1] = g;
+        data[i * 4 + 2] = b;
+        data[i * 4 + 3] = 255;
+    }
+    return { width: size, height: size, data, colorSpace: "srgb" };
+};
+
 /** loadImageData 内部で使われるブラウザ API をモックするセットアップ */
 const setupLoadImageMocks = (imageData: ImageData) => {
     const mockCtx = {
@@ -395,6 +415,36 @@ const setupLoadImageMocks = (imageData: ImageData) => {
     );
 };
 
+/**
+ * 取得（loadImageData）成功のたびに次の ImageData を順に返すモックセットアップ。
+ * レイヤー合成（dem5a → dem5b → dem）の per-pixel 穴埋め挙動を検証するのに使う。
+ */
+const setupLoadImageSequenceMocks = (sequence: readonly ImageData[]) => {
+    let i = 0;
+    const cur = () => sequence[Math.min(i, sequence.length - 1)];
+    const mockCtx = {
+        drawImage: jest.fn(),
+        // getImageData は loadImageData の最終ステップ。ここで次の要素へ進める。
+        getImageData: jest.fn(() => {
+            const data = cur();
+            i++;
+            return data;
+        }),
+    };
+    const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: jest.fn(() => mockCtx),
+    };
+    (globalThis as Record<string, unknown>).document = {
+        createElement: jest.fn(() => mockCanvas),
+    };
+    (globalThis as Record<string, unknown>).createImageBitmap = jest.fn(() => {
+        const data = cur();
+        return Promise.resolve({ width: data.width, height: data.height, close: jest.fn() });
+    });
+};
+
 describe("loadElevationTile", () => {
     const originalFetch = globalThis.fetch;
     const originalCreateImageBitmap = (globalThis as Record<string, unknown>).createImageBitmap;
@@ -407,10 +457,10 @@ describe("loadElevationTile", () => {
         jest.restoreAllMocks();
     });
 
-    it("HTTP 成功で all-NaN でも次レイヤーへフォールバックしない", async () => {
-        // dem5a が all-NaN (R=128,G=0,B=0) を返す → そのまま返すべき
-        const allNanImageData = makeImageDataResult(128, 0, 0);
-        setupLoadImageMocks(allNanImageData);
+    it("dem5a が完全カバー（有効値）なら下位レイヤーを取得しない", async () => {
+        // dem5a が有効値 (R=0,G=100,B=0 → 256.0) を返す → 穴が無いので 1 レイヤーで完了
+        const validImageData = makeImageDataResult(0, 100, 0);
+        setupLoadImageMocks(validImageData);
 
         const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
             Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
@@ -423,10 +473,144 @@ describe("loadElevationTile", () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
 
-        // 返却値は all-NaN
         expect(elev).toBeInstanceOf(Float32Array);
-        expect(elev.length).toBe(1);
+        expect(elev[0]).toBeCloseTo(256.0);
+    });
+
+    it("no-data の穴を下位レイヤーの有効値で合成補填する (#384)", async () => {
+        // dem5a: 2×2 のうち 3px が no-data → dem5b: 404 → dem: 全有効(256.0)
+        // 穴がある限り下位レイヤーを取得し、dem の有効値で埋める。
+        const demHoles = makeImageGrid(2, 3); // 3/4 = no-data
+        const demFull = makeImageGrid(2, 0); // 全有効
+        setupLoadImageSequenceMocks([demHoles, demFull]);
+
+        let callCount = 0;
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
+            callCount++;
+            // dem5b (2 回目) のみ 404、それ以外は成功
+            if (callCount === 2) return Promise.resolve({ ok: false, status: 404 } as Response);
+            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+        });
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a(成功・穴) → dem5b(404) → dem(成功・穴埋め) で 3 レイヤー試行
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
+        expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png");
+        expect(fetchMock.mock.calls[2][0]).toContain("dem_png");
+
+        // 穴が dem の有効値で全て埋まる
+        expect(elev.length).toBe(4);
+        for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
+    });
+
+    it("全面 no-data（同一ズームに実標高なし）は粗ズーム dem_png で穴埋めする (#386)", async () => {
+        // z15: dem5a 全面 no-data(200) → dem5b(z15) 404 → dem_png(z15) 404。
+        // 同一ズームに実標高が無く全面 no-data のため、粗ズーム dem_png(z14) を取得して穴埋めする。
+        const allNoData = makeImageGrid(2, 4); // 4/4 = 全面 no-data
+        const coarseFull = makeImageGrid(2, 0); // 粗ズーム dem_png: 全有効(256.0)
+        setupLoadImageSequenceMocks([allNoData, coarseFull]);
+
+        let callCount = 0;
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+            callCount++;
+            // dem5b(z15)/dem_png(z15) は 404。dem5a(z15) と 粗ズーム dem_png(z14) は成功。
+            const url = String(input);
+            if (callCount === 2 || (callCount === 3 && url.includes("/15/"))) {
+                return Promise.resolve({ ok: false, status: 404 } as Response);
+            }
+            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+        });
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a(z15) → dem5b(z15,404) → dem_png(z15,404) → dem_png(z14) の 4 取得
+        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png/15/");
+        expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png/15/");
+        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/15/");
+        // 粗ズームは親タイル座標 (z14, x>>1, y>>1) = (14, 50, 100)
+        expect(fetchMock.mock.calls[3][0]).toContain("dem_png/14/50/100.png");
+
+        // 全面 no-data が粗ズーム dem_png の実標高で埋まる
+        expect(elev.length).toBe(4);
+        for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
+    });
+
+    it("微小欠測（閾値以下）は同一ズーム合成せず NaN を残す（fillInvalidPixels に委ねる）", async () => {
+        // dem5a 4×4 のうち 1px だけ no-data = 6.25% ≤ COMPOSITE_HOLE_RATIO(0.1)。
+        // 微小穴のため下位レイヤー(dem5b/dem_png)を取得せず、欠測 1px は NaN のまま後段に委ねる。
+        const minorHoles = makeImageGrid(4, 1);
+        setupLoadImageMocks(minorHoles);
+
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
+            Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
+        );
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a(成功・微小穴) のみ。閾値以下なので dem5b/dem_png は取得しない。
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
+        // 欠測 1px は NaN のまま（後段 fillInvalidPixels が局所補間する）
         expect(Number.isNaN(elev[0])).toBe(true);
+        expect(Number.isNaN(elev[1])).toBe(false);
+    });
+
+    it("閾値超の部分欠測は、同一ズームで埋まらなければ粗ズーム dem_png で穴埋めする (#386)", async () => {
+        // dem5a 4×4 のうち 4px no-data = 25% > COMPOSITE_HOLE_RATIO(0.1) → 下位レイヤー合成。
+        // dem5b/dem_png(同一ズーム z15) は 404 で埋まらず、穴が閾値超のため粗ズーム dem_png(z14) で穴埋め。
+        const partialHoles = makeImageGrid(4, 4);
+        const coarseFull = makeImageGrid(4, 0); // 粗ズーム dem_png: 全有効(256.0)
+        setupLoadImageSequenceMocks([partialHoles, coarseFull]);
+
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+            const url = String(input);
+            // dem5b/dem_png（同一ズーム z15）は 404。粗ズーム dem_png(z14) は成功。
+            if (url.includes("dem5b_png") || url.includes("dem_png/15/")) {
+                return Promise.resolve({ ok: false, status: 404 } as Response);
+            }
+            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+        });
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a(z15) → dem5b(z15,404) → dem_png(z15,404) → dem_png(z14) の 4 取得
+        expect(fetchMock).toHaveBeenCalledTimes(4);
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png/15/");
+        expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png/15/");
+        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/15/");
+        expect(fetchMock.mock.calls[3][0]).toContain("dem_png/14/50/100.png");
+        // 25% の欠測が粗ズーム dem_png の実標高で埋まる
+        for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
+    });
+
+    it("全面 no-data で粗ズームも未配信なら NaN のまま（後段の湖面処理に委ねる）", async () => {
+        // dem5a 全面 no-data(200) → dem5b/dem_png(z15) 404 → 粗ズーム dem_png(z14..z10) も全て 404。
+        // どこにも実標高が無いため all-NaN を維持し、後段（refineAllNaNTiles 等）に委ねる。
+        const allNoData = makeImageGrid(2, 4);
+        setupLoadImageMocks(allNoData);
+
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+            const url = String(input);
+            // dem5a(z15) のみ 200。それ以外（dem5b/dem_png/粗ズーム）は全て 404。
+            if (url.includes("dem5a_png")) {
+                return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+            }
+            return Promise.resolve({ ok: false, status: 404 } as Response);
+        });
+        globalThis.fetch = fetchMock;
+
+        const elev = await loadElevationTile(15, 100, 200);
+
+        // dem5a(200) + dem5b(404) + dem_png/z15(404) + 粗ズーム dem_png z14..z10(5 段) = 8 取得
+        expect(fetchMock).toHaveBeenCalledTimes(8);
+        for (let i = 0; i < elev.length; i++) expect(Number.isNaN(elev[i])).toBe(true);
     });
 
     it("HTTP 失敗時のみ次レイヤーへフォールバックする", async () => {
@@ -448,7 +632,7 @@ describe("loadElevationTile", () => {
 
         const elev = await loadElevationTile(15, 100, 200);
 
-        // dem5a → 失敗, dem5b → 成功 で 2 回呼ばれる
+        // dem5a → 失敗, dem5b → 成功（有効値で穴なし）→ dem は取得しないので 2 回
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
         expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png");
