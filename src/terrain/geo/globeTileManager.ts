@@ -342,6 +342,23 @@ export const createGlobeTileManager = (
         return out;
     };
 
+    // 粗ズーム親 DEM の in-flight フェッチを (cz/x/y) 単位で共有する。DEM5 非整備領域を広く表示すると
+    // 404 フォールバックが多発し、同一親（例: z14 の 1 枚）を参照する 4 枚の子 geom タイルが同時に
+    // フォールバックして同一リクエストが重複し得る。in-flight Promise を共有して重複フェッチを抑える
+    // （Issue #386 PR レビュー）。settle 後はエントリを削除し、後続の再試行は新規取得に倒す（一時障害
+    // 解消後の再取得を阻害しない）。
+    const coarseParentInFlight = new Map<string, Promise<Float32Array>>();
+    const loadCoarseParent = (cz: number, px: number, py: number): Promise<Float32Array> => {
+        const key = `${cz}/${px}/${py}`;
+        let p = coarseParentInFlight.get(key);
+        if (!p) {
+            p = loadElevationTile(cz, px, py);
+            coarseParentInFlight.set(key, p);
+            void p.catch(() => {}).finally(() => coarseParentInFlight.delete(key));
+        }
+        return p;
+    };
+
     /**
      * geom タイル標高を取得する。geom zoom の `loadElevationTile` が決定的な 404（全レイヤー未配信）で
      * reject した場合（DEM5 非整備かつ dem_png の最大 zoom=14 を超える z15 山岳地帯など）に限り、平面版
@@ -369,7 +386,8 @@ export const createGlobeTileManager = (
             for (let cz = gz - 1; cz >= floor; cz--) {
                 const d = gz - cz;
                 try {
-                    const parent = await loadElevationTile(cz, gx >> d, gy >> d);
+                    // 親 (cz, gx>>d, gy>>d) は同一親を共有する子タイル間で in-flight 共有して重複取得を抑える。
+                    const parent = await loadCoarseParent(cz, gx >> d, gy >> d);
                     return extractSubTileElev(parent, cz, gz, gx, gy);
                 } catch (e) {
                     // 404（未配信）のみさらに 1 段粗く再試行。一時障害（タイムアウト/ネットワーク/5xx 等）は
