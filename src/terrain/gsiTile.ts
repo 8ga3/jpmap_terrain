@@ -338,7 +338,7 @@ export const loadElevationTile = async (
         if (merged && holes <= total * COMPOSITE_HOLE_RATIO) break;
 
         // dem_png は z14 までしか配信されない。z15 以降の同一ズーム dem_png は必ず 404 になるため、
-        // 無駄なフェッチを避けてスキップし、後段の粗ズーム dem_png 穴埋めに委ねる（PR #388 review）。
+        // 無駄なフェッチを避けてスキップし、後段の粗ズーム dem_png 穴埋めに委ねる（Issue #386）。
         if (layer === "dem_png" && zoom > DEM_PNG_MAX_ZOOM) continue;
 
         const url = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`;
@@ -346,7 +346,8 @@ export const loadElevationTile = async (
         try {
             img = await loadImageData(url);
         } catch (e) {
-            // HTTP 失敗（404 等：このレイヤーは当該領域外）→ 次レイヤーへ。
+            // 取得失敗（404＝当該領域外のほか、タイムアウト/ネットワーク等の一時障害も含む）→ 次レイヤーへ。
+            // 404 以外の一時障害が混じった場合は allDeterministic404 を倒し、最終 throw を非 404 扱いにする。
             lastErr = e;
             if (!(e instanceof TileFetchError) || e.status !== 404) allDeterministic404 = false;
             continue;
@@ -404,7 +405,7 @@ export const loadElevationTile = async (
         const floorCz = Math.max(0, startCz - (COARSE_FILL_DEPTH - 1));
         // 残り穴が閾値以下になったら打ち切る。微小な欠測（≤ COMPOSITE_HOLE_RATIO）まで粗ズームを
         // 遡って取得するのは無駄なフェッチになるため、後段の `fillInvalidPixels` の局所補間に委ねる
-        // （PR #388 review）。
+        // （Issue #386）。
         for (let cz = startCz; cz >= floorCz && holes > total * COMPOSITE_HOLE_RATIO; cz--) {
             const d = zoom - cz;
             const url = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${cz}/${x >> d}/${y >> d}.png`;
@@ -423,7 +424,7 @@ export const loadElevationTile = async (
             } catch (e) {
                 // 404（未配信）のみ次の粗ズームへ。一時障害（タイムアウト/ネットワーク/5xx 等）は
                 // 握りつぶさず伝播し、穴埋め未完のまま誤った標高を返さない。呼び出し側のバックオフ
-                // 再取得に委ねる（PR #388 review）。
+                // 再取得に委ねる（Issue #386）。
                 if (e instanceof TileFetchError && e.status === 404) continue;
                 throw e;
             }
