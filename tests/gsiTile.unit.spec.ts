@@ -615,6 +615,30 @@ describe("loadElevationTile", () => {
         for (let i = 0; i < elev.length; i++) expect(Number.isNaN(elev[i])).toBe(true);
     });
 
+    it("粗ズーム補填中の一時障害（非404）は握りつぶさず伝播する", async () => {
+        // dem5a 全面 no-data → dem5b(z15) 404 → 粗ズーム dem_png(z14) でネットワーク障害(reject)。
+        // 404 と区別し、穴埋め未完のまま誤った標高を返さず例外を伝播する（バックオフ再取得に委ねる）。
+        const allNoData = makeImageGrid(2, 4);
+        setupLoadImageMocks(allNoData);
+
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+            const url = String(input);
+            if (url.includes("dem5a_png")) {
+                return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+            }
+            if (url.includes("dem5b_png")) {
+                return Promise.resolve({ ok: false, status: 404 } as Response);
+            }
+            // 粗ズーム dem_png(z14): ネットワーク障害（HTTP 404 ではない一時障害）
+            return Promise.reject(new Error("network down"));
+        });
+        globalThis.fetch = fetchMock;
+
+        await expect(loadElevationTile(15, 100, 200)).rejects.toThrow(/network down/);
+        // dem5a(200) + dem5b(404) + 粗ズーム dem_png(z14, 一時障害で打ち切り) = 3 取得
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
     it("HTTP 失敗時のみ次レイヤーへフォールバックする", async () => {
         // dem5a → 404, dem5b → 有効データ (R=0, G=100, B=0 → 25600*0.01 = 256.0)
         const validImageData = makeImageDataResult(0, 100, 0);

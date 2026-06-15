@@ -527,6 +527,29 @@ describe("createGlobeTileManager", () => {
         expect(built?.geomElev[0]).toBeCloseTo(PARENT_ELEV);
     });
 
+    it("粗ズームフォールバック中の一時障害は握りつぶさずバックオフへ倒す (#386)", async () => {
+        // geom zoom(15) は 404 → 粗ズーム(14)へフォールバックするが、そこで一時障害(非404)が起きる。
+        // 一時障害は握りつぶさず再 throw し、誤って粗ズーム平坦化へ倒さずバックオフ再取得に委ねる。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const zoom = args[0] as number;
+            if (zoom >= 15) return Promise.reject(new TileFetchError("404", 404));
+            // 粗ズーム z14 で一時障害（TileFetchError 以外）。
+            return Promise.reject(new Error("network down"));
+        });
+        toTileXY.mockReturnValue({ x: 24000, y: 12000 });
+        selectedTiles = [tile(24000, 12000, 15)];
+
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        await flush(); // geom(15) 404 → 粗ズーム(14) 一時障害で再 throw → failedRetryAt 記録
+        capturedBuilds.length = 0;
+        mgr.sync(syncParams()); // バックオフ中: 建築されても粗ズーム実標高ではなくフラット（未取得）
+
+        // 一時障害なので粗ズーム実標高での建築は行われない（バックオフ後の再取得に委ねる）。
+        const built = capturedBuilds.find((b) => b.tx === 24000 && b.ty === 12000);
+        expect(built?.geomElev[0] ?? 0).not.toBeCloseTo(900);
+    });
+
     it("アンロード後に遅延 resolve した結果は無視され、再選択時に再取得する", async () => {
         // resolve を保留できる deferred。
         let resolveFn: (v: Float32Array) => void = () => {};
