@@ -371,8 +371,11 @@ export const createGlobeTileManager = (
                 try {
                     const parent = await loadElevationTile(cz, gx >> d, gy >> d);
                     return extractSubTileElev(parent, cz, gz, gx, gy);
-                } catch {
-                    // この粗ズームも未配信 → さらに 1 段粗く再試行。
+                } catch (e) {
+                    // 404（未配信）のみさらに 1 段粗く再試行。一時障害（タイムアウト/ネットワーク/5xx 等）は
+                    // 握りつぶさず再 throw し、バックオフ再取得に委ねる（誤って平坦化に倒さない, PR #388 review）。
+                    if (e instanceof TileFetchError && e.status === 404) continue;
+                    throw e;
                 }
             }
             throw err;

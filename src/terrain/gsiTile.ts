@@ -420,8 +420,12 @@ export const loadElevationTile = async (
                     y,
                     cz
                 );
-            } catch {
-                // この粗ズームの dem_png も未配信 → さらに 1 段粗く再試行。
+            } catch (e) {
+                // 404（未配信）のみ次の粗ズームへ。一時障害（タイムアウト/ネットワーク/5xx 等）は
+                // 握りつぶさず伝播し、穴埋め未完のまま誤った標高を返さない。呼び出し側のバックオフ
+                // 再取得に委ねる（PR #388 review）。
+                if (e instanceof TileFetchError && e.status === 404) continue;
+                throw e;
             }
         }
     }
