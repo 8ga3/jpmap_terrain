@@ -29,6 +29,7 @@ import {
     isAllNaN,
     isInvalidElev,
     fillInvalidPixels,
+    TileFetchError,
     type MapType,
 } from "../gsiTile";
 import { stitchTileEdges, type StitchNeighbors } from "../tileStitching";
@@ -342,13 +343,17 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * geom タイル標高を取得する。geom zoom の `loadElevationTile` が reject した場合（DEM5 非整備かつ
-     * dem_png の最大 zoom=14 を超える z15 山岳地帯での全レイヤー 404 のほか、一時的なネットワーク障害も
-     * 含む。両者は区別できない）、平面版 `tileManager` と同様に粗ズーム DEM へ段階フォールバックし、
-     * 該当領域を切り出して返す（#384）。粗ズームも全て失敗した場合は元の reject を再 throw する。
+     * geom タイル標高を取得する。geom zoom の `loadElevationTile` が決定的な 404（全レイヤー未配信）で
+     * reject した場合（DEM5 非整備かつ dem_png の最大 zoom=14 を超える z15 山岳地帯など）に限り、平面版
+     * `tileManager` と同様に粗ズーム DEM へ段階フォールバックし、該当領域を切り出して返す（#384）。粗ズームも
+     * 全て失敗した場合は元の reject を再 throw する。
      *
-     * これが無いと globe は geom zoom 単一しか試さず、失敗時に標高ロード失敗 → 暫定平坦化（代表標高
-     * /0m）へ倒れ、本来の地形が「ずっと下（≒0m）」へ落ちて見える。
+     * 一時的な取得失敗（タイムアウト/ネットワーク障害など、`TileFetchError.status` が 404 でないもの）は
+     * 粗ズームへ倒さず再 throw する。これにより `loadTile` のバックオフ再取得が働き、一時障害の解消後に
+     * 高 zoom の高詳細標高へ復帰できる（粗ズームの低詳細に固定されるのを防ぐ, PR #388 review）。
+     *
+     * 404 フォールバックが無いと globe は geom zoom 単一しか試さず、失敗時に標高ロード失敗 → 暫定平坦化
+     * （代表標高 /0m）へ倒れ、本来の地形が「ずっと下（≒0m）」へ落ちて見える。
      */
     const loadGeomElevation = async (
         gz: number,
@@ -358,6 +363,8 @@ export const createGlobeTileManager = (
         try {
             return await loadElevationTile(gz, gx, gy);
         } catch (err) {
+            // 決定的な 404（未配信）のみ粗ズームへフォールバックする。一時障害は再 throw してバックオフに委ねる。
+            if (!(err instanceof TileFetchError) || err.status !== 404) throw err;
             const floor = Math.max(0, gz - GEOM_ELEV_FALLBACK_DEPTH);
             for (let cz = gz - 1; cz >= floor; cz--) {
                 const d = gz - cz;

@@ -159,6 +159,7 @@ const { StandardMaterial } = await import("@babylonjs/core/Materials/standardMat
 
 const loadElevationTile = gsiMock.loadElevationTile as jest.Mock;
 const toTileXY = gsiMock.toTileXY as jest.Mock;
+const { TileFetchError } = gsiMock;
 const MeshMock = Mesh as unknown as jest.Mock;
 const MaterialMock = StandardMaterial as unknown as jest.Mock;
 
@@ -478,15 +479,16 @@ describe("createGlobeTileManager", () => {
         expect(meshA.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    it("取得失敗はバックオフし再取得せず、失敗確定後にフラット建築する", async () => {
+    it("一時的な取得失敗はバックオフし再取得せず、失敗確定後にフラット建築する", async () => {
+        // 一時障害（TileFetchError 以外 / status≠404）は粗ズームへ倒さず即座に再 throw する。
         loadElevationTile.mockImplementation(() => Promise.reject(new Error("fetch failed")));
         const mgr = makeManager();
         mgr.sync(syncParams());
-        // loadGeomElevation は geom zoom を同期的に 1 回試行する（粗ズーム fallback は reject 後）。
+        // loadGeomElevation は geom zoom を同期的に 1 回試行する。一時障害は粗ズーム fallback せず再 throw。
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
         // 標高ロード中: まだ失敗が確定していないのでメッシュ未生成。
         expect(MeshMock).toHaveBeenCalledTimes(0);
-        await flush(); // geom zoom も粗ズーム fallback も全失敗 → failedRetryAt 記録（バックオフへ）
+        await flush(); // geom zoom 失敗（粗ズーム fallback なし）→ failedRetryAt 記録（バックオフへ）
         loadElevationTile.mockClear(); // 以降の sync が再取得しないことを fallback 深さに依らず検証
         // 失敗確定後の sync: フラット(海面 0m)でメッシュ生成（恒久欠けを防ぐ）。
         mgr.sync(syncParams());
@@ -498,11 +500,12 @@ describe("createGlobeTileManager", () => {
     });
 
     it("geom zoom が全 DEM 404 でも粗ズーム DEM を切り出して実標高で建築する (#384)", async () => {
-        // DEM5 非整備領域: z15 geom は全レイヤー 404 だが、粗ズーム z14 dem_png には実標高がある。
+        // DEM5 非整備領域: z15 geom は全レイヤー 404(決定的未配信) だが、粗ズーム z14 dem_png には実標高がある。
         const PARENT_ELEV = 900;
         loadElevationTile.mockImplementation((...args: unknown[]) => {
             const zoom = args[0] as number;
-            if (zoom >= 15) return Promise.reject(new Error("404"));
+            // 決定的な 404 のみ粗ズームフォールバックを発動するため TileFetchError(status=404) で reject。
+            if (zoom >= 15) return Promise.reject(new TileFetchError("404", 404));
             return Promise.resolve(new Float32Array(256 * 256).fill(PARENT_ELEV));
         });
         toTileXY.mockReturnValue({ x: 24000, y: 12000 });
@@ -881,12 +884,17 @@ describe("createGlobeTileManager", () => {
 
     it("取得失敗(404)の湖面タイルを 0m でなく隣接タイルの接線標高で平坦建築する (#339)", async () => {
         const mgr = makeManager();
-        // 中央 geom タイル(gx=100,gy=100)は全レイヤ 404（reject）＝本栖湖 z15 湖面タイルの実挙動。
+        // 中央 geom タイル(gx=100,gy=100)は全レイヤ 404（決定的未配信）かつ粗ズーム祖先も 404＝本栖湖 z15
+        // 湖面タイルの実挙動（湖面は dem_png でも未配信）。粗ズームフォールバックも尽きて failedRetryAt へ。
         // 上下左右の隣接タイルは一様 900m（本栖湖の湖面標高 ≒ 湖岸標高）。
         loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const zoom = args[0] as number;
             const gx = args[1] as number;
             const gy = args[2] as number;
-            if (gx === 100 && gy === 100) return Promise.reject(new Error("HTTP 404"));
+            // 中央タイル(z10)も粗ズーム祖先(z<10)も 404。決定的 404 なので粗ズームを試すが全滅 → 再 throw。
+            if ((gx === 100 && gy === 100) || zoom < 10) {
+                return Promise.reject(new TileFetchError("HTTP 404", 404));
+            }
             return Promise.resolve(new Float32Array(256 * 256).fill(900));
         });
         selectedTiles = [
