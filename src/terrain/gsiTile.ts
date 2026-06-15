@@ -39,6 +39,21 @@ const COARSE_FILL_DEPTH = 5;
  */
 const COMPOSITE_HOLE_RATIO = 0.1;
 
+/**
+ * タイル取得失敗を表すエラー。`status` に HTTP ステータスを保持する（ネットワーク/タイムアウト等の
+ * 非 HTTP 失敗では undefined）。404（決定的な未配信）と一時的な障害を呼び出し側で区別するために使う
+ * （globe の粗ズームフォールバック判定など, Issue #386）。
+ */
+export class TileFetchError extends Error {
+    constructor(
+        message: string,
+        readonly status?: number
+    ) {
+        super(message);
+        this.name = "TileFetchError";
+    }
+}
+
 export const clamp = (value: number, min: number, max: number): number =>
     Math.min(Math.max(value, min), max);
 
@@ -264,7 +279,7 @@ const FETCH_TIMEOUT_MS = 15000;
 /** ImageData を fetch して返す（Canvas経由） */
 const loadImageData = async (url: string): Promise<ImageData> => {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) throw new Error(`Tile fetch failed: ${url}`);
+    if (!res.ok) throw new TileFetchError(`Tile fetch failed: ${url}`, res.status);
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
     const cvs = document.createElement("canvas");
@@ -314,10 +329,17 @@ export const loadElevationTile = async (
     let total = 0;
     let holes = 0;
     let lastErr: unknown;
+    // 全レイヤーの失敗が決定的な 404（未配信）だけだったか。一時障害（タイムアウト等）が混じる場合は
+    // false にして、最終 throw の status を undefined にする（呼び出し側で粗ズームへ倒さず再試行させる）。
+    let allDeterministic404 = true;
 
     for (const layer of DEM_LAYERS) {
         // 穴が閾値以下になれば以降のレイヤーは不要（微小穴は fillInvalidPixels に委ねる）。
         if (merged && holes <= total * COMPOSITE_HOLE_RATIO) break;
+
+        // dem_png は z14 までしか配信されない。z15 以降の同一ズーム dem_png は必ず 404 になるため、
+        // 無駄なフェッチを避けてスキップし、後段の粗ズーム dem_png 穴埋めに委ねる（PR #388 review）。
+        if (layer === "dem_png" && zoom > DEM_PNG_MAX_ZOOM) continue;
 
         const url = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`;
         let img: ImageData;
@@ -326,6 +348,7 @@ export const loadElevationTile = async (
         } catch (e) {
             // HTTP 失敗（404 等：このレイヤーは当該領域外）→ 次レイヤーへ。
             lastErr = e;
+            if (!(e instanceof TileFetchError) || e.status !== 404) allDeterministic404 = false;
             continue;
         }
 
@@ -363,8 +386,9 @@ export const loadElevationTile = async (
     }
 
     if (!merged) {
-        throw new Error(
-            `No elevation tile available for z${zoom}/${x}/${y}: ${String(lastErr)}`
+        throw new TileFetchError(
+            `No elevation tile available for z${zoom}/${x}/${y}: ${String(lastErr)}`,
+            allDeterministic404 ? 404 : undefined
         );
     }
 
@@ -378,7 +402,10 @@ export const loadElevationTile = async (
     if (holes > total * COMPOSITE_HOLE_RATIO) {
         const startCz = Math.min(zoom - 1, DEM_PNG_MAX_ZOOM);
         const floorCz = Math.max(0, startCz - (COARSE_FILL_DEPTH - 1));
-        for (let cz = startCz; cz >= floorCz && holes > 0; cz--) {
+        // 残り穴が閾値以下になったら打ち切る。微小な欠測（≤ COMPOSITE_HOLE_RATIO）まで粗ズームを
+        // 遡って取得するのは無駄なフェッチになるため、後段の `fillInvalidPixels` の局所補間に委ねる
+        // （PR #388 review）。
+        for (let cz = startCz; cz >= floorCz && holes > total * COMPOSITE_HOLE_RATIO; cz--) {
             const d = zoom - cz;
             const url = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${cz}/${x >> d}/${y >> d}.png`;
             try {

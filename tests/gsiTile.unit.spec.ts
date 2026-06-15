@@ -14,6 +14,7 @@ import {
     textureUrl,
     NO_DATA_SENTINEL,
     loadElevationTile,
+    TileFetchError,
 } from "../src/terrain/gsiTile";
 
 describe("TILE_SIZE", () => {
@@ -478,8 +479,10 @@ describe("loadElevationTile", () => {
     });
 
     it("no-data の穴を下位レイヤーの有効値で合成補填する (#384)", async () => {
-        // dem5a: 2×2 のうち 3px が no-data → dem5b: 404 → dem: 全有効(256.0)
-        // 穴がある限り下位レイヤーを取得し、dem の有効値で埋める。
+        // dem5a: 2×2 のうち 3px が no-data → dem5b: 404 → dem_png: 全有効(256.0)
+        // 穴がある限り同一ズームの下位レイヤーを取得し、dem_png の有効値で埋める。
+        // dem_png が同一ズームで配信される z14 で検証する（z15 以降は dem_png 同一ズームをスキップし
+        // 粗ズーム補填に委ねるため、別テストで扱う）。
         const demHoles = makeImageGrid(2, 3); // 3/4 = no-data
         const demFull = makeImageGrid(2, 0); // 全有効
         setupLoadImageSequenceMocks([demHoles, demFull]);
@@ -493,13 +496,13 @@ describe("loadElevationTile", () => {
         });
         globalThis.fetch = fetchMock;
 
-        const elev = await loadElevationTile(15, 100, 200);
+        const elev = await loadElevationTile(14, 100, 200);
 
-        // dem5a(成功・穴) → dem5b(404) → dem(成功・穴埋め) で 3 レイヤー試行
+        // dem5a(成功・穴) → dem5b(404) → dem_png(成功・穴埋め) で 3 レイヤー試行
         expect(fetchMock).toHaveBeenCalledTimes(3);
-        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png");
-        expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png");
-        expect(fetchMock.mock.calls[2][0]).toContain("dem_png");
+        expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png/14/");
+        expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png/14/");
+        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/14/");
 
         // 穴が dem の有効値で全て埋まる
         expect(elev.length).toBe(4);
@@ -507,18 +510,17 @@ describe("loadElevationTile", () => {
     });
 
     it("全面 no-data（同一ズームに実標高なし）は粗ズーム dem_png で穴埋めする (#386)", async () => {
-        // z15: dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b(z15) 404 → dem_png(z15) 404。
-        // 同一ズームに実標高が無く全面 no-data のため、粗ズーム dem_png(z14) を取得して穴埋めする。
+        // z15: dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b(z15) 404 → dem_png(z15) は配信上限
+        // (z14)超のためスキップ。同一ズームに実標高が無く全面 no-data のため、粗ズーム dem_png(z14) を
+        // 取得して穴埋めする。
         const allNoData = makeImageGrid(2, 4); // 4/4 = 全面 no-data
         const coarseFull = makeImageGrid(2, 0); // 粗ズーム dem_png: 全有効(256.0)
         setupLoadImageSequenceMocks([allNoData, coarseFull]);
 
-        let callCount = 0;
         const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
-            callCount++;
-            // dem5b(z15)/dem_png(z15) は 404。dem5a(z15) と 粗ズーム dem_png(z14) は成功。
+            // dem5b(z15) は 404。dem5a(z15) と 粗ズーム dem_png(z14) は成功。dem_png(z15) は呼ばれない。
             const url = String(input);
-            if (callCount === 2 || (callCount === 3 && url.includes("/15/"))) {
+            if (url.includes("dem5b_png")) {
                 return Promise.resolve({ ok: false, status: 404 } as Response);
             }
             return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
@@ -527,13 +529,12 @@ describe("loadElevationTile", () => {
 
         const elev = await loadElevationTile(15, 100, 200);
 
-        // dem5a(z15) → dem5b(z15,404) → dem_png(z15,404) → dem_png(z14) の 4 取得
-        expect(fetchMock).toHaveBeenCalledTimes(4);
+        // dem5a(z15) → dem5b(z15,404) → dem_png(z14) の 3 取得（dem_png z15 はスキップ）
+        expect(fetchMock).toHaveBeenCalledTimes(3);
         expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png/15/");
         expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png/15/");
-        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/15/");
         // 粗ズームは親タイル座標 (z14, x>>1, y>>1) = (14, 50, 100)
-        expect(fetchMock.mock.calls[3][0]).toContain("dem_png/14/50/100.png");
+        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/14/50/100.png");
 
         // 全面 no-data が粗ズーム dem_png の実標高で埋まる
         expect(elev.length).toBe(4);
@@ -563,15 +564,16 @@ describe("loadElevationTile", () => {
 
     it("閾値超の部分欠測は、同一ズームで埋まらなければ粗ズーム dem_png で穴埋めする (#386)", async () => {
         // dem5a 4×4 のうち 4px no-data = 25% > COMPOSITE_HOLE_RATIO(0.1) → 下位レイヤー合成。
-        // dem5b/dem_png(同一ズーム z15) は 404 で埋まらず、穴が閾値超のため粗ズーム dem_png(z14) で穴埋め。
+        // dem5b(同一ズーム z15) は 404、dem_png(z15) は配信上限超でスキップ。穴が閾値超のため
+        // 粗ズーム dem_png(z14) で穴埋め。
         const partialHoles = makeImageGrid(4, 4);
         const coarseFull = makeImageGrid(4, 0); // 粗ズーム dem_png: 全有効(256.0)
         setupLoadImageSequenceMocks([partialHoles, coarseFull]);
 
         const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             const url = String(input);
-            // dem5b/dem_png（同一ズーム z15）は 404。粗ズーム dem_png(z14) は成功。
-            if (url.includes("dem5b_png") || url.includes("dem_png/15/")) {
+            // dem5b（同一ズーム z15）は 404。粗ズーム dem_png(z14) は成功。dem_png(z15) は呼ばれない。
+            if (url.includes("dem5b_png")) {
                 return Promise.resolve({ ok: false, status: 404 } as Response);
             }
             return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
@@ -580,25 +582,25 @@ describe("loadElevationTile", () => {
 
         const elev = await loadElevationTile(15, 100, 200);
 
-        // dem5a(z15) → dem5b(z15,404) → dem_png(z15,404) → dem_png(z14) の 4 取得
-        expect(fetchMock).toHaveBeenCalledTimes(4);
+        // dem5a(z15) → dem5b(z15,404) → dem_png(z14) の 3 取得（dem_png z15 はスキップ）
+        expect(fetchMock).toHaveBeenCalledTimes(3);
         expect(fetchMock.mock.calls[0][0]).toContain("dem5a_png/15/");
         expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png/15/");
-        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/15/");
-        expect(fetchMock.mock.calls[3][0]).toContain("dem_png/14/50/100.png");
+        expect(fetchMock.mock.calls[2][0]).toContain("dem_png/14/50/100.png");
         // 25% の欠測が粗ズーム dem_png の実標高で埋まる
         for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
     });
 
     it("全面 no-data で粗ズームも未配信なら NaN のまま（後段の湖面処理に委ねる）", async () => {
-        // dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b/dem_png(z15) 404 → 粗ズーム dem_png(z14..z10) も全て 404。
-        // どこにも実標高が無いため all-NaN を維持し、後段（refineAllNaNTiles 等）に委ねる。
+        // dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b(z15) 404 → dem_png(z15) はスキップ
+        // → 粗ズーム dem_png(z14..z10) も全て 404。どこにも実標高が無いため all-NaN を維持し、
+        // 後段（refineAllNaNTiles 等）に委ねる。
         const allNoData = makeImageGrid(2, 4);
         setupLoadImageMocks(allNoData);
 
         const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             const url = String(input);
-            // dem5a(z15) のみ 200。それ以外（dem5b/dem_png/粗ズーム）は全て 404。
+            // dem5a(z15) のみ 200。それ以外（dem5b/粗ズーム dem_png）は全て 404。
             if (url.includes("dem5a_png")) {
                 return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
             }
@@ -608,8 +610,8 @@ describe("loadElevationTile", () => {
 
         const elev = await loadElevationTile(15, 100, 200);
 
-        // dem5a(200) + dem5b(404) + dem_png/z15(404) + 粗ズーム dem_png z14..z10(5 段) = 8 取得
-        expect(fetchMock).toHaveBeenCalledTimes(8);
+        // dem5a(200) + dem5b(404) + 粗ズーム dem_png z14..z10(5 段) = 7 取得（dem_png z15 はスキップ）
+        expect(fetchMock).toHaveBeenCalledTimes(7);
         for (let i = 0; i < elev.length; i++) expect(Number.isNaN(elev[i])).toBe(true);
     });
 
@@ -648,12 +650,41 @@ describe("loadElevationTile", () => {
         );
         globalThis.fetch = fetchMock;
 
-        await expect(loadElevationTile(15, 100, 200)).rejects.toThrow(
+        // z14 では dem_png も同一ズームで試行されるため 3 レイヤー全て 404 → throw。
+        await expect(loadElevationTile(14, 100, 200)).rejects.toThrow(
             /No elevation tile available/
         );
 
         // 3 レイヤー全て試行
         expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("全レイヤー 404（決定的未配信）なら TileFetchError.status=404 を投げる", async () => {
+        const fetchMock = jest.fn(() =>
+            Promise.resolve({ ok: false, status: 404 } as Response)
+        );
+        globalThis.fetch = fetchMock;
+
+        // status=404 は呼び出し側（globe）が粗ズームフォールバックを発動してよい決定的未配信の合図。
+        await expect(loadElevationTile(14, 100, 200)).rejects.toMatchObject({
+            name: "TileFetchError",
+            status: 404,
+        });
+    });
+
+    it("一時的な取得失敗が混じる場合は TileFetchError.status=undefined を投げる", async () => {
+        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+            const url = String(input);
+            // dem5a はネットワーク障害（reject）、それ以外は 404。一時障害が混じるため決定的 404 ではない。
+            if (url.includes("dem5a_png")) return Promise.reject(new Error("network down"));
+            return Promise.resolve({ ok: false, status: 404 } as Response);
+        });
+        globalThis.fetch = fetchMock;
+
+        // status=undefined は一時障害の合図。globe は粗ズームへ倒さずバックオフ再取得する。
+        const err = await loadElevationTile(14, 100, 200).catch((e) => e);
+        expect(err).toBeInstanceOf(TileFetchError);
+        expect((err as TileFetchError).status).toBeUndefined();
     });
 });
 
