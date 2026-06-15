@@ -342,11 +342,12 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * geom タイル標高を取得する。geom zoom の DEM が全レイヤー 404（DEM5 非整備かつ dem_png の
-     * 最大 zoom=14 を超える領域。例: z15 をズームアップした山岳地帯）の場合、平面版 `tileManager`
-     * と同様に粗ズーム DEM へ段階フォールバックし、該当領域を切り出して返す（#384）。
+     * geom タイル標高を取得する。geom zoom の `loadElevationTile` が reject した場合（DEM5 非整備かつ
+     * dem_png の最大 zoom=14 を超える z15 山岳地帯での全レイヤー 404 のほか、一時的なネットワーク障害も
+     * 含む。両者は区別できない）、平面版 `tileManager` と同様に粗ズーム DEM へ段階フォールバックし、
+     * 該当領域を切り出して返す（#384）。粗ズームも全て失敗した場合は元の reject を再 throw する。
      *
-     * これが無いと globe は geom zoom 単一しか試さず、404 時に標高ロード失敗 → 暫定平坦化（代表標高
+     * これが無いと globe は geom zoom 単一しか試さず、失敗時に標高ロード失敗 → 暫定平坦化（代表標高
      * /0m）へ倒れ、本来の地形が「ずっと下（≒0m）」へ落ちて見える。
      */
     const loadGeomElevation = async (
