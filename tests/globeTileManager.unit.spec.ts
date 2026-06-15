@@ -550,6 +550,40 @@ describe("createGlobeTileManager", () => {
         expect(built?.geomElev[0] ?? 0).not.toBeCloseTo(900);
     });
 
+    it("同一粗ズーム親を共有する子タイルのフォールバックは親フェッチを重複させない (#386)", async () => {
+        // z15 の 4 枚（2x2）は同一の z14 親 (x>>1,y>>1)=(12000,6000) を共有する。全枚が 404 で
+        // 粗ズームフォールバックしても、親 DEM の取得は in-flight 共有で 1 回に集約される。
+        const PARENT_ELEV = 900;
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const zoom = args[0] as number;
+            if (zoom >= 15) return Promise.reject(new TileFetchError("404", 404));
+            return Promise.resolve(new Float32Array(256 * 256).fill(PARENT_ELEV));
+        });
+        selectedTiles = [
+            tile(24000, 12000, 15),
+            tile(24001, 12000, 15),
+            tile(24000, 12001, 15),
+            tile(24001, 12001, 15),
+        ];
+
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams()); // 標高確定後に建築
+
+        // 4 枚とも粗ズーム親 (z14, 12000, 6000) を参照するが、親フェッチは 1 回に集約される。
+        const z14ParentCalls = loadElevationTile.mock.calls.filter(
+            (c: unknown[]) => c[0] === 14 && c[1] === 12000 && c[2] === 6000,
+        );
+        expect(z14ParentCalls).toHaveLength(1);
+
+        // 各子タイルは共有した親から自領域を切り出して実標高で建築される。
+        for (const [tx, ty] of [[24000, 12000], [24001, 12000], [24000, 12001], [24001, 12001]]) {
+            const built = capturedBuilds.find((b) => b.tx === tx && b.ty === ty);
+            expect(built?.geomElev[0]).toBeCloseTo(PARENT_ELEV);
+        }
+    });
+
     it("アンロード後に遅延 resolve した結果は無視され、再選択時に再取得する", async () => {
         // resolve を保留できる deferred。
         let resolveFn: (v: Float32Array) => void = () => {};
