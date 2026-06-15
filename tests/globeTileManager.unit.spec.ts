@@ -482,17 +482,46 @@ describe("createGlobeTileManager", () => {
         loadElevationTile.mockImplementation(() => Promise.reject(new Error("fetch failed")));
         const mgr = makeManager();
         mgr.sync(syncParams());
+        // loadGeomElevation は geom zoom を同期的に 1 回試行する（粗ズーム fallback は reject 後）。
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
         // 標高ロード中: まだ失敗が確定していないのでメッシュ未生成。
         expect(MeshMock).toHaveBeenCalledTimes(0);
-        await flush(); // 失敗 → failedRetryAt 記録（取得失敗→バックオフ状態へ移行）
+        await flush(); // geom zoom も粗ズーム fallback も全失敗 → failedRetryAt 記録（バックオフへ）
+        loadElevationTile.mockClear(); // 以降の sync が再取得しないことを fallback 深さに依らず検証
         // 失敗確定後の sync: フラット(海面 0m)でメッシュ生成（恒久欠けを防ぐ）。
         mgr.sync(syncParams());
-        expect(loadElevationTile).toHaveBeenCalledTimes(1); // バックオフ中、再取得なし
+        expect(loadElevationTile).toHaveBeenCalledTimes(0); // バックオフ中、再取得なし
         expect(MeshMock).toHaveBeenCalledTimes(1);
         // バックオフ中の再 sync でもメッシュを再生成しない。
         mgr.sync(syncParams());
         expect(MeshMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("geom zoom が全 DEM 404 でも粗ズーム DEM を切り出して実標高で建築する (#384)", async () => {
+        // DEM5 非整備領域: z15 geom は全レイヤー 404 だが、粗ズーム z14 dem_png には実標高がある。
+        const PARENT_ELEV = 900;
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const zoom = args[0] as number;
+            if (zoom >= 15) return Promise.reject(new Error("404"));
+            return Promise.resolve(new Float32Array(256 * 256).fill(PARENT_ELEV));
+        });
+        toTileXY.mockReturnValue({ x: 24000, y: 12000 });
+        selectedTiles = [tile(24000, 12000, 15)];
+
+        const mgr = makeManager();
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams()); // 標高確定後に建築
+
+        // geom zoom(15) は 404、粗ズーム(14)へフォールバックして取得している。
+        const zooms = loadElevationTile.mock.calls.map((c: unknown[]) => c[0]);
+        expect(zooms).toContain(15);
+        expect(zooms).toContain(14);
+
+        // 建築標高は 0m(海面フラット)ではなく粗ズーム DEM の実標高で埋まる。
+        const built = capturedBuilds.find((b) => b.tx === 24000 && b.ty === 12000);
+        expect(built).toBeDefined();
+        expect(built?.geomElev[0]).toBeCloseTo(PARENT_ELEV);
     });
 
     it("アンロード後に遅延 resolve した結果は無視され、再選択時に再取得する", async () => {

@@ -18,6 +18,26 @@ export const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 }
 
 const DEM_LAYERS = ["dem5a_png", "dem5b_png", "dem_png"] as const;
 
+/** dem_png（全国 DEM）が配信される最大ズーム。これを超える領域は 404 になる。 */
+const DEM_PNG_MAX_ZOOM = 14;
+
+/**
+ * タイル全面が no-data のとき、粗ズーム dem_png による穴埋めを何段まで遡って試すか（Issue #386）。
+ */
+const COARSE_FILL_DEPTH = 5;
+
+/**
+ * 同一ズームで下位 DEM レイヤーを合成して穴埋めする発動閾値（Issue #384/#386）。
+ *
+ * 穴（no-data）がタイル全体のこの割合を超えるときだけ dem5b/dem_png を取得して合成する。
+ * 整備済みの DEM5 でも、堀・河川・タイル境界などで僅かに no-data が生じる（実測で中央東京の
+ * dem5a でも 2〜23%）。こうした微小な穴まで毎回下位レイヤーを取得すると、描画が不必要に変化し
+ * （camera-terrain 衝突のパララックスずれ）、software rendering では追加フェッチで安定待ちが
+ * タイムアウトする。微小な穴は取得コストに見合わないため合成せず、後段の `fillInvalidPixels` の
+ * 局所補間に委ねる。山岳地帯のように穴が大きいタイルだけ合成・粗ズーム補填の対象とする。
+ */
+const COMPOSITE_HOLE_RATIO = 0.1;
+
 export const clamp = (value: number, min: number, max: number): number =>
     Math.min(Math.max(value, min), max);
 
@@ -104,6 +124,58 @@ export const decodeGsiElevation = (
     if (r === 128 && g === 0 && b === 0) return NaN;
     const raw = r * 65536 + g * 256 + b;
     return raw < 2 ** 23 ? raw * 0.01 : (raw - 2 ** 24) * 0.01;
+};
+
+/**
+ * 粗ズーム dem_png（親タイル）の該当領域を最近傍で切り出し、`merged` の残存 no-data 穴だけを
+ * その実標高で埋める（Issue #386）。全 DEM レイヤーは同一 256px タイルスキームで co-registered
+ * なため、親タイル (cz, x>>d, y>>d) の対応サブ領域をピクセル対応で参照できる。
+ *
+ * @returns 穴埋め後に残った（親側も no-data だった）穴の数。
+ */
+const fillHolesFromCoarseDem = (
+    merged: Float32Array,
+    width: number,
+    height: number,
+    parent: ImageData,
+    zoom: number,
+    x: number,
+    y: number,
+    cz: number
+): number => {
+    const d = zoom - cz;
+    const scale = 1 << d;
+    const pw = parent.width;
+    const ph = parent.height;
+    // 当該タイルが親タイル内で占めるサブ領域（親ピクセル単位）。
+    const subW = pw / scale;
+    const subH = ph / scale;
+    const originX = (x & (scale - 1)) * subW;
+    const originY = (y & (scale - 1)) * subH;
+    let remaining = 0;
+    for (let oy = 0; oy < height; oy++) {
+        const sy = Math.min(
+            ph - 1,
+            Math.round(originY + (height > 1 ? oy / (height - 1) : 0) * (subH - 1))
+        );
+        for (let ox = 0; ox < width; ox++) {
+            const idx = oy * width + ox;
+            if (!Number.isNaN(merged[idx])) continue;
+            const sx = Math.min(
+                pw - 1,
+                Math.round(originX + (width > 1 ? ox / (width - 1) : 0) * (subW - 1))
+            );
+            const p = (sy * pw + sx) * 4;
+            const v = decodeGsiElevation(
+                parent.data[p],
+                parent.data[p + 1],
+                parent.data[p + 2]
+            );
+            if (!Number.isNaN(v)) merged[idx] = v;
+            else remaining++;
+        }
+    }
+    return remaining;
 };
 
 /** 無効値(NaN/NO_DATA_SENTINEL)を周囲の有効ピクセルからBFS(フロンティア)方式で補間する */
@@ -205,40 +277,128 @@ const loadImageData = async (url: string): Promise<ImageData> => {
     return data;
 };
 
-/** 標高タイルを読み込み Float32Array で返す（dem5a → dem5b → dem フォールバック） */
+/**
+ * 標高タイルを読み込み Float32Array で返す（dem5a → dem5b → dem のレイヤー合成）。
+ *
+ * DEM5（dem5a/dem5b）はカバレッジに穴があり、山岳地帯では HTTP 200 を返すのに
+ * タイルの大半が no-data(128,0,0) になることがある（Issue #384）。最初に 200 を返した
+ * レイヤーをそのまま採用すると、わずかに残った有効ピクセルが後段の `fillInvalidPixels`
+ * でタイル全体に塗り広げられ、地形がフラット化・数百 m ずれ・0m へ崩れる。
+ *
+ * これを避けるため、穴（no-data）がタイル全体の `COMPOSITE_HOLE_RATIO` を超えるタイルに限り、
+ * 各レイヤーをピクセル単位で合成する:
+ * - 高解像度（dem5a > dem5b > dem）の有効ピクセルを優先する。
+ * - あるレイヤーで no-data だったピクセルだけを、次のレイヤーの有効値で穴埋めする。
+ * - 穴が閾値以下になった時点で以降のレイヤーは取得しない。
+ *
+ * 整備済み DEM5 でも堀・河川・タイル境界で僅かに生じる微小な穴は、下位レイヤーを取得せず後段の
+ * `fillInvalidPixels` の局所補間に委ねる（描画変化・追加フェッチを避けるため）。
+ *
+ * 同一ズームの DEM をすべて合成しても穴が `COMPOSITE_HOLE_RATIO` を超えて残る場合（dem_png の配信上限
+ * z14 を超えた z15 等で、同一ズームには穴を埋める実標高が存在しない大穴タイル）は、粗ズーム dem_png を
+ * 取得してタイルを実標高で穴埋めする（Issue #386）。閾値以下の微小な欠測は後段の `fillInvalidPixels`
+ * が局所補間するため、粗ズーム取得は行わない。
+ *
+ * 全 DEM レイヤーが同一の z/x/y/256px タイルスキームで co-registered なため、合成は
+ * リサンプル不要のピクセル対応で行える。
+ */
 export const loadElevationTile = async (
     zoom: number,
     x: number,
     y: number
 ): Promise<Float32Array> => {
+    let merged: Float32Array | null = null;
+    let width = 0;
+    let height = 0;
+    let total = 0;
+    let holes = 0;
     let lastErr: unknown;
+
     for (const layer of DEM_LAYERS) {
+        // 穴が閾値以下になれば以降のレイヤーは不要（微小穴は fillInvalidPixels に委ねる）。
+        if (merged && holes <= total * COMPOSITE_HOLE_RATIO) break;
+
         const url = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`;
+        let img: ImageData;
         try {
-            const img = await loadImageData(url);
-            const elev = new Float32Array(img.width * img.height);
+            img = await loadImageData(url);
+        } catch (e) {
+            // HTTP 失敗（404 等：このレイヤーは当該領域外）→ 次レイヤーへ。
+            lastErr = e;
+            continue;
+        }
+
+        if (!merged) {
+            width = img.width;
+            height = img.height;
+            merged = new Float32Array(width * height);
+            total = merged.length;
+            holes = 0;
             for (let i = 0; i < img.data.length; i += 4) {
-                elev[i / 4] = decodeGsiElevation(
+                const v = decodeGsiElevation(
                     img.data[i],
                     img.data[i + 1],
                     img.data[i + 2]
                 );
+                merged[i / 4] = v;
+                if (Number.isNaN(v)) holes++;
             }
-            // HTTP 成功 = このレイヤーが当該領域をカバーしているとみなす。
-            // 全 NaN（湖面など no-data 領域）でも次レイヤーへフォールバックしない。
-            // 下位レイヤー（dem5b など）は同じ場所に水面標高を返すことがあり、
-            // それを使うと湖面が押し上がる（issue #224）。
-            // all-NaN の場合は同レイヤー隣接タイルから後段（refineAllNaNTiles）の
-            // NaN 埋めで補間させる。
-            // フォールバックは HTTP 取得失敗（404 等：このレイヤー範囲外）でのみ発動。
-            return elev;
-        } catch (e) {
-            lastErr = e;
+        } else {
+            // no-data の穴だけを当レイヤーの有効値で埋める。
+            for (let i = 0; i < img.data.length; i += 4) {
+                const idx = i / 4;
+                if (!Number.isNaN(merged[idx])) continue;
+                const v = decodeGsiElevation(
+                    img.data[i],
+                    img.data[i + 1],
+                    img.data[i + 2]
+                );
+                if (!Number.isNaN(v)) {
+                    merged[idx] = v;
+                    holes--;
+                }
+            }
         }
     }
-    throw new Error(
-        `No elevation tile available for z${zoom}/${x}/${y}: ${String(lastErr)}`
-    );
+
+    if (!merged) {
+        throw new Error(
+            `No elevation tile available for z${zoom}/${x}/${y}: ${String(lastErr)}`
+        );
+    }
+
+    // 同一ズームの DEM をすべて合成しても穴（no-data）が閾値を超えて残る場合は、粗ズーム dem_png を
+    // 取得して実標高で穴埋めする（Issue #386）。dem_png の配信上限は z14 のため、z15 以降は同一ズームに
+    // 穴を埋める実標高が存在せず、DEM5 カバレッジ穴の大きいタイル（例: 山岳で dem5a が 7〜8 割 no-data）が
+    // そのまま残ると、わずかな有効ピクセルが後段の `fillInvalidPixels` で塗り広げられ、地形が
+    // 「ホールケーキの一切れ」状（フラット／0m／段差）に崩れる。これを防ぐため、穴が `COMPOSITE_HOLE_RATIO`
+    // を超えるタイルは粗ズーム dem_png で穴埋めする。z14 以下では同一ズーム dem_png で既に穴が埋まり
+    // （holes が閾値以下になり）ここは発動しない。微小な穴（閾値以下）は `fillInvalidPixels` の局所補間に委ねる。
+    if (holes > total * COMPOSITE_HOLE_RATIO) {
+        const startCz = Math.min(zoom - 1, DEM_PNG_MAX_ZOOM);
+        const floorCz = Math.max(0, startCz - (COARSE_FILL_DEPTH - 1));
+        for (let cz = startCz; cz >= floorCz && holes > 0; cz--) {
+            const d = zoom - cz;
+            const url = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${cz}/${x >> d}/${y >> d}.png`;
+            try {
+                const parent = await loadImageData(url);
+                holes = fillHolesFromCoarseDem(
+                    merged,
+                    width,
+                    height,
+                    parent,
+                    zoom,
+                    x,
+                    y,
+                    cz
+                );
+            } catch {
+                // この粗ズームの dem_png も未配信 → さらに 1 段粗く再試行。
+            }
+        }
+    }
+
+    return merged;
 };
 
 /** 地図タイプ */
