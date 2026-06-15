@@ -350,7 +350,7 @@ export const createGlobeTileManager = (
      *
      * 一時的な取得失敗（タイムアウト/ネットワーク障害など、`TileFetchError.status` が 404 でないもの）は
      * 粗ズームへ倒さず再 throw する。これにより `loadTile` のバックオフ再取得が働き、一時障害の解消後に
-     * 高 zoom の高詳細標高へ復帰できる（粗ズームの低詳細に固定されるのを防ぐ, PR #388 review）。
+     * 高 zoom の高詳細標高へ復帰できる（粗ズームの低詳細に固定されるのを防ぐ, Issue #386）。
      *
      * 404 フォールバックが無いと globe は geom zoom 単一しか試さず、失敗時に標高ロード失敗 → 暫定平坦化
      * （代表標高 /0m）へ倒れ、本来の地形が「ずっと下（≒0m）」へ落ちて見える。
@@ -373,7 +373,7 @@ export const createGlobeTileManager = (
                     return extractSubTileElev(parent, cz, gz, gx, gy);
                 } catch (e) {
                     // 404（未配信）のみさらに 1 段粗く再試行。一時障害（タイムアウト/ネットワーク/5xx 等）は
-                    // 握りつぶさず再 throw し、バックオフ再取得に委ねる（誤って平坦化に倒さない, PR #388 review）。
+                    // 握りつぶさず再 throw し、バックオフ再取得に委ねる（誤って平坦化に倒さない, Issue #386）。
                     if (e instanceof TileFetchError && e.status === 404) continue;
                     throw e;
                 }
