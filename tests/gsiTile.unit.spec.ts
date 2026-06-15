@@ -507,7 +507,7 @@ describe("loadElevationTile", () => {
     });
 
     it("全面 no-data（同一ズームに実標高なし）は粗ズーム dem_png で穴埋めする (#386)", async () => {
-        // z15: dem5a 全面 no-data(200) → dem5b(z15) 404 → dem_png(z15) 404。
+        // z15: dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b(z15) 404 → dem_png(z15) 404。
         // 同一ズームに実標高が無く全面 no-data のため、粗ズーム dem_png(z14) を取得して穴埋めする。
         const allNoData = makeImageGrid(2, 4); // 4/4 = 全面 no-data
         const coarseFull = makeImageGrid(2, 0); // 粗ズーム dem_png: 全有効(256.0)
@@ -591,7 +591,7 @@ describe("loadElevationTile", () => {
     });
 
     it("全面 no-data で粗ズームも未配信なら NaN のまま（後段の湖面処理に委ねる）", async () => {
-        // dem5a 全面 no-data(200) → dem5b/dem_png(z15) 404 → 粗ズーム dem_png(z14..z10) も全て 404。
+        // dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b/dem_png(z15) 404 → 粗ズーム dem_png(z14..z10) も全て 404。
         // どこにも実標高が無いため all-NaN を維持し、後段（refineAllNaNTiles 等）に委ねる。
         const allNoData = makeImageGrid(2, 4);
         setupLoadImageMocks(allNoData);

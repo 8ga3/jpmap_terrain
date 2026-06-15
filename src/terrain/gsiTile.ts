@@ -22,7 +22,8 @@ const DEM_LAYERS = ["dem5a_png", "dem5b_png", "dem_png"] as const;
 const DEM_PNG_MAX_ZOOM = 14;
 
 /**
- * タイル全面が no-data のとき、粗ズーム dem_png による穴埋めを何段まで遡って試すか（Issue #386）。
+ * 同一ズーム合成後も穴（no-data）が `COMPOSITE_HOLE_RATIO` を超えて残るタイルで、粗ズーム dem_png
+ * による穴埋めを何段まで遡って試すか（Issue #386）。全面 no-data・部分欠測のいずれも対象。
  */
 const COARSE_FILL_DEPTH = 5;
 
