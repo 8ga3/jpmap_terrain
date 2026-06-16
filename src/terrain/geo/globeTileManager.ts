@@ -1025,13 +1025,15 @@ export const createGlobeTileManager = (
             // が出る（planar は `applyStitchedElevation` で縫合済み）。原本 `elevCache` は破壊せず
             // コピーへ適用する。クロスレベルスナップ（CoarseEdge）は LOD 境界辺、本縫合は同一ズーム辺
             // を対象とし排他的に共存する。揃っていた隣接方位を sig に含め、隣接後ロードで再縫合させる。
+            // ここでは隣接収集（軽量）と署名計算のみ行い、256x256 コピー＋`stitchTileEdges` は再建築が
+            // 必要な場合（sig 不一致 or 新規）に限定する。隣接が揃った定常フレームで sig 一致による
+            // 再建築スキップが、無駄な全コピーを伴わないようにするため（#387 レビュー指摘）。
+            let stitchNeighbors: StitchNeighbors | undefined;
             let stitchSig = "";
             if (!isFlatFallback && !isAllNanPending && t.zoom >= minZoom) {
                 const { neighbors, sig: nSig } = collectSameZoomNeighbors(gz, gx, gy);
                 if (nSig.length > 0) {
-                    const copy = Float32Array.from(geomElev);
-                    stitchTileEdges(copy, neighbors, TILE_SIZE);
-                    geomElev = copy;
+                    stitchNeighbors = neighbors;
                     stitchSig = `s${nSig}|`;
                 }
             }
@@ -1072,8 +1074,17 @@ export const createGlobeTileManager = (
             // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
             // ジオメトリのみ差し替える（テクスチャ・マテリアルは再利用し再読込を避ける）。
             const existing = loaded.get(k);
+            // sig 一致（再建築不要）ならコピー＋縫合に入る前に早期スキップする（#387 レビュー指摘）。
+            if (existing && builtEdgeSig.get(k) === sig) continue;
+
+            // 再建築が確定したのでここで初めて同一ズーム縫合を適用する（原本 elevCache は非破壊）。
+            if (stitchNeighbors) {
+                const copy = Float32Array.from(geomElev);
+                stitchTileEdges(copy, stitchNeighbors, TILE_SIZE);
+                geomElev = copy;
+            }
+
             if (existing) {
-                if (builtEdgeSig.get(k) === sig) continue;
                 applyGeometry(
                     existing,
                     buildGlobeTileMeshData({
