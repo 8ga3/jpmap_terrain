@@ -936,6 +936,32 @@ export const createGlobeTileManager = (
         }
     };
 
+    /**
+     * 同一ズーム隣接（同 geom zoom）の有効標高を `elevCache` から収集する（#387）。
+     * planar の `getNeighborElevations` 相当。実標高タイルの辺を `stitchTileEdges` で平均化し、
+     * タイル境界の陰影シームを解消するために用いる。未解決 all-NaN 隣接（湖面・no-data 全面）は
+     * 有効な辺標高を持たないためシード源にしない（`nanMean` で自然除外されるが署名を意味のある
+     * ものに保つためここでも除外する）。揃っていた隣接方位の署名も返し、隣接が後からロードされた
+     * ら sig 差分で再縫合・再建築させる。
+     */
+    const collectSameZoomNeighbors = (
+        gz: number,
+        gx: number,
+        gy: number,
+    ): { neighbors: StitchNeighbors; sig: string } => {
+        const neighbors: StitchNeighbors = {};
+        const present: string[] = [];
+        for (const [dx, dy, dir] of allNanNeighborOffsets) {
+            const nKey = tileKey(gz, gx + dx, gy + dy);
+            if (allNanGeom.has(nKey)) continue;
+            const nElev = elevCache.get(nKey);
+            if (!nElev) continue;
+            neighbors[dir] = nElev;
+            present.push(dir);
+        }
+        return { neighbors, sig: present.sort().join(",") };
+    };
+
     /** geom 標高が揃った desired タイルをメッシュ化する。 */
     const buildReadyTiles = (tiles: readonly GlobeTile[]): void => {
         for (const t of tiles) {
@@ -987,6 +1013,23 @@ export const createGlobeTileManager = (
                 geomElev = flatElevArray(repElev);
             }
 
+            // 同一ズーム隣接辺スティッチング（#387）。実標高 geom タイル（フラット/暫定 all-NaN
+            // 建築ではない）に限り、同 geom zoom 隣接の有効標高で辺を平均化したコピーを建築入力に
+            // する。隣接 GSI DEM タイルは辺が 1 セルずれるため、平均化しないと境界に段差（陰影シーム）
+            // が出る（planar は `applyStitchedElevation` で縫合済み）。原本 `elevCache` は破壊せず
+            // コピーへ適用する。クロスレベルスナップ（CoarseEdge）は LOD 境界辺、本縫合は同一ズーム辺
+            // を対象とし排他的に共存する。揃っていた隣接方位を sig に含め、隣接後ロードで再縫合させる。
+            let stitchSig = "";
+            if (!isFlatFallback && !isAllNanPending && t.zoom >= minZoom) {
+                const { neighbors, sig: nSig } = collectSameZoomNeighbors(gz, gx, gy);
+                if (nSig.length > 0) {
+                    const copy = Float32Array.from(geomElev);
+                    stitchTileEdges(copy, neighbors, TILE_SIZE);
+                    geomElev = copy;
+                    stitchSig = `s${nSig}|`;
+                }
+            }
+
             // クロスレベル「標高スナップ」は z<=geomMaxZoom の LOD 境界にのみ適用する。
             // crossLevel は細タイル zoom == その geom zoom を前提に、細グローバルピクセルを
             // 粗ラスタへ写像するため。z16-18 は z15 をサブサンプルして共有するので intra-level
@@ -1017,6 +1060,7 @@ export const createGlobeTileManager = (
                 (isFlatFallback ? "flat|" : "") +
                 (isAllNanPending ? "allnan|" : "") +
                 (repElev !== undefined ? `r${Math.round(repElev / 10)}|` : "") +
+                stitchSig +
                 edgeSignature(edges);
 
             // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
