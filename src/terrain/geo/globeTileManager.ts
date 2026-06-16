@@ -943,6 +943,8 @@ export const createGlobeTileManager = (
      * 有効な辺標高を持たないためシード源にしない（`nanMean` で自然除外されるが署名を意味のある
      * ものに保つためここでも除外する）。揃っていた隣接方位の署名も返し、隣接が後からロードされた
      * ら sig 差分で再縫合・再建築させる。
+     * 経度方向（x）は日付変更線で巡回（wrap）するため `%limit` で折り返して隣接を探索し（globeLod の
+     * root seed 生成と同じ規約）、緯度方向（y）は極で巡回しないため範囲外をスキップする。
      */
     const collectSameZoomNeighbors = (
         gz: number,
@@ -951,8 +953,12 @@ export const createGlobeTileManager = (
     ): { neighbors: StitchNeighbors; sig: string } => {
         const neighbors: StitchNeighbors = {};
         const present: string[] = [];
+        const limit = 2 ** gz; // 軸方向タイル数（= 2^gz）
         for (const [dx, dy, dir] of allNanNeighborOffsets) {
-            const nKey = tileKey(gz, gx + dx, gy + dy);
+            const ny = gy + dy;
+            if (ny < 0 || ny >= limit) continue; // y は wrap しない
+            const nx = (((gx + dx) % limit) + limit) % limit; // x は日付変更線で wrap
+            const nKey = tileKey(gz, nx, ny);
             if (allNanGeom.has(nKey)) continue;
             const nElev = elevCache.get(nKey);
             if (!nElev) continue;
