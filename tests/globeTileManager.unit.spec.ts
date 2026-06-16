@@ -923,6 +923,78 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(900, 3);
     });
 
+    // ===== 同一ズーム隣接辺スティッチング（Issue #387 / 平面版相当） =====
+
+    it("同一ズーム隣接の実標高タイル辺を平均化してタイル境界の段差を解消する (#387)", async () => {
+        const mgr = makeManager();
+        // 左タイル(gx=100)は一様 100m、右隣(gx=101)は一様 200m の実標高。
+        // 縫合無しでは境界で 100m→200m の段差（陰影シーム）になる。縫合後は両者の接辺が
+        // 平均 150m に揃い、境界が連続する（planar の applyStitchedElevation 相当）。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const gx = args[1] as number;
+            const fill = gx === 100 ? 100 : 200;
+            return Promise.resolve(new Float32Array(256 * 256).fill(fill));
+        });
+        selectedTiles = [tile(100, 100, 10), tile(101, 100, 10)];
+        mgr.sync(syncParams());
+        await flush(); // 両タイルの実標高が到着し elevCache へ格納される
+        mgr.sync(syncParams()); // 両隣接が揃った状態で縫合・建築
+
+        const mid = 128 * 256; // 中央行の先頭
+        const lastBuild = (tx: number) => {
+            const arr = capturedBuilds.filter((b) => b.tx === tx);
+            return arr[arr.length - 1];
+        };
+        const left = lastBuild(100);
+        const right = lastBuild(101);
+        expect(left).toBeDefined();
+        expect(right).toBeDefined();
+        // 左タイルの右辺（col=255）は右隣 200m と平均され 150m。内部は 100m のまま。
+        expect((left as { geomElev: Float32Array }).geomElev[mid + 255]).toBeCloseTo(150, 3);
+        expect((left as { geomElev: Float32Array }).geomElev[mid + 128]).toBeCloseTo(100, 3);
+        // 右タイルの左辺（col=0）は左隣 100m と平均され 150m。内部は 200m のまま。
+        expect((right as { geomElev: Float32Array }).geomElev[mid + 0]).toBeCloseTo(150, 3);
+        expect((right as { geomElev: Float32Array }).geomElev[mid + 128]).toBeCloseTo(200, 3);
+    });
+
+    it("同一ズーム隣接が無い実標高タイルは縫合せず原本標高で建築する (#387)", async () => {
+        const mgr = makeManager();
+        loadElevationTile.mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256).fill(100)),
+        );
+        selectedTiles = [tile(100, 100, 10)];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+
+        const builtArr = capturedBuilds.filter((b) => b.tx === 100);
+        const built = builtArr[builtArr.length - 1];
+        expect(built).toBeDefined();
+        const mid = 128 * 256;
+        // 隣接が無いので辺も内部も原本 100m のまま（縫合 no-op）。
+        expect((built as { geomElev: Float32Array }).geomElev[mid + 255]).toBeCloseTo(100, 3);
+        expect((built as { geomElev: Float32Array }).geomElev[mid + 0]).toBeCloseTo(100, 3);
+    });
+
+    it("同一ズーム縫合は原本 elevCache を破壊しない (#387)", async () => {
+        const mgr = makeManager();
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const gx = args[1] as number;
+            const fill = gx === 100 ? 100 : 200;
+            return Promise.resolve(new Float32Array(256 * 256).fill(fill));
+        });
+        selectedTiles = [tile(100, 100, 10), tile(101, 100, 10)];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+
+        // terrainElevAt は elevCache（縫合前の原本）を参照する。toTileXY モックは常に (100,100) を
+        // 返すため左タイル中心の 100m が得られ、縫合コピーで上書きされていないことを確認する。
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        expect(elev as number).toBeCloseTo(100, 3);
+    });
+
     it("未解決 all-NaN タイル上では terrainElevAt が 0m でなく null を返す（代表標高の循環崩壊防止, #339）", async () => {
         const mgr = makeManager();
         // 全タイル全面 no-data（all-NaN）。粗ズーム祖先取得が完了するまで未解決状態が続く。
