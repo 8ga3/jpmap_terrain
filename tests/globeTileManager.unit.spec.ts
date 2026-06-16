@@ -976,6 +976,36 @@ describe("createGlobeTileManager", () => {
         expect((built as { geomElev: Float32Array }).geomElev[mid + 0]).toBeCloseTo(100, 3);
     });
 
+    it("日付変更線をまたぐ x=0 と x=limit-1 の同一ズーム隣接を wrap して縫合する (#387)", async () => {
+        const mgr = makeManager();
+        // gz=10 の軸方向タイル数 limit=1024。x=0 と x=1023 は日付変更線で隣接する。
+        // x=0 のタイルは一様 100m、x=1023 は一様 200m。wrap 探索が無いと x=0 の左隣
+        // (x=-1) が拾えず縫合されないが、wrap すれば x=1023 が左隣として縫合される。
+        loadElevationTile.mockImplementation((...args: unknown[]) => {
+            const gx = args[1] as number;
+            const fill = gx === 0 ? 100 : 200;
+            return Promise.resolve(new Float32Array(256 * 256).fill(fill));
+        });
+        selectedTiles = [tile(0, 100, 10), tile(1023, 100, 10)];
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+
+        const mid = 128 * 256;
+        const lastBuild = (tx: number) => {
+            const arr = capturedBuilds.filter((b) => b.tx === tx);
+            return arr[arr.length - 1];
+        };
+        const west = lastBuild(0); // x=0（左隣は wrap で x=1023）
+        const east = lastBuild(1023); // x=1023（右隣は wrap で x=0）
+        expect(west).toBeDefined();
+        expect(east).toBeDefined();
+        // x=0 の左辺（col=0）は wrap 隣接 x=1023 の 200m と平均され 150m。
+        expect((west as { geomElev: Float32Array }).geomElev[mid + 0]).toBeCloseTo(150, 3);
+        // x=1023 の右辺（col=255）は wrap 隣接 x=0 の 100m と平均され 150m。
+        expect((east as { geomElev: Float32Array }).geomElev[mid + 255]).toBeCloseTo(150, 3);
+    });
+
     it("同一ズーム縫合は原本 elevCache を破壊しない (#387)", async () => {
         const mgr = makeManager();
         loadElevationTile.mockImplementation((...args: unknown[]) => {
