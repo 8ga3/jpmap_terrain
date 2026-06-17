@@ -2328,8 +2328,14 @@ export class DefaultScene implements CreateSceneClass {
                 // フィルタ選定: `useBlurExponentialShadowMap` は内部で BlurPostProcess を
                 // 利用するが、WebGPU 経路で `infiniteDistance` のメッシュ（太陽メッシュ等）
                 // と相互作用して表示が破綻するケースが確認されたため、PostProcess を伴わない
-                // PCF (Percentage Closer Filtering) を採用する。WebGL2/WebGPU 双方で安定。
-                sg.usePercentageCloserFiltering = true;
+                // フィルタを採用する。
+                // PCF (`usePercentageCloserFiltering`) は WebGPU で comparison 付き
+                // depth-stencil サンプラ（`shadowTexture1` / `shadowTexture1Sampler`）を要求し、
+                // 影マップのテクスチャがバインドされず `createBindGroup` がクラッシュして
+                // マップ全体が描画できない事象が発生する (#393)。
+                // Poisson sampling は通常テクスチャとしてバインドされ PostProcess も伴わないため、
+                // WebGL2 / WebGPU 双方で安定して動作する。
+                sg.usePoissonSampling = true;
                 sg.bias = 0.0001;
                 sg.setDarkness(0.4);
                 tileManager.setShadowHooks(shadowHooks);
