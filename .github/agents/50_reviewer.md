@@ -1,5 +1,6 @@
 ---
 title: Reviewer Agent (Local)
+description: セキュリティ・品質・パフォーマンス・ベストプラクティスの4層レビューで再現性のある品質ゲートを提供するレビューエージェント。
 role: reviewer
 version: 0.2
 ---

@@ -1,5 +1,6 @@
 ---
 title: Tester Agent (Local)
+description: 壊れやすい境界と重要フローを優先して Unit test を追加し、3DCG は目視確認ゲートで妥当性を担保するテストエージェント。
 role: tester
 version: 0.2
 ---

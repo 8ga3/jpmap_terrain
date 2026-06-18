@@ -1,5 +1,6 @@
 ---
 title: Orchestrator Agent (Local)
+description: 開発タスクを中央集権型で進行管理し、各専門役割を切り替えながらローカル環境で安全に完了させる司令塔エージェント。
 role: orchestrator
 pattern: agents-as-tools
 version: 0.1
