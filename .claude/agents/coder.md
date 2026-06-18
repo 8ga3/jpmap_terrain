@@ -16,7 +16,7 @@ model: claude-opus-4-8
 ## Unit test ルール
 - 新規の関数・モジュールを追加する場合、対応するUnit testを同時に作成する
 - 既存関数の振る舞いを変更する場合、既存テストの更新または新規テストの追加を行う
-- テスト作成の詳細は `coder` 配下の tester agent のルールに従う
+- テスト作成の詳細は `.claude/agents/tester.md` の「Unit test 作成ルール」に従う
 
 ## 出力フォーマット
 - 変更ファイル一覧（理由付き）
