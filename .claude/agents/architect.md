@@ -1,7 +1,7 @@
 ---
 name: architect
 description: 最小差分で拡張可能な設計方針・インターフェース・移行計画を提示する。「設計して」「アーキテクチャを考えて」「API設計して」に対応。新規API/DB変更時は必ず使用。
-model: claude-sonnet-4-6
+model: claude-opus-4-8
 ---
 # Architect Agent (Local)
 
