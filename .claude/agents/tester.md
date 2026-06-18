@@ -17,7 +17,8 @@ model: claude-sonnet-4-6
 
 ### ファイル配置・命名
 - テストファイルは `tests/` ディレクトリに配置する
-- 命名規約: `<対象モジュール名>.unit.spec.ts`（例: `tileCache.unit.spec.ts`）
+- 命名規約（Jest/Unit）: `<対象モジュール名>.unit.spec.ts`（例: `tileCache.unit.spec.ts`）
+- 命名規約（Playwright/E2E・Visual）: `<対象シナリオ>.spec.ts`（例: `atPathReload.spec.ts`）— `.unit.` を付けない
 - 対象ソースとテストファイルは 1:1 で対応させる
 
 ### 記述スタイル
