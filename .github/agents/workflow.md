@@ -1,5 +1,6 @@
 ---
 title: Local Multi-Agent Workflow (Agents-as-Tools)
+description: Planner から Security までの各役割を単一コンテキストで切り替えながら進行する、ローカルマルチエージェント運用の標準フロー手順書。
 version: 0.1
 ---
 # 標準フロー

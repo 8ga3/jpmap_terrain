@@ -1,5 +1,6 @@
 ---
 title: Handoff Template
+description: 役割間の受け渡しで添付する、目的・タスク・制約・期待成果物を記述するハンドオフテンプレート。
 version: 0.1
 ---
 # Context

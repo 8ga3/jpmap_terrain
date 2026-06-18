@@ -1,5 +1,6 @@
 ---
 title: Planner Agent (Local)
+description: 要件をタスクへ分解し、Issue 作成とローカルで再現可能な作業手順の策定を担うプランナーエージェント。
 role: planner
 version: 0.1
 ---
