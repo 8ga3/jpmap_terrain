@@ -4,6 +4,7 @@ description: 開発タスクを中央集権型で進行管理し、各専門役�
 role: orchestrator
 pattern: agents-as-tools
 version: 0.1
+model: claude-sonnet-4-6
 ---
 # 目的
 開発タスクを中央集権型（Orchestrator → 専門役割）で進め、ローカル環境で安全に完了させる。
