@@ -1374,6 +1374,18 @@ export const createGlobeSceneController = (
         camera.center = geodeticToEcef(latDeg, lonDeg, 0);
     };
 
+    // 外部追従カメラ（flight FollowCamera 等）によるタイル制御フラグ。
+    // detachTileCamera() で true、attachTileCamera() で false。true の間のみ
+    // refreshTerrainWithExternalFrustum が GeospatialCamera の center/radius を上書きする。
+    let externalTileControl = false;
+    // 外部指定のコンパス回転角（度）。null の間は camera.yaw 連動。
+    // flight の Follow モードがカメラ方位を直接渡すために使う（planar 等価）。
+    let externalCompassDeg: number | null = null;
+    // 外部 frustum 追従時のタイル LOD 基準半径 (m)。GeospatialCamera は描画には使われず
+    // （描画は外部 FreeCamera）、syncTiles の SSE 評価にのみ使う。flight の既定飛行高度
+    // （~2000m）から見たときに十分な詳細度になるよう設定し、lodBias で増減する。
+    const FOLLOW_TILE_BASE_RADIUS_M = 2000;
+
     // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
     // timelapse デモは `dateTime` を毎フレーム駆動し setSunState を連打するため、
     // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)を再計算して `globe-sun` ライトへ適用する。
@@ -1565,11 +1577,15 @@ export const createGlobeSceneController = (
         let prevScaleText = "";
         let prevBarPx = Number.NaN;
         const updateOverlayUi = (): void => {
-            // コンパス: 北矢印が実際の北を指すよう azimuth の逆回転を適用する。
+            // コンパス: 外部指定があればその値を優先し、なければ北矢印が実際の北を
+            // 指すよう azimuth の逆回転を適用する。
             // azimuthDeg は浮動小数のためほぼ毎フレーム変化しうる。0.1 度に丸めて比較し、
             // 視覚的に意味のある変化があるときだけ DOM(style.transform) を書く。
-            const az = yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg;
-            const deg = Math.round(-az * 10) / 10;
+            const deg =
+                externalCompassDeg !== null
+                    ? Math.round(externalCompassDeg * 10) / 10
+                    : Math.round(-yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg * 10) /
+                      10;
             if (deg !== prevCompassDeg) {
                 ui.compass.style.transform = `rotate(${deg}deg)`;
                 prevCompassDeg = deg;
@@ -1787,11 +1803,31 @@ export const createGlobeSceneController = (
             }
         },
 
-        // ---- external frustum / tile camera（flight 用, P4-0 後続スライス） ----
-        refreshTerrainWithExternalFrustum: () => Promise.resolve(),
-        detachTileCamera: () => {},
-        attachTileCamera: () => {},
-        setExternalCompassDegrees: () => {},
+        // ---- external frustum / tile camera（flight FollowCamera 用, #275 P4-3 / #402） ----
+        // globe はタイル選択を GeospatialCamera の center/radius から行う（frustum 非対応）。
+        // 外部追従カメラ（flight）では、機体 lat/lon を GeospatialCamera.center に据え、
+        // radius で LOD を制御する。実タイルロードは onBeforeRender の syncTiles が次フレームで
+        // 反映するため、本メソッドは同期更新のみ行い解決済み Promise を返す。
+        refreshTerrainWithExternalFrustum: (lat, lon, _frustumPlanes, _cameraPosition, lodBias) => {
+            if (!externalTileControl) return Promise.resolve();
+            const elev = gc.tileManager.terrainElevAt(lat, lon) ?? 0;
+            camera.center = geodeticToEcef(lat, lon, elev);
+            const bias = typeof lodBias === "number" ? lodBias : 0;
+            camera.radius = FOLLOW_TILE_BASE_RADIUS_M * Math.pow(2, -bias);
+            return Promise.resolve();
+        },
+        detachTileCamera: () => {
+            externalTileControl = true;
+        },
+        attachTileCamera: () => {
+            externalTileControl = false;
+            // 通常制御へ戻す際、コンパス上書きも解除する。
+            externalCompassDeg = null;
+        },
+        setExternalCompassDegrees: (degrees) => {
+            // 次フレームの updateOverlayUi で反映される（null で camera.yaw 連動へ復帰）。
+            externalCompassDeg = degrees;
+        },
 
         // ---- UI コントロールパネル（#275 P4-1 で配線。canvas 未指定時は no-op） ----
         setUiVisibility: (target, visible) => uiSetVisibility(target, visible),

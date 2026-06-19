@@ -62,6 +62,16 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
 
 jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => ({
     Vector3: jest.fn((x = 0, y = 0, z = 0) => ({ x, y, z })),
+    Quaternion: jest.fn(() => ({ copyFrom: jest.fn(), clone: jest.fn() })),
+}));
+
+jest.unstable_mockModule("../src/terrain/geo/ecef", () => ({
+    geodeticToEcefToRef: jest.fn(),
+    DEG2RAD: Math.PI / 180,
+}));
+
+jest.unstable_mockModule("../src/terrain/geo/overlayPlacement", () => ({
+    surfaceOrientationToRef: jest.fn(() => false),
 }));
 
 jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => ({

@@ -86,4 +86,27 @@ describe("createBabylonEngine", () => {
         expect(webgpuInitAsync).not.toHaveBeenCalled();
         expect(engineConstructor).toHaveBeenCalledTimes(1);
     });
+
+    it("highPrecisionMatrix=true で Engine に useHighPrecisionMatrix:true を渡す (large world / ジッター対策)", async () => {
+        await createBabylonEngine(canvas(), "webgl2", {
+            highPrecisionMatrix: true,
+        });
+
+        // new Engine(canvas, antialias, options, ...) の第3引数 options を検証。
+        const options = engineConstructor.mock.calls[0]?.[2] as
+            | { useHighPrecisionMatrix?: boolean }
+            | undefined;
+        expect(options?.useHighPrecisionMatrix).toBe(true);
+    });
+
+    it("WebGPU でも highPrecisionMatrix=true で useHighPrecisionMatrix:true を渡す", async () => {
+        await createBabylonEngine(canvas(), "webgpu", {
+            highPrecisionMatrix: true,
+        });
+
+        const options = webgpuConstructor.mock.calls[0]?.[1] as
+            | { useHighPrecisionMatrix?: boolean }
+            | undefined;
+        expect(options?.useHighPrecisionMatrix).toBe(true);
+    });
 });

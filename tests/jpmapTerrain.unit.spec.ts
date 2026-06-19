@@ -23,11 +23,12 @@ import { jest } from "@jest/globals";
 const engineDispose = jest.fn();
 // engine.resize 呼び出し回数を T7 テストで検証できるよう、最後に作った engine の resize を保持する。
 let lastEngineResize: jest.Mock = jest.fn();
-// 実際の `createBabylonEngine(canvas, preferred)` のシグネチャに合わせる。
-// 関数本体では未使用だが、`createEngineMock.mock.calls[i][1]` で第 2 引数（engine 種別）を
-// 検証する用途があるため、可変引数ではなく明示的なパラメータとして宣言する。
+// 実際の `createBabylonEngine(canvas, preferred, options)` のシグネチャに合わせる。
+// 関数本体では未使用だが、`createEngineMock.mock.calls[i][1]`（engine 種別）や
+// `[i][2]`（high precision matrix オプション）を検証する用途があるため、可変引数ではなく
+// 明示的なパラメータとして宣言する。
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const createEngineMock = jest.fn(async (_canvas: unknown, _preferred?: "webgpu" | "webgl2") => {
+const createEngineMock = jest.fn(async (_canvas: unknown, _preferred?: "webgpu" | "webgl2", _options?: { highPrecisionMatrix?: boolean }) => {
     const resize = jest.fn();
     lastEngineResize = resize;
     return {
@@ -1304,9 +1305,11 @@ describe("JpmapTerrain (skeleton)", () => {
             createEngineMock.mockClear();
             await create(createMountElement(), { engine: "webgl2" });
             expect(createEngineMock).toHaveBeenCalledTimes(1);
-            // createBabylonEngine(canvas, preferredEngine) のシグネチャ
+            // createBabylonEngine(canvas, preferredEngine, options) のシグネチャ
             const callArgs = createEngineMock.mock.calls[0];
             expect(callArgs[1]).toBe("webgl2");
+            // planar 既定では high precision matrix は不要（globe のみ true）。
+            expect(callArgs[2]).toEqual({ highPrecisionMatrix: false });
         });
 
         it("engine 未指定時はデフォルト (webgpu) で engineFactory を呼ぶ", async () => {

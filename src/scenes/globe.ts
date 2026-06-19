@@ -356,6 +356,9 @@ export class GlobeScene {
         const keyboardPanEnabled = options.enableKeyboardPan !== false;
 
         // Large World Rendering: 真の ECEF（百万 m オーダー）でも精度を保つため floating origin を有効化。
+        // これだけでは不十分で、行列を float64 にする high precision matrix を **engine 側**で
+        // 有効化する必要がある（engineFactory が terrainEngine==="globe" のとき
+        // useHighPrecisionMatrix を渡す）。両方揃って初めてジッターのない large world になる。
         const scene = new Scene(engine, { useFloatingOrigin: true });
         scene.clearColor = new Color4(0.75, 0.86, 0.95, 1);
         // EcefFromLatLonAltToRef は常に右手系 ECEF（X→経度0, Y→東経90°, Z→北極）を出力し、

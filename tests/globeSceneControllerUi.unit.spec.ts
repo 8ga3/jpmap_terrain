@@ -239,3 +239,69 @@ describe("globe UI コントロールパネル配線 (#275 P4-1)", () => {
         expect(() => errorCb!({ message: "denied" })).not.toThrow();
     });
 });
+
+describe("globe external frustum / tile camera 配線 (#275 P4-3 / #402)", () => {
+    it("setExternalCompassDegrees: 外部指定値を優先し、null で yaw 連動へ復帰する", () => {
+        const camera = makeCamera();
+        camera.yaw = 0.5;
+        const { gc, onBeforeRender } = makeGcWithScene(camera);
+        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+
+        const compass = document.querySelector(".cp-compass") as HTMLElement;
+        expect(compass).not.toBeNull();
+
+        // 外部指定: 次フレームの updateOverlayUi で rotate(42deg) を書く。
+        c.setExternalCompassDegrees(42);
+        onBeforeRender.fire();
+        expect(compass.style.transform).toBe("rotate(42deg)");
+
+        // null 復帰: yaw 由来の角度へ戻る（42 ではない）。
+        c.setExternalCompassDegrees(null);
+        onBeforeRender.fire();
+        expect(compass.style.transform).not.toBe("rotate(42deg)");
+    });
+
+    it("refreshTerrainWithExternalFrustum: detach 中のみ center/radius を上書きする", async () => {
+        const camera = makeCamera();
+        const { gc } = makeGcWithScene(camera);
+        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+
+        const planes = [
+            { normal: { x: 0, y: 0, z: 1 }, d: 0 },
+            { normal: { x: 0, y: 0, z: -1 }, d: 0 },
+            { normal: { x: 1, y: 0, z: 0 }, d: 0 },
+            { normal: { x: -1, y: 0, z: 0 }, d: 0 },
+            { normal: { x: 0, y: 1, z: 0 }, d: 0 },
+            { normal: { x: 0, y: -1, z: 0 }, d: 0 },
+        ];
+        const camPos = { x: 0, y: 0, z: 0 };
+
+        // detach 前は no-op（center/radius は変わらない）。
+        const centerBefore = { ...camera.center };
+        const radiusBefore = camera.radius;
+        await c.refreshTerrainWithExternalFrustum(36, 140, planes, camPos, 0);
+        expect(camera.center).toEqual(centerBefore);
+        expect(camera.radius).toBe(radiusBefore);
+
+        // detach 後は center を lat/lon に据え、radius を base*2^-lodBias にする。
+        c.detachTileCamera();
+        await c.refreshTerrainWithExternalFrustum(36, 140, planes, camPos, 1);
+        // terrainElevAt() は null → 標高 0 で center を設定する。
+        const expected = geodeticToEcef(36, 140, 0);
+        expect(camera.center.x).toBeCloseTo(expected.x, 3);
+        expect(camera.center.y).toBeCloseTo(expected.y, 3);
+        expect(camera.center.z).toBeCloseTo(expected.z, 3);
+        // FOLLOW_TILE_BASE_RADIUS_M(2000) * 2^-1 = 1000。
+        expect(camera.radius).toBeCloseTo(1000, 6);
+
+        // lodBias=0 では base 半径そのもの。
+        await c.refreshTerrainWithExternalFrustum(36, 140, planes, camPos, 0);
+        expect(camera.radius).toBeCloseTo(2000, 6);
+
+        // attach で外部制御を解除すると再び no-op に戻る。
+        c.attachTileCamera();
+        const centerAfterAttach = { ...camera.center };
+        await c.refreshTerrainWithExternalFrustum(10, 10, planes, camPos, 0);
+        expect(camera.center).toEqual(centerAfterAttach);
+    });
+});

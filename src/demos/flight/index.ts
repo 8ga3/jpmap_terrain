@@ -16,6 +16,8 @@
  */
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
 
@@ -24,12 +26,16 @@ import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
+    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
+import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
+import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
 import { createRouteLine, type RouteLine } from "./routeLine";
 import { createWaypointManager, type WaypointManager } from "./waypoints";
 import { createFlightAudio, type FlightAudio } from "./flightAudio";
 import { createAfterburner, type Afterburner } from "./afterburner";
+import { createGlobeAfterburner } from "./globeAfterburner";
 import { toTileXY, TILE_MAX_ZOOM } from "../../terrain/gsiTile";
 import planeGlbUrl from "../../../assets/plane.glb";
 
@@ -65,6 +71,17 @@ const DEFAULT_SPEED_MPS = 100;
 const DEFAULT_ALTITUDE_M = 2000;
 /** カメラ初期高度 (m) — ズームアウトで飛行機を見渡す */
 const INITIAL_CAMERA_ALTITUDE = 6000;
+/**
+ * 3D/2D モードで飛行機を見つけやすくするための発光（emissive）色。
+ * tick 内で点滅させて目立たせる。Follow モードでは元の emissive に戻す。
+ */
+const BEACON_EMISSIVE_COLOR = new Color3(1.0, 0.25, 0.05);
+/**
+ * globe バックエンドのカメラ初期高度 (m)。
+ * globe(GeospatialCamera) は planar(ArcRotateCamera) と画角・投影が異なり、6000m では
+ * 円軌道（半径 2000m / 高度 2000m）の飛行機がフレーム外に出る。全周を見渡せるよう高めに設定。
+ */
+const GLOBE_INITIAL_CAMERA_ALTITUDE = 14000;
 /** クリック可能距離 (m) */
 const MAX_CLICK_DISTANCE_M = 20000;
 
@@ -95,12 +112,19 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
+    // `?terrainEngine=globe|planar`（未指定/不正は undefined → lib 既定 planar）。
+    const terrainEngine = resolveTerrainEngine(location.search);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
+        terrainEngine,
         lat: camera?.lat ?? TOKYO_STATION.lat,
         lon: camera?.lon ?? TOKYO_STATION.lon,
-        altitude: camera?.altitude ?? INITIAL_CAMERA_ALTITUDE,
+        altitude:
+            camera?.altitude ??
+            (terrainEngine === "globe"
+                ? GLOBE_INITIAL_CAMERA_ALTITUDE
+                : INITIAL_CAMERA_ALTITUDE),
         azimuth: camera?.azimuth,
         tilt: camera?.tilt ?? 45,
         mapType: mapType ?? "standard",
@@ -108,6 +132,9 @@ const start = async (): Promise<void> => {
     };
 
     const viewer = await JpmapTerrain.create(mount, opts);
+    // globe バックエンドでは floating origin の offset = アクティブカメラ位置のため、
+    // Follow カメラ（FreeCamera）は真の ECEF 座標で配置する必要がある（後述）。
+    const isGlobe = viewer.terrainEngine === "globe";
 
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
@@ -124,6 +151,18 @@ const start = async (): Promise<void> => {
     let lastTimestamp: number | null = null;
     let currentCameraMode: CameraMode = "3d";
     let followCamera: FreeCamera | null = null;
+    /**
+     * Follow モード進入直前の 3D/2D カメラ状態。Follow から 3D/2D へ戻る際に復元し、
+     * 元のカメラ位置（注視点・高度・方位・俯角）を保つ（Follow 追従位置で上書きされるのを防ぐ）。
+     */
+    let saved3dCamera:
+        | { lat: number; lon: number; altitude: number; azimuth: number; tilt: number }
+        | null = null;
+    // globe Follow カメラ配置用の再利用スクラッチ（毎フレーム allocation を避ける）。
+    const followTargetEcef = new Vector3();
+    const followEastEcef = new Vector3();
+    const followNorthEcef = new Vector3();
+    const followUpEcef = new Vector3();
     // Follow カメラの可変パラメータ
     let followCamRadius = FOLLOW_CAMERA_RADIUS;
     let followCamHeightOffset = FOLLOW_CAMERA_HEIGHT_OFFSET;
@@ -197,6 +236,7 @@ const start = async (): Promise<void> => {
                 altitudeM,
                 angleDeg,
                 modelNodeName: `model-${MODEL_ID}`,
+                isGlobe,
             });
         }
     };
@@ -235,10 +275,16 @@ const start = async (): Promise<void> => {
     if (pipMount) {
         const pipOpts: JpmapTerrainOptions = {
             engine: opts.engine,
+            terrainEngine,
             lat: initPos.lat,
             lon: initPos.lon,
             altitude: altitudeM,
-            azimuth: -circularOrbitHeading(angleDeg),
+            // PIP belly カメラは機体の heading 方向（前方）を見る。方位の符号は backend で異なる:
+            // globe(GeospatialCamera) はカメラ視線方位 = azimuth（0=北,+=東回り、ComputeLookAtFromYawPitch
+            // 由来）なので azimuth=heading。planar(ArcRotateCamera) は従来規約に合わせ -heading。
+            azimuth: isGlobe
+                ? circularOrbitHeading(angleDeg)
+                : -circularOrbitHeading(angleDeg),
             tilt: PIP_BELLY_TILT_DEG,
             // PIP は写真タイルを表示 (Issue #264)
             mapType: "photo",
@@ -351,6 +397,47 @@ const start = async (): Promise<void> => {
         if (!followCamera) return;
         const scene = viewer.__debugScene;
         if (!scene) return;
+
+        if (isGlobe) {
+            // globe: floating origin の offset はアクティブカメラ（= この FreeCamera）の
+            // globalPosition。よって FreeCamera を「真の ECEF」で配置すれば、
+            // 機体・地形（真の ECEF メッシュ）がカメラ相対に正しくリベースされ描画される。
+            // 機体まわりの ENU 基底（east/north/up）でオフセットを組み、planar と同じ
+            // 「後方へ followCamRadius・上方へ followCamHeightOffset」を地心 up 基準で再現する。
+            const planePos = circularOrbitPosition(
+                centerLat,
+                centerLon,
+                radiusM,
+                angleDeg,
+            );
+            geodeticToEcefToRef(planePos.lat, planePos.lon, altitudeM, followTargetEcef);
+            if (
+                !geographicTangentBasisToRef(
+                    followTargetEcef,
+                    followEastEcef,
+                    followNorthEcef,
+                )
+            ) {
+                return;
+            }
+            followUpEcef.copyFrom(followTargetEcef).normalize();
+
+            const camRotRad =
+                ((circularOrbitHeading(angleDeg) + followCamRotationOffset) *
+                    Math.PI) /
+                180;
+            const s = Math.sin(camRotRad);
+            const c = Math.cos(camRotRad);
+
+            followCamera.position.copyFrom(followTargetEcef);
+            followEastEcef.scaleAndAddToRef(followCamRadius * s, followCamera.position);
+            followNorthEcef.scaleAndAddToRef(followCamRadius * c, followCamera.position);
+            followUpEcef.scaleAndAddToRef(followCamHeightOffset, followCamera.position);
+            // 地心 up を上方向にして水平線のロールを防ぐ。
+            followCamera.upVector.copyFrom(followUpEcef);
+            followCamera.setTarget(followTargetEcef);
+            return;
+        }
 
         const targetNode = scene.getTransformNodeByName(`model-${MODEL_ID}`);
         if (!targetNode) return;
@@ -472,22 +559,35 @@ const start = async (): Promise<void> => {
                 flightAudio.startEngineSound();
             }
 
-            // アフターバーナー開始 (Issue #276)
+            // アフターバーナー開始 (Issue #276 / globe: Issue #349)
             // モデルロード完了後に start() する。未ロードなら pending フラグを立て
             // tick() 内でリトライすることで「原点→機体位置」の折れ線トレイルを防ぐ。
+            // planar は TrailMesh（機体 TransformNode を generator）で自動更新する。
+            // globe は機体ノード名が `globe-model-*-root` で公開 API から取得できず、かつ
+            // TrailMesh が真 ECEF を float32 頂点へ焼くと精度落ち + floating origin 非対応の
+            // ため、軌道パラメータから真 ECEF を都度算出してリビルドするカスタムトレイル
+            // （createGlobeAfterburner）を使う。globe は generator 不要なので即 start 可能。
             if (!afterburner && scene) {
-                afterburner = createAfterburner(scene);
+                afterburner = isGlobe
+                    ? createGlobeAfterburner(scene)
+                    : createAfterburner(scene);
             }
             if (afterburner) {
-                const handle = viewer.getModel(MODEL_ID);
-                if (handle?.loaded) {
-                    afterburner.start({
-                        modelNodeName: `model-${MODEL_ID}`,
-                    });
+                if (isGlobe) {
+                    // globe は軌道パラメータから算出するためモデルロード待ち不要。
+                    afterburner.start({ modelNodeName: `model-${MODEL_ID}` });
                     afterburner.setVisible(showAfterburner);
                 } else {
-                    // 未ロード: tick() 内でモデルロード完了を検知してから start する
-                    afterburnerStartPending = true;
+                    const handle = viewer.getModel(MODEL_ID);
+                    if (handle?.loaded) {
+                        afterburner.start({
+                            modelNodeName: `model-${MODEL_ID}`,
+                        });
+                        afterburner.setVisible(showAfterburner);
+                    } else {
+                        // 未ロード: tick() 内でモデルロード完了を検知してから start する
+                        afterburnerStartPending = true;
+                    }
                 }
             }
         }
@@ -498,9 +598,12 @@ const start = async (): Promise<void> => {
         if (!scene || !followCamera) return;
 
         detachFollowPointerHandlers();
-        const arcCam = scene.getCameraByName("terrain-camera");
-        if (arcCam) {
-            scene.activeCamera = arcCam;
+        // 地形カメラへ復帰する。planar は "terrain-camera"、globe は "globe-camera"。
+        const terrainCam =
+            scene.getCameraByName("terrain-camera") ??
+            scene.getCameraByName("globe-camera");
+        if (terrainCam) {
+            scene.activeCamera = terrainCam;
         }
         // Follow 中の最新タイル中心座標で ArcRotateCamera を再配置してから
         // attachTileCamera を呼ぶ。そうしないと旧座標のタイルがロードされる。
@@ -667,14 +770,36 @@ const start = async (): Promise<void> => {
         cameraFollowBtn?.classList.toggle("active", currentCameraMode === "follow");
     };
 
+    const restore3dCamera = (): void => {
+        if (!saved3dCamera) return;
+        viewer.lat = saved3dCamera.lat;
+        viewer.lon = saved3dCamera.lon;
+        viewer.altitude = saved3dCamera.altitude;
+        viewer.azimuth = saved3dCamera.azimuth;
+        viewer.tilt = saved3dCamera.tilt;
+    };
+
     const switchCameraMode = (mode: CameraMode): void => {
         if (mode === currentCameraMode) return;
+
+        const leavingFollow = currentCameraMode === "follow";
+
+        // Follow へ入る直前に現在の 3D/2D カメラ状態を保存し、Follow→3D/2D 復帰時に復元する。
+        if (mode === "follow" && !leavingFollow) {
+            saved3dCamera = {
+                lat: viewer.lat,
+                lon: viewer.lon,
+                altitude: viewer.altitude,
+                azimuth: viewer.azimuth,
+                tilt: viewer.tilt,
+            };
+        }
 
         // Follow モードから離脱する場合は、先に viewMode を確定させてから
         // deactivateFollowCamera を呼ぶ。attachTileCamera 内の
         // refreshFromCamera が正しいフラスタム（2D orthographic /
         // 3D perspective）で可視タイルを計算できるようにする。
-        if (currentCameraMode === "follow") {
+        if (leavingFollow) {
             viewer.viewMode = mode === "follow" ? "3d" : mode;
             deactivateFollowCamera();
         }
@@ -685,10 +810,14 @@ const start = async (): Promise<void> => {
             case "3d":
                 viewer.viewMode = "3d";
                 viewer.updateModel(MODEL_ID, { scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL } });
+                // Follow から戻ったときは保存しておいた 3D カメラ位置を復元する
+                // （deactivateFollowCamera が Follow 追従位置で上書きするため、その後に再設定）。
+                if (leavingFollow) restore3dCamera();
                 break;
             case "2d":
                 viewer.viewMode = "2d";
                 viewer.updateModel(MODEL_ID, { scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL } });
+                if (leavingFollow) restore3dCamera();
                 break;
             case "follow":
                 // Follow モードでは先に 3D に戻してから FollowCamera を起動
@@ -743,11 +872,28 @@ const start = async (): Promise<void> => {
     // - alwaysSelectAsActiveMesh=true: 飛行機の frustum culling 判定が
     //   ワールド行列更新と非同期に走るフレームでも active mesh から外れないように。
     let planeRenderTuned = false;
+    /**
+     * 機体ルート TransformNode を backend 非依存で解決する。
+     * - planar: `model-${MODEL_ID}`
+     * - globe: `globe-model-N-root`
+     *
+     * 前提: このデモはメイン Viewer に機体を1体のみ追加する（`globe-model-*-root` は機体だけ）。
+     * globe 側は配列順で最初に一致したノードを返すため、将来 scene に複数 globe モデルを
+     * 追加する場合は addModel 時の model id を保持して `getTransformNodeByName(`${id}-root`)`
+     * で厳密参照すること。
+     */
+    const getPlaneRoot = (): TransformNode | null => {
+        const scene = viewer.__debugScene;
+        if (!scene) return null;
+        return (
+            scene.getTransformNodeByName(`model-${MODEL_ID}`) ??
+            scene.transformNodes.find((n) => /^globe-model-\d+-root$/.test(n.name)) ??
+            null
+        );
+    };
     const tunePlaneRenderSettings = (): void => {
         if (planeRenderTuned) return;
-        const scene = viewer.__debugScene;
-        if (!scene) return;
-        const root = scene.getTransformNodeByName(`model-${MODEL_ID}`);
+        const root = getPlaneRoot();
         if (!root) return;
         const meshes = root.getChildMeshes(false);
         if (meshes.length === 0) return;
@@ -758,10 +904,53 @@ const start = async (): Promise<void> => {
         planeRenderTuned = true;
     };
 
+    // --- 機体の発光ビーコン (3D/2D モードで見つけやすくする) ---
+    // 機体マテリアルの emissiveColor を点滅させる。元の値を保持し、Follow では復元する。
+    type EmissiveTarget = { material: { emissiveColor: Color3 }; original: Color3 };
+    let planeEmissiveTargets: EmissiveTarget[] | null = null;
+    const collectPlaneEmissive = (): void => {
+        if (planeEmissiveTargets) return;
+        const root = getPlaneRoot();
+        if (!root) return;
+        const meshes = root.getChildMeshes(false);
+        if (meshes.length === 0) return;
+        const targets: EmissiveTarget[] = [];
+        const seen = new Set<unknown>();
+        for (const mesh of meshes) {
+            const material = mesh.material as unknown as { emissiveColor?: Color3 } | null;
+            if (!material || !material.emissiveColor || seen.has(material)) continue;
+            seen.add(material);
+            targets.push({
+                material: material as { emissiveColor: Color3 },
+                original: material.emissiveColor.clone(),
+            });
+        }
+        if (targets.length > 0) planeEmissiveTargets = targets;
+    };
+    const updatePlaneBeacon = (timestamp: number): void => {
+        collectPlaneEmissive();
+        if (!planeEmissiveTargets) return;
+        if (currentCameraMode === "follow") {
+            // Follow では機体を間近で見るため発光を解除し、元の見た目に戻す。
+            for (const t of planeEmissiveTargets) t.material.emissiveColor.copyFrom(t.original);
+            return;
+        }
+        // 約 1.5Hz で 0..1 を往復する点滅係数。
+        const blink = 0.5 + 0.5 * Math.sin(timestamp * 0.01);
+        for (const t of planeEmissiveTargets) {
+            t.material.emissiveColor.set(
+                BEACON_EMISSIVE_COLOR.r * blink,
+                BEACON_EMISSIVE_COLOR.g * blink,
+                BEACON_EMISSIVE_COLOR.b * blink,
+            );
+        }
+    };
+
     const tick = (timestamp: number): void => {
         const handle = viewer.getModel(MODEL_ID);
         if (!handle) return;
         tunePlaneRenderSettings();
+        updatePlaneBeacon(timestamp);
 
         if (animating && lastTimestamp !== null) {
             const dtSec = (timestamp - lastTimestamp) / 1000;
@@ -890,12 +1079,16 @@ const start = async (): Promise<void> => {
         // updateModel で root.position が確定した後にトレイルをリセットする。
         // refreshTerrainWithExternalFrustum が走ったフレームでのみ1回だけ実行。
         // gridResidual ジャンプで旧座標の頂点が残り折れ線になるのを防止する。
+        // globe トレイルは絶対 ECEF 履歴で構築され origin ジャンプの影響を受けないため、
+        // reset するとタイル境界ごとに炎が一瞬畳まれて見えてしまう。planar のみ reset する。
         if (afterburnerResetNeeded && afterburner) {
             afterburnerResetNeeded = false;
-            const scene = viewer.__debugScene;
-            const root = scene?.getTransformNodeByName(`model-${MODEL_ID}`);
-            root?.computeWorldMatrix(true);
-            afterburner.reset();
+            if (!isGlobe) {
+                const scene = viewer.__debugScene;
+                const root = scene?.getTransformNodeByName(`model-${MODEL_ID}`);
+                root?.computeWorldMatrix(true);
+                afterburner.reset();
+            }
         }
 
         // モデルロード完了後に afterburner を start するリトライ処理。
@@ -907,6 +1100,18 @@ const start = async (): Promise<void> => {
                 modelNodeName: `model-${MODEL_ID}`,
             });
             afterburner.setVisible(showAfterburner);
+        }
+
+        // globe アフターバーナーの毎フレーム更新（軌道パラメータから真 ECEF を算出して
+        // トレイルをリビルド）。planar は TrailMesh が自動更新するため update は no-op。
+        if (afterburner && currentCameraMode === "follow" && showAfterburner) {
+            afterburner.update({
+                centerLat,
+                centerLon,
+                radiusM,
+                altitudeM,
+                angleDeg,
+            });
         }
 
         // Follow モード: 毎フレームカメラ位置を飛行機の後方に直接設定 + コンパス同期
@@ -942,6 +1147,8 @@ const start = async (): Promise<void> => {
                         centerLon,
                         radiusM,
                         modelNodeName: `model-${MODEL_ID}`,
+                        isGlobe,
+                        altitudeM,
                     },
                     timestamp,
                 );
@@ -968,6 +1175,7 @@ const start = async (): Promise<void> => {
                         altitudeM,
                         angleDeg,
                         modelNodeName: `model-${MODEL_ID}`,
+                        isGlobe,
                     },
                     timestamp,
                 );
@@ -996,7 +1204,8 @@ const start = async (): Promise<void> => {
             pipViewer.lat = pos.lat + dLatDeg;
             pipViewer.lon = pos.lon + dLonDeg;
             pipViewer.altitude = altitudeM;
-            pipViewer.azimuth = -heading;
+            // 方位の符号は backend 依存（globe: 視線方位=azimuth=heading / planar: -heading）。
+            pipViewer.azimuth = isGlobe ? heading : -heading;
             pipViewer.tilt = PIP_BELLY_TILT_DEG;
         }
 
