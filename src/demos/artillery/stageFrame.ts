@@ -10,7 +10,10 @@
  *   ほぼ無改変で流用できる。描画は floating origin が ECEF を正しく扱い、Havok は
  *   `scene.floatingOriginMode` の region 機能でステージ ECEF 近傍を float32 安全に解く。
  *
- * Babylon は左手系のため ENU basis [east, up, north] の行列式は -1 になりうる。
+ * ステージのローカル軸割り当て（X=East, Y=Up, Z=North）は East×Up = -North、すなわち
+ * X×Y = -Z となる左手順序のため、ENU 基底 [east, up, north] を列に並べた行列の
+ * 行列式は -1（鏡映）になりうる（globe シーンは `useRightHandedSystem=true` の右手系
+ * だが、det=-1 はこの軸割り当て自体に起因し、シーンの左右手系とは独立）。
  * そのため `freezeWorldMatrix` で world 変換を直接固定する（decompose を避ける）。
  * この鏡映（det=-1）により stageRoot 配下の可視メッシュ（大砲）は winding が
  * 反転しうるが、実 GPU での目視確認では大砲の見えに問題はなく（砲弾は球で不変、
