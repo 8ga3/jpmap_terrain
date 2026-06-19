@@ -11,8 +11,11 @@
  *   `scene.floatingOriginMode` の region 機能でステージ ECEF 近傍を float32 安全に解く。
  *
  * Babylon は左手系のため ENU basis [east, up, north] の行列式は -1 になりうる。
- * そのため `freezeWorldMatrix` で world 変換を直接固定し（decompose を避ける）、
- * 面反転は描画側（backFaceCulling 等）で調整する。
+ * そのため `freezeWorldMatrix` で world 変換を直接固定する（decompose を避ける）。
+ * この鏡映（det=-1）により stageRoot 配下の可視メッシュ（大砲）は winding が
+ * 反転しうるが、実 GPU での目視確認では大砲の見えに問題はなく（砲弾は球で不変、
+ * 地形タイルは stageRoot 配下ではない）、物理は projectile / collider が同一の
+ * 鏡映ワールドを共有して自己整合するため、描画側の面反転補正は不要と判断した。
  */
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
