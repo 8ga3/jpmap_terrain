@@ -26,6 +26,7 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { resolveArtilleryTerrainEngine } from "./terrainEngine";
+import { createStageFrame, type StageFrame } from "./stageFrame";
 import {
     createProjectilePool,
     PROJECTILE_LIFETIME_SEC,
@@ -148,15 +149,8 @@ const start = async (): Promise<void> => {
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
 
-    // Issue #404 (P4-4): globe バックエンド要求時のフォールバックを解決する。
-    // 局所 ENU 物理空間の実装が完了するまで globe は未対応のため planar へ倒す。
-    const { engine: terrainEngine, fellBackFromGlobe } =
-        resolveArtilleryTerrainEngine(location.search);
-    if (fellBackFromGlobe) {
-        console.warn(
-            "[artillery] terrainEngine=globe is not supported yet; physics requires a local ENU frame because ECEF world coordinates break Havok collision (see #404/#405). Falling back to planar.",
-        );
-    }
+    // Issue #404 (P4-4): globe バックエンドは stageFrame による局所 ENU 物理で対応する。
+    const { engine: terrainEngine } = resolveArtilleryTerrainEngine(location.search);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
@@ -208,19 +202,33 @@ const start = async (): Promise<void> => {
     const scene = viewer.__debugScene;
     if (!scene) return;
 
+    // --- ステージ座標フレーム（planar=恒等 / globe=ENU→ECEF stageRoot） ---
+    // globe では物理・配置をローカル ENU（= planar と同一規約）で扱い、描画と Havok の
+    // floating-origin region 機能で ECEF を float32 安全に解く（#404）。
+    const stage: StageFrame = createStageFrame(scene, terrainEngine ?? "planar", {
+        lat: STAGE_CENTER.lat,
+        lon: STAGE_CENTER.lon,
+        alt: 0,
+    });
+
     // --- Havok 物理エンジン初期化（砲弾の生成より前に必須） ---
-    await initPhysics(scene);
+    await initPhysics(scene, stage.gravity);
 
     // --- 影（砲台・砲弾 → 地形）: 真上からの平行光源 ---
-    const shadows = createArtilleryShadows(scene);
+    const shadows = createArtilleryShadows(scene, stage);
 
-    // --- 砲弾プール（生成時に影のキャスターとして登録） ---
-    const pool: ProjectilePool = createProjectilePool(scene, (mesh) =>
-        shadows.addCaster(mesh),
-    );
+    // --- 砲弾プール（生成時に影のキャスター登録＋ステージへ取り込み） ---
+    const pool: ProjectilePool = createProjectilePool(scene, (mesh) => {
+        shadows.addCaster(mesh);
+        stage.attach(mesh);
+    });
 
     // --- 地形コリジョン（不可視の静的メッシュ） ---
-    const collider: TerrainCollider = createTerrainCollider(scene);
+    const collider: TerrainCollider = createTerrainCollider(
+        scene,
+        undefined,
+        (mesh) => stage.attach(mesh),
+    );
 
     // --- ゲーム状態 ---
     let gameState: GameState = createInitialState(RED_CANNON_POS, BLUE_CANNON_POS);
@@ -275,6 +283,13 @@ const start = async (): Promise<void> => {
     const redCannon = createCannonMesh(scene, "red");
     const blueCannon = createCannonMesh(scene, "blue");
 
+    // 大砲（ピボット＋台座）をステージへ取り込む（globe は stageRoot へ parent）。
+    // barrel は pivot の子のため pivot の attach で追従する。
+    for (const cannon of [redCannon, blueCannon]) {
+        stage.attach(cannon.pivot);
+        stage.attach(cannon.base);
+    }
+
     // 砲台メッシュを影のキャスターとして登録する。
     for (const cannon of [redCannon, blueCannon]) {
         shadows.addCaster(cannon.barrel);
@@ -288,10 +303,10 @@ const start = async (): Promise<void> => {
      */
     const CANNON_DISTANCE = 750; // 中心からの距離 (m)
 
-    /** レイキャストで地形表面の Y 座標を取得する。ヒットなしの場合 NaN を返す */
+    /** レイキャストで地形表面の Y 座標（ステージローカル）を取得する。ヒットなしは NaN */
     const getTerrainY = (x: number, z: number): number => {
         const pick = castTerrainRay(x, z);
-        if (pick?.hit) return pick.pickedPoint!.y;
+        if (pick?.hit) return pickToLocalY(pick.pickedPoint!);
 
         // メッシュの辺と重なる場合にヒットしないことがある → わずかにオフセットして再試行
         const OFFSET = 0.5;
@@ -301,22 +316,39 @@ const start = async (): Promise<void> => {
         ];
         for (const [dx, dz] of offsets) {
             const retry = castTerrainRay(x + dx, z + dz);
-            if (retry?.hit) return retry.pickedPoint!.y;
+            if (retry?.hit) return pickToLocalY(retry.pickedPoint!);
         }
         return NaN;
     };
 
+    /** pick 結果（ワールド座標）をステージローカルの Y へ変換する。 */
+    const pickToLocalY = (point: Vector3): number =>
+        stage.root ? stage.worldToLocal(point, new Vector3()).y : point.y;
+
     const castTerrainRay = (x: number, z: number) => {
-        const ray = new Ray(
-            new Vector3(x, 10000, z),
-            new Vector3(0, -1, 0),
-            20000,
-        );
-        // 地形タイル (tile-ground-*) のみを対象にする（プロジェクト共通規約）
-        return scene.pickWithRay(ray, (mesh) =>
-            mesh.name.startsWith("tile-ground-"),
-        );
+        // ステージローカル (x, +高所, z) からローカル下方向へレイを飛ばす。
+        // planar はそのままワールド垂直レイ。globe は ENU→ECEF へ写像した
+        // ECEF レイ（解析レイのため floating origin 下でも実用精度: スパイク G4）。
+        let origin: Vector3;
+        let direction: Vector3;
+        if (stage.root) {
+            origin = stage.localToWorld(new Vector3(x, 10000, z), new Vector3());
+            direction = stage.downWorld;
+        } else {
+            origin = new Vector3(x, 10000, z);
+            direction = new Vector3(0, -1, 0);
+        }
+        const ray = new Ray(origin, direction, 20000);
+        // 地形メッシュのみを対象にする。planar は `tile-ground-*`、globe は
+        // `tile-*` / `base-tile-*`（globeTileManager の命名）。
+        return scene.pickWithRay(ray, isTerrainMesh);
     };
+
+    /** 地形タイルメッシュ判定（planar / globe で命名規約が異なる）。 */
+    const isTerrainMesh = (mesh: { name: string }): boolean =>
+        stage.root
+            ? mesh.name.startsWith("tile-") || mesh.name.startsWith("base-tile-")
+            : mesh.name.startsWith("tile-ground-");
 
     /** 大砲の姿勢をセットする (Y軸=方位, Z軸=仰角) */
     const setCannonOrientation = (
@@ -494,18 +526,22 @@ const start = async (): Promise<void> => {
         const cannon = gameState.turn === "red" ? redCannon : blueCannon;
 
         // 砲身の実際のワールド方向を取得（砲身ローカル +Y 軸が砲口方向）
-        // これにより砲身の向きと砲弾の飛翔方向が完全に一致する
+        // これにより砲身の向きと砲弾の飛翔方向が完全に一致する。
         cannon.pivot.computeWorldMatrix(true);
-        const dir = Vector3.TransformNormal(
+        const worldDir = Vector3.TransformNormal(
             new Vector3(0, 1, 0),
             cannon.pivot.getWorldMatrix(),
         ).normalize();
+        // ステージローカルの砲身方向（planar はワールドと同一）。発射位置の算出に使う。
+        const localDir = stage.root
+            ? stage.worldDirToLocal(worldDir, new Vector3()).normalize()
+            : worldDir;
 
         const pivotPos = cannon.pivot.position;
-        // 発射位置: 砲口先端（ピボット + 砲身方向 * 砲身長）
-        const launchPos = pivotPos.add(dir.scale(BARREL_LENGTH));
-        // 発射速度ベクトル: 砲身方向 * 初速
-        const velocity = dir.scale(speed);
+        // 発射位置（ステージローカル）: 砲口先端（ピボット + ローカル砲身方向 * 砲身長）。
+        const launchPos = pivotPos.add(localDir.scale(BARREL_LENGTH));
+        // 発射速度ベクトル（ワールド）: Havok の線形速度はワールド座標で与える。
+        const velocity = worldDir.scale(speed);
 
         // 砲弾発射（重力・地形バウンドは Havok が計算）
         pool.acquire(launchPos, velocity);
@@ -601,8 +637,11 @@ const start = async (): Promise<void> => {
                     targetPos.z,
                 )
             ) {
-                // 命中！
-                createExplosion(scene, pos.clone());
+                // 命中！（爆発エミッタはワールド座標。globe はローカル→ECEF へ写像）
+                const explosionWorld = stage.root
+                    ? stage.localToWorld(pos, new Vector3())
+                    : pos.clone();
+                createExplosion(scene, explosionWorld);
                 hitBanner.flash();
                 pool.release(proj);
                 gameState = addScore(gameState, gameState.turn);

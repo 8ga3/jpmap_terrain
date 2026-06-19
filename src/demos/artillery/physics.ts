@@ -34,16 +34,18 @@ export const MAX_ANGULAR_VELOCITY = 1000;
 
 /**
  * シーンに Havok 物理エンジンを有効化して返す。
- * @param gravityY 重力加速度の Y 成分（デフォルト: デフォルメ重力）
+ * @param scene 物理を有効化するシーン。
+ * @param gravity 重力加速度ベクトル（ワールド座標）。
+ *   planar は (0, DEMO_GRAVITY_Y, 0)。globe は ENU の Up 逆向き（ECEF ベクトル）。
  */
 export const initPhysics = async (
     scene: Scene,
-    gravityY: number = DEMO_GRAVITY_Y,
+    gravity: Vector3 = new Vector3(0, DEMO_GRAVITY_Y, 0),
 ): Promise<HavokPlugin> => {
     const havokInstance = await HavokPhysics();
     const plugin = new HavokPlugin(true, havokInstance);
     // 初速クランプを回避するため速度上限を引き上げる（デフォルトは砲弾初速より低い）
     plugin.setVelocityLimits(MAX_LINEAR_VELOCITY, MAX_ANGULAR_VELOCITY);
-    scene.enablePhysics(new Vector3(0, gravityY, 0), plugin);
+    scene.enablePhysics(gravity, plugin);
     return plugin;
 };

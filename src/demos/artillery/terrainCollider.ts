@@ -47,6 +47,8 @@ export interface TerrainCollider {
 export const createTerrainCollider = (
     scene: Scene,
     options: TerrainColliderOptions = DEFAULT_COLLIDER_OPTIONS,
+    /** 生成したコライダーメッシュをステージへ取り込むコールバック（globe で stageRoot へ parent）。 */
+    onMeshCreated?: (mesh: Mesh) => void,
 ): TerrainCollider => {
     const { areaSize, subdivisions, restitution, friction } = options;
 
@@ -58,6 +60,7 @@ export const createTerrainCollider = (
     // 不可視だがジオメトリは保持（物理形状の元になる）
     mesh.isVisible = false;
     mesh.isPickable = false;
+    onMeshCreated?.(mesh);
 
     let aggregate: PhysicsAggregate | null = null;
 

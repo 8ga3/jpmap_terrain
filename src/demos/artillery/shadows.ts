@@ -24,6 +24,8 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 
+import type { StageFrame } from "./stageFrame";
+
 export interface ArtilleryShadows {
     /** 影を落とすメッシュ（砲台・砲弾）を登録する。 */
     addCaster: (mesh: AbstractMesh) => void;
@@ -50,7 +52,10 @@ const FRUSTUM_RADIUS = 3000;
 /** 光源の高度 (m)。砲弾の打ち上げ高度（最大約 2000m）より十分に高く取る。 */
 const LIGHT_HEIGHT = 8000;
 
-export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
+export const createArtilleryShadows = (
+    scene: Scene,
+    stage?: StageFrame,
+): ArtilleryShadows => {
     // 影を視認可能にするためのライティング再構成。
     //
     // 既定シーンには次の 2 つのライトがある（src/scenes/default.ts）:
@@ -83,13 +88,25 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
     // また真下すぎる影は物体の真下に隠れて視認できない。
     // そのため「ほぼ真上」を保ちつつ、影が安定して地面に投影される最小限の傾き
     // (約 8°) を与える。
-    const light = new DirectionalLight(
-        "artillery-top-light",
-        new Vector3(0.12, -1, 0.1),
-        scene,
-    );
+    //
+    // globe（stageRoot）では「真上」はステージの ENU Up（ECEF ベクトル）であり、
+    // 光源の方向・位置を ENU フレームへ写像する。planar はワールド軸そのまま。
+    const stageRoot = stage?.root ?? null;
+    let lightDir: Vector3;
+    let lightPos: Vector3;
+    if (stageRoot && stage) {
+        // ローカル方向 (0.12,-1,0.1) を ENU basis で ECEF へ写像（原点差分で方向化）。
+        const originW = stage.localToWorld(Vector3.Zero(), new Vector3());
+        const tipW = stage.localToWorld(new Vector3(0.12, -1, 0.1), new Vector3());
+        lightDir = tipW.subtract(originW).normalize();
+        lightPos = stage.localToWorld(new Vector3(0, LIGHT_HEIGHT, 0), new Vector3());
+    } else {
+        lightDir = new Vector3(0.12, -1, 0.1);
+        lightPos = new Vector3(0, LIGHT_HEIGHT, 0);
+    }
+    const light = new DirectionalLight("artillery-top-light", lightDir, scene);
     // 戦場の遥か上空（中心の真上）に光源を置く。
-    light.position = new Vector3(0, LIGHT_HEIGHT, 0);
+    light.position = lightPos;
     // 環境光を下げた分、平行光を主光源として明るくする。これにより影部分
     // （平行光が遮られる領域）との輝度差が生まれ、影が視認できる。
     light.intensity = 1.0;
@@ -125,6 +142,11 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
 
     const receivers = new WeakSet<AbstractMesh>();
     let lastScannedMeshCount = 0;
+    // 地形タイルの命名規約: planar=`tile-ground-*` / globe=`tile-*`・`base-tile-*`。
+    const isTerrainReceiver = (name: string): boolean =>
+        stageRoot
+            ? name.startsWith("tile-") || name.startsWith("base-tile-")
+            : name.startsWith("tile-ground-");
     const registerTerrainReceivers = (): void => {
         const meshes = scene.meshes;
         // メッシュが dispose されて配列が縮むとインデックスがずれるため、
@@ -136,7 +158,7 @@ export const createArtilleryShadows = (scene: Scene): ArtilleryShadows => {
         if (meshes.length <= lastScannedMeshCount) return;
         for (let i = lastScannedMeshCount; i < meshes.length; i++) {
             const mesh = meshes[i];
-            if (!mesh.name.startsWith("tile-ground-")) continue;
+            if (!isTerrainReceiver(mesh.name)) continue;
             if (receivers.has(mesh)) continue;
             mesh.receiveShadows = true;
             receivers.add(mesh);
