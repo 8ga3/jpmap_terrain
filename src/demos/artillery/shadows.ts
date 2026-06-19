@@ -4,10 +4,11 @@
  * 真上からの平行光源 (DirectionalLight) と ShadowGenerator を用いて、
  * 砲台メッシュと砲弾メッシュの影を地形 (tile-ground-*) に落とす。
  *
- * 設定方針（src/scenes/default.ts の太陽影実装 Issue #39 に倣う）:
- * - フィルタは PCF (Percentage Closer Filtering)。`useBlurExponentialShadowMap`
- *   は WebGPU 経路で infiniteDistance メッシュ（太陽メッシュ等）と干渉して破綻する
- *   ことが確認されているため使用しない。
+ * 設定方針（src/scenes/default.ts の太陽影実装 Issue #39 / #393 に倣う）:
+ * - フィルタは Poisson sampling。`useBlurExponentialShadowMap` は WebGPU 経路で
+ *   infiniteDistance メッシュ（太陽メッシュ等）と干渉して破綻し、PCF
+ *   (`usePercentageCloserFiltering`) は WebGPU で comparison サンプラのバインドに
+ *   失敗してシーン全体が白画面になる（#393）。Poisson sampling は双方で安定する。
  * - DirectionalLight は orthographic frustum を明示指定する。`autoUpdateExtends` /
  *   `autoCalcShadowZBounds` は使わず、戦場サイズに合わせた固定 frustum にすることで
  *   毎フレームコストと WebGPU 不安定要因を避ける。
@@ -125,8 +126,13 @@ export const createArtilleryShadows = (
     light.orthoBottom = -FRUSTUM_RADIUS;
 
     const generator = new ShadowGenerator(SHADOW_MAP_SIZE, light);
-    // PCF を採用（WebGL2/WebGPU 双方で安定）。
-    generator.usePercentageCloserFiltering = true;
+    // フィルタ選定: PCF (`usePercentageCloserFiltering`) は WebGPU で comparison 付き
+    // depth-stencil サンプラ（`shadowTexture2` / `shadowTexture2Sampler`）を要求するが、
+    // 影マップのテクスチャがバインドされず `createBindGroup` がクラッシュし、シーン全体
+    // （地形・砲台）が一切描画されず白画面になる（#393 と同根。src/scenes/default.ts の
+    // 太陽影と同じ対処）。Poisson sampling は通常テクスチャとしてバインドされ PostProcess も
+    // 伴わないため、WebGL2 / WebGPU 双方で安定して動作する。
+    generator.usePoissonSampling = true;
     generator.bias = 0.0003;
     generator.normalBias = 0.02;
     // darkness=0.2: 影の最低輝度。0=真っ暗、1=影なし。はっきり見えるよう濃いめ。
