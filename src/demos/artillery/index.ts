@@ -296,6 +296,17 @@ const start = async (): Promise<void> => {
         shadows.addCaster(cannon.base);
     }
 
+    // 初期配置（placeCannons）は地形ロード後（waitTerrainIdleThen）まで遅延する。
+    // それまで大砲はステージローカル原点(0,0,0)に居る。globe ではこれが一瞬 ECEF 原点
+    // （地球中心）付近に描画され画面端で点滅して見えるため、初回配置まで非表示にする。
+    const setCannonsEnabled = (enabled: boolean): void => {
+        for (const cannon of [redCannon, blueCannon]) {
+            cannon.pivot.setEnabled(enabled);
+            cannon.base.setEnabled(enabled);
+        }
+    };
+    setCannonsEnabled(false);
+
     /**
      * 大砲を相対位置に配置する。
      * 紅は原点西側、青は原点東側に配置。
@@ -428,6 +439,7 @@ const start = async (): Promise<void> => {
     waitTerrainIdleThen(() => {
         placeCannons();
         buildCollider();
+        setCannonsEnabled(true);
         announce.dismiss();
     });
 
