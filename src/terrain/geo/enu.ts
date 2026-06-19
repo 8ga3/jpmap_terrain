@@ -107,8 +107,11 @@ export const enuToEcefToRef = (
  *
  * この行列を TransformNode（stageRoot）の world 変換に与えると、子ノードを
  * ENU ローカル座標（= planar artillery と同一規約）で配置でき、描画は ECEF に
- * 写像される。なお Babylon は左手系のため本 basis の行列式は -1 になりうる
- * （描画の面反転は呼び出し側で backFaceCulling 等により調整する）。
+ * 写像される。なお軸割り当て（X=East, Y=Up, Z=North）は East×Up=-North すなわち
+ * X×Y=-Z の左手順序のため、本 basis の行列式は -1（鏡映）になりうる（globe シーンが
+ * `useRightHandedSystem=true` の右手系でも成立。det=-1 はシーンの左右手系ではなく
+ * この軸割り当て自体に起因する）。描画の面反転については呼び出し側 stageFrame.ts の
+ * 説明を参照（実測で大砲の見えに問題なく、面反転補正は不要と判断）。
  */
 export const buildEnuWorldMatrix = (frame: EnuFrame): Matrix =>
     Matrix.FromValues(
