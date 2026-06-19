@@ -59,9 +59,11 @@ export interface RouteLineContext {
     /** model の TransformNode 名。実際の world position 取得用 */
     modelNodeName: string;
     /**
-     * globe バックエンドかどうか。true の場合、頂点を「真の ECEF」で構築する。
-     * （floating origin の offset = アクティブカメラ位置のため、planar の
-     * absolutePosition 基準では二重リベースで位置がずれる）
+     * globe バックエンドかどうか。true の場合、リボンメッシュの position を「真の ECEF」
+     * アンカー（機体直下）に置き、各頂点はそのアンカー相対のローカル小座標で構築する。
+     * （floating origin の offset = アクティブカメラ位置のため、planar の absolutePosition
+     * 基準では二重リベースで位置がずれる。アンカー方式なら position が float64 でリベースされ、
+     * 頂点は数百 m オーダーで float32 でも精度十分・ジッターを抑えられる）
      */
     isGlobe?: boolean;
     /** 飛行機の絶対標高 (m)。globe モードでの頂点 ECEF 計算に使用 */

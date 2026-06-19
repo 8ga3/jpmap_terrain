@@ -20,7 +20,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/discBuilder", () => ({
             isPickable: false,
             alwaysSelectAsActiveMesh: false,
             rotation: { x: 0, y: 0, z: 0 },
-            position: { x: 0, y: 0, z: 0, set: jest.fn(), clone: jest.fn(() => ({ x: 0, y: 0, z: 0 })) },
+            position: { x: 0, y: 0, z: 0, set: jest.fn(), copyFrom: jest.fn(), clone: jest.fn(() => ({ x: 0, y: 0, z: 0 })) },
             visibility: 1,
             scaling,
             enabled: true,
@@ -62,7 +62,7 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
 
 jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => ({
     Vector3: jest.fn((x = 0, y = 0, z = 0) => ({ x, y, z })),
-    Quaternion: jest.fn(() => ({ copyFrom: jest.fn(), clone: jest.fn() })),
+    Quaternion: jest.fn(() => ({ copyFrom: jest.fn(), clone: jest.fn(() => ({ _quat: true, copyFrom: jest.fn() })) })),
 }));
 
 jest.unstable_mockModule("../src/terrain/geo/ecef", () => ({
@@ -103,6 +103,8 @@ const createMockScene = (): Scene => ({
 describe("createWaypointManager", () => {
     let createWaypointManager: typeof import("../src/demos/flight/waypoints").createWaypointManager;
     let CreateDiscMock: jest.Mock;
+    let geodeticToEcefToRefMock: jest.Mock;
+    let surfaceOrientationToRefMock: jest.Mock;
 
     beforeAll(async () => {
         const waypoints = await import("../src/demos/flight/waypoints");
@@ -110,6 +112,12 @@ describe("createWaypointManager", () => {
 
         const discModule = await import("@babylonjs/core/Meshes/Builders/discBuilder");
         CreateDiscMock = discModule.CreateDisc as unknown as jest.Mock;
+
+        const ecefModule = await import("../src/terrain/geo/ecef");
+        geodeticToEcefToRefMock = ecefModule.geodeticToEcefToRef as unknown as jest.Mock;
+
+        const overlayModule = await import("../src/terrain/geo/overlayPlacement");
+        surfaceOrientationToRefMock = overlayModule.surfaceOrientationToRef as unknown as jest.Mock;
     });
 
     it("creates a WaypointManager with update/reset/dispose", () => {
@@ -292,6 +300,96 @@ describe("createWaypointManager", () => {
         );
 
         expect(onPass).toHaveBeenCalledTimes(1);
+    });
+
+    // Issue #349 P4-3 レビュー指摘: globe 分岐（真 ECEF 配置 + ENU 姿勢）の回帰検知。
+    // isGlobe=true で geodeticToEcefToRef が呼ばれ、surfaceOrientationToRef の結果に応じて
+    // rotationQuaternion が設定される/されないことを検証する。
+    it("globe: isGlobe=true で geodeticToEcefToRef を呼び、姿勢成功時に rotationQuaternion を設定する", () => {
+        CreateDiscMock.mockClear();
+        geodeticToEcefToRefMock.mockClear();
+        // 姿勢計算が成功するケース
+        surfaceOrientationToRefMock.mockReturnValue(true);
+
+        const scene = createMockScene();
+        // globe 経路は機体ノードを参照しないため、ノード未取得でも配置されることを保証する。
+        scene.getTransformNodeByName = jest.fn(() => null);
+        const mgr = createWaypointManager(scene);
+        mgr.reset({
+            centerLat: 35.68,
+            centerLon: 139.77,
+            radiusM: 2000,
+            altitudeM: 2000,
+            angleDeg: 0,
+            modelNodeName: "globe-model-0-root",
+            isGlobe: true,
+        });
+
+        const firstMesh = CreateDiscMock.mock.results[0].value as {
+            position: { copyFrom: jest.Mock };
+            rotationQuaternion?: unknown;
+        };
+
+        mgr.update(
+            {
+                centerLat: 35.68,
+                centerLon: 139.77,
+                radiusM: 2000,
+                altitudeM: 2000,
+                angleDeg: 10,
+                modelNodeName: "globe-model-0-root",
+                isGlobe: true,
+            },
+            1000,
+        );
+
+        // globe 分岐: 各ウェイポイントの ECEF 変換が呼ばれている
+        expect(geodeticToEcefToRefMock).toHaveBeenCalled();
+        // mesh.position は ECEF アンカーへ copyFrom される
+        expect(firstMesh.position.copyFrom).toHaveBeenCalled();
+        // 姿勢成功時は rotationQuaternion が設定される（clone のセンチネルが入る）
+        expect(firstMesh.rotationQuaternion).toBeDefined();
+    });
+
+    it("globe: surfaceOrientationToRef が失敗すると rotationQuaternion を設定しない", () => {
+        CreateDiscMock.mockClear();
+        geodeticToEcefToRefMock.mockClear();
+        // 姿勢計算が退化（極など）で失敗するケース
+        surfaceOrientationToRefMock.mockReturnValue(false);
+
+        const scene = createMockScene();
+        scene.getTransformNodeByName = jest.fn(() => null);
+        const mgr = createWaypointManager(scene);
+        mgr.reset({
+            centerLat: 35.68,
+            centerLon: 139.77,
+            radiusM: 2000,
+            altitudeM: 2000,
+            angleDeg: 0,
+            modelNodeName: "globe-model-0-root",
+            isGlobe: true,
+        });
+
+        const firstMesh = CreateDiscMock.mock.results[0].value as {
+            rotationQuaternion?: unknown;
+        };
+
+        mgr.update(
+            {
+                centerLat: 35.68,
+                centerLon: 139.77,
+                radiusM: 2000,
+                altitudeM: 2000,
+                angleDeg: 10,
+                modelNodeName: "globe-model-0-root",
+                isGlobe: true,
+            },
+            1000,
+        );
+
+        // ECEF 配置は行われるが、姿勢失敗時は rotationQuaternion 未設定のまま
+        expect(geodeticToEcefToRefMock).toHaveBeenCalled();
+        expect(firstMesh.rotationQuaternion).toBeUndefined();
     });
 
     it("does not call onPass if options not provided", () => {
