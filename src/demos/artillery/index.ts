@@ -150,7 +150,11 @@ const start = async (): Promise<void> => {
     const mapType = parseMapTypeFromUrl(location.href);
 
     // Issue #404 (P4-4): globe バックエンドは stageFrame による局所 ENU 物理で対応する。
-    const { engine: terrainEngine } = resolveArtilleryTerrainEngine(location.search);
+    const { engine: requestedTerrainEngine } =
+        resolveArtilleryTerrainEngine(location.search);
+    // 実際に初期化できたバックエンド。globe 初期化失敗時は planar へフォールバックし、
+    // 以降の stageFrame 構築やレイ命名判定もこの実効値に従わせる。
+    let terrainEngine = requestedTerrainEngine;
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
@@ -168,7 +172,20 @@ const start = async (): Promise<void> => {
         showViewModeButton: false,
     };
 
-    const viewer = await JpmapTerrain.create(mount, opts);
+    let viewer: Awaited<ReturnType<typeof JpmapTerrain.create>>;
+    try {
+        viewer = await JpmapTerrain.create(mount, opts);
+    } catch (err) {
+        // globe 初期化に失敗した場合のみ planar へフォールバックして再試行する
+        // （planar は従来からの安定経路）。planar 自体の失敗はそのまま送出する。
+        if (terrainEngine !== "globe") throw err;
+        console.warn(
+            "[artillery] globe terrain init failed; falling back to planar",
+            err,
+        );
+        terrainEngine = "planar";
+        viewer = await JpmapTerrain.create(mount, { ...opts, terrainEngine });
+    }
     // Issue #259: 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
     viewer.showLocateMe = false;
 
@@ -315,6 +332,10 @@ const start = async (): Promise<void> => {
     const CANNON_DISTANCE = 750; // 中心からの距離 (m)
 
     /** レイキャストで地形表面の Y 座標（ステージローカル）を取得する。ヒットなしは NaN */
+    // 高頻度（buildCollider で ~1万回）に呼ばれる経路のための再利用バッファ。
+    const scratchPickLocal = new Vector3();
+    const scratchRayOrigin = new Vector3();
+    const terrainRay = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 20000);
     const getTerrainY = (x: number, z: number): number => {
         const pick = castTerrainRay(x, z);
         if (pick?.hit) return pickToLocalY(pick.pickedPoint!);
@@ -334,25 +355,27 @@ const start = async (): Promise<void> => {
 
     /** pick 結果（ワールド座標）をステージローカルの Y へ変換する。 */
     const pickToLocalY = (point: Vector3): number =>
-        stage.root ? stage.worldToLocal(point, new Vector3()).y : point.y;
+        stage.root ? stage.worldToLocal(point, scratchPickLocal).y : point.y;
 
     const castTerrainRay = (x: number, z: number) => {
         // ステージローカル (x, +高所, z) からローカル下方向へレイを飛ばす。
         // planar はそのままワールド垂直レイ。globe は ENU→ECEF へ写像した
         // ECEF レイ（解析レイのため floating origin 下でも実用精度: スパイク G4）。
-        let origin: Vector3;
-        let direction: Vector3;
+        // buildCollider() からは subdivisions^2 オーダー（~1万回）で呼ばれるため、
+        // 一時ベクトル / Ray は使い回してアロケーション・GC を避ける。
         if (stage.root) {
-            origin = stage.localToWorld(new Vector3(x, 10000, z), new Vector3());
-            direction = stage.downWorld;
+            scratchRayOrigin.copyFromFloats(x, 10000, z);
+            stage.localToWorld(scratchRayOrigin, scratchRayOrigin);
+            terrainRay.origin.copyFrom(scratchRayOrigin);
+            terrainRay.direction.copyFrom(stage.downWorld);
         } else {
-            origin = new Vector3(x, 10000, z);
-            direction = new Vector3(0, -1, 0);
+            terrainRay.origin.copyFromFloats(x, 10000, z);
+            terrainRay.direction.copyFromFloats(0, -1, 0);
         }
-        const ray = new Ray(origin, direction, 20000);
+        terrainRay.length = 20000;
         // 地形メッシュのみを対象にする。planar は `tile-ground-*`、globe は
         // `tile-*` / `base-tile-*`（globeTileManager の命名）。
-        return scene.pickWithRay(ray, isTerrainMesh);
+        return scene.pickWithRay(terrainRay, isTerrainMesh);
     };
 
     /** 地形タイルメッシュ判定（planar / globe で命名規約が異なる）。 */
