@@ -375,6 +375,16 @@ const start = async (): Promise<void> => {
         terrainRay.length = 20000;
         // 地形メッシュのみを対象にする。planar は `tile-ground-*`、globe は
         // `tile-*` / `base-tile-*`（globeTileManager の命名）。
+        //
+        // 注意: globe タイルは globeTileManager で `isPickable=false`（#337 のパン
+        // 干渉回避）だが、`pickWithRay` に predicate を渡すと Babylon は
+        // isPickable/isVisible/isEnabled の既定フィルタを適用せず predicate のみで
+        // 対象を選別する（@babylonjs/core ray.core.js InternalPick: predicate 指定時は
+        // 当該チェックを skip。JSDoc も「predicate=null のときのみ isPickable=true が必要」
+        // と明記）。そのため isPickable=false でも本レイは globe タイルにヒットする
+        // （実 GPU で collider の Y が地形追従 724〜1428m, planar と一致を確認済み）。
+        // タイルを pickable に戻すと #337 のパン干渉が再発するため、ここは predicate
+        // 方式を維持すること。
         return scene.pickWithRay(terrainRay, isTerrainMesh);
     };
 
