@@ -86,14 +86,17 @@ export const createArtilleryShadows = (
     const prevSunEnabled = competingSun?.isEnabled() ?? null;
     if (hemi) hemi.intensity = 0.4;
     // 影を持たない主たる平行光は影をかき消すため無効化する。
+    // planar はこれまでどおり intensity=0 のみで無効化する（既存挙動を維持）。
     // globe では globeSceneController の applyGlobeSunState が注視点移動（>1km）を
     // 契機に globe-sun.intensity を GLOBE_SUN_LIGHT_INTENSITY へ再適用するため、
     // intensity=0 だけでは artillery 起動時のカメラ寄せで即座に revert され影が飛ぶ。
-    // applyGlobeSunState は setEnabled を触らないため、setEnabled(false) で無効化して
-    // intensity 再適用に左右されず確実に競合光を断つ。
+    // applyGlobeSunState は setEnabled を触らないため、globe では setEnabled(false) で
+    // 無効化して intensity 再適用に左右されず確実に競合光を断つ。
     if (competingSun) {
         competingSun.intensity = 0;
-        competingSun.setEnabled(false);
+        if (stage?.root) {
+            competingSun.setEnabled(false);
+        }
     }
 
     // 光源方向。ユーザー要望は「真上」だが、完全な鉛直 (0,-1,0) や極端に近い値
