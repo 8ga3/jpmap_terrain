@@ -25,36 +25,31 @@ import {
 import { resolveArtilleryTerrainEngine } from "../src/demos/artillery/terrainEngine";
 
 describe("resolveArtilleryTerrainEngine", () => {
-    it("returns undefined engine and no fallback when terrainEngine is not specified", () => {
+    it("returns undefined engine when terrainEngine is not specified", () => {
         const r = resolveArtilleryTerrainEngine("");
         expect(r.engine).toBeUndefined();
-        expect(r.fellBackFromGlobe).toBe(false);
     });
 
-    it("passes through planar without fallback", () => {
+    it("passes through planar", () => {
         const r = resolveArtilleryTerrainEngine("?terrainEngine=planar");
         expect(r.engine).toBe("planar");
-        expect(r.fellBackFromGlobe).toBe(false);
     });
 
-    it("falls back to planar and flags fallback when globe is requested", () => {
+    it("passes through globe (now supported via stageFrame ENU physics)", () => {
         const r = resolveArtilleryTerrainEngine("?terrainEngine=globe");
-        expect(r.engine).toBe("planar");
-        expect(r.fellBackFromGlobe).toBe(true);
+        expect(r.engine).toBe("globe");
     });
 
     it("ignores unknown values (treated as unspecified)", () => {
         const r = resolveArtilleryTerrainEngine("?terrainEngine=foo");
         expect(r.engine).toBeUndefined();
-        expect(r.fellBackFromGlobe).toBe(false);
     });
 
-    it("resolves globe fallback even when combined with other query params", () => {
+    it("resolves globe even when combined with other query params", () => {
         const r = resolveArtilleryTerrainEngine(
             "?lat=35&terrainEngine=globe&engine=webgpu",
         );
-        expect(r.engine).toBe("planar");
-        expect(r.fellBackFromGlobe).toBe(true);
+        expect(r.engine).toBe("globe");
     });
 });
 
