@@ -59,29 +59,42 @@ export const createArtilleryShadows = (
 ): ArtilleryShadows => {
     // 影を視認可能にするためのライティング再構成。
     //
-    // 既定シーンには次の 2 つのライトがある（src/scenes/default.ts）:
-    //   - sky-light: HemisphericLight（全方向から均一に照らす環境光）
-    //   - sun-light: DirectionalLight（真下向き・影を持たない）。太陽系統が
-    //     昼間は intensity=1.0 に設定する。
+    // シーンには環境光（HemisphericLight）と影を持たない主たる平行光
+    // （DirectionalLight）の 2 つがある。命名はシーンで異なる:
+    //   - planar (src/scenes/default.ts): `sky-light` / `sun-light`
+    //   - globe  (src/scenes/globe.ts)  : `globe-hemi` / `globe-sun`
     //
-    // この sun-light が「影を持たないまま」地面全体をフル照明するため、こちらの
-    // 平行光で落とした影の領域も sun-light + sky-light で明るく塗りつぶされ、
+    // この主平行光が「影を持たないまま」地面全体をフル照明するため、こちらの
+    // 平行光で落とした影の領域も環境光 + 主平行光で明るく塗りつぶされ、
     // 明るい地図テクスチャ上では飽和して影の減光が一切見えない。これが
-    // 各種パラメータを調整しても影が出なかった根本原因。
+    // 各種パラメータを調整しても影が出なかった根本原因。globe では命名差により
+    // 主平行光（globe-sun）が減光されず、影が出力されていても完全に飛んでいた。
     //
-    // 対策: 競合する sun-light を消し、環境光を低めの fill light に抑え、
+    // 対策: 競合する主平行光を消し、環境光を低めの fill light に抑え、
     // こちらの artillery-top-light を唯一の主たる平行光（かつ影源）にする。
     // これにより影領域は環境光のみ（暗い）、非影領域は環境光＋平行光（明るい）
     // となり、明確な輝度差で影が地面に現れる。
-    const hemi = scene.getLightByName("sky-light") as HemisphericLight | null;
-    const competingSun = scene.getLightByName("sun-light");
+    const hemi = (scene.getLightByName("sky-light") ??
+        scene.getLightByName("globe-hemi")) as HemisphericLight | null;
+    const competingSun =
+        scene.getLightByName("sun-light") ??
+        scene.getLightByName("globe-sun");
     // dispose 時にシーン側のライティングを汚染したまま残さないよう、
-    // 変更前の intensity を保存しておき復元する。
+    // 変更前の intensity / 有効状態を保存しておき復元する。
     const prevHemiIntensity = hemi?.intensity ?? null;
     const prevSunIntensity = competingSun?.intensity ?? null;
+    const prevSunEnabled = competingSun?.isEnabled() ?? null;
     if (hemi) hemi.intensity = 0.4;
-    // 影を持たない真下向きの平行光は影をかき消すため無効化する。
-    if (competingSun) competingSun.intensity = 0;
+    // 影を持たない主たる平行光は影をかき消すため無効化する。
+    // globe では globeSceneController の applyGlobeSunState が注視点移動（>1km）を
+    // 契機に globe-sun.intensity を GLOBE_SUN_LIGHT_INTENSITY へ再適用するため、
+    // intensity=0 だけでは artillery 起動時のカメラ寄せで即座に revert され影が飛ぶ。
+    // applyGlobeSunState は setEnabled を触らないため、setEnabled(false) で無効化して
+    // intensity 再適用に左右されず確実に競合光を断つ。
+    if (competingSun) {
+        competingSun.intensity = 0;
+        competingSun.setEnabled(false);
+    }
 
     // 光源方向。ユーザー要望は「真上」だが、完全な鉛直 (0,-1,0) や極端に近い値
     // (0.001,-1,0.001) では ShadowGenerator のビュー行列の up ベクトルが退化し、
@@ -183,6 +196,9 @@ export const createArtilleryShadows = (
         }
         if (competingSun && prevSunIntensity !== null) {
             competingSun.intensity = prevSunIntensity;
+        }
+        if (competingSun && prevSunEnabled !== null) {
+            competingSun.setEnabled(prevSunEnabled);
         }
     };
 
