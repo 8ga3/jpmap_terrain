@@ -22,6 +22,41 @@ import {
     HIT_RADIUS,
     type CannonState,
 } from "../src/demos/artillery/gameLogic";
+import { resolveArtilleryTerrainEngine } from "../src/demos/artillery/terrainEngine";
+
+describe("resolveArtilleryTerrainEngine", () => {
+    it("returns undefined engine and no fallback when terrainEngine is not specified", () => {
+        const r = resolveArtilleryTerrainEngine("");
+        expect(r.engine).toBeUndefined();
+        expect(r.fellBackFromGlobe).toBe(false);
+    });
+
+    it("passes through planar without fallback", () => {
+        const r = resolveArtilleryTerrainEngine("?terrainEngine=planar");
+        expect(r.engine).toBe("planar");
+        expect(r.fellBackFromGlobe).toBe(false);
+    });
+
+    it("falls back to planar and flags fallback when globe is requested", () => {
+        const r = resolveArtilleryTerrainEngine("?terrainEngine=globe");
+        expect(r.engine).toBe("planar");
+        expect(r.fellBackFromGlobe).toBe(true);
+    });
+
+    it("ignores unknown values (treated as unspecified)", () => {
+        const r = resolveArtilleryTerrainEngine("?terrainEngine=foo");
+        expect(r.engine).toBeUndefined();
+        expect(r.fellBackFromGlobe).toBe(false);
+    });
+
+    it("resolves globe fallback even when combined with other query params", () => {
+        const r = resolveArtilleryTerrainEngine(
+            "?lat=35&terrainEngine=globe&engine=webgpu",
+        );
+        expect(r.engine).toBe("planar");
+        expect(r.fellBackFromGlobe).toBe(true);
+    });
+});
 
 describe("ballistics", () => {
     describe("degToRad / radToDeg", () => {

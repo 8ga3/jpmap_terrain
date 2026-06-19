@@ -25,6 +25,7 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
+import { resolveArtilleryTerrainEngine } from "./terrainEngine";
 import {
     createProjectilePool,
     PROJECTILE_LIFETIME_SEC,
@@ -147,8 +148,19 @@ const start = async (): Promise<void> => {
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
 
+    // Issue #404 (P4-4): globe バックエンド要求時のフォールバックを解決する。
+    // 局所 ENU 物理空間の実装が完了するまで globe は未対応のため planar へ倒す。
+    const { engine: terrainEngine, fellBackFromGlobe } =
+        resolveArtilleryTerrainEngine(location.search);
+    if (fellBackFromGlobe) {
+        console.warn(
+            "[artillery] terrainEngine=globe is not supported yet; physics requires a local ENU frame because ECEF world coordinates break Havok collision (see #404/#405). Falling back to planar.",
+        );
+    }
+
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
+        terrainEngine,
         lat: camera?.lat ?? STAGE_CENTER.lat,
         lon: camera?.lon ?? STAGE_CENTER.lon,
         altitude: camera?.altitude ?? 2000,
