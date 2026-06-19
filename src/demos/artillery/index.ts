@@ -314,8 +314,11 @@ const start = async (): Promise<void> => {
     }
 
     // 初期配置（placeCannons）は地形ロード後（waitTerrainIdleThen）まで遅延する。
-    // それまで大砲はステージローカル原点(0,0,0)に居る。globe ではこれが一瞬 ECEF 原点
-    // （地球中心）付近に描画され画面端で点滅して見えるため、初回配置まで非表示にする。
+    // それまで大砲は stageRoot の ENU 原点（= STAGE_CENTER, alt=0 ≒ 海面）に置かれる
+    // ＝ 地表メッシュ（標高 700m 超）より下、戦場中央に紅青が重なった状態。globe では
+    // この未配置位置が一瞬画面下部（地形の下）にちらつくため、初回 placeCannons まで
+    // 非表示にする。実測（globe）でも未配置時の絶対位置 |p|≈6.371e6 m（地心 6378km の
+    // 地表側であり地球中心ではない）→ 配置後 ≈6.372e6 m（terrainY 分だけ上昇）を確認。
     const setCannonsEnabled = (enabled: boolean): void => {
         for (const cannon of [redCannon, blueCannon]) {
             cannon.pivot.setEnabled(enabled);
