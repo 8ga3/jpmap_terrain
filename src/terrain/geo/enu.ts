@@ -14,6 +14,7 @@
  * （X→経度0, Y→東経90°, Z→北極）。
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { DEG2RAD, geodeticToEcef } from "./ecef";
 
 /**
@@ -95,7 +96,27 @@ export const enuToEcefToRef = (
     return ref;
 };
 
-/** ENU ローカル `Vector3`（x=East, y=Up, z=North）→ ECEF[m]。`ref` に書き込む。 */
+/**
+ * ENU フレームを Babylon の world 変換行列（ENU ローカル → ECEF）へ変換する。
+ *
+ * 列（= ローカル軸の写像先）は East/Up/North、平行移動は原点 ECEF:
+ * - ローカル +X(East)  → frame.east
+ * - ローカル +Y(Up)    → frame.up
+ * - ローカル +Z(North) → frame.north
+ * - 原点               → frame.originEcef
+ *
+ * この行列を TransformNode（stageRoot）の world 変換に与えると、子ノードを
+ * ENU ローカル座標（= planar artillery と同一規約）で配置でき、描画は ECEF に
+ * 写像される。なお Babylon は左手系のため本 basis の行列式は -1 になりうる
+ * （描画の面反転は呼び出し側で backFaceCulling 等により調整する）。
+ */
+export const buildEnuWorldMatrix = (frame: EnuFrame): Matrix =>
+    Matrix.FromValues(
+        frame.east.x, frame.east.y, frame.east.z, 0,
+        frame.up.x, frame.up.y, frame.up.z, 0,
+        frame.north.x, frame.north.y, frame.north.z, 0,
+        frame.originEcef.x, frame.originEcef.y, frame.originEcef.z, 1,
+    );
 export const enuVectorToEcefToRef = (
     frame: EnuFrame,
     enu: Vector3,
