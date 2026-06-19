@@ -40,6 +40,24 @@ export interface AfterburnerContext {
     modelNodeName: string;
 }
 
+/**
+ * 毎フレームの更新コンテキスト。globe バックエンドのトレイルは TrailMesh の自動更新が
+ * 使えず（真 ECEF を float32 頂点バッファへ焼くと精度落ち + floating origin 非対応）、
+ * 軌道パラメータから真 ECEF を都度算出してリビルドするため、これらの値を受け取る。
+ */
+export interface AfterburnerUpdateContext {
+    /** 軌道の中心緯度 */
+    centerLat: number;
+    /** 軌道の中心経度 */
+    centerLon: number;
+    /** 軌道半径 (m) */
+    radiusM: number;
+    /** 飛行機の絶対標高 (m) */
+    altitudeM: number;
+    /** 現在の軌道角度 (deg) */
+    angleDeg: number;
+}
+
 export interface Afterburner {
     /** トレイル生成を開始（Follow モード ON 時に呼ぶ） */
     start(ctx: AfterburnerContext): void;
@@ -49,6 +67,11 @@ export interface Afterburner {
     reset(): void;
     /** 表示/非表示切替 */
     setVisible(visible: boolean): void;
+    /**
+     * 毎フレーム更新（globe バックエンド用）。planar は TrailMesh が自動更新するため no-op。
+     * Follow モードかつモデルロード後に呼ぶこと。
+     */
+    update(ctx: AfterburnerUpdateContext): void;
     /** リソース解放 */
     dispose(): void;
 }
@@ -210,6 +233,9 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         rightTrail?.reset();
     };
 
+    // planar は TrailMesh が beforeRender で自動更新するため、毎フレーム update は不要。
+    const update = (): void => {};
+
     const setVisible = (v: boolean): void => {
         visible = v;
         leftTrail?.setEnabled(v);
@@ -236,5 +262,5 @@ export const createAfterburner = (scene: Scene): Afterburner => {
         material.dispose();
     };
 
-    return { start, stop, reset, setVisible, dispose };
+    return { start, stop, reset, setVisible, update, dispose };
 };

@@ -220,6 +220,9 @@ export class JpmapTerrain {
             const engine = await createBabylonEngine(
                 canvas,
                 options.engine ?? JPMAP_TERRAIN_DEFAULTS.engine,
+                // globe（真の ECEF / floating origin）は high precision matrix（float64）が必須。
+                // 未設定だと真の ECEF が Float32 で量子化されメッシュがジッターする。
+                { highPrecisionMatrix: this._terrainEngine === "globe" },
             );
             this._engine = engine;
 
