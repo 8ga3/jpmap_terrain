@@ -37,6 +37,7 @@ import {
     PolygonOptions,
     PolygonPointOptions,
     PolygonPointPartial,
+    PolygonUpdate,
     SUN_AUTO_UPDATE_INTERVAL_MS,
     TerrainClickListener,
     TerrainEngine,
@@ -1224,6 +1225,17 @@ export class JpmapTerrain {
     ): PolygonHandle {
         this._assertAlive();
         return this._requirePolygonManager().updatePoint(id, index, partial);
+    }
+
+    /**
+     * ポリゴンを部分更新する。`partial` で指定したフィールドのみ反映し、未指定は現状維持。
+     * globe バックエンドでは、点数・closed・各種フラグ・style が変わらず頂点座標／ラベルのみ
+     * 変化する場合、メッシュを再構築せず in-place 更新する（ドラッグ編集時のラベルのチラつき回避）。
+     * dispose 後 / マネージャ未初期化 / 未存在 id は throw。
+     */
+    public updatePolygon(id: string, partial: PolygonUpdate): PolygonHandle {
+        this._assertAlive();
+        return this._requirePolygonManager().update(id, partial);
     }
 
     /**

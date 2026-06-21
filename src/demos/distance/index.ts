@@ -107,18 +107,34 @@ const buildPolygonOptions = (
 };
 
 const rebuildPolygon = (viewer: JpmapTerrain, state: DemoState): void => {
-    // 既存ポリゴンを毎回削除→再追加することで edgeLabels をフレッシュに保つ。
-    // `replacePolygonPoints` は spec 上 edgeLabels を全 undefined にリセットするため、
-    // 距離・高低差の動的更新には add/remove を使うのが最も簡潔（#185）。
     const existing = viewer.getPolygon(POLYGON_ID);
+    if (state.points.length === 0) {
+        if (existing) viewer.removePolygon(POLYGON_ID);
+        return;
+    }
+    const options = buildPolygonOptions(state.points, false);
+    // 既存ポリゴンが同じ点数なら in-place 更新する。点座標・点ラベル・辺ラベル（距離/高低差）を
+    // メッシュ再構築なしで反映できるため、ドラッグ編集中の点ラベルのチラつきを防げる（globe）。
+    // updatePolygon は labels/edgeLabels をそのまま渡せるため、add/remove せずに動的更新できる。
+    if (existing && existing.points.length === state.points.length) {
+        viewer.updatePolygon(POLYGON_ID, {
+            points: options.points,
+            labels: options.labels,
+            edgeLabels: options.edgeLabels,
+        });
+        return;
+    }
+    // 点数が変わる追加/削除、または未生成時のみ add/remove で再構築する。
+    // 1 点でも `addPolygon` 可能（#186）。そのまま 点 + 垂線 + 点ラベル を描画する。
     if (existing) viewer.removePolygon(POLYGON_ID);
-    if (state.points.length === 0) return;
-    // 1 点でも `addPolygon` 可能になったため (#186 ライブラリ拡張)、
-    // そのまま 点 + 垂線 + 点ラベル を描画する。
-    viewer.addPolygon(POLYGON_ID, buildPolygonOptions(state.points, false));
+    viewer.addPolygon(POLYGON_ID, options);
 };
 
-const updateStatus = (state: DemoState, statusEl: HTMLElement | null): void => {
+const updateStatus = (
+    state: DemoState,
+    statusEl: HTMLElement | null,
+    is2d: boolean,
+): void => {
     if (!statusEl) return;
     const n = state.points.length;
     const guide =
@@ -132,7 +148,9 @@ const updateStatus = (state: DemoState, statusEl: HTMLElement | null): void => {
               ? n <= 2
                   ? `削除モード（点 ${n}）。点をクリックすると削除します`
                   : `削除モード（点 ${n}）`
-              : `編集モード（点 ${n}）。ドラッグで移動 / Shift+ドラッグで高度`;
+              : is2d
+                ? `編集モード（点 ${n}）。ドラッグで移動`
+                : `編集モード（点 ${n}）。ドラッグで移動 / Shift+ドラッグで高度`;
     statusEl.textContent = `モード: ${state.mode}（点 ${n}）／ ${guide}`;
 };
 
@@ -254,7 +272,7 @@ const start = async (): Promise<void> => {
     const statusEl = document.getElementById(STATUS_ID);
     const onStateChange = (): void => {
         rebuildPolygon(viewer, state);
-        updateStatus(state, statusEl);
+        updateStatus(state, statusEl, viewer.viewMode === "2d");
         // モード切替時はカーソルを既定に戻し、直近位置で再評価する。
         if (renderCanvas) {
             renderCanvas.style.cursor = "";
@@ -295,6 +313,8 @@ const start = async (): Promise<void> => {
         const refreshViewModeBtn = (): void => {
             viewModeBtn.textContent =
                 viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
+            // 2D/3D で編集ヒント（高度操作の可否）が変わるため再描画する。
+            updateStatus(state, statusEl, viewer.viewMode === "2d");
         };
         viewModeBtn.addEventListener("click", () => {
             viewer.viewMode = viewer.viewMode === "3d" ? "2d" : "3d";
@@ -358,7 +378,9 @@ const start = async (): Promise<void> => {
             return;
         }
         if (state.mode === "edit" && hovering) {
-            renderCanvas.style.cursor = shiftPressed ? "ns-resize" : "move";
+            // 2D ではドラッグの高度変更を無効化しているため ns-resize は出さない。
+            const altitudeEditable = shiftPressed && viewer.viewMode !== "2d";
+            renderCanvas.style.cursor = altitudeEditable ? "ns-resize" : "move";
         }
     };
     if (renderCanvas) {
@@ -416,8 +438,9 @@ const start = async (): Promise<void> => {
         if (e.polygonId !== POLYGON_ID) return;
         const current = state.points[e.index];
         if (!current) return;
-        if (e.pointerEvent.shiftKey) {
+        if (e.pointerEvent.shiftKey && viewer.viewMode !== "2d") {
             // 高度モード: 開始 altitude / clientY / 地表標高を保持。
+            // 2D（トップダウン）では高度変化が見えないため無効化し、通常の lat/lon 移動にする。
             state.altitudeDragStart = {
                 index: e.index,
                 altitude: current.altitude ?? 0,

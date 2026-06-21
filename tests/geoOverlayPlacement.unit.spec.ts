@@ -16,6 +16,7 @@ import {
     computeOverlayDistanceScale,
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
+    computeScreenUpToRef,
     buildDrapedPolygonPaths,
     generateGeodesicRing,
     surfaceOrientationToRef,
@@ -92,6 +93,20 @@ describe("computeOverlayDistanceScaleFromDistance", () => {
     });
     it("refDistanceM<=0 は既定値フォールバック", () => {
         expect(computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M, 0)).toBeCloseTo(1, 9);
+    });
+    it("minScale=0（2D 正射用）は下限なしで純比例（埋もれ・成長を防ぐ）", () => {
+        // 既定（minScale=0.1）では下限に張り付くが、0 指定では距離に純比例する。
+        expect(computeOverlayDistanceScaleFromDistance(1)).toBe(0.1);
+        expect(
+            computeOverlayDistanceScaleFromDistance(1, OVERLAY_REF_DISTANCE_M, 0),
+        ).toBeCloseTo(1 / OVERLAY_REF_DISTANCE_M, 12);
+        // computeOverlayDistanceScale 経由でも minScale が伝播する。
+        const cam = new Vector3(0, 0, 0);
+        const pos = new Vector3(50, 0, 0); // 50m（既定なら下限 0.1 に張り付く近距離）
+        expect(computeOverlayDistanceScale(cam, pos)).toBe(0.1);
+        expect(
+            computeOverlayDistanceScale(cam, pos, OVERLAY_REF_DISTANCE_M, 0),
+        ).toBeCloseTo(50 / OVERLAY_REF_DISTANCE_M, 12);
     });
 });
 
@@ -207,5 +222,38 @@ describe("surfaceOrientationToRef", () => {
         const pos = geodeticToEcef(90, 0, 0);
         const q = new Quaternion();
         expect(surfaceOrientationToRef(pos, 0, q)).toBe(false);
+    });
+});
+
+describe("computeScreenUpToRef", () => {
+    it("トップダウン（視線=地心 up）でも視線に直交する screen up を返す", () => {
+        const point = new Vector3(0, 0, 0);
+        // カメラは真上（+Y）から見下ろす。camUp は水平（例: +Z）。
+        const camPos = new Vector3(0, 100, 0);
+        const camUp = new Vector3(0, 0, 1);
+        const ref = new Vector3();
+        const ok = computeScreenUpToRef(camPos, camUp, point, ref);
+        expect(ok).toBe(true);
+        expect(ref.length()).toBeCloseTo(1, 9);
+        // 視線（point→cam = +Y）に直交。
+        const toCam = camPos.subtract(point).normalize();
+        expect(Vector3.Dot(ref, toCam)).toBeCloseTo(0, 6);
+    });
+
+    it("点とカメラが一致するときは false（ref 不変）", () => {
+        const p = new Vector3(1, 2, 3);
+        const ref = new Vector3(9, 9, 9);
+        expect(computeScreenUpToRef(p.clone(), new Vector3(0, 1, 0), p, ref)).toBe(
+            false,
+        );
+        expect(ref.x).toBe(9);
+    });
+
+    it("camUp が視線と平行のときは false（right が定義できない）", () => {
+        const point = new Vector3(0, 0, 0);
+        const camPos = new Vector3(0, 100, 0); // 視線 = +Y
+        const camUp = new Vector3(0, 1, 0); // camUp ∥ 視線
+        const ref = new Vector3();
+        expect(computeScreenUpToRef(camPos, camUp, point, ref)).toBe(false);
     });
 });

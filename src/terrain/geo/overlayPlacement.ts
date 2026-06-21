@@ -57,23 +57,30 @@ export const computeOverlayDistanceScale = (
     cameraEcef: Vector3,
     posEcef: Vector3,
     refDistanceM: number = OVERLAY_REF_DISTANCE_M,
+    minScale: number = MIN_SCALE,
 ): number =>
     computeOverlayDistanceScaleFromDistance(
         Vector3.Distance(cameraEcef, posEcef),
         refDistanceM,
+        minScale,
     );
 
 /**
  * 既に算出済みの距離 [m] からスクリーン定スケール係数を計算する（下限あり）。
  * 距離を別途使う呼び出し側で `Vector3.Distance` の二重計算（sqrt）を避けるための入口。
+ *
+ * `minScale` は下限値。3D 透視では近接時に過小化（消失）しないよう既定 {@link MIN_SCALE}。
+ * 2D 正射ではフラスタムが radius に比例するため、下限なし（0）にすると全ズームで画面上の
+ * 見かけサイズが一定になる（マーカー同等の挙動）。
  */
 export const computeOverlayDistanceScaleFromDistance = (
     distanceM: number,
     refDistanceM: number = OVERLAY_REF_DISTANCE_M,
+    minScale: number = MIN_SCALE,
 ): number => {
     // 0 以下の基準距離は不正（Infinity/-Infinity を防ぐ）。既定値へフォールバックする。
     const ref = refDistanceM > 0 ? refDistanceM : OVERLAY_REF_DISTANCE_M;
-    return Math.max(distanceM / ref, MIN_SCALE);
+    return Math.max(distanceM / ref, minScale);
 };
 
 /**
@@ -83,6 +90,42 @@ export const computeOverlayDistanceScaleFromDistance = (
 export const computeOverlayLineHeight = (distanceM: number): number => {
     const h = distanceM * 0.1;
     return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, h));
+};
+
+// computeScreenUpToRef のスクラッチ（毎フレーム・点数ぶん呼ばれるため割り当て回避）。
+const _suToCam = new Vector3();
+const _suRight = new Vector3();
+
+/**
+ * ワールド点 `point` におけるカメラ視点の「画面上方向（screen up）」を `ref` に書き込む（純関数）。
+ *
+ * ラベルを点の上（画面上）へオフセットして点を覆い隠さないために使う（平面版 polygon と同手法）。
+ * カメラ上方向 `camUp` を、点→カメラ方向（`toCam`）に直交する成分へ Gram-Schmidt 射影して
+ * 正規化する。これにより 2D トップダウン（視線=地心 up）でもラベルが点に重ならない。
+ *
+ * @returns 計算できたら true（`ref` に screen up）。点とカメラが一致／`camUp` が視線と平行などの
+ *   特異時は false（`ref` は不変。呼び出し側は地心 up 等へフォールバックする）。
+ */
+export const computeScreenUpToRef = (
+    camPos: Vector3,
+    camUp: Vector3,
+    point: Vector3,
+    ref: Vector3,
+): boolean => {
+    camPos.subtractToRef(point, _suToCam);
+    const tlen = _suToCam.length();
+    if (tlen <= 1e-6) return false;
+    _suToCam.scaleInPlace(1 / tlen);
+    // right = camUp × toCam
+    Vector3.CrossToRef(camUp, _suToCam, _suRight);
+    if (_suRight.lengthSquared() < 1e-12) return false; // camUp ∥ toCam
+    _suRight.normalize();
+    // screenUp = toCam × right
+    Vector3.CrossToRef(_suToCam, _suRight, ref);
+    const slen = ref.length();
+    if (slen <= 1e-6) return false;
+    ref.scaleInPlace(1 / slen);
+    return true;
 };
 
 // surfaceOrientationToRef のスクラッチ（毎フレーム・モデル数ぶん呼ばれるため割り当て回避）。

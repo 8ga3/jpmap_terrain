@@ -17,6 +17,7 @@ interface StubMesh {
     disposeCount: number;
     position: { length: () => number; copyFrom: (v: unknown) => unknown; addInPlace: (v: unknown) => unknown };
     scaling: { setAll: (v: number) => void };
+    lastScale?: number;
     billboardMode?: number;
     setEnabled: (v: boolean) => void;
     dispose: () => void;
@@ -50,7 +51,11 @@ const stub = (name: string, bucket: StubMesh[]): StubMesh => {
                 return this;
             },
         },
-        scaling: { setAll() {} },
+        scaling: {
+            setAll(v: number) {
+                m.lastScale = v;
+            },
+        },
         setEnabled(v: boolean) {
             this.enabled = v;
         },
@@ -327,6 +332,103 @@ describe("topAltitudeMeters（固定高度）", () => {
     });
 });
 
+describe("setFlatten (#395)", () => {
+    it("setFlatten(true) で壁・垂線を無効化し、接地アウトライン/点は残す", () => {
+        const { mgr } = makeManager();
+        mgr.add({ points: pts3, wallsEnabled: true });
+        // 既定（3D）: 壁・垂線・アウトライン・点すべて有効。
+        expect(createdRibbons[0].enabled).toBe(true);
+        expect(createdDrops.every((d) => d.enabled)).toBe(true);
+        expect(createdLines[0].enabled).toBe(true);
+        // 2D: 壁・垂線が無効。接地アウトライン・点は維持。
+        mgr.setFlatten(true);
+        expect(createdRibbons[0].enabled).toBe(false);
+        expect(createdDrops.every((d) => d.enabled === false)).toBe(true);
+        expect(createdLines[0].enabled).toBe(true);
+        expect(createdPoints.every((p) => p.enabled)).toBe(true);
+    });
+
+    it("setFlatten(false) で壁・垂線を復元する", () => {
+        const { mgr } = makeManager();
+        mgr.add({ points: pts3, wallsEnabled: true });
+        mgr.setFlatten(true);
+        mgr.setFlatten(false);
+        expect(createdRibbons[0].enabled).toBe(true);
+        expect(createdDrops.every((d) => d.enabled)).toBe(true);
+    });
+
+    it("flat 中の update でも壁・垂線は無効のまま", () => {
+        const { mgr } = makeManager();
+        mgr.add({ points: pts3, wallsEnabled: true });
+        mgr.setFlatten(true);
+        mgr.update();
+        expect(createdRibbons[0].enabled).toBe(false);
+        expect(createdDrops.every((d) => d.enabled === false)).toBe(true);
+        // アウトラインは update 後も維持。
+        expect(createdLines[0].enabled).toBe(true);
+    });
+
+    it("dispose 後の setFlatten は throw する", () => {
+        const { mgr } = makeManager();
+        mgr.dispose();
+        expect(() => mgr.setFlatten(true)).toThrow(/after dispose/);
+    });
+});
+
+describe("flat + flatScale サイズ一定（#395 Task3 続き）", () => {
+    it("flat 時は点サイズが高度に依らず pointDiameter*flatScale になる", () => {
+        const { mgr } = makeManager();
+        mgr.setFlatten(true);
+        const flatScale = 4;
+        // 低高度ポリゴン。
+        mgr.add({
+            points: pts3.map((p) => ({ ...p, altitude: 500 })),
+            altitudeMode: "absolute",
+            style: { pointDiameter: 10 },
+        });
+        mgr.update(undefined, flatScale);
+        expect(createdPoints.length).toBe(3);
+        expect(createdPoints.every((p) => p.lastScale === 40)).toBe(true);
+
+        // 高度を 10 倍にしても flat スケールは不変（高度が「生きない」）。
+        createdPoints.length = 0;
+        mgr.add({
+            points: pts3.map((p) => ({ ...p, lat: p.lat + 0.01, altitude: 5000 })),
+            altitudeMode: "absolute",
+            style: { pointDiameter: 10 },
+        });
+        mgr.update(undefined, flatScale);
+        expect(createdPoints.every((p) => p.lastScale === 40)).toBe(true);
+    });
+
+    it("再 add 直後も直近 update の flatScale で配置される（再構築チラつき防止）", () => {
+        const { mgr } = makeManager();
+        mgr.setFlatten(true);
+        mgr.add({ points: pts3, style: { pointDiameter: 10 } });
+        mgr.update(undefined, 4);
+        // 再構築（remove→add 相当）。次の update を待たずに add 時点で flatScale=4 が適用される。
+        createdPoints.length = 0;
+        mgr.add({
+            points: pts3.map((p) => ({ ...p, lon: p.lon + 0.01 })),
+            style: { pointDiameter: 10 },
+        });
+        expect(createdPoints.every((p) => p.lastScale === 40)).toBe(true);
+    });
+
+    it("flat 時は absolute 高度を無視して地形へ接地する（near クリップ回避）", () => {
+        const { mgr, terrainElevAt } = makeManager();
+        mgr.setFlatten(true);
+        mgr.add({
+            points: pts3.map((p) => ({ ...p, altitude: 1500 })),
+            altitudeMode: "absolute",
+        });
+        mgr.update(undefined, 4);
+        // 3D の absolute は terrainElevAt を呼ばないが、2D（flat）では高度を捨てて
+        // 地形標高へ接地するため terrainElevAt が呼ばれる。
+        expect(terrainElevAt).toHaveBeenCalled();
+    });
+});
+
 describe("dispose 後ガード", () => {
     it("dispose 後の add/setEnabled/update は throw、二重 dispose は安全", () => {
         const { mgr } = makeManager();
@@ -345,5 +447,64 @@ describe("色フォールバック", () => {
         expect(() =>
             mgr.add({ points: pts3, outlineColor: "red", wallColor: "blue" }),
         ).not.toThrow();
+    });
+});
+
+describe("setContent（in-place 更新, ラベルチラつき対策）", () => {
+    it("同じ点数・同幅ラベルなら mesh/texture を再利用し再生成しない（true）", () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({
+            points: pts3,
+            closed: true,
+            labels: ["AA", "BB", "CC"],
+            edgeLabels: ["xx", "yy", "zz"],
+        });
+        const planesAfterAdd = createdPlanes.length;
+        const ok = mgr.setContent(id, {
+            points: [
+                { lat: 35.31, lon: 138.71 },
+                { lat: 35.41, lon: 138.81 },
+                { lat: 35.31, lon: 138.91 },
+            ],
+            // 同じ文字数 → 既存テクスチャ寸法に収まり in-place 再描画。
+            labels: ["DD", "EE", "FF"],
+            edgeLabels: ["pp", "qq", "rr"],
+        });
+        expect(ok).toBe(true);
+        // 新規 plane（ラベル/点）は作られない＝メッシュ再構築なし。
+        expect(createdPlanes.length).toBe(planesAfterAdd);
+        // 既存ラベル plane は dispose されない。
+        expect(createdPlanes.every((p) => p.disposeCount === 0)).toBe(true);
+    });
+
+    it("ラベルが既存テクスチャに収まらない場合のみ当該ラベルを作り直す", () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ points: pts3, closed: true, labels: ["A", "B", "C"] });
+        const planesAfterAdd = createdPlanes.length;
+        const ok = mgr.setContent(id, {
+            points: pts3,
+            // 1 つだけ大幅に長い → 既存幅を超えるため作り直し（+1 plane, 旧 1 つ dispose）。
+            labels: ["AAAAAAAAAAAAAAAAAAAA", "B", "C"],
+        });
+        expect(ok).toBe(true);
+        expect(createdPlanes.length).toBe(planesAfterAdd + 1);
+        expect(createdPlanes.filter((p) => p.disposeCount > 0).length).toBe(1);
+    });
+
+    it("点数が変わる場合は false を返す（呼び出し側で再構築）", () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ points: pts3 });
+        const ok = mgr.setContent(id, {
+            points: [
+                { lat: 35.3, lon: 138.7 },
+                { lat: 35.4, lon: 138.8 },
+            ],
+        });
+        expect(ok).toBe(false);
+    });
+
+    it("未存在 id は false を返す", () => {
+        const { mgr } = makeManager();
+        expect(mgr.setContent("missing", { points: pts3 })).toBe(false);
     });
 });

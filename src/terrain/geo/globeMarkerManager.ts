@@ -85,6 +85,11 @@ export interface GlobeMarkerManager {
     /** 表示/非表示を切り替える。 */
     setEnabled(id: string, enabled: boolean): void;
     /**
+     * 2D（トップダウン正射）縮退の有効/無効を切り替える (#395)。`true` で全マーカーの
+     * ドロップ線（ポール）を無効化し、アイコン/ラベルを地表へアンカーする。`false` で復元する。
+     */
+    setFlatten(flat: boolean): void;
+    /**
      * 毎フレーム: 地形標高へ接地・距離スケール・ポール向き（地心 up）を更新する。
      * `cameraEcef` は呼び出し側がフレーム単位で 1 回計算した値を渡す（再計算回避）。
      */
@@ -125,6 +130,9 @@ export const createGlobeMarkerManager = (
     let seq = 0;
     // dispose 後の use-after-dispose を防ぐフラグ（平面版 MarkerManager と同様）。
     let disposed = false;
+    // 2D（トップダウン正射）縮退フラグ (#395)。true の間はポールを無効化し、
+    // アイコン/ラベルを地表へアンカーする。3D 復帰（false）で元の表示へ戻る。
+    let flat = false;
 
     // 毎フレーム再利用するスクラッチ。
     const pos = new Vector3();
@@ -152,6 +160,14 @@ export const createGlobeMarkerManager = (
         const lineHeight = computeOverlayLineHeight(dist);
 
         // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
+        // 2D（flat）ではポールを描かず、アイコン/ラベルを地表へアンカーする (#395)。
+        if (flat) {
+            if (node.iconText) {
+                node.iconText.mesh.scaling.set(distScale, distScale, distScale);
+                node.iconText.mesh.position.copyFrom(pos);
+            }
+            return;
+        }
         orientYToUpToRef(up, quat);
         node.lineMesh.rotationQuaternion!.copyFrom(quat);
         const diameter = node.poleBaseDiameter * distScale;
@@ -242,7 +258,8 @@ export const createGlobeMarkerManager = (
         };
         // 初期配置（camEcef なし）。update が走る前の原点 (0,0,0) 表示チラつきを防ぐ。
         placeNode(node);
-        lineMesh.setEnabled(enabled);
+        // 2D（flat）中はポールを描かない (#395)。
+        lineMesh.setEnabled(enabled && !flat);
         iconText?.mesh.setEnabled(enabled);
         nodes.set(id, node);
         return id;
@@ -273,8 +290,19 @@ export const createGlobeMarkerManager = (
         const node = nodes.get(id);
         if (!node) throw new Error(`GlobeMarkerManager.setEnabled: id "${id}" not found`);
         node.enabled = enabled;
-        node.lineMesh.setEnabled(enabled);
+        node.lineMesh.setEnabled(enabled && !flat);
         node.iconText?.mesh.setEnabled(enabled);
+    };
+
+    const setFlatten = (next: boolean): void => {
+        if (disposed) throw new Error("GlobeMarkerManager.setFlatten: called after dispose");
+        if (next === flat) return;
+        flat = next;
+        // ポールの有効可否は flat と node.enabled で決まる。アイコン/ラベルの位置は次回 update
+        // （placeNode）が flat を参照して地表/ポール先端へ再アンカーする。
+        for (const node of nodes.values()) {
+            node.lineMesh.setEnabled(node.enabled && !flat);
+        }
     };
 
     const update = (camEcef: Vector3): void => {
@@ -293,5 +321,5 @@ export const createGlobeMarkerManager = (
         for (const id of [...nodes.keys()]) remove(id);
     };
 
-    return { add, remove, setEnabled, update, dispose };
+    return { add, remove, setEnabled, setFlatten, update, dispose };
 };
