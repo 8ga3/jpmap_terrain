@@ -86,6 +86,9 @@ const makeStub = (
     const dragStartListeners: GlobePolygonPointDragListener[] = [];
     const dragListeners: GlobePolygonPointDragListener[] = [];
     const dragEndListeners: GlobePolygonPointDragListener[] = [];
+    // viewMode 切替の最小スタブ（#395）。adapter は gc へ委譲するだけなので、
+    // ここでは可変の currentViewMode を保持し getZoomLevel を 2D 時のみ数値で返す。
+    let mockViewMode: import("../src/lib/types").ViewMode = "3d";
     const makeSub =
         <T>(arr: T[]) =>
         (listener: T) => {
@@ -132,6 +135,11 @@ const makeStub = (
         subscribePolygonPointDragStart: makeSub(dragStartListeners),
         subscribePolygonPointDrag: makeSub(dragListeners),
         subscribePolygonPointDragEnd: makeSub(dragEndListeners),
+        getViewMode: () => mockViewMode,
+        setViewMode: (m: import("../src/lib/types").ViewMode) => {
+            mockViewMode = m;
+        },
+        getZoomLevel: () => (mockViewMode === "2d" ? 14.5 : undefined),
         dispose: () => {
             disposedFlag = true;
         },
@@ -207,9 +215,18 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         expect(c.getTilt()).toBeCloseTo(60, 4);
     });
 
-    it("getViewMode は常に 3d、getZoomLevel は undefined", () => {
+    it("viewMode は gc へ委譲する（3d→2d で getZoomLevel が数値、3d は undefined）", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(gc, "std");
+        // 既定は 3d。2D 概念を持たないため getZoomLevel は undefined。
+        expect(c.getViewMode()).toBe("3d");
+        expect(c.getZoomLevel()).toBeUndefined();
+        // 2D へ切替えると委譲先 gc が "2d" を返し、getZoomLevel が数値になる (#395)。
+        c.setViewMode("2d");
+        expect(c.getViewMode()).toBe("2d");
+        expect(typeof c.getZoomLevel()).toBe("number");
+        // 3D へ戻すと再び undefined。
+        c.setViewMode("3d");
         expect(c.getViewMode()).toBe("3d");
         expect(c.getZoomLevel()).toBeUndefined();
     });
@@ -590,6 +607,8 @@ const makeGlobePolygonStub = (): {
     added: { id: string; opts: GlobePolygonOptions }[];
     removed: string[];
     enabledCalls: { id: string; enabled: boolean }[];
+    contentCalls: { id: string; content: unknown }[];
+    setContentResult: { value: boolean };
     disposed: () => boolean;
 } => {
     let seq = 0;
@@ -597,6 +616,8 @@ const makeGlobePolygonStub = (): {
     const added: { id: string; opts: GlobePolygonOptions }[] = [];
     const removed: string[] = [];
     const enabledCalls: { id: string; enabled: boolean }[] = [];
+    const contentCalls: { id: string; content: unknown }[] = [];
+    const setContentResult = { value: false };
     const mgr = {
         add: (opts: GlobePolygonOptions): string => {
             const id = `gp${seq++}`;
@@ -610,11 +631,23 @@ const makeGlobePolygonStub = (): {
             enabledCalls.push({ id, enabled });
         },
         update: (): void => {},
+        setContent: (id: string, content: unknown): boolean => {
+            contentCalls.push({ id, content });
+            return setContentResult.value;
+        },
         dispose: (): void => {
             disposedFlag = true;
         },
     } as unknown as GlobePolygonManager;
-    return { mgr, added, removed, enabledCalls, disposed: () => disposedFlag };
+    return {
+        mgr,
+        added,
+        removed,
+        enabledCalls,
+        contentCalls,
+        setContentResult,
+        disposed: () => disposedFlag,
+    };
 };
 
 describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () => {
@@ -823,6 +856,46 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
                 m.setWallsEnabled("poly", false);
                 expect(stub.removed).toEqual(["gp0", "gp1"]);
                 expect(m.get("poly")?.wallsEnabled).toBe(false);
+            });
+
+            it("update は構造不変（点座標/ラベルのみ）なら setContent で in-place 更新し再構築しない", () => {
+                const stub = makeGlobePolygonStub();
+                stub.setContentResult.value = true; // in-place 成功を模擬
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS, labels: ["a", "b"] });
+                expect(stub.added).toHaveLength(1);
+                const h = m.update("poly", {
+                    points: [
+                        { lat: 35.37, lon: 138.73 },
+                        { lat: 35.38, lon: 138.74 },
+                    ],
+                    labels: ["a2", "b2"],
+                });
+                // in-place: 再 add / remove は発生しない。
+                expect(stub.added).toHaveLength(1);
+                expect(stub.removed).toEqual([]);
+                expect(stub.contentCalls).toHaveLength(1);
+                expect(stub.contentCalls[0].id).toBe("gp0");
+                expect(h.points[0].lat).toBeCloseTo(35.37);
+                expect(h.labels?.[0]).toBe("a2");
+            });
+
+            it("update は setContent が false（点数不一致など）なら従来どおり再構築へフォールバックする", () => {
+                const stub = makeGlobePolygonStub();
+                stub.setContentResult.value = false; // in-place 不可を模擬
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS });
+                const h = m.update("poly", {
+                    points: [
+                        { lat: 35.37, lon: 138.73 },
+                        { lat: 35.38, lon: 138.74 },
+                    ],
+                });
+                expect(stub.contentCalls).toHaveLength(1);
+                // フォールバックで新規 add + 旧 remove。
+                expect(stub.added).toHaveLength(2);
+                expect(stub.removed).toEqual(["gp0"]);
+                expect(h.points[1].lat).toBeCloseTo(35.38);
             });
 
             it("setEnabled は委譲し、点編集 API はハンドルを再構築する", () => {

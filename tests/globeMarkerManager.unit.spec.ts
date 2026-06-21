@@ -74,7 +74,10 @@ const validateIconUrl = jest.fn((url: string) => {
     }
 });
 
-const createdIconTexts: { mesh: { enabled: boolean; isPickable: boolean }; disposed: boolean }[] = [];
+const createdIconTexts: {
+    mesh: { enabled: boolean; isPickable: boolean; position: Vector3; scaling: Vector3 };
+    disposed: boolean;
+}[] = [];
 jest.unstable_mockModule("../src/terrain/marker", () => ({
     RENDERING_GROUP_ID: 1,
     validateIconUrl,
@@ -220,6 +223,60 @@ describe("update", () => {
         expect(Vector3.Distance(createdCylinders[0].position, after5000)).toBeLessThan(1);
         // 5000m 接地は楕円体面(elev=0)より地心距離が大きいことの傍証として十分大きい。
         expect(createdCylinders[0].position.length()).toBeGreaterThan(6_300_000);
+    });
+});
+
+describe("setFlatten (#395)", () => {
+    it("setFlatten(true) でポールを無効化し、アイコンを地表へアンカーする", () => {
+        const { mgr } = makeManager();
+        mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        const camEcef = new Vector3(7_000_000, 0, 0);
+        // 3D（既定）配置: ポール有効・アイコンはポール先端（地表 + up*lineHeight）。
+        mgr.update(camEcef);
+        const groundLen = createdCylinders[0].position.length(); // ポール中点 ≈ 地表 + up*h/2
+        const icon3dLen = createdIconTexts[0].mesh.position.length();
+        expect(createdCylinders[0].enabled).toBe(true);
+
+        // 2D: ポール無効・アイコンは地表（ポール先端より地心距離が小さい）。
+        mgr.setFlatten(true);
+        mgr.update(camEcef);
+        expect(createdCylinders[0].enabled).toBe(false);
+        expect(createdIconTexts[0].mesh.enabled).toBe(true);
+        const icon2dLen = createdIconTexts[0].mesh.position.length();
+        expect(icon2dLen).toBeLessThan(icon3dLen);
+        expect(icon2dLen).toBeGreaterThan(0);
+        // 念のため: 地表アンカー（ポール中点より下＝地心距離が小さい）。
+        expect(icon2dLen).toBeLessThanOrEqual(groundLen + 1);
+    });
+
+    it("setFlatten(false) でポール表示を復元する", () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        const camEcef = new Vector3(7_000_000, 0, 0);
+        mgr.setFlatten(true);
+        mgr.update(camEcef);
+        expect(createdCylinders[0].enabled).toBe(false);
+        mgr.setFlatten(false);
+        mgr.update(camEcef);
+        expect(createdCylinders[0].enabled).toBe(true);
+        // setEnabled(false) のマーカーは flat 解除後もポール非表示のまま。
+        mgr.setEnabled(id, false);
+        mgr.setFlatten(true);
+        mgr.setFlatten(false);
+        expect(createdCylinders[0].enabled).toBe(false);
+    });
+
+    it("flat 中に add したマーカーのポールも無効で生成される", () => {
+        const { mgr } = makeManager();
+        mgr.setFlatten(true);
+        mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
+        expect(createdCylinders[0].enabled).toBe(false);
+    });
+
+    it("dispose 後の setFlatten は throw する", () => {
+        const { mgr } = makeManager();
+        mgr.dispose();
+        expect(() => mgr.setFlatten(true)).toThrow(/after dispose/);
     });
 });
 

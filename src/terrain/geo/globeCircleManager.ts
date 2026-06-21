@@ -74,8 +74,13 @@ export interface GlobeCircleManager {
     remove(id: string): void;
     /** 表示/非表示を切り替える（中心点・円周線・壁・ラベルをまとめて）。 */
     setEnabled(id: string, enabled: boolean): void;
+    /**
+     * 2D（トップダウン正射）縮退の有効/無効を切り替える (#395)。内部ポリゴンへ委譲し、
+     * `true` で壁（カーテン）を無効化して接地リングのみを残す。`false` で復元する。
+     */
+    setFlatten(flat: boolean): void;
     /** 毎フレーム: 地形へ再ドレープし距離スケールを更新する。 */
-    update(cameraEcef?: Vector3): void;
+    update(cameraEcef?: Vector3, flatScale?: number): void;
     /** 全サークルを破棄する。 */
     dispose(): void;
 }
@@ -199,7 +204,8 @@ export const createGlobeCircleManager = (
         add,
         remove,
         setEnabled,
-        update: (cameraEcef) => polygons.update(cameraEcef),
+        setFlatten: (flat) => polygons.setFlatten(flat),
+        update: (cameraEcef, flatScale) => polygons.update(cameraEcef, flatScale),
         dispose: () => {
             disposed = true;
             polygons.dispose();

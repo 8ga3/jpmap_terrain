@@ -55,6 +55,8 @@ const makeGcWithScene = (
 } => {
     const onBeforeRender = makeObservable<() => void>();
     let disposedFlag = false;
+    // viewMode 切替の最小スタブ（#395）。UI は gc.getViewMode/setViewMode を参照する。
+    let mockViewMode: import("../src/lib/types").ViewMode = "3d";
     const gc = {
         camera,
         scene: {
@@ -66,6 +68,11 @@ const makeGcWithScene = (
             terrainElevAt: () => null,
             setMapType: jest.fn(),
         },
+        getViewMode: () => mockViewMode,
+        setViewMode: (m: import("../src/lib/types").ViewMode) => {
+            mockViewMode = m;
+        },
+        getZoomLevel: () => (mockViewMode === "2d" ? 14.5 : undefined),
         dispose: () => {
             disposedFlag = true;
         },
@@ -237,6 +244,52 @@ describe("globe UI コントロールパネル配線 (#275 P4-1)", () => {
         expect(camera.center).toEqual(centerBefore);
         // error コールバックも例外なく早期 return する。
         expect(() => errorCb!({ message: "denied" })).not.toThrow();
+    });
+});
+
+describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
+    it("ボタンは表示され、初期ラベルは現在モード（3d）に対し '2D' を示す", () => {
+        const camera = makeCamera();
+        const { gc } = makeGcWithScene(camera);
+        createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const btn = document.querySelector(
+            '[aria-label="視点切替: 2D に変更"]',
+        ) as HTMLButtonElement;
+        expect(btn).not.toBeNull();
+        // 旧実装の display:none で隠す挙動を撤去したことを担保する。
+        expect(btn.style.display).not.toBe("none");
+        expect(btn.textContent).toBe("2D");
+    });
+
+    it("クリックで gc.setViewMode を逆モードで呼び、ラベルを更新する", () => {
+        const camera = makeCamera();
+        const { gc } = makeGcWithScene(camera);
+        createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const btn = document.querySelector(
+            '[aria-label="視点切替: 2D に変更"]',
+        ) as HTMLButtonElement;
+        // 3d → クリック → 2d。ラベルは次の切替先 '3D' になる。
+        btn.click();
+        expect(gc.getViewMode()).toBe("2d");
+        expect(btn.textContent).toBe("3D");
+        expect(btn.getAttribute("aria-label")).toBe("視点切替: 3D に変更");
+        // 2d → クリック → 3d。ラベルは '2D' に戻る。
+        btn.click();
+        expect(gc.getViewMode()).toBe("3d");
+        expect(btn.textContent).toBe("2D");
+    });
+
+    it("外部 API setViewMode はラベルも同期する", () => {
+        const camera = makeCamera();
+        const { gc } = makeGcWithScene(camera);
+        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const btn = document.querySelector(
+            '[aria-label="視点切替: 2D に変更"]',
+        ) as HTMLButtonElement;
+        c.setViewMode("2d");
+        expect(gc.getViewMode()).toBe("2d");
+        expect(btn.textContent).toBe("3D");
+        expect(c.getViewMode()).toBe("2d");
     });
 });
 

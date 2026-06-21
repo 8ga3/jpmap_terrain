@@ -65,6 +65,7 @@ import type {
     PolygonPointClickListener,
     PolygonPointDragListener,
     PolygonPointDragEvent,
+    ViewMode,
 } from "../lib/types";
 import {
     MARKER_DEFAULTS,
@@ -551,6 +552,30 @@ export const createGlobePolygonManagerAdapter = (
                 labelsEnabled: partial.labelsEnabled ?? prev.labelsEnabled,
                 wallsEnabled: partial.wallsEnabled ?? prev.wallsEnabled,
             };
+            // 構造（点数・closed・各種フラグ・style）が変わらず、頂点座標／ラベルのみの更新なら
+            // in-place 更新を試みる（メッシュ再構築を避け、ドラッグ編集中のラベルのチラつきを防ぐ）。
+            // setContent が false（点数不一致など）を返した場合は従来どおり remove/add で再構築する。
+            const structureUnchanged =
+                next.closed === prev.closed &&
+                next.altitudeMode === prev.altitudeMode &&
+                next.enabled === prev.enabled &&
+                next.verticalsEnabled === prev.verticalsEnabled &&
+                next.labelsEnabled === prev.labelsEnabled &&
+                next.wallsEnabled === prev.wallsEnabled &&
+                partial.style === undefined &&
+                next.points.length === prev.points.length;
+            if (
+                structureUnchanged &&
+                globeMgr.setContent(prev.globeId, {
+                    points: next.points,
+                    labels: next.hasLabels ? next.labels : undefined,
+                    edgeLabels: next.hasEdgeLabels ? next.edgeLabels : undefined,
+                })
+            ) {
+                next.globeId = prev.globeId;
+                entries.set(id, next);
+                return buildHandle(id, next);
+            }
             return buildHandle(id, commitRebuild(id, prev, next));
         },
         remove(id: string): void {
@@ -1061,6 +1086,9 @@ export class GlobeSceneAdapter {
                 mapType,
                 enablePan: options?.enablePan,
                 enableKeyboardPan: options?.enableKeyboardPan,
+                viewMode: options?.viewMode,
+                zoomLevel: options?.zoomLevel,
+                onViewModeChange: options?.onViewModeChange,
             },
         );
 
@@ -1285,7 +1313,6 @@ export const createGlobeSceneController = (
 ): DefaultSceneController => {
     const { camera } = gc;
     let currentMapType: MapType = initialMapType;
-    let viewModeWarned = false;
 
     // 公開 overlay manager 互換アダプタ（P4-0 Slice 2a / 2b-1）。
     const markerManager = createGlobeMarkerManagerAdapter(
@@ -1538,6 +1565,9 @@ export const createGlobeSceneController = (
     ) => void = () => {};
     let uiDispose: () => void = () => {};
     let updateMapToggleLabel: ((m: MapType) => void) | undefined;
+    // 視点切替ボタンのラベル更新（UI 生成時に実体を代入。canvas 未指定時は undefined）。
+    // adapter.setViewMode（外部 API）と UI クリックの双方からラベルを同期するため外に出す。
+    let updateViewModeToggleLabel: ((m: ViewMode) => void) | undefined;
 
     /**
      * 地図種別を切り替える共通処理（UI ボタン / `controller.setMapType` の双方から呼ぶ）。
@@ -1556,10 +1586,21 @@ export const createGlobeSceneController = (
         // UI 破棄後にアニメーション（requestAnimationFrame）が camera を更新し続けないための
         // ガードフラグ。uiDispose で true にし、各 rAF ループは次フレームをスケジュールしない。
         let uiDisposed = false;
-        // globe は 2D(ortho) を持たないため視点切替ボタンは常時非表示にする（#275 P4-1）。
-        // createUiVisibilityController は生成時の display を初期値として捕捉するため、
-        // 先に "none" にしておけば setUiVisibility("viewModeButton", true) でも再表示されない。
-        ui.viewModeButton.style.display = "none";
+        // 視点切替ボタン: globe バックエンドでも 2D(ortho) を有効化 (#395 / #349)。
+        // ラベルは「次に切り替える先」を示すアクションとして表示する（planar default.ts と同パターン）。
+        updateViewModeToggleLabel = (mode: ViewMode): void => {
+            ui.viewModeButton.textContent = mode === "3d" ? "2D" : "3D";
+            ui.viewModeButton.setAttribute(
+                "aria-label",
+                mode === "3d" ? "視点切替: 2D に変更" : "視点切替: 3D に変更",
+            );
+        };
+        updateViewModeToggleLabel(gc.getViewMode());
+        ui.viewModeButton.addEventListener("click", () => {
+            // gc.setViewMode は実変化時のみ onViewModeChange を発火する。ラベルは現在値で同期する。
+            gc.setViewMode(gc.getViewMode() === "3d" ? "2d" : "3d");
+            updateViewModeToggleLabel?.(gc.getViewMode());
+        });
 
         // 地図切替ボタンのラベル/aria を現在の mapType に合わせて更新する。
         updateMapToggleLabel = (m: MapType): void => {
@@ -1747,8 +1788,8 @@ export const createGlobeSceneController = (
         getAltitude: () => camera.radius,
         getAzimuth: () => yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg,
         getTilt: () => yawPitchToUi(camera.yaw, camera.pitch).tiltDeg,
-        // globe は 2D(ズームレベル)概念を持たないため undefined。
-        getZoomLevel: () => undefined,
+        // 2D 時のみズームレベル（Google Maps 互換, #254）を返す。3D 時は undefined。
+        getZoomLevel: () => gc.getZoomLevel(),
 
         setLat: (value: number) => {
             const { lonDeg } = currentGeodetic();
@@ -1791,16 +1832,13 @@ export const createGlobeSceneController = (
             applyMapType(toGlobeMapType(value), true);
         },
 
-        // ---- viewMode ----
-        // globe は GeospatialCamera ベースで 2D(ortho) を持たない。常に "3d" として扱う。
-        getViewMode: () => "3d",
+        // ---- viewMode (#395 / #349) ----
+        // globe バックエンドでも 2D(ortho) を有効化。GlobeSceneController へ委譲する。
+        getViewMode: () => gc.getViewMode(),
         setViewMode: (value) => {
-            if (value === "2d" && !viewModeWarned) {
-                viewModeWarned = true;
-                console.warn(
-                    "[globeSceneController] viewMode \"2d\" is not supported on the globe backend; staying in 3d.",
-                );
-            }
+            gc.setViewMode(value);
+            // UI ボタンのラベルも現在値へ同期する（外部 API 経由の変化に追従）。
+            updateViewModeToggleLabel?.(gc.getViewMode());
         },
 
         // ---- external frustum / tile camera（flight FollowCamera 用, #275 P4-3 / #402） ----

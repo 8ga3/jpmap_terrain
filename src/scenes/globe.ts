@@ -24,6 +24,7 @@ import {
     ComputeYawPitchFromLookAtToRef,
 } from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
+import { Camera } from "@babylonjs/core/Cameras/camera";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -32,6 +33,8 @@ import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
 import type { MapType } from "../terrain/gsiTile";
 import { TERRAIN_CLICK_DRAG_THRESHOLD_PX, POLYGON_POINT_DRAG_THRESHOLD_PX } from "../lib/types";
+import type { ViewMode } from "../lib/types";
+import { clampZoomLevel, radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
 import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
 import {
     cameraTangentBasisToRef,
@@ -45,6 +48,7 @@ import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/ge
 import { createGlobePolygonManager, type GlobePolygonManager, type GlobePolygonPickablePoint } from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
 import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
+import { OVERLAY_REF_DISTANCE_M } from "../terrain/geo/overlayPlacement";
 import { computeSpaceFactor } from "../terrain/skybox";
 
 /** グローブシーンの既定パラメータ（富士山周辺）。 */
@@ -190,6 +194,18 @@ export interface GlobeSceneInitOptions {
     enableKeyboardPan?: boolean;
     /** 同期統計のコールバック（情報表示・テスト用）。 */
     onSyncStats?: (stats: GlobeSceneSyncInfo) => void;
+    /**
+     * 初期視点モード (#395 / #349)。`"2d"` で Web メルカトル相当のトップダウン正射表示
+     * （高度なし・物理なし・skymap なし・日照なし・オーバーレイ縮退）。既定 `"3d"`。
+     */
+    viewMode?: ViewMode;
+    /**
+     * 2D 時の初期ズームレベル（Google Maps 互換、#254）。指定時は `camera.radius` へ変換する。
+     * 3D 時は無視する。
+     */
+    zoomLevel?: number;
+    /** `viewMode` が実際に変化した際に呼ばれるコールバック (#395 / #193)。 */
+    onViewModeChange?: (viewMode: ViewMode) => void;
 }
 
 /** 同期統計 + カメラ状態。 */
@@ -316,6 +332,14 @@ export interface GlobeSceneController {
     subscribePolygonPointDragEnd: (
         listener: GlobePolygonPointDragListener,
     ) => () => void;
+    /** 現在の視点モード ("3d" | "2d") を返す (#395)。 */
+    getViewMode: () => ViewMode;
+    /** 視点モードを切り替える (#395)。実変化時のみ `onViewModeChange` を発火する。 */
+    setViewMode: (mode: ViewMode) => void;
+    /**
+     * 2D 時のみ現在のズームレベル（Google Maps 互換, #254）を返す。3D 時は undefined。
+     */
+    getZoomLevel: () => number | undefined;
     dispose: () => void;
 }
 
@@ -786,6 +810,51 @@ export class GlobeScene {
             return ref;
         };
 
+        // ピッキング用レイ（原点 + 単位方向）をカメラモードに応じて構築する。
+        // - perspective(3D): 原点 = カメラ ECEF、方向 = 画素ごとに発散（中心から放射）。
+        // - orthographic(2D): 平行投影。方向 = forward（中心画素方向）固定で、原点をカメラ平面上で
+        //   画素オフセット分ずらす。これを怠ると 2D で画面中心以外の頂点が正しくピックできない
+        //   （単一原点 + 発散方向の透視レイは ortho では中心以外の点を外す） (#395 2D 編集)。
+        const computePickRayToRef = (
+            pxCss: number,
+            pyCss: number,
+            originRef: Vector3,
+            dirRef: Vector3,
+        ): void => {
+            if (camera.mode !== Camera.ORTHOGRAPHIC_CAMERA) {
+                originRef.copyFrom(computeCameraEcef());
+                computeRayDirForPixelToRef(pxCss, pyCss, dirRef);
+                return;
+            }
+            // forward（中心画素方向）= カメラ→center。ortho では全画素で共通。
+            ComputeLookAtFromYawPitchToRef(
+                camera.yaw,
+                camera.pitch,
+                camera.center,
+                scene.useRightHandedSystem,
+                rayFwd,
+            );
+            dirRef.copyFrom(rayFwd).normalize();
+            originRef.copyFrom(computeCameraEcef());
+            Vector3.CrossToRef(rayFwd, camera.upVector, rayRight);
+            if (rayRight.lengthSquared() < 1e-12) return; // 退化時は中心原点で代替
+            rayRight.normalize();
+            const hsl = engine.getHardwareScalingLevel();
+            const w = engine.getRenderWidth();
+            const h = engine.getRenderHeight();
+            if (w <= 0 || h <= 0) return;
+            const ndcx = (pxCss / hsl / w) * 2 - 1;
+            const ndcy = 1 - (pyCss / hsl / h) * 2;
+            // ortho フラスタム半寸（applyOrthoFrustum と同式）。原点をこの平面上で動かす。
+            const halfH = camera.radius * Math.tan(camera.fov / 2);
+            const halfW = halfH * (w / h);
+            originRef
+                .addInPlace(rayRight.scaleInPlace(ndcx * halfW))
+                .addInPlace(
+                    rayUpTerm.copyFrom(camera.upVector).scaleInPlace(ndcy * halfH),
+                );
+        };
+
         // ズーム（zoom-to-cursor）は現在のポインタ位置（scene.pointerX/Y）のレイを使う。
         const computeCursorRayDirToRef = (ref: Vector3): Vector3 =>
             computeRayDirForPixelToRef(scene.pointerX, scene.pointerY, ref);
@@ -913,6 +982,7 @@ export class GlobeScene {
             modifier: boolean;
         } | null = null;
         const clickRayDir = new Vector3();
+        const clickOrigin = new Vector3();
         const clickHit = new Vector3();
         const clickHitElev = new Vector3();
 
@@ -921,12 +991,12 @@ export class GlobeScene {
             const rect = canvas.getBoundingClientRect();
             const pxCss = e.clientX - rect.left;
             const pyCss = e.clientY - rect.top;
-            computeRayDirForPixelToRef(pxCss, pyCss, clickRayDir);
-            const camEcef = computeCameraEcef();
+            // 2D ortho では平行レイ（原点を画素オフセット）でないと中心以外で交点がずれる。
+            computePickRayToRef(pxCss, pyCss, clickOrigin, clickRayDir);
             // 1) 海面（h=0）の楕円体と交差させて概略の緯度経度を得る。
             if (
                 !rayEllipsoidNearHitToRef(
-                    camEcef,
+                    clickOrigin,
                     clickRayDir,
                     ellipsoidSemiMajor,
                     ellipsoidSemiMajor,
@@ -948,7 +1018,7 @@ export class GlobeScene {
             if (hasElev) {
                 if (
                     rayEllipsoidNearHitToRef(
-                        camEcef,
+                        clickOrigin,
                         clickRayDir,
                         ellipsoidSemiMajor + elev,
                         ellipsoidSemiMajor + elev,
@@ -1087,8 +1157,7 @@ export class GlobeScene {
         ): { polygonId: string; index: number } | null => {
             const count = polygonManager.getPickablePoints(ppPickBuffer);
             if (count === 0) return null;
-            ppOrigin.copyFrom(computeCameraEcef());
-            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            computePickRayToRef(pxCss, pyCss, ppOrigin, ppRayDir);
             // 楕円体（海面）近交点までの距離。これより十分奥の点は裏側として除外する。
             let tEllip = Number.POSITIVE_INFINITY;
             if (
@@ -1143,8 +1212,7 @@ export class GlobeScene {
             pxCss: number,
             pyCss: number,
         ): { lat: number | null; lon: number | null; groundAltitude: number | null } => {
-            ppOrigin.copyFrom(computeCameraEcef());
-            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            computePickRayToRef(pxCss, pyCss, ppOrigin, ppRayDir);
             if (
                 !rayEllipsoidNearHitToRef(
                     ppOrigin,
@@ -1192,8 +1260,7 @@ export class GlobeScene {
             pyCss: number,
             startAltMeters: number,
         ): { planeLat: number | null; planeLon: number | null } => {
-            ppOrigin.copyFrom(computeCameraEcef());
-            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            computePickRayToRef(pxCss, pyCss, ppOrigin, ppRayDir);
             const eqr = ellipsoidSemiMajor + startAltMeters;
             const pol = ellipsoidSemiMinor + startAltMeters;
             if (
@@ -1214,8 +1281,7 @@ export class GlobeScene {
             pyCss: number,
             startWorld: Vector3,
         ): number | null => {
-            ppOrigin.copyFrom(computeCameraEcef());
-            computeRayDirForPixelToRef(pxCss, pyCss, ppRayDir);
+            computePickRayToRef(pxCss, pyCss, ppOrigin, ppRayDir);
             const startGeo = ecefToGeodetic(startWorld);
             // 測地 up = ecef(alt+1) - ecef(alt) を正規化（楕円体法線。地心方向と微差）。
             geodeticToEcefToRef(
@@ -1616,6 +1682,70 @@ export class GlobeScene {
             if (newRadius !== camera.radius) camera.radius = newRadius;
         };
 
+        // ---- 視点モード 2D/3D (#395 / #349) ----
+        // GeospatialCamera を ORTHOGRAPHIC + pitch=0（トップダウン）へ切替え、Web メルカトル相当の
+        // 2D 正射表示にする。タイルは同一 tileManager 共有のため自動成立する（globeTileManager 無改変）。
+        // 3D パスは不変（2D 限定の分岐を追加するのみ）。
+        const initialViewMode: ViewMode = options.viewMode ?? "3d";
+        let currentViewMode: ViewMode = initialViewMode;
+        // 3D 復帰時に戻す pitch[rad]（2D 切替直前を保存）。初期 pitch（tilt 由来）を既定とする。
+        let savedPitch = camera.pitch;
+
+        // 2D の正射フラスタムを radius・アスペクトから設定する（planar default.ts と同式）。
+        // perspective でターゲット平面に映る範囲 = radius * tan(fov/2) と一致させる。
+        const applyOrthoFrustum = (): void => {
+            const w = engine.getRenderWidth();
+            const h = engine.getRenderHeight();
+            if (w <= 0 || h <= 0) return;
+            const aspect = w / h;
+            const halfH = camera.radius * Math.tan(camera.fov / 2);
+            const halfW = halfH * aspect;
+            camera.orthoTop = halfH;
+            camera.orthoBottom = -halfH;
+            camera.orthoLeft = -halfW;
+            camera.orthoRight = halfW;
+        };
+
+        const setOverlayFlatten = (flat: boolean): void => {
+            markerManager.setFlatten(flat);
+            polygonManager.setFlatten(flat);
+            circleManager.setFlatten(flat);
+        };
+
+        const applyViewModeInternal = (
+            next: ViewMode,
+            opts?: { silent?: boolean; force?: boolean },
+        ): void => {
+            if (next === currentViewMode && !opts?.force) return;
+            if (next === "2d") {
+                // 3D→2D の初回のみ現在 pitch を保存（force 再適用で 0 を保存しないようガード）。
+                if (currentViewMode === "3d") savedPitch = camera.pitch;
+                // GeospatialCamera は pitch を limits.pitchMin(≈ε) でクランプし、looking-straight-down
+                // を内部で安定化（yaw は保持）。論理 tilt=0 のトップダウンとして扱う。
+                camera.pitch = 0;
+                camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+                applyOrthoFrustum();
+                setOverlayFlatten(true);
+            } else {
+                camera.mode = Camera.PERSPECTIVE_CAMERA;
+                camera.pitch = savedPitch;
+                setOverlayFlatten(false);
+            }
+            currentViewMode = next;
+            if (!opts?.silent) options.onViewModeChange?.(next);
+        };
+
+        const getZoomLevel = (): number | undefined => {
+            // 2D のみズームレベルを公開する（3D は radius=高度で zoomLevel 概念を持たない）。
+            if (currentViewMode !== "2d") return undefined;
+            const h = engine.getRenderHeight();
+            if (h <= 0) return undefined;
+            const g = ecefToGeodetic(camera.center);
+            return clampZoomLevel(
+                radiusToZoomLevel(camera.radius, h, g.latDeg, camera.fov),
+            );
+        };
+
         // render ループは開始しない。DefaultScene と同じく、シーン生成と render ループ管理の
         // 責務を分離し、ループ開始は呼び出し側（デモ / 将来の JpmapTerrain 等）に委ねる
         // （二重起動・上書きを防ぐ）。本シーンのタイル同期は onBeforeRenderObservable で動く。
@@ -1630,36 +1760,76 @@ export class GlobeScene {
         const skyBaseColor = DAY_SKY_COLOR.clone();
         const observer = scene.onBeforeRenderObservable.add(() => {
             applyKeyboardPan();
+            // 2D（トップダウン正射）: 毎フレーム pitch=0 を再代入してチルト操作を無効化し、
+            // radius/リサイズに追従して ortho フラスタムを更新する (#395)。
+            if (currentViewMode === "2d") {
+                camera.pitch = 0;
+                applyOrthoFrustum();
+            }
             // カメラ ECEF と測地座標・lookAt を 1 フレーム 1 回だけ計算し、seat と衝突で共有する
             // （ComputeLookAtFromYawPitchToRef と測地変換の二重実行を避ける）。seat は center を
             // わずかに動かすため衝突はその直前のスナップショットを使うが、毎フレーム補正のため実用上問題ない。
             const camEcef = computeCameraEcef(); // lookAt バッファも更新される
             const camGeo = ecefToGeodetic(camEcef);
-            // 高度連動の背景暗化（高高度ほど宇宙の黒へ）。Issue #371。
-            // 真の測地高度 altMeters を用い、約 12km から暗化開始・75km でほぼ黒に収束させる。
-            const spaceFactor = computeSpaceFactor(camGeo.altMeters);
-            // 毎フレーム Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
-            // 基調色は時刻連動の skyBaseColor（昼=青/夜=紺/日の出入り=茜, Issue #380）。
-            scene.clearColor.set(
-                skyBaseColor.r + (SPACE_SKY_COLOR.r - skyBaseColor.r) * spaceFactor,
-                skyBaseColor.g + (SPACE_SKY_COLOR.g - skyBaseColor.g) * spaceFactor,
-                skyBaseColor.b + (SPACE_SKY_COLOR.b - skyBaseColor.b) * spaceFactor,
-                1,
-            );
-            // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
-            seatCenterOnTerrain(camGeo.altMeters, isZoomActive());
-            enforceGroundClearance(camEcef, camGeo);
+            if (currentViewMode === "3d") {
+                // 高度連動の背景暗化（高高度ほど宇宙の黒へ）。Issue #371。
+                // 真の測地高度 altMeters を用い、約 12km から暗化開始・75km でほぼ黒に収束させる。
+                const spaceFactor = computeSpaceFactor(camGeo.altMeters);
+                // 毎フレーム Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
+                // 基調色は時刻連動の skyBaseColor（昼=青/夜=紺/日の出入り=茜, Issue #380）。
+                scene.clearColor.set(
+                    skyBaseColor.r + (SPACE_SKY_COLOR.r - skyBaseColor.r) * spaceFactor,
+                    skyBaseColor.g + (SPACE_SKY_COLOR.g - skyBaseColor.g) * spaceFactor,
+                    skyBaseColor.b + (SPACE_SKY_COLOR.b - skyBaseColor.b) * spaceFactor,
+                    1,
+                );
+                // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
+                seatCenterOnTerrain(camGeo.altMeters, isZoomActive());
+                enforceGroundClearance(camEcef, camGeo);
+            } else {
+                // 2D: 宇宙黒 lerp / seat / 対地クリアランスはスキップ（高度・物理・日照表現なし）。
+                // SSE 評価の基準標高 centerElevation のみ最新化し、タイル LOD を正しく保つ。
+                const g = ecefToGeodetic(camera.center);
+                const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
+                if (elev !== null) centerElevation = elev;
+            }
             // マーカーの接地・距離スケール更新（フレーム共有の camEcef を渡す）。
             markerManager.update(camEcef);
+            // 2D 正射では、頂点高度やパンに依らず画面上サイズを一定に保つため、距離由来ではなく
+            // radius 比例の固定スケールをポリゴン/サークルへ渡す（ortho フラスタムと相殺してマーカー
+            // 同等になる）。3D（undefined）は従来の距離由来スケールを使う。
+            const flatScale =
+                currentViewMode === "2d"
+                    ? camera.radius / OVERLAY_REF_DISTANCE_M
+                    : undefined;
             // ポリゴンの地形再ドレープ（アウトライン・壁）と距離スケール更新（点/ラベル配置）。
-            polygonManager.update(camEcef);
+            polygonManager.update(camEcef, flatScale);
             // サークルの地形再ドレープと距離スケール更新（点/ラベル配置）。
-            circleManager.update(camEcef);
+            circleManager.update(camEcef, flatScale);
             // モデルの接地・起立更新。
             modelManager.tick();
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             frame++;
         });
+
+        // 初期視点モードを反映する (#395)。silent で初期 listener は発火させない。
+        // "3d" は既定の perspective + pitch のままなので force 適用は 2d のみで足りる。
+        if (initialViewMode === "2d") {
+            applyViewModeInternal("2d", { silent: true, force: true });
+            // URL 等から zoomLevel 指定があれば radius へ変換する (#254)。
+            if (options.zoomLevel !== undefined) {
+                const h = engine.getRenderHeight();
+                if (h > 0) {
+                    const g = ecefToGeodetic(camera.center);
+                    camera.radius = zoomLevelToRadius(
+                        options.zoomLevel,
+                        h,
+                        g.latDeg,
+                        camera.fov,
+                    );
+                }
+            }
+        }
 
         const dispose = (): void => {
             // render ループは呼び出し側の所有なので停止しない（呼び出し側が停止する）。
@@ -1707,6 +1877,9 @@ export class GlobeScene {
             subscribePolygonPointDragStart,
             subscribePolygonPointDrag,
             subscribePolygonPointDragEnd,
+            getViewMode: () => currentViewMode,
+            setViewMode: (mode: ViewMode) => applyViewModeInternal(mode),
+            getZoomLevel,
             dispose,
         };
     }

@@ -20,6 +20,7 @@ interface AddCall {
 const addCalls: AddCall[] = [];
 const removeCalls: string[] = [];
 const setEnabledCalls: [string, boolean][] = [];
+const setFlattenCalls: boolean[] = [];
 let updateCount = 0;
 let disposeCount = 0;
 
@@ -31,6 +32,7 @@ jest.unstable_mockModule("../src/terrain/geo/globePolygonManager", () => ({
         },
         remove: (id: string) => removeCalls.push(id),
         setEnabled: (id: string, e: boolean) => setEnabledCalls.push([id, e]),
+        setFlatten: (flat: boolean) => setFlattenCalls.push(flat),
         update: () => {
             updateCount++;
         },
@@ -52,6 +54,7 @@ beforeEach(() => {
     addCalls.length = 0;
     removeCalls.length = 0;
     setEnabledCalls.length = 0;
+    setFlattenCalls.length = 0;
     updateCount = 0;
     disposeCount = 0;
 });
@@ -125,5 +128,13 @@ describe("委譲（remove/setEnabled/update/dispose）", () => {
         expect(updateCount).toBe(1);
         expect(removeCalls).toEqual(["globe-polygon-0", "globe-polygon-1"]);
         expect(disposeCount).toBe(1);
+    });
+
+    it("setFlatten は内部ポリゴンマネージャへ委譲する (#395)", () => {
+        const mgr = makeManager();
+        mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000 });
+        mgr.setFlatten(true);
+        mgr.setFlatten(false);
+        expect(setFlattenCalls).toEqual([true, false]);
     });
 });
