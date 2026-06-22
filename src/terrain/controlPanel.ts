@@ -397,14 +397,15 @@ export const createControlPanel = (): ControlPanelElements => {
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();
 
+    // 視点モード切替ボタン（コンパス直下に配置） (Issue #193)。
+    // Tab 順がコンパスの直後になるよう、DOM への追加順をコンパスの直後にする。
+    const viewModeButton = createViewModeToggleButton();
+
     // ズームボタン＋スケールバー（画面右下に独立配置）
     const { locateMe, zoomIn, zoomOut, scaleBar } = createZoomButtons();
 
     // 地図切替ボタン（画面左下に配置）
     const mapToggle = createMapToggleButton();
-
-    // 視点モード切替ボタン（コンパス直下に配置） (Issue #193)
-    const viewModeButton = createViewModeToggleButton();
 
     // スケールバー（ズームボタンコンテナ内に統合済み）
 

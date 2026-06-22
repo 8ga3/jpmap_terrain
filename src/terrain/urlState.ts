@@ -17,14 +17,16 @@ export interface LatLon {
 export const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
 
 /**
- * terrainEngine に応じた緯度経度クランプ範囲を返す (#375)。
- * - `globe` → {@link WORLD_BOUNDS}（全球）
- * - それ以外（planar / 未指定）→ {@link JAPAN_BOUNDS}（日本被覆域）
+ * terrainEngine に応じた緯度経度クランプ範囲を返す (#375 / #413)。
+ * - `planar` → {@link JAPAN_BOUNDS}（日本被覆域）
+ * - それ以外（globe / 未指定）→ {@link WORLD_BOUNDS}（全球）
+ *
+ * 未指定（`undefined`）は lib 既定（`globe`, #413）に従い全球を許容する。
  */
 const resolveLatLonBounds = (
     terrainEngine?: TerrainEngine,
 ): typeof JAPAN_BOUNDS | typeof WORLD_BOUNDS =>
-    terrainEngine === "globe" ? WORLD_BOUNDS : JAPAN_BOUNDS;
+    terrainEngine === "planar" ? JAPAN_BOUNDS : WORLD_BOUNDS;
 
 /** カメラ姿勢を含む URL 状態 (Issue #64) */
 export interface CameraUrlState extends LatLon {
@@ -87,7 +89,7 @@ const ZOOM_LEVEL_PRECISION = 2;
  * 各デモ（viewer / polygon 等）で共通利用するため本モジュールに集約する。
  * - `globe` → `"globe"`（GeospatialCamera + ECEF の地球儀バックエンド）
  * - `planar` → `"planar"`（従来の平面シーン）
- * - 上記以外 / 未指定 → `undefined`（lib 既定の `"planar"` にフォールバック）
+ * - 上記以外 / 未指定 → `undefined`（lib 既定の `"globe"` にフォールバック, #413）
  *
  * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
  */
@@ -99,6 +101,20 @@ export const resolveTerrainEngine = (
     if (value === "planar") return "planar";
     return undefined;
 };
+
+/**
+ * URL クエリから「実効的な」地形バックエンドを解決する (#413)。
+ * {@link resolveTerrainEngine} が `undefined`（未指定）の場合は lib 既定
+ * （{@link JPMAP_TERRAIN_DEFAULTS}.terrainEngine = `"globe"`）を返す。
+ *
+ * 各デモが `JpmapTerrain.create` 前にカメラ高度・移動方向・物理ステージなどを
+ * バックエンド別に分岐する際、`undefined` を旧既定 `planar` と誤認して globe シーン上で
+ * planar 用ロジックを適用してしまうリグレッション（#413 既定化）を防ぐために使用する。
+ *
+ * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
+ */
+export const resolveEffectiveTerrainEngine = (search: string): TerrainEngine =>
+    resolveTerrainEngine(search) ?? JPMAP_TERRAIN_DEFAULTS.terrainEngine;
 
 /**
  * Web Mercator の赤道上 zoom 0 における 1 ピクセルあたりメートル。
@@ -195,11 +211,11 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）は Google Maps 互換の
  * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する (#254)。
  *
- * `options.terrainEngine` が `"globe"` の場合、緯度経度を {@link WORLD_BOUNDS}（全球）で
- * クランプする。未指定 / `"planar"` の場合は従来どおり {@link JAPAN_BOUNDS} でクランプする (#375)。
+ * `options.terrainEngine` が `"planar"` の場合、緯度経度を {@link JAPAN_BOUNDS}（日本被覆域）で
+ * クランプする。`"globe"` / 未指定の場合は {@link WORLD_BOUNDS}（全球）でクランプする (#375 / #413)。
  * `options` 未指定（または `options.terrainEngine` 未指定）時は URL クエリ `?terrainEngine=` を
- * フォールバックとして解決するため、呼び出し側が terrainEngine を渡さなくても globe URL を
- * 1本で正しく復元できる (#375)。
+ * フォールバックとして解決する。URL にも指定が無ければ lib 既定（`globe`, #413）に従い全球で
+ * クランプするため、呼び出し側が terrainEngine を渡さなくても URL 1本で正しく復元できる (#375)。
  */
 export const parseCameraStateFromUrl = (
     url: string,

@@ -10,7 +10,7 @@
  * - `floatingOrigin` モード / LOD ズーム範囲 / 選択・読込タイル数の表示
  * - `?snap=off` によるクロスレベル標高スナップの ON/OFF 比較
  * - `window.scene` / `window.camera`（非公開）でのデバッグ
- * `terrainEngine` の既定が `planar` のうちは、グローブ描画の最短比較経路としても機能する。
+ * 既定が `globe` となった現在（#413）も、`JpmapTerrain` を介さない最短のグローブ診断経路として機能する。
  *
  * URL（既存共有形式と後方互換, Issue #275 Phase 2 / #64 / #254）:
  * - パス/ハッシュ `@lat,lon,altitude,azimuth,tilt`（3D 共有形式。altitude ⇄ radius）

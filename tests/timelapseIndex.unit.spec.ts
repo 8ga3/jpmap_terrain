@@ -88,7 +88,7 @@ describe("resolveTerrainEngine (timelapse)", () => {
         expect(resolveTerrainEngine("?terrainEngine=planar")).toBe("planar");
     });
 
-    it("不正値は undefined（lib 既定 planar にフォールバック）", () => {
+    it("不正値は undefined（lib 既定 globe にフォールバック, #413）", () => {
         expect(resolveTerrainEngine("?terrainEngine=foo")).toBeUndefined();
     });
 

@@ -31,7 +31,7 @@ describe("resolveTerrainEngine", () => {
         expect(resolveTerrainEngine("?terrainEngine=planar")).toBe("planar");
     });
 
-    it("未指定 → undefined（lib 既定 planar にフォールバック）", () => {
+    it("未指定 → undefined（lib 既定 globe にフォールバック, #413）", () => {
         expect(resolveTerrainEngine("")).toBeUndefined();
         expect(resolveTerrainEngine("?engine=webgpu")).toBeUndefined();
     });

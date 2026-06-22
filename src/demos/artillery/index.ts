@@ -177,8 +177,9 @@ const start = async (): Promise<void> => {
         viewer = await JpmapTerrain.create(mount, opts);
     } catch (err) {
         // globe 初期化に失敗した場合のみ planar へフォールバックして再試行する
-        // （planar は従来からの安定経路）。planar 自体の失敗はそのまま送出する。
-        if (terrainEngine !== "globe") throw err;
+        // （planar は従来からの安定経路）。明示的に planar を要求していた場合は
+        // そのまま送出する（#413: 未指定は globe 既定なのでフォールバック対象）。
+        if (requestedTerrainEngine === "planar") throw err;
         console.warn(
             "[artillery] globe terrain init failed; falling back to planar",
             err,
@@ -186,6 +187,10 @@ const start = async (): Promise<void> => {
         terrainEngine = "planar";
         viewer = await JpmapTerrain.create(mount, { ...opts, terrainEngine });
     }
+    // 実際に構築されたバックエンド (#413: 未指定は lib 既定 globe)。
+    // undefined を旧既定 planar と誤認して globe シーン上に planar の恒等ステージを
+    // 構築すると、大砲が ECEF 外（原点付近）に配置され表示されない。viewer の実効値に従う。
+    terrainEngine = viewer.terrainEngine;
     // Issue #259: 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
     viewer.showLocateMe = false;
 
@@ -222,7 +227,7 @@ const start = async (): Promise<void> => {
     // --- ステージ座標フレーム（planar=恒等 / globe=ENU→ECEF stageRoot） ---
     // globe では物理・配置をローカル ENU（= planar と同一規約）で扱い、描画と Havok の
     // floating-origin region 機能で ECEF を float32 安全に解く（#404）。
-    const stage: StageFrame = createStageFrame(scene, terrainEngine ?? "planar", {
+    const stage: StageFrame = createStageFrame(scene, terrainEngine ?? "globe", {
         lat: STAGE_CENTER.lat,
         lon: STAGE_CENTER.lon,
         alt: 0,

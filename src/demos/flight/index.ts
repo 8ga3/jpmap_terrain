@@ -26,7 +26,7 @@ import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveTerrainEngine,
+    resolveEffectiveTerrainEngine,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
@@ -110,10 +110,12 @@ const start = async (): Promise<void> => {
     const mount = document.getElementById(DEMO_MOUNT_ID);
     if (!mount) return;
 
-    const camera = parseCameraStateFromUrl(location.href);
+    // `?terrainEngine=globe|planar`（未指定/不正は lib 既定 globe (#413)）。
+    // 実効エンジンで解決することで、globe シーン上で planar 用の初期高度を選ぶ
+    // 既定化リグレッション（飛行機が見えない）を防ぐ。
+    const terrainEngine = resolveEffectiveTerrainEngine(location.search);
+    const camera = parseCameraStateFromUrl(location.href, { terrainEngine });
     const mapType = parseMapTypeFromUrl(location.href);
-    // `?terrainEngine=globe|planar`（未指定/不正は undefined → lib 既定 planar）。
-    const terrainEngine = resolveTerrainEngine(location.search);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),

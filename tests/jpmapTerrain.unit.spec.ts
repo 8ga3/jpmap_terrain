@@ -799,7 +799,13 @@ describe("JpmapTerrain (skeleton)", () => {
     type Viewer = Awaited<ReturnType<typeof JpmapTerrain.create>>;
     const createdViewers: Viewer[] = [];
     const create: typeof JpmapTerrain.create = async (mount, opts) => {
-        const viewer = await JpmapTerrain.create(mount, opts);
+        // 本スイートは planar の `scenes/default` のみモックしているため、
+        // 既定が globe へ切り替わった後（#413）も planar 経路を明示して固定する。
+        // globe 経路は globeSceneController.unit.spec.ts が担当する。
+        const viewer = await JpmapTerrain.create(mount, {
+            terrainEngine: "planar",
+            ...opts,
+        });
         createdViewers.push(viewer);
         return viewer;
     };
@@ -1308,7 +1314,7 @@ describe("JpmapTerrain (skeleton)", () => {
             // createBabylonEngine(canvas, preferredEngine, options) のシグネチャ
             const callArgs = createEngineMock.mock.calls[0];
             expect(callArgs[1]).toBe("webgl2");
-            // planar 既定では high precision matrix は不要（globe のみ true）。
+            // planar 経路では high precision matrix は不要（globe のみ true, #413）。
             expect(callArgs[2]).toEqual({ highPrecisionMatrix: false });
         });
 

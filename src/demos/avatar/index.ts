@@ -12,7 +12,7 @@
  * - 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
  * - 半径・速度のスライダー操作
  * - アニメーション開始/停止トグル
- * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 planar, #275 Phase 4 / P4-2）
+ * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 globe, #275 Phase 5 #413）
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
