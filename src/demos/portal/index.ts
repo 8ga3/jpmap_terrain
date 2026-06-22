@@ -91,9 +91,9 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "artillery",
     },
     {
-        title: "Geospatial Globe（実験的・#275 Phase 1）",
+        title: "Geospatial Globe（低レベル診断・開発者向け）",
         description:
-            "Babylon.js 9.x の GeospatialCamera + ECEF 楕円体 + floating origin によるグローブ地形。平面ビューアと併存する移行中の新スタックです。右ドラッグ=回転 / ホイール=ズーム。",
+            "GeospatialCamera + ECEF 楕円体 + floating origin のグローブ地形コア（GlobeScene）を JpmapTerrain を介さず直接起動する診断デモ。floatingOrigin/LOD/タイル数の表示や ?snap=off 比較など内部状態の実機確認に使います。右ドラッグ=回転 / ホイール=ズーム。",
         href: "geospatial",
     },
 ];

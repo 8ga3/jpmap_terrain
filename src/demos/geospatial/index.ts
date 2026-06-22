@@ -1,9 +1,16 @@
 /**
- * グローブ地形デモエントリ (Issue #275 Phase 2)。
+ * グローブ地形 低レベル診断/参照デモエントリ (Issue #275 / #349 P4-5 / #411)。
  *
- * 平面ワールドの各デモと併存する **並行スタック**。`scenes/globe.ts`（`GeospatialCamera` +
- * ECEF 楕円体 + floating origin）の地形エンジンを `/geospatial` で起動し、旧（平面）と
- * 新（グローブ）を一時併存させて実機比較できるようにする。
+ * `scenes/globe.ts` の共有コア `GlobeScene`（`GeospatialCamera` + ECEF 楕円体 +
+ * floating origin）を **`JpmapTerrain` を介さず直接起動** する開発者向けの診断デモ。
+ * 同じ `GlobeScene` を公開 API 経路（`JpmapTerrain` の `terrainEngine=globe` →
+ * `GlobeSceneAdapter`）も利用しており、エンジン重複はない（Phase 3 で統合済み）。
+ *
+ * 本デモの固有の役割は、公開 API では露出しない内部状態の実機確認:
+ * - `floatingOrigin` モード / LOD ズーム範囲 / 選択・読込タイル数の表示
+ * - `?snap=off` によるクロスレベル標高スナップの ON/OFF 比較
+ * - `window.scene` / `window.camera`（非公開）でのデバッグ
+ * `terrainEngine` の既定が `planar` のうちは、グローブ描画の最短比較経路としても機能する。
  *
  * URL（既存共有形式と後方互換, Issue #275 Phase 2 / #64 / #254）:
  * - パス/ハッシュ `@lat,lon,altitude,azimuth,tilt`（3D 共有形式。altitude ⇄ radius）
@@ -179,7 +186,7 @@ const start = async (): Promise<void> => {
                 });
             }
             updateInfo(
-                `Geospatial Globe (#275 Phase 2)\n` +
+                `Geospatial Globe (低レベル診断デモ)\n` +
                     `左ドラッグ=パン / 右ドラッグ=回転 / ホイール=ズーム / WASD=パン\n` +
                     `engine: ${engine.constructor.name} / floatingOrigin: ${floatingOrigin}\n` +
                     `fps: ${engine.getFps().toFixed(0)}\n` +
@@ -277,6 +284,6 @@ if (
 ) {
     start().catch((err) => {
         console.error("[geospatial] failed to start:", err);
-        updateInfo(`Geospatial Globe (#275 Phase 2)\n起動に失敗しました: ${String(err)}`);
+        updateInfo(`Geospatial Globe (低レベル診断デモ)\n起動に失敗しました: ${String(err)}`);
     });
 }
