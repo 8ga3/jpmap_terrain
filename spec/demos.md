@@ -20,10 +20,12 @@
 | Boids フロッキング | `/boids.html` | `src/demos/boids/index.ts` | Boids アルゴリズム（分離・整列・結合）による群衆シミュレーション。高尾山山頂付近の矩形リージョン内で複数のアバターが自律的に歩き回る。アバター数スライダー・一時停止・リスタート。Model API + Polygon API (#251) の動作確認 |
 | フライトデモ | `/flight.html` | `src/demos/flight/index.ts` | 飛行機（`plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ。外部カメラ frustum API による地形タイル更新。3D/2D/Follow のカメラモード切替。Model API + 外部カメラ連携 API (#245) の動作確認 |
 | Artillery Game | `/artillery.html` | `src/demos/artillery/index.ts` | ターン制対戦ゲーム（紅 vs 青）。仰角・方位・火力を設定して砲弾を発射し相手に命中させる。Havok 物理で砲弾の重力・地形バウンドを再現 (#259) |
+| Geospatial Globe（低レベル診断） | `/geospatial.html` | `src/demos/geospatial/index.ts` | グローブ地形コア `GlobeScene`（GeospatialCamera + ECEF + floating origin）を `JpmapTerrain` を介さず直接起動する開発者向け診断デモ。floatingOrigin/LOD/タイル数の表示・`?snap=off` 比較・`window.scene`/`window.camera` 露出で内部状態を実機確認する (#275 / #349 P4-5 / #411) |
 
 ## 設計方針
 
 - **公開ライブラリ層 (`src/lib/**`) は変更しない**。デモ層 (`src/demos/**`) は `JpmapTerrain` の公開 API 経由で機能を組み立てる。
+  - 例外: `geospatial` デモのみ、グローブ地形コア `scenes/globe.ts` の `GlobeScene` を直接起動する低レベル診断デモであり、公開 API では露出しない内部状態（floatingOrigin / LOD / タイル数）の確認を目的とする。同じ `GlobeScene` は `JpmapTerrain`（`terrainEngine=globe`）も `GlobeSceneAdapter` 経由で利用するため、エンジン実装の重複はない。
 - 各デモは独立した Vite エントリ。`public/<name>.html` を追加し、`vite.config.ts` の `HTML_ENTRIES` に登録すればビルド対象になる（エントリ HTML は `root` = `public/` に集約）。
 - デモ間で共通する Babylon.js 部分は `manualChunks` の `babylonBundle` / `webgpu-shaders` / `webgl-shaders` 等に分割され、複数デモで共有される。
 - ポータルは Babylon.js を読み込まない軽量ページ。バンドルサイズ最小化のため `JpmapTerrain` を import しない。
