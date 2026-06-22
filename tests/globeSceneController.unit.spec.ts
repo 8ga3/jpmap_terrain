@@ -880,6 +880,24 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
                 expect(h.labels?.[0]).toBe("a2");
             });
 
+            it("update に labels:undefined を渡すと既存ラベルをクリアし setContent へ undefined を渡す (#395 / PR #407)", () => {
+                const stub = makeGlobePolygonStub();
+                stub.setContentResult.value = true; // in-place 成功を模擬
+                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+                m.add("poly", { points: PTS, labels: ["a", "b"] });
+                // labels キーを明示 undefined で渡す → 構造不変なので in-place 更新。
+                const h = m.update("poly", { points: PTS, labels: undefined });
+                expect(stub.added).toHaveLength(1);
+                expect(stub.removed).toEqual([]);
+                expect(stub.contentCalls).toHaveLength(1);
+                // ラベルはクリアされ、ハンドルには labels が露出しない。
+                expect(h.labels).toBeUndefined();
+                const content = stub.contentCalls[0].content as {
+                    labels?: unknown;
+                };
+                expect(content.labels).toBeUndefined();
+            });
+
             it("update は setContent が false（点数不一致など）なら従来どおり再構築へフォールバックする", () => {
                 const stub = makeGlobePolygonStub();
                 stub.setContentResult.value = false; // in-place 不可を模擬
