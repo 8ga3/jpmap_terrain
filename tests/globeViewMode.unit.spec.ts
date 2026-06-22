@@ -166,6 +166,14 @@ describe("globe 視点モード 2D/3D (#395)", () => {
             gc.camera.fov,
         );
         expect(gc.camera.radius).toBeCloseTo(expectedRadius, 3);
+        // radius 更新後に ortho フラスタムが再同期され、新 radius と整合する（初期化直後の
+        // 1 フレーム不整合を防ぐ, PR #407）。
+        const aspect = RENDER_W / RENDER_H;
+        const halfH = expectedRadius * Math.tan(gc.camera.fov / 2);
+        expect(gc.camera.orthoTop).toBeCloseTo(halfH, 3);
+        expect(gc.camera.orthoBottom).toBeCloseTo(-halfH, 3);
+        expect(gc.camera.orthoRight).toBeCloseTo(halfH * aspect, 3);
+        expect(gc.camera.orthoLeft).toBeCloseTo(-halfH * aspect, 3);
         // 往復しても zoomLevel が整合する。
         expect(gc.getZoomLevel()).toBeCloseTo(zoomLevel, 6);
         teardown();

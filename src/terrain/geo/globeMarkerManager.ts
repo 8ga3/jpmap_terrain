@@ -165,7 +165,6 @@ export const createGlobeMarkerManager = (
             undefined,
             flat ? 0 : undefined,
         );
-        const lineHeight = computeOverlayLineHeight(dist);
 
         // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
         // 2D（flat）ではポールを描かず、アイコン/ラベルを地表へアンカーする (#395)。
@@ -176,6 +175,9 @@ export const createGlobeMarkerManager = (
             }
             return;
         }
+        // lineHeight は 3D（!flat）でのみ使うため、flat 早期 return の後に算出して
+        // 2D の毎フレーム・全マーカーでの不要計算を避ける。
+        const lineHeight = computeOverlayLineHeight(dist);
         orientYToUpToRef(up, quat);
         node.lineMesh.rotationQuaternion!.copyFrom(quat);
         const diameter = node.poleBaseDiameter * distScale;
