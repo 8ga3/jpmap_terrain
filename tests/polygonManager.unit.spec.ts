@@ -16,6 +16,7 @@ interface StubNode {
     id: string;
     altitudeMode: "terrain" | "absolute";
     closed: boolean;
+    labels: ReadonlyArray<string> | undefined;
     points: Array<{
         lat: number;
         lon: number;
@@ -51,6 +52,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             id,
             altitudeMode,
             closed: options.closed ?? false,
+            labels: options.labels,
             points: options.points.map((p) => ({ ...p })),
             enabled: options.enabled ?? true,
             elevationResolved: altitudeMode === "absolute",
@@ -110,7 +112,7 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
                 points: node.points.map((p) => ({ ...p })),
                 closed: node.closed,
                 altitudeMode: node.altitudeMode,
-                labels: undefined,
+                labels: node.labels,
                 style: {} as unknown as Record<string, unknown>,
                 enabled: node.enabled,
                 elevationResolved: node.elevationResolved,
@@ -513,6 +515,18 @@ describe("PolygonManager update (#173/#395)", () => {
         );
         mgr.add("a", { points: validPoints });
         expect(() => mgr.update("a", { points: [] })).toThrow(/at least 1/);
+    });
+
+    it("labels 未指定時は現在値を維持し、明示 undefined はクリアする", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        mgr.add("a", { points: validPoints, labels: ["A", "B", "C"] });
+        // labels キーなし → 現在値を維持。
+        const kept = mgr.update("a", { enabled: false });
+        expect(kept.labels).toEqual(["A", "B", "C"]);
+        // labels: undefined（明示）→ クリア（Partial の罠を回避）。
+        const cleared = mgr.update("a", { labels: undefined });
+        expect(cleared.labels).toBeUndefined();
     });
 });
 

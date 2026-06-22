@@ -1448,6 +1448,9 @@ export const createGlobeSceneController = (
     // 画面外・地球の裏側で昼の領域まで一律に暗くなり不自然なため、ライト強度は時刻に依らず一定にする。
     const GLOBE_SUN_LIGHT_INTENSITY = 1.2;
     const GLOBE_HEMI_LIGHT_INTENSITY = 0.35;
+    // 2D（#395）は「日時による日照表現は無し」。指向性ライト（太陽）を無効化し、環境光のみで
+    // 一様に照らすため、3D より強い環境光を採用する（一般的な Web メルカトル地図相当の見え方）。
+    const HEMI_FLAT_2D_INTENSITY = 1.0;
     // 最後に算出した太陽方向(ECEF, 地表→太陽)と、太陽状態が有効か。距離 D / 見かけサイズは
     // カメラ（ズーム・高度）に依存するため、dateTime 更新時だけでなく毎フレーム再評価する。
     const currentSunDirEcef = new Vector3();
@@ -1460,6 +1463,9 @@ export const createGlobeSceneController = (
     // 奥（地平線より奥・far クリップ手前）に置くことで、太陽は手前の地形や地球の縁から滑らかに欠け、地球の
     // 裏側では完全に隠れる。
     const placeSunMesh = (): void => {
+        // 2D（#395）は太陽メッシュ非表示（日照表現なし）。applyViewModeLighting が disable 済みなので
+        // ここでは再有効化せず即 return する（毎フレームの setEnabled(true) で復活させない）。
+        if (gc.getViewMode() === "2d") return;
         if (!sunStateValid) return;
         gc.sunMesh.setEnabled(true);
         // 地平線より SUN_HORIZON_MARGIN だけ奥（= maxZ - R*0.05）に置き、far クリップ手前へクランプする。
@@ -1477,6 +1483,9 @@ export const createGlobeSceneController = (
     };
 
     const applyGlobeSunState = (): void => {
+        // 2D（#395）は日照表現なし。ライト強度/太陽方向/空色/太陽メッシュは applyViewModeLighting が
+        // 一様化するため、ここでの日時連動更新はスキップする（2D→3D 復帰時に改めて適用される）。
+        if (gc.getViewMode() === "2d") return;
         // dateTime 未指定（null）のときは決定的フォールバック日時で計算する（planar と挙動を一致させる）。
         const dateForCalc = currentSunDateTime ?? fallbackSunDate;
         if (Number.isNaN(dateForCalc.getTime())) {
@@ -1516,10 +1525,35 @@ export const createGlobeSceneController = (
         placeSunMesh();
     };
 
+    // viewMode に応じたライティングを適用する（#395）。
+    // - 2D: 指向性ライト（太陽）と発光する太陽メッシュを無効化し、環境光を強めて一様に照らす
+    //   （skymap/日照表現なし）。
+    // - 3D: 指向性ライトを再有効化し、環境光強度を 3D 既定へ戻す。太陽方向/空色/太陽メッシュは
+    //   既存の applyGlobeSunState（dateTime/中心移動で駆動）と placeSunMesh が復元する。
+    // 適用済み viewMode を記録し、変化時のみ実行する（毎フレーム sunMeshObserver から呼ばれる）。
+    let lightingViewMode: ViewMode | null = null;
+    const applyViewModeLighting = (): void => {
+        const vm = gc.getViewMode();
+        if (vm === lightingViewMode) return;
+        lightingViewMode = vm;
+        if (vm === "2d") {
+            gc.sunLight.setEnabled(false);
+            gc.hemiLight.intensity = HEMI_FLAT_2D_INTENSITY;
+            gc.sunMesh.setEnabled(false);
+        } else {
+            gc.sunLight.setEnabled(true);
+            gc.hemiLight.intensity = GLOBE_HEMI_LIGHT_INTENSITY;
+        }
+    };
+
     // ズームのみの操作（dateTime 不変）でも太陽の距離・見かけサイズが maxZ に追従するよう毎フレーム
     // 再配置する。これがないと、ズームイン時に算出した小さな距離・サイズが stale 化し、ズームアウト
     // 時に太陽が極小化して見えなくなる（地球の弧が見える広域ズームで顕著）。
-    const sunMeshObserver = gc.scene.onBeforeRenderObservable.add(placeSunMesh);
+    // あわせて viewMode 変化時のライティング切替（2D/3D）も毎フレーム評価する。
+    const sunMeshObserver = gc.scene.onBeforeRenderObservable.add(() => {
+        applyViewModeLighting();
+        placeSunMesh();
+    });
 
     // 注視点の移動（パン）でも背景色が昼夜境界（ターミネータ）を跨いで追従するよう、中心の
     // 緯度経度が変化したら太陽状態を再計算する（planar が centerChanged で再計算するのと挙動を揃える, #380）。

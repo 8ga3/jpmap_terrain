@@ -69,6 +69,9 @@ const makeGcWithScene = (
             setMapType: jest.fn(),
         },
         getViewMode: () => mockViewMode,
+        sunLight: { setEnabled: jest.fn() },
+        hemiLight: { intensity: 0 },
+        sunMesh: { setEnabled: jest.fn() },
         setViewMode: (m: import("../src/lib/types").ViewMode) => {
             mockViewMode = m;
         },
@@ -290,6 +293,36 @@ describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
         expect(gc.getViewMode()).toBe("2d");
         expect(btn.textContent).toBe("3D");
         expect(c.getViewMode()).toBe("2d");
+    });
+
+    it("2D 切替で太陽光・太陽メッシュを無効化し半球光をフラットにする (#395)", () => {
+        const camera = makeCamera();
+        const { gc, onBeforeRender } = makeGcWithScene(camera);
+        const sunLight = (gc as unknown as { sunLight: { setEnabled: jest.Mock } })
+            .sunLight;
+        const hemiLight = (gc as unknown as { hemiLight: { intensity: number } })
+            .hemiLight;
+        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: jest.Mock } })
+            .sunMesh;
+        createGlobeSceneController(gc, "std", undefined, makeCanvas());
+
+        // 3D（初期）: 太陽光は有効、半球光は通常強度。
+        onBeforeRender.fire();
+        expect(sunLight.setEnabled).toHaveBeenLastCalledWith(true);
+        expect(hemiLight.intensity).toBeCloseTo(0.35, 6);
+
+        // 2D へ切替: 太陽光・太陽メッシュを無効化、半球光をフラット強度へ。
+        gc.setViewMode("2d");
+        onBeforeRender.fire();
+        expect(sunLight.setEnabled).toHaveBeenLastCalledWith(false);
+        expect(sunMesh.setEnabled).toHaveBeenLastCalledWith(false);
+        expect(hemiLight.intensity).toBeCloseTo(1.0, 6);
+
+        // 3D へ戻すと太陽光が再び有効化される。
+        gc.setViewMode("3d");
+        onBeforeRender.fire();
+        expect(sunLight.setEnabled).toHaveBeenLastCalledWith(true);
+        expect(hemiLight.intensity).toBeCloseTo(0.35, 6);
     });
 });
 
