@@ -494,6 +494,30 @@ describe("setContent（in-place 更新, ラベルチラつき対策）", () => {
         expect(createdPlanes.filter((p) => p.disposeCount > 0).length).toBe(1);
     });
 
+    it("labels に明示 undefined を渡すと点ラベルをクリア（dispose）し edgeLabels は維持する (#395 / PR #407)", () => {
+        const { mgr } = makeManager();
+        const id = mgr.add({
+            points: pts3,
+            closed: true,
+            labels: ["A", "B", "C"],
+            edgeLabels: ["x", "y", "z"],
+        });
+        const pointLabelPlanes = createdPlanes.filter(
+            (p) => p.name.includes("-label-") && !p.name.includes("-edge-label-"),
+        );
+        const edgeLabelPlanes = createdPlanes.filter((p) =>
+            p.name.includes("-edge-label-"),
+        );
+        expect(pointLabelPlanes.length).toBe(3);
+        expect(edgeLabelPlanes.length).toBe(3);
+
+        // labels キーを明示 undefined で渡す → 点ラベルをクリア。edgeLabels はキー無し → 維持。
+        const ok = mgr.setContent(id, { points: pts3, labels: undefined });
+        expect(ok).toBe(true);
+        expect(pointLabelPlanes.every((p) => p.disposeCount > 0)).toBe(true);
+        expect(edgeLabelPlanes.every((p) => p.disposeCount === 0)).toBe(true);
+    });
+
     it("点数が変わる場合は false を返す（呼び出し側で再構築）", () => {
         const { mgr } = makeManager();
         const id = mgr.add({ points: pts3 });

@@ -926,11 +926,14 @@ export const createGlobePolygonManager = (
             altitude: p.altitude,
         }));
         // node.id は内部 id（createLabelMesh の命名に使う）。
-        if (content.labels) {
+        // labels / edgeLabels は「キーの有無」で判定する。`{ labels: undefined }` のように
+        // 明示クリアしたいケースを反映するため `if (content.labels)`（truthy）ではなくキー存在で判定し、
+        // `content.labels?.[i]` の undefined を reconcileLabel がクリアとして扱う。
+        if ("labels" in content) {
             for (let i = 0; i < node.pointLabels.length; i++) {
                 node.pointLabels[i] = reconcileLabel(
                     node.pointLabels[i],
-                    content.labels[i],
+                    content.labels?.[i],
                     node.style,
                     node.id,
                     i,
@@ -938,11 +941,11 @@ export const createGlobePolygonManager = (
                 );
             }
         }
-        if (content.edgeLabels) {
+        if ("edgeLabels" in content) {
             for (let i = 0; i < node.edgeLabels.length; i++) {
                 node.edgeLabels[i] = reconcileLabel(
                     node.edgeLabels[i],
-                    content.edgeLabels[i],
+                    content.edgeLabels?.[i],
                     node.style,
                     node.id,
                     i,

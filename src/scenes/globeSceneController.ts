@@ -524,28 +524,34 @@ export const createGlobePolygonManagerAdapter = (
                 `JpmapTerrain.updatePolygon[${id}]`,
             );
             const eCount = polygonEdgeCount(points.length, closed);
-            const labels =
-                partial.labels !== undefined
-                    ? points.map((_p, i) => partial.labels?.[i])
-                    : points.map((_p, i) => prev.labels[i]);
-            const edgeLabels =
-                partial.edgeLabels !== undefined
-                    ? Array.from({ length: eCount }, (_v, i) => partial.edgeLabels?.[i])
-                    : Array.from({ length: eCount }, (_v, i) => prev.edgeLabels[i]);
+            // labels / edgeLabels / style は「キーの有無」で判定する（planar 実装と同様）。
+            // `!== undefined` だと `{ labels: undefined }` のような明示クリアを「未指定」と誤判定し
+            // 既存ラベルが残ってしまう（Partial trap）。キー存在なら明示 undefined をクリアとして扱う。
+            const labelsProvided = "labels" in partial;
+            const edgeLabelsProvided = "edgeLabels" in partial;
+            const styleProvided = "style" in partial;
+            const labels = labelsProvided
+                ? points.map((_p, i) => partial.labels?.[i])
+                : points.map((_p, i) => prev.labels[i]);
+            const edgeLabels = edgeLabelsProvided
+                ? Array.from({ length: eCount }, (_v, i) => partial.edgeLabels?.[i])
+                : Array.from({ length: eCount }, (_v, i) => prev.edgeLabels[i]);
             const next: PolygonAdapterEntry = {
                 ...prev,
                 points,
                 closed,
                 altitudeMode,
                 labels,
-                hasLabels: partial.labels !== undefined ? true : prev.hasLabels,
+                hasLabels: labelsProvided
+                    ? partial.labels !== undefined
+                    : prev.hasLabels,
                 edgeLabels,
-                hasEdgeLabels:
-                    partial.edgeLabels !== undefined ? true : prev.hasEdgeLabels,
-                style:
-                    partial.style !== undefined
-                        ? resolvePolygonStyle(partial.style)
-                        : prev.style,
+                hasEdgeLabels: edgeLabelsProvided
+                    ? partial.edgeLabels !== undefined
+                    : prev.hasEdgeLabels,
+                style: styleProvided
+                    ? resolvePolygonStyle(partial.style)
+                    : prev.style,
                 enabled: partial.enabled ?? prev.enabled,
                 verticalsEnabled:
                     partial.verticalsEnabled ?? prev.verticalsEnabled,
@@ -562,7 +568,7 @@ export const createGlobePolygonManagerAdapter = (
                 next.verticalsEnabled === prev.verticalsEnabled &&
                 next.labelsEnabled === prev.labelsEnabled &&
                 next.wallsEnabled === prev.wallsEnabled &&
-                partial.style === undefined &&
+                !styleProvided &&
                 next.points.length === prev.points.length;
             if (
                 structureUnchanged &&
