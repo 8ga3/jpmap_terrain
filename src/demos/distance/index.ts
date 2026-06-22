@@ -257,8 +257,6 @@ const start = async (): Promise<void> => {
         ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
-        // ライブラリ内蔵の視点モード切替ボタンは非表示。デモ独自の UI を提供する (Issue #193)。
-        showViewModeButton: false,
     };
 
     const viewer = await JpmapTerrain.create(mount, opts);
@@ -305,24 +303,12 @@ const start = async (): Promise<void> => {
     const toolbar = document.getElementById(TOOLBAR_ID);
     if (toolbar instanceof HTMLElement) {
         buildToolbar(toolbar, state, onStateChange);
-        // 3D / 2D 視点モード切替 (Issue #193)
-        // ライブラリ内蔵ボタンは showViewModeButton:false で非表示。
-        const viewModeBtn = document.createElement("button");
-        viewModeBtn.type = "button";
-        viewModeBtn.dataset.distanceAction = "viewMode";
-        const refreshViewModeBtn = (): void => {
-            viewModeBtn.textContent =
-                viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
-            // 2D/3D で編集ヒント（高度操作の可否）が変わるため再描画する。
-            updateStatus(state, statusEl, viewer.viewMode === "2d");
-        };
-        viewModeBtn.addEventListener("click", () => {
-            viewer.viewMode = viewer.viewMode === "3d" ? "2d" : "3d";
-        });
-        viewer.onViewModeChange(() => refreshViewModeBtn());
-        refreshViewModeBtn();
-        toolbar.appendChild(viewModeBtn);
     }
+    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する (Issue #193)。
+    // 視点モードで編集ヒント（高度操作の可否）が変わるため、切替時にステータスを再描画する。
+    viewer.onViewModeChange(() => {
+        updateStatus(state, statusEl, viewer.viewMode === "2d");
+    });
 
     // モード別のカーソル表示 (#186)。
     //

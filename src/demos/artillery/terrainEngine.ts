@@ -15,7 +15,7 @@ import type { TerrainEngine } from "../../lib/types";
 export interface ArtilleryEngineResolution {
     /**
      * `JpmapTerrain.create` に渡す地形バックエンド。
-     * `undefined` は未指定（lib 既定 = planar）。
+     * `undefined` は未指定（lib 既定 = globe, #413）。
      */
     engine: TerrainEngine | undefined;
 }

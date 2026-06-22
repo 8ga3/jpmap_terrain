@@ -175,20 +175,7 @@ const buildControls = (
         }),
     );
 
-    // 3D / 2D 視点モード切替
-    {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        const refresh = (): void => {
-            btn.textContent = viewer.viewMode === "3d" ? "2D 表示" : "3D 表示";
-        };
-        btn.addEventListener("click", () => {
-            viewer.viewMode = viewer.viewMode === "3d" ? "2d" : "3d";
-        });
-        viewer.onViewModeChange(() => refresh());
-        refresh();
-        container.appendChild(btn);
-    }
+    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する (Issue #193)。
 
     // updateCircle デモ: 半径を段階的に変更
     const editTargetId = "yomiuri-terrain";
@@ -276,7 +263,6 @@ const start = async (): Promise<void> => {
         ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
-        showViewModeButton: false,
     };
 
     const viewer = await JpmapTerrain.create(mount, opts);

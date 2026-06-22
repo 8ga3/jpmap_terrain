@@ -45,6 +45,7 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | パラメータ | 型 | デフォルト値 | 説明 |
 |---|---|---|---|
 | `engine` | `"webgpu" \| "webgl2"` | `"webgpu"` | 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバック |
+| `terrainEngine` | `"globe" \| "planar"` | `"globe"` | 地形描画バックエンド（Issue #349 Phase 4 / #413 Phase 5）。既定の `"globe"` は ECEF 楕円体 + GeospatialCamera + floating origin。`"planar"` は従来の平面ワールドで明示指定時のみ使用 |
 | `lat` | `number` | `35.681236` | 緯度（Babylon.js Z 軸に対応） |
 | `lon` | `number` | `139.767125` | 経度（Babylon.js X 軸に対応） |
 | `altitude` | `number` | `2000` | カメラのワールド高度（メートル）。`camera.position.y = target.y + radius·cos(beta)` で算出される値であり、カメラの地表からの距離（radius）とは異なる。Babylon.js Y 軸に対応 |

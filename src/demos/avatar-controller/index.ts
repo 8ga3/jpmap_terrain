@@ -15,7 +15,7 @@
  * - 地面クリックでスポーン地点を変更
  * - 進行方向に自動回転
  * - 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
- * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 planar, #275 Phase 4 / P4-2）
+ * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 globe, #275 Phase 5 #413）
  *   globe では自動スクロール追従はカメラ中心（viewer.lat/lon）駆動で行う
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
@@ -23,7 +23,7 @@ import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveTerrainEngine,
+    resolveEffectiveTerrainEngine,
 } from "../../terrain/urlState";
 import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
 import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad";
@@ -92,7 +92,10 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
-    const terrainEngine = resolveTerrainEngine(location.search);
+    // 実効エンジンで解決する（未指定は lib 既定 globe, #413）。undefined を旧既定 planar と
+    // 誤認すると、globe シーン上で planar 用の方位規約（azimuth 符号）・追従ロジックが適用され、
+    // 移動方向がカメラ向きに追従しない（北固定に見える）リグレッションを起こすため。
+    const terrainEngine = resolveEffectiveTerrainEngine(location.search);
     // globe バックエンドでは ArcRotateCamera("terrain-camera") と external frustum
     // 系（detachTileCamera / refreshTerrainWithExternalFrustum）が存在しない（globe では
     // GeospatialCamera ベースでタイルは camera.center 駆動で自動ストリーミングされる）。
