@@ -35,8 +35,9 @@ export interface PolygonManager {
     add(id: string, options: PolygonOptions): PolygonHandle;
     get(id: string): PolygonHandle | null;
     /**
-     * 部分更新。`#170` では `JpmapTerrain` 公開 API として露出しない（#173 で公開）。
-     * 内部実装としてのみ提供する。
+     * 部分更新。`partial` を現在状態へマージしてポリゴンを再構築する（id は維持）。
+     * planar は material 再コンパイル起因のチラつきが無いため再構築方式で十分。
+     * globe アダプタは点数等が不変なら in-place 更新する（`globeSceneController`）。
      */
     update(id: string, partial: PolygonUpdate): PolygonHandle;
     remove(id: string): void;
@@ -187,14 +188,40 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
             return node ? node.getHandle() : null;
         },
         update(id: string, partial: PolygonUpdate): PolygonHandle {
-            // #170 では公開しない。#173 で実装。
-            // 引数は #173 実装時に使用するため、シグネチャ維持の目的で void で
-            // 参照しておく（@typescript-eslint/no-unused-vars 対策）。
-            void id;
-            void partial;
-            throw new Error(
-                "PolygonManager.update is not implemented yet (Issue #173)",
-            );
+            if (disposed) {
+                throw new Error("PolygonManager has been disposed");
+            }
+            const prev = requireNode(id);
+            // 現在状態へ partial をマージして全再構築する。planar は globe と異なり
+            // material 再コンパイル起因のラベルのチラつきが無いため、再構築（dispose→再生成）で
+            // 十分かつ単純。id は維持する。
+            const current = prev.getHandle();
+            const merged: PolygonOptions = {
+                points: (partial.points ?? current.points).map((p) => ({ ...p })),
+                closed: partial.closed ?? current.closed,
+                altitudeMode: partial.altitudeMode ?? current.altitudeMode,
+                labels: (partial.labels !== undefined
+                    ? partial.labels
+                    : current.labels) as PolygonOptions["labels"],
+                edgeLabels:
+                    partial.edgeLabels !== undefined
+                        ? partial.edgeLabels
+                        : current.edgeLabels,
+                style: partial.style !== undefined ? partial.style : current.style,
+                enabled: partial.enabled ?? current.enabled,
+                verticalsEnabled:
+                    partial.verticalsEnabled ?? current.verticalsEnabled,
+                labelsEnabled: partial.labelsEnabled ?? current.labelsEnabled,
+                wallsEnabled: partial.wallsEnabled ?? current.wallsEnabled,
+            };
+            validateOptions(merged);
+            // 先に新ノードを生成し、成功後に旧ノードを破棄して差し替える
+            // （生成が throw した場合は旧ノード・旧状態を保持して不整合を残さない）。
+            const node = createPolygonNode(ctx.scene, id, merged);
+            prev.dispose();
+            nodes.set(id, node);
+            tickPolygon(node);
+            return node.getHandle();
         },
         remove(id: string): void {
             const node = nodes.get(id);
