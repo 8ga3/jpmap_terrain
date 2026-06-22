@@ -1714,6 +1714,20 @@ export class GlobeScene {
             circleManager.setFlatten(flat);
         };
 
+        // viewMode 切替直後に 1 回だけオーバーレイを現在カメラで再アンカーする。これをしないと、
+        // setOverlayFlatten で flat フラグだけが先に変わり、実際の位置・スケール再計算は次フレームの
+        // 毎フレーム update まで遅延するため、切替直後の 1 フレームだけ「ポールは消えたのにアイコンは
+        // 先端位置のまま」等の不整合（チラつき）が出る (#395)。毎フレームループと同じ camEcef/flatScale
+        // を用いて同期する。
+        const reanchorOverlaysForViewMode = (mode: ViewMode): void => {
+            const camEcef = computeCameraEcef();
+            const flatScale =
+                mode === "2d" ? camera.radius / OVERLAY_REF_DISTANCE_M : undefined;
+            markerManager.update(camEcef);
+            polygonManager.update(camEcef, flatScale);
+            circleManager.update(camEcef, flatScale);
+        };
+
         const applyViewModeInternal = (
             next: ViewMode,
             opts?: { silent?: boolean; force?: boolean },
@@ -1737,6 +1751,8 @@ export class GlobeScene {
                 setOverlayFlatten(false);
             }
             currentViewMode = next;
+            // setOverlayFlatten 直後に 1 回だけ再アンカーし、切替フレームの不整合を防ぐ (#395)。
+            reanchorOverlaysForViewMode(next);
             if (!opts?.silent) options.onViewModeChange?.(next);
         };
 

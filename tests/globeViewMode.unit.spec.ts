@@ -8,12 +8,12 @@
  * zoomLevel 整合・3D⇄2D 往復での lat/lon/azimuth 保存・onViewModeChange の発火条件・
  * タイルマネージャ共有（同一インスタンス維持）を検証する。3DCG の見た目は別ゲート（HITL）。
  */
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, jest, afterEach } from "@jest/globals";
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Camera } from "@babylonjs/core/Cameras/camera";
 
 import { GlobeScene, type GlobeSceneController } from "../src/scenes/globe";
-import { ecefToGeodetic } from "../src/terrain/geo/ecef";
+import { ecefToGeodetic, geodeticToEcef } from "../src/terrain/geo/ecef";
 import { radiusToZoomLevel, zoomLevelToRadius } from "../src/terrain/urlState";
 
 const RENDER_W = 800;
@@ -33,20 +33,31 @@ interface Built {
     teardown: () => void;
 }
 
+// 構築済みインスタンスの teardown を登録し、afterEach で必ず回収する。expect 失敗で個別
+// teardown が呼ばれず例外終了しても Engine/Scene を残さない（テスト間副作用・リーク防止）。
+const activeTeardowns: Array<() => void> = [];
+
 const build = (
     options: Parameters<GlobeScene["createSceneWithController"]>[2] = {},
 ): Built => {
     const engine = makeEngine();
     const canvas = document.createElement("canvas");
     const gc = new GlobeScene().createSceneWithController(engine, canvas, options);
-    return {
-        gc,
-        teardown: () => {
-            gc.dispose();
-            engine.dispose();
-        },
+    // teardown は idempotent。手動呼び出しと afterEach の二重実行でも一度だけ dispose する。
+    let torn = false;
+    const teardown = (): void => {
+        if (torn) return;
+        torn = true;
+        gc.dispose();
+        engine.dispose();
     };
+    activeTeardowns.push(teardown);
+    return { gc, teardown };
 };
+
+afterEach(() => {
+    for (const teardown of activeTeardowns.splice(0)) teardown();
+});
 
 describe("globe 視点モード 2D/3D (#395)", () => {
     it("既定は 3d（perspective）で getZoomLevel は undefined", () => {
@@ -175,6 +186,41 @@ describe("globe 視点モード 2D/3D (#395)", () => {
         expect(gc.tileManager).toBe(tm);
         gc.setViewMode("3d");
         expect(gc.tileManager).toBe(tm);
+        teardown();
+    });
+
+    it("setViewMode('2d') 直後（描画フレーム前）にオーバーレイを再アンカーして接地する (#395 / PR #407)", () => {
+        const { gc, teardown } = build({ lat: 35.36, lon: 138.73, radius: 60000 });
+        const pts = [
+            { lat: 35.36, lon: 138.73 },
+            { lat: 35.37, lon: 138.74 },
+            { lat: 35.36, lon: 138.75 },
+        ];
+        // 3D で absolute 高度 1000m のポリゴンを追加（この時点では elevs=1000）。
+        gc.polygonManager.add({
+            points: pts.map((p) => ({ ...p, altitude: 1000 })),
+            altitudeMode: "absolute",
+        });
+        // 描画フレームを進めずに 2D へ切替。切替直後の再アンカーで pick 点が接地(elev≈0)している
+        // ことを確認する（再アンカーが無いと次フレームまで elev=1000 のままで 1 フレーム不整合）。
+        gc.setViewMode("2d");
+        const picks: {
+            polygonId: string;
+            index: number;
+            x: number;
+            y: number;
+            z: number;
+            radius: number;
+        }[] = [];
+        const n = gc.polygonManager.getPickablePoints(picks);
+        expect(n).toBe(pts.length);
+        for (let i = 0; i < n; i++) {
+            const p = pts[picks[i].index];
+            const e = geodeticToEcef(p.lat, p.lon, 0);
+            const d = Math.hypot(picks[i].x - e.x, picks[i].y - e.y, picks[i].z - e.z);
+            // 接地済みなら elev=0 の楕円体表面とほぼ一致（未接地なら高度 1000m ぶんずれる）。
+            expect(d).toBeLessThan(1);
+        }
         teardown();
     });
 });

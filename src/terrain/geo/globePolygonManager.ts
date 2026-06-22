@@ -2,7 +2,11 @@
  * グローブ用ポリゴンマネージャ (Issue #275 Phase 4 Slice 2b-1)。
  *
  * 公開 PolygonManager 互換アダプタから渡される解決済みオプションを、ECEF 上の
- * 点・線・垂線・ラベル・壁として描画する。編集はアダプタ側の add-then-remove 再生成で扱う。
+ * 点・線・垂線・ラベル・壁として描画する。構造変化を伴う編集（点数・closed・各種フラグ・
+ * style 変更）はアダプタ側の add-then-remove 再生成で扱う。一方、点座標／ラベルのみの更新は
+ * `setContent` による in-place 更新（メッシュ破棄なしの instance 更新／ラベル再描画）で扱い、
+ * ドラッグ編集中のチラつきを防ぐ。点数不一致など in-place 不可の場合は false を返し、
+ * アダプタが再生成へフォールバックする。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -871,6 +875,19 @@ export const createGlobePolygonManager = (
         if (disposed) throw new Error("GlobePolygonManager.setFlatten: called after dispose");
         if (next === flat) return;
         flat = next;
+        if (flat) {
+            // 3D→2D 切替の瞬間に elevs を terrain 基準へ正規化する。これをしないと、3D で
+            // absolute / topAltitudeMeters を使っていたポリゴンの elevs（=絶対高度）が残り、
+            // 切替直後に terrainElevAt が未解決（null）だと buildPaths の flat 分岐が前回値を
+            // 保持するため 2D でも高度が生きてしまう（ズームインで near クリップを割る原因）。
+            // terrain 解決済みなら接地高度、未解決なら 0（海面）へ揃える（offset/絶対高度を除去）。
+            for (const node of nodes.values()) {
+                for (let i = 0; i < node.points.length; i++) {
+                    const p = node.points[i];
+                    node.elevs[i] = terrainElevAt(p.lat, p.lon) ?? 0;
+                }
+            }
+        }
         // 壁/垂線の有効可否は applyVisibility が flat を参照して決めるため、全ノードへ再適用する。
         for (const node of nodes.values()) applyVisibility(node);
     };
