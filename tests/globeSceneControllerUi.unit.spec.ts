@@ -8,6 +8,8 @@
  * - dispose 後はズーム/コンパスのアニメーション（rAF）が camera を更新せず再スケジュールしない
  */
 import { jest } from "@jest/globals";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 import { createGlobeSceneController } from "../src/scenes/globeSceneController";
 import type { GlobeSceneController } from "../src/scenes/globe";
@@ -44,6 +46,8 @@ const makeCamera = () => ({
     yaw: 0,
     pitch: 0,
     fov: 0.8,
+    // placeSunMesh が太陽距離クランプに参照する far クリップ。
+    maxZ: 1_000_000,
 });
 
 const makeGcWithScene = (
@@ -69,9 +73,16 @@ const makeGcWithScene = (
             setMapType: jest.fn(),
         },
         getViewMode: () => mockViewMode,
-        sunLight: { setEnabled: jest.fn() },
+        // applyViewModeLighting / applyGlobeSunState（2D→3D 復帰時に呼ばれる）が参照する
+        // 最小スタブ。direction/position は in-place 更新されるため実体（Vector3/Color3）を渡す。
+        sunLight: { setEnabled: jest.fn(), intensity: 0, direction: new Vector3() },
         hemiLight: { intensity: 0 },
-        sunMesh: { setEnabled: jest.fn() },
+        sunMesh: {
+            setEnabled: jest.fn(),
+            position: new Vector3(),
+            scaling: { set: () => {} },
+        },
+        skyBaseColor: new Color3(),
         setViewMode: (m: import("../src/lib/types").ViewMode) => {
             mockViewMode = m;
         },
@@ -302,8 +313,14 @@ describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
             .sunLight;
         const hemiLight = (gc as unknown as { hemiLight: { intensity: number } })
             .hemiLight;
-        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: jest.Mock } })
-            .sunMesh;
+        const sunMesh = (
+            gc as unknown as {
+                sunMesh: { setEnabled: jest.Mock; position: { x: number } };
+            }
+        ).sunMesh;
+        const sunLightFull = (
+            gc as unknown as { sunLight: { direction: { length: () => number } } }
+        ).sunLight;
         createGlobeSceneController(gc, "std", undefined, makeCanvas());
 
         // 3D（初期）: 太陽光は有効、半球光は通常強度。
@@ -318,11 +335,14 @@ describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
         expect(sunMesh.setEnabled).toHaveBeenLastCalledWith(false);
         expect(hemiLight.intensity).toBeCloseTo(1.0, 6);
 
-        // 3D へ戻すと太陽光が再び有効化される。
+        // 3D へ戻すと太陽光が再有効化され、太陽状態（方向・メッシュ）が再計算される (#395 / PR #407)。
         gc.setViewMode("3d");
         onBeforeRender.fire();
         expect(sunLight.setEnabled).toHaveBeenLastCalledWith(true);
         expect(hemiLight.intensity).toBeCloseTo(0.35, 6);
+        // 2D→3D 復帰で applyGlobeSunState が走り、太陽メッシュを再表示し方向を再計算する。
+        expect(sunMesh.setEnabled).toHaveBeenLastCalledWith(true);
+        expect(sunLightFull.direction.length()).toBeGreaterThan(0);
     });
 });
 

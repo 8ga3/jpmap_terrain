@@ -1534,13 +1534,16 @@ export const createGlobeSceneController = (
     // viewMode に応じたライティングを適用する（#395）。
     // - 2D: 指向性ライト（太陽）と発光する太陽メッシュを無効化し、環境光を強めて一様に照らす
     //   （skymap/日照表現なし）。
-    // - 3D: 指向性ライトを再有効化し、環境光強度を 3D 既定へ戻す。太陽方向/空色/太陽メッシュは
-    //   既存の applyGlobeSunState（dateTime/中心移動で駆動）と placeSunMesh が復元する。
+    // - 3D: 指向性ライトを再有効化し、環境光強度を 3D 既定へ戻す。2D→3D 復帰時のみ
+    //   applyGlobeSunState() を呼んで太陽方向/空色/sunStateValid/メッシュを再計算する。2D 中は
+    //   applyGlobeSunState が early-return するため、2D 中の setSunState や初期 viewMode=2d 起動で
+    //   太陽状態が未初期化/古い日時のまま残るのを防ぐ（初期 3D 起動では既に適用済みのため不要）。
     // 適用済み viewMode を記録し、変化時のみ実行する（毎フレーム sunMeshObserver から呼ばれる）。
     let lightingViewMode: ViewMode | null = null;
     const applyViewModeLighting = (): void => {
         const vm = gc.getViewMode();
         if (vm === lightingViewMode) return;
+        const prev = lightingViewMode;
         lightingViewMode = vm;
         if (vm === "2d") {
             gc.sunLight.setEnabled(false);
@@ -1549,6 +1552,8 @@ export const createGlobeSceneController = (
         } else {
             gc.sunLight.setEnabled(true);
             gc.hemiLight.intensity = GLOBE_HEMI_LIGHT_INTENSITY;
+            // 2D→3D 復帰時のみ太陽状態を再計算する（applyGlobeSunState が hemi 強度も 3D 既定へ戻す）。
+            if (prev === "2d") applyGlobeSunState();
         }
     };
 
