@@ -196,18 +196,19 @@ export const createPolygonManager = (ctx: OverlayContext): PolygonManager => {
             // material 再コンパイル起因のラベルのチラつきが無いため、再構築（dispose→再生成）で
             // 十分かつ単純。id は維持する。
             const current = prev.getHandle();
+            // labels / edgeLabels / style は「キーの有無」で判定する。`{ labels: undefined }` の
+            // ように明示的にラベルを削除（クリア）したいケースを正しく反映するため、`?? / !== undefined`
+            // ではなく `"key" in partial` を使う（Partial 型の undefined と「未指定」を区別する）。
             const merged: PolygonOptions = {
                 points: (partial.points ?? current.points).map((p) => ({ ...p })),
                 closed: partial.closed ?? current.closed,
                 altitudeMode: partial.altitudeMode ?? current.altitudeMode,
-                labels: (partial.labels !== undefined
+                labels: ("labels" in partial
                     ? partial.labels
                     : current.labels) as PolygonOptions["labels"],
                 edgeLabels:
-                    partial.edgeLabels !== undefined
-                        ? partial.edgeLabels
-                        : current.edgeLabels,
-                style: partial.style !== undefined ? partial.style : current.style,
+                    "edgeLabels" in partial ? partial.edgeLabels : current.edgeLabels,
+                style: "style" in partial ? partial.style : current.style,
                 enabled: partial.enabled ?? current.enabled,
                 verticalsEnabled:
                     partial.verticalsEnabled ?? current.verticalsEnabled,

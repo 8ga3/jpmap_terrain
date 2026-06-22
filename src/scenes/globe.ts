@@ -1728,6 +1728,9 @@ export class GlobeScene {
                 camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
                 applyOrthoFrustum();
                 setOverlayFlatten(true);
+                // 2D は skymap 無し（#395）。3D 分岐の宇宙黒への高度連動 lerp を行わないため、
+                // 背景を一定の昼空色へ固定する（3D 復帰時は次フレームの clearColor ループが上書き）。
+                scene.clearColor.set(DAY_SKY_COLOR.r, DAY_SKY_COLOR.g, DAY_SKY_COLOR.b, 1);
             } else {
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
                 camera.pitch = savedPitch;
