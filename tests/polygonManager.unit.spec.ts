@@ -487,14 +487,32 @@ describe("PolygonManager dispose", () => {
     });
 });
 
-describe("PolygonManager update (#170 では未公開)", () => {
-    it("内部 update は throw する（#173 で実装）", () => {
+describe("PolygonManager update (#173/#395)", () => {
+    it("partial をマージして再構築し、更新後のハンドルを返す", () => {
         const { ctx } = buildCtx(0);
         const mgr = createPolygonManager(ctx);
         mgr.add("a", { points: validPoints });
-        expect(() => mgr.update("a", { enabled: false })).toThrow(
-            /not implemented/,
+        const newPoints = [
+            { lat: validPoints[0].lat + 0.001, lon: validPoints[0].lon },
+            { lat: validPoints[1].lat, lon: validPoints[1].lon },
+        ];
+        const handle = mgr.update("a", { points: newPoints, enabled: false });
+        expect(handle.points).toHaveLength(2);
+        expect(handle.points[0].lat).toBeCloseTo(newPoints[0].lat);
+        expect(handle.enabled).toBe(false);
+        // 旧ノードは破棄され新ノードへ差し替わる。
+        expect(created[0].disposed).toBe(true);
+        expect(created[created.length - 1].disposed).toBe(false);
+    });
+
+    it("未存在 id / 不正な points は throw する", () => {
+        const { ctx } = buildCtx(0);
+        const mgr = createPolygonManager(ctx);
+        expect(() => mgr.update("missing", { enabled: false })).toThrow(
+            /not found/,
         );
+        mgr.add("a", { points: validPoints });
+        expect(() => mgr.update("a", { points: [] })).toThrow(/at least 1/);
     });
 });
 

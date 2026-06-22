@@ -156,7 +156,15 @@ export const createGlobeMarkerManager = (
         // 距離は 1 回だけ算出し、スケールと線高さで再利用（sqrt の二重計算を避ける）。
         // camEcef なし（初期配置）は基準距離で仮置き。
         const dist = camEcef ? Vector3.Distance(camEcef, pos) : OVERLAY_REF_DISTANCE_M;
-        const distScale = computeOverlayDistanceScaleFromDistance(dist);
+        // 2D（flat）正射では下限スケール（MIN_SCALE）を外す。下限が残ると最大ズーム時に
+        // ワールドサイズが下限固定され、ortho フラスタム（radius 比例）だけが縮小して
+        // アイコンが不自然に大きく見える。下限なし（0）で全ズーム画面上一定にする。
+        // 3D 透視は近接時の過小化を防ぐ既定の下限を維持する。
+        const distScale = computeOverlayDistanceScaleFromDistance(
+            dist,
+            undefined,
+            flat ? 0 : undefined,
+        );
         const lineHeight = computeOverlayLineHeight(dist);
 
         // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
