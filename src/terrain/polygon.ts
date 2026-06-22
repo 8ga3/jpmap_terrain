@@ -38,10 +38,15 @@ const RENDERING_GROUP_ID = 1;
 /**
  * 垂線 / 壁は地表メッシュ（既定グループ 0）と同グループで
  * 描画し、地表の深度バッファで地中部分をオクルードさせる (#186)。
- * 頂点球 / ポリライン / ラベルは引き続き `RENDERING_GROUP_ID` にて
- * 地表より手前に描画される。
+ * 頂点球 / ポリラインは `RENDERING_GROUP_ID` にて地表より手前に描画される。
  */
 const SUBTERRAIN_RENDERING_GROUP_ID = 0;
+/**
+ * ラベルは専用の上位グループで描画する。Babylon はレンダリンググループ間で
+ * 既定で深度バッファをクリアするため、ラベルが線（`RENDERING_GROUP_ID`）の
+ * 背後に回り込んでも文字が常に手前へ描かれ、可読性を保てる（2D/3D 共通）。
+ */
+const LABEL_RENDERING_GROUP_ID = 2;
 const LABEL_MAX_DT_SIZE = 1024;
 // テキストにフィットさせるため MIN は小さくし、余白は innerPad のみで表現する。
 const LABEL_MIN_DT_SIZE = 32;
@@ -309,7 +314,7 @@ const createLabelMesh = (
         scene,
     );
     mesh.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
-    mesh.renderingGroupId = RENDERING_GROUP_ID;
+    mesh.renderingGroupId = LABEL_RENDERING_GROUP_ID;
     mesh.isPickable = false;
     mesh.parent = parent;
 

@@ -31,6 +31,12 @@ import {
 
 const RENDERING_GROUP_ID = 1;
 const SUBTERRAIN_RENDERING_GROUP_ID = 0;
+/**
+ * ラベルは専用の上位グループで描画する。レンダリンググループ間は既定で深度バッファが
+ * クリアされるため、ラベルが線（`RENDERING_GROUP_ID`）の背後に回り込んでも文字が常に
+ * 手前へ描かれ、可読性を保てる（2D/3D 共通）。
+ */
+const LABEL_RENDERING_GROUP_ID = 2;
 const LABEL_MAX_DT_SIZE = 1024;
 const LABEL_MIN_DT_SIZE = 32;
 
@@ -377,7 +383,7 @@ const createLabelMesh = (
         scene,
     );
     mesh.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
-    mesh.renderingGroupId = RENDERING_GROUP_ID;
+    mesh.renderingGroupId = LABEL_RENDERING_GROUP_ID;
     mesh.isPickable = false;
     const material = new StandardMaterial(
         `${id}-${prefix}-mat-${index}`,

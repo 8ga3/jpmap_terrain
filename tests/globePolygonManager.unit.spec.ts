@@ -214,6 +214,9 @@ describe("add / CRUD", () => {
         expect(createdLines[0].renderingGroupId).toBe(1);
         expect(createdRibbons[0].isPickable).toBe(false);
         expect(createdRibbons[0].renderingGroupId).toBe(0);
+        // ラベル（平面）は線より上位グループ(2)で描画し、常に読めるようにする。
+        expect(createdPlanes.length).toBeGreaterThan(0);
+        expect(createdPlanes.every((p) => p.renderingGroupId === 2)).toBe(true);
     });
 
     it("1 点のみも許容し、線・壁は非表示", () => {
