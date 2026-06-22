@@ -171,6 +171,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
 const { createGlobePolygonManager } = await import(
     "../src/terrain/geo/globePolygonManager"
 );
+const { geodeticToEcef } = await import("../src/terrain/geo/ecef");
 const { describe, it, expect, beforeEach } = await import("@jest/globals");
 
 const pts3 = [
@@ -375,6 +376,45 @@ describe("setFlatten (#395)", () => {
         const { mgr } = makeManager();
         mgr.dispose();
         expect(() => mgr.setFlatten(true)).toThrow(/after dispose/);
+    });
+
+    it("setFlatten(true) は flat 進入時に全頂点の terrainElevAt を引いて elevs を terrain 基準へ正規化する (#395 / PR #407)", () => {
+        // 3D で absolute 高度を使っていたポリゴンの elevs(=絶対高度) を 2D へ持ち越さないことを担保する。
+        const terrainElevAt = jest.fn<(lat: number, lon: number) => number | null>(
+            () => null,
+        );
+        const mgr = createGlobePolygonManager({
+            scene: {} as never,
+            terrainElevAt,
+        });
+        mgr.add({
+            points: pts3.map((p) => ({ ...p, altitude: 1000 })),
+            altitudeMode: "absolute",
+        });
+        terrainElevAt.mockClear();
+        mgr.setFlatten(true);
+        // flat 進入時に頂点ごとへ terrainElevAt を発行して正規化する（前回の絶対高度を保持しない）。
+        expect(terrainElevAt).toHaveBeenCalledTimes(pts3.length);
+        // terrain 未解決(null)時は接地基準 0(海面) へ揃え、ピック点が絶対高度 1000 ではなく
+        // 楕円体表面(elev=0) へ正規化されることを確認する（near クリップ割れ・チラつきの回避）。
+        mgr.update(undefined, 1);
+        const picks: {
+            polygonId: string;
+            index: number;
+            x: number;
+            y: number;
+            z: number;
+            radius: number;
+        }[] = [];
+        const n = mgr.getPickablePoints(picks);
+        expect(n).toBe(pts3.length);
+        for (let i = 0; i < n; i++) {
+            const expected = geodeticToEcef(pts3[i].lat, pts3[i].lon, 0);
+            const dx = picks[i].x - expected.x;
+            const dy = picks[i].y - expected.y;
+            const dz = picks[i].z - expected.z;
+            expect(Math.sqrt(dx * dx + dy * dy + dz * dz)).toBeLessThan(1);
+        }
     });
 });
 
