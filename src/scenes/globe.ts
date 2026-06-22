@@ -759,6 +759,7 @@ export class GlobeScene {
         const rayRight = new Vector3();
         const rayUpTerm = new Vector3();
         const cursorDir = new Vector3();
+        const cursorOrigin = new Vector3();
         let lastWheelTimeMs = Number.NEGATIVE_INFINITY;
 
         // カーソル下方向の単位レイを**二重精度**で構築する（Issue #327 揺れの精度要因）。
@@ -856,23 +857,24 @@ export class GlobeScene {
         };
 
         // ズーム（zoom-to-cursor）は現在のポインタ位置（scene.pointerX/Y）のレイを使う。
-        const computeCursorRayDirToRef = (ref: Vector3): Vector3 =>
-            computeRayDirForPixelToRef(scene.pointerX, scene.pointerY, ref);
+        // 2D(ORTHOGRAPHIC) では平行投影のため、原点を画素オフセット分ずらし方向を forward 固定に
+        // する必要がある（透視レイ方向 + 単一原点では中心以外でズーム先がずれる）。click ピックと
+        // 同じ computePickRayToRef でモードに応じた origin+dir を構築する (#395 2D zoom-to-cursor)。
 
         movement.handleZoom = (zoomDelta: number): void => {
             if (zoomDelta === 0) return;
             lastWheelTimeMs = performance.now();
             // ネイティブ同様に蓄積（per-frame の zoomDeltaCurrentFrame へ変換される）。
             movement.zoomAccumulatedPixels += zoomDelta;
-            // カーソル方向の単位レイ（二重精度。createPickingRay の Float32 桁落ちを避ける）。
-            computeCursorRayDirToRef(cursorDir);
-            const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
+            // カーソル位置のレイ（原点 + 単位方向）。createPickingRay の Float32 桁落ちを避け、
+            // ortho では平行投影として正しい原点オフセットを得るため computePickRayToRef を使う。
+            computePickRayToRef(scene.pointerX, scene.pointerY, cursorOrigin, cursorDir);
             // 注視点付近の地形標高（海面=0）を高さに採用した WGS84 楕円体面と交差させる。
             const equatorial = ellipsoidSemiMajor + centerElevation;
             const polar = ellipsoidSemiMinor + centerElevation;
             if (
                 rayEllipsoidNearHitToRef(
-                    camEcef,
+                    cursorOrigin,
                     cursorDir,
                     equatorial,
                     equatorial,
