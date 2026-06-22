@@ -1848,6 +1848,11 @@ export class GlobeScene {
                         g.latDeg,
                         camera.fov,
                     );
+                    // radius 変更後に ortho フラスタムとオーバーレイ再アンカーをやり直し、
+                    // 初期化直後（最初の描画フレーム前）に古い radius のまま 1 フレーム不整合に
+                    // なるのを防ぐ（applyViewModeInternal は radius 更新前に一度走っているため）。
+                    applyOrthoFrustum();
+                    reanchorOverlaysForViewMode("2d");
                 }
             }
         }
