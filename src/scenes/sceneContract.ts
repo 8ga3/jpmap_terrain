@@ -26,7 +26,9 @@ export const METERS_PER_DEGREE_LAT = 111320;
 /**
  * MarkerManager 構築用の境界コンテキスト (Issue #167)。
  *
- * `JpmapTerrain` から `getMarkerContext()` で取得し、`createMarkerManager` に渡す。
+ * **legacy（旧 planar 実装）向けの契約**。globe 単一バックエンド（#414）では
+ * {@link DefaultSceneController.getMarkerContext} は未対応で `globeSceneController` が throw し、
+ * marker 構築は {@link DefaultSceneController.getMarkerManager} アダプタ経由で行う。
  * シーン内部のクロージャ（カメラ位置・grid 残差）を直接参照させず、
  * 必要な値・関数のみを露出する。
  */
@@ -44,10 +46,10 @@ export interface MarkerContext {
         gridResidualZ: number;
     };
     /**
-     * 現在のカメラ状態。
+     * 現在のカメラ状態（legacy MarkerContext 向け）。
      * - position: ワールド位置 (distScale 計算用)
-     * - radius / beta: ArcRotateCamera のレディアスと仰角。
-     *   マーカー高さをカメラ距離・仰角に応じて動的に決めるために使用される。
+     * - radius / beta: カメラ距離・仰角に相当する値。マーカー高さをカメラ距離・
+     *   仰角に応じて動的に決めるために使用される（特定のカメラ実装には依存しない）。
      */
     getCameraPosition(): {
         x: number;
@@ -68,11 +70,11 @@ export interface MarkerContext {
 export interface DefaultSceneController {
     getLat(): number;
     getLon(): number;
-    /** 高度（メートル）= ArcRotateCamera.radius */
+    /** 高度（メートル）。視点から地表までのカメラ距離に相当する */
     getAltitude(): number;
-    /** 方位角（度）= camera.alpha を北基準・度に変換した値 */
+    /** 方位角（度）。0 = 北、時計回りに増加 */
     getAzimuth(): number;
-    /** チルト角（度）= camera.beta を度に変換した値 */
+    /** チルト角（度）。0 = 真下、90 = 水平 */
     getTilt(): number;
     /**
      * 2D モード時の Google Maps 互換ズームレベル (#254)。
@@ -284,7 +286,7 @@ export interface DefaultSceneInitOptions {
     lat?: number;
     /** 初期経度（度）。未指定時はデフォルト値（東京駅付近）を用いる */
     lon?: number;
-    /** カメラ高度＝ArcRotateCamera radius（メートル） */
+    /** カメラ高度（メートル）。視点から地表までのカメラ距離に相当する */
     altitude?: number;
     /** カメラ方位角（度）。0 で北向き */
     azimuth?: number;

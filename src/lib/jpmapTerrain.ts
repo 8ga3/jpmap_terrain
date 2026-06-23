@@ -221,8 +221,8 @@ export class JpmapTerrain {
             );
             this._engine = engine;
 
-            // globe バックエンドは Babylon Geospatial 等の重い依存を伴うため、選択時のみ動的 import する
-            // （既定のバンドル/テストへ globe 依存を静的に持ち込まない）。
+            // globe バックエンドは Babylon Geospatial 等の重い依存を伴うため、常に動的 import する
+            // （静的依存を避け、既定のバンドル/テストへ globe 依存を持ち込まない）。
             const sceneFactory = new (
                 await import("../scenes/globeSceneController")
             ).GlobeSceneAdapter();
