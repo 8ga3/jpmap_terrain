@@ -20,6 +20,7 @@ import {
     tileKey,
     type GlobeLodOptions,
 } from "../src/terrain/geo/globeLod";
+import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
 
 const CENTER_LAT = 35.3606;
 const CENTER_LON = 138.7274;
@@ -37,7 +38,7 @@ const baseOpts = (
     viewportHeight: 1080,
     viewportWidth: 1920,
     verticalFov: 0.8,
-    sseThreshold: 256 * 2.5,
+    sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
     maxTiles: 200,
     rootSearchRadius: 2,
     maxRootTiles: 256,
@@ -401,7 +402,7 @@ describe("selectGlobeRootTiles", () => {
         viewportHeight: 1080,
         viewportWidth: 1920,
         verticalFov: 0.8,
-        sseThreshold: 256 * 2.5,
+        sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
         ...overrides,
     });
 
