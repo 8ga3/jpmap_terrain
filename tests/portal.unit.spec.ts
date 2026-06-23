@@ -42,4 +42,39 @@ describe("buildPortalHtml", () => {
         expect(html).toContain("a &amp; b");
         expect(html).toContain("ok.html?x=1&amp;y=2");
     });
+
+    // 出典表記 (Issue #417)
+    it("フッターに出典 3 項目を表示する", () => {
+        const html = buildPortalHtml();
+        expect(html).toContain('<section class="attribution"');
+        expect(html).toContain("出典");
+        expect(html).toContain("国土地理院発行 2.5万分1地形図");
+        expect(html).toContain("GEBCO Digital Atlas");
+        expect(html).toContain("海上保安庁許可第292502号");
+        expect(html).toContain("Vector Map Level 0 (VMAP0)");
+        // 既存の Source リンクも維持される。
+        expect(html).toContain(
+            'href="https://github.com/8ga3/jpmap_terrain"',
+        );
+    });
+
+    it("出典中の URL をリンク化する", () => {
+        const html = buildPortalHtml();
+        expect(html).toContain(
+            '<a href="https://www.gebco.net" target="_blank" rel="noopener noreferrer">https://www.gebco.net</a>',
+        );
+    });
+
+    it("出典文言の HTML 特殊文字をエスケープする", () => {
+        const html = buildPortalHtml(undefined, [
+            "<b>x</b> & y http://example.com/?a=1&b=2",
+        ]);
+        expect(html).not.toContain("<b>x</b>");
+        expect(html).toContain("&lt;b&gt;x&lt;/b&gt;");
+        expect(html).toContain("&amp; y");
+        // URL はリンク化され、クエリの & はエスケープ済み。
+        expect(html).toContain(
+            '<a href="http://example.com/?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">',
+        );
+    });
 });
