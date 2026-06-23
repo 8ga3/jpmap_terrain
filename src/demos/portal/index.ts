@@ -129,19 +129,34 @@ const ATTRIBUTIONS: readonly string[] = [
 ];
 
 /**
- * テキストを `escapeHtml` した上で、含まれる http(s) URL を `<a>` リンクへ変換する。
- * リンク化対象の URL は属性値としても安全になるよう、エスケープ後の文字列に対して処理する。
+ * 出典テキスト中の http(s) URL を `<a>` リンクへ変換する。
+ *
+ * URL の抽出は **エスケープ前の生テキスト** に対して行い、出力時に
+ * 「非 URL 部分」「URL 本体」「末尾記号」をそれぞれ `escapeHtml` してから組み立てる。
+ * これにより、URL の直後に `<` 等が続くケースでも境界が崩れない
+ * （例: `https://example.com/<b>` の `<b>` を URL に取り込まない）。
+ * URL 直後の括弧・句読点（半角/全角: `)` `.` `,` `）` `、` `。`）はリンク外へ戻す。
  */
 const linkifyAttribution = (text: string): string => {
-    const escaped = escapeHtml(text);
-    // URL 本体を貪欲にマッチさせた後、末尾の括弧・句読点（半角/全角）は
-    // リンクへ含めず後続テキストとして戻す。
-    return escaped.replace(/https?:\/\/[^\s<>"']+/g, (match) => {
-        const trailing = match.match(/[).,）、。]+$/);
-        const url = trailing ? match.slice(0, match.length - trailing[0].length) : match;
+    const urlPattern = /https?:\/\/[^\s<>"']+/g;
+    let result = "";
+    let lastIndex = 0;
+
+    for (let match = urlPattern.exec(text); match !== null; match = urlPattern.exec(text)) {
+        const raw = match[0];
+        const trailing = raw.match(/[).,）、。]+$/);
+        const url = trailing ? raw.slice(0, raw.length - trailing[0].length) : raw;
         const suffix = trailing ? trailing[0] : "";
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>${suffix}`;
-    });
+
+        result += escapeHtml(text.slice(lastIndex, match.index));
+        const safeUrl = escapeHtml(url);
+        result += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a>`;
+        result += escapeHtml(suffix);
+        lastIndex = match.index + raw.length;
+    }
+
+    result += escapeHtml(text.slice(lastIndex));
+    return result;
 };
 
 const renderAttributions = (attributions: readonly string[]): string =>
