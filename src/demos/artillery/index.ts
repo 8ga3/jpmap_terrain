@@ -150,11 +150,8 @@ const start = async (): Promise<void> => {
     const mapType = parseMapTypeFromUrl(location.href);
 
     // Issue #404 (P4-4): globe バックエンドは stageFrame による局所 ENU 物理で対応する。
-    const { engine: requestedTerrainEngine } =
+    const { engine: terrainEngine } =
         resolveArtilleryTerrainEngine(location.search);
-    // 実際に初期化できたバックエンド。globe 初期化失敗時は planar へフォールバックし、
-    // 以降の stageFrame 構築やレイ命名判定もこの実効値に従わせる。
-    let terrainEngine = requestedTerrainEngine;
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
@@ -176,32 +173,11 @@ const start = async (): Promise<void> => {
     try {
         viewer = await JpmapTerrain.create(mount, opts);
     } catch (err) {
-        // globe 初期化に失敗した場合のみ planar へフォールバックして再試行する
-        // （planar は従来からの安定経路）。明示的に planar を要求していた場合は
-        // そのまま送出する（#413: 未指定は globe 既定なのでフォールバック対象）。
-        if (requestedTerrainEngine === "planar") throw err;
-        console.warn(
-            "[artillery] globe terrain init failed; falling back to planar",
-            err,
-        );
-        terrainEngine = "planar";
-        // planar フォールバック時は JAPAN_BOUNDS 基準でカメラを再解決する (#413 review)。
-        // 初回 opts の lat/lon は globe 既定（WORLD_BOUNDS）でパース済みのため、planar の
-        // 被覆域外座標がそのまま採用されると空描画になり得る。planar 基準で再クランプして反映する。
-        const planarCamera = parseCameraStateFromUrl(location.href, {
-            terrainEngine: "planar",
-        });
-        viewer = await JpmapTerrain.create(mount, {
-            ...opts,
-            terrainEngine,
-            lat: planarCamera?.lat ?? STAGE_CENTER.lat,
-            lon: planarCamera?.lon ?? STAGE_CENTER.lon,
-        });
+        // globe 単一化（#414）後はフォールバック先が存在しないため、初期化失敗は
+        // サイレントな白画面にせず明示的に送出する。
+        console.error("[artillery] globe terrain init failed", err);
+        throw err;
     }
-    // 実際に構築されたバックエンド (#413: 未指定は lib 既定 globe)。
-    // undefined を旧既定 planar と誤認して globe シーン上に planar の恒等ステージを
-    // 構築すると、大砲が ECEF 外（原点付近）に配置され表示されない。viewer の実効値に従う。
-    terrainEngine = viewer.terrainEngine;
     // Issue #259: 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
     viewer.showLocateMe = false;
 
@@ -235,10 +211,10 @@ const start = async (): Promise<void> => {
     const scene = viewer.__debugScene;
     if (!scene) return;
 
-    // --- ステージ座標フレーム（planar=恒等 / globe=ENU→ECEF stageRoot） ---
-    // globe では物理・配置をローカル ENU（= planar と同一規約）で扱い、描画と Havok の
+    // --- ステージ座標フレーム（globe=ENU→ECEF stageRoot） ---
+    // globe では物理・配置をローカル ENU で扱い、描画と Havok の
     // floating-origin region 機能で ECEF を float32 安全に解く（#404）。
-    const stage: StageFrame = createStageFrame(scene, terrainEngine ?? "globe", {
+    const stage: StageFrame = createStageFrame(scene, {
         lat: STAGE_CENTER.lat,
         lon: STAGE_CENTER.lon,
         alt: 0,
@@ -374,26 +350,21 @@ const start = async (): Promise<void> => {
 
     /** pick 結果（ワールド座標）をステージローカルの Y へ変換する。 */
     const pickToLocalY = (point: Vector3): number =>
-        stage.root ? stage.worldToLocal(point, scratchPickLocal).y : point.y;
+        stage.worldToLocal(point, scratchPickLocal).y;
 
     const castTerrainRay = (x: number, z: number) => {
         // ステージローカル (x, +高所, z) からローカル下方向へレイを飛ばす。
-        // planar はそのままワールド垂直レイ。globe は ENU→ECEF へ写像した
-        // ECEF レイ（解析レイのため floating origin 下でも実用精度: スパイク G4）。
+        // globe は ENU→ECEF へ写像した ECEF レイ（解析レイのため floating origin 下でも
+        // 実用精度: スパイク G4）。
         // buildCollider() からは subdivisions^2 オーダー（~1万回）で呼ばれるため、
         // 一時ベクトル / Ray は使い回してアロケーション・GC を避ける。
-        if (stage.root) {
-            scratchRayOrigin.copyFromFloats(x, 10000, z);
-            stage.localToWorld(scratchRayOrigin, scratchRayOrigin);
-            terrainRay.origin.copyFrom(scratchRayOrigin);
-            terrainRay.direction.copyFrom(stage.downWorld);
-        } else {
-            terrainRay.origin.copyFromFloats(x, 10000, z);
-            terrainRay.direction.copyFromFloats(0, -1, 0);
-        }
+        scratchRayOrigin.copyFromFloats(x, 10000, z);
+        stage.localToWorld(scratchRayOrigin, scratchRayOrigin);
+        terrainRay.origin.copyFrom(scratchRayOrigin);
+        terrainRay.direction.copyFrom(stage.downWorld);
         terrainRay.length = 20000;
-        // 地形メッシュのみを対象にする。planar は `tile-ground-*`、globe は
-        // `tile-*` / `base-tile-*`（globeTileManager の命名）。
+        // 地形メッシュのみを対象にする。globe は `tile-*` / `base-tile-*`
+        // （globeTileManager の命名）。
         //
         // 注意: globe タイルは globeTileManager で `isPickable=false`（#337 のパン
         // 干渉回避）だが、`pickWithRay` に predicate を渡すと Babylon は
@@ -401,17 +372,15 @@ const start = async (): Promise<void> => {
         // 対象を選別する（@babylonjs/core ray.core.js InternalPick: predicate 指定時は
         // 当該チェックを skip。JSDoc も「predicate=null のときのみ isPickable=true が必要」
         // と明記）。そのため isPickable=false でも本レイは globe タイルにヒットする
-        // （実 GPU で collider の Y が地形追従 724〜1428m, planar と一致を確認済み）。
+        // （実 GPU で collider の Y が地形追従 724〜1428m）。
         // タイルを pickable に戻すと #337 のパン干渉が再発するため、ここは predicate
         // 方式を維持すること。
         return scene.pickWithRay(terrainRay, isTerrainMesh);
     };
 
-    /** 地形タイルメッシュ判定（planar / globe で命名規約が異なる）。 */
+    /** 地形タイルメッシュ判定（globe の命名規約）。 */
     const isTerrainMesh = (mesh: { name: string }): boolean =>
-        stage.root
-            ? mesh.name.startsWith("tile-") || mesh.name.startsWith("base-tile-")
-            : mesh.name.startsWith("tile-ground-");
+        mesh.name.startsWith("tile-") || mesh.name.startsWith("base-tile-");
 
     /** 大砲の姿勢をセットする (Y軸=方位, Z軸=仰角) */
     const setCannonOrientation = (
@@ -596,10 +565,10 @@ const start = async (): Promise<void> => {
             new Vector3(0, 1, 0),
             cannon.pivot.getWorldMatrix(),
         ).normalize();
-        // ステージローカルの砲身方向（planar はワールドと同一）。発射位置の算出に使う。
-        const localDir = stage.root
-            ? stage.worldDirToLocal(worldDir, new Vector3()).normalize()
-            : worldDir;
+        // ステージローカルの砲身方向。発射位置の算出に使う。
+        const localDir = stage
+            .worldDirToLocal(worldDir, new Vector3())
+            .normalize();
 
         const pivotPos = cannon.pivot.position;
         // 発射位置（ステージローカル）: 砲口先端（ピボット + ローカル砲身方向 * 砲身長）。
@@ -701,10 +670,8 @@ const start = async (): Promise<void> => {
                     targetPos.z,
                 )
             ) {
-                // 命中！（爆発エミッタはワールド座標。globe はローカル→ECEF へ写像）
-                const explosionWorld = stage.root
-                    ? stage.localToWorld(pos, new Vector3())
-                    : pos.clone();
+                // 命中！（爆発エミッタはワールド座標。ローカル→ECEF へ写像）
+                const explosionWorld = stage.localToWorld(pos, new Vector3());
                 createExplosion(scene, explosionWorld);
                 hitBanner.flash();
                 pool.release(proj);

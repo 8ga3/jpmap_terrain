@@ -5,7 +5,7 @@
  * - URL 形式:
  *   - 3D: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
  *   - 2D: `/@lat,lon,Xz?viewMode=2d` （X はズームレベル, Issue #254）
- *   - 地形バックエンド: `?terrainEngine=globe|planar`（既定 globe, #275 Phase 5 #413）
+ *   - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414）
  *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可、Issue #64）
  * - `#root` 要素にビューアをマウントする。
  * - URL ↔ カメラ同期はパッケージ層から切り離し、デモ層 (本ファイル) で
@@ -57,9 +57,8 @@ export { resolveTerrainEngine };
  * 内部的に {@link parseCameraStateFromUrl} を再利用する薄いラッパー。
  *
  * @param url 解析対象 URL（`location.href` 等）
- * @param terrainEngine クランプ範囲を切り替える地形バックエンド (#375)。
- *   `"globe"` なら全球（`WORLD_BOUNDS`）、`"planar"` なら日本域（`JAPAN_BOUNDS`）でクランプする。
- *   未指定時は URL クエリ `?terrainEngine=` をフォールバック解決する（明示指定が優先）。
+ * @param terrainEngine 後方互換のため受け取るが、緯度経度は常に全球（`WORLD_BOUNDS`）で
+ *   クランプする (#414)。
  * @returns 取得できた場合は `CameraUrlState`、取得できない場合は `undefined`
  */
 export const resolveCameraState = (

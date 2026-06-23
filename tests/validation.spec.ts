@@ -202,20 +202,24 @@ for (const engine of engines) {
         });
         await compass.click();
 
-        // アニメーション完了をカメラ状態で判定（alpha→-π/2, beta→0.1）
+        // アニメーション完了をカメラ状態で判定（globe: 北向き yaw→0 / 直下 pitch→0）。
+        // globe バックエンドの GeospatialCamera は yaw/pitch[rad] を用いる
+        // （pitch は limits.pitchMin≈ε でクランプされ厳密な 0 にはならない）。
         await page.waitForFunction(
             () => {
                 const cam = (window as any).scene?.activeCamera;
-                if (!cam) return false;
-                const targetAlpha = -Math.PI / 2;
-                const targetBeta = 0.1;
-                return (
-                    Math.abs(cam.alpha - targetAlpha) < 0.01 &&
-                    Math.abs(cam.beta - targetBeta) < 0.01
-                );
+                if (cam == null || cam.yaw == null || cam.pitch == null) {
+                    return false;
+                }
+                // yaw を [-π, π] に正規化して 0 との差を見る。
+                const yawNorm = Math.atan2(Math.sin(cam.yaw), Math.cos(cam.yaw));
+                return Math.abs(yawNorm) < 0.01 && Math.abs(cam.pitch) < 0.02;
             },
             { timeout: 5000 }
         );
+
+        // リセット後はトップダウン化で地形タイルが再構成されるため、描画安定を待つ。
+        await waitForTerrainStable(page);
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,

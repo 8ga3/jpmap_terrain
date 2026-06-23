@@ -14,7 +14,7 @@ import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { Scene } from "@babylonjs/core/scene";
 
-import { DefaultScene, type DefaultSceneController } from "../scenes/default";
+import type { DefaultSceneController } from "../scenes/sceneContract";
 import { createBabylonEngine } from "./internal/engineFactory";
 import {
     CameraChangeEvent,
@@ -47,10 +47,10 @@ import {
     ViewMode,
     ViewModeChangeListener,
 } from "./types";
-import { createMarkerManager, type MarkerManager } from "../terrain/markerManager";
-import { createPolygonManager, type PolygonManager } from "../terrain/polygonManager";
-import { createCircleManager, type CircleManager } from "../terrain/circleManager";
-import { createModelManager, type ModelManager } from "../terrain/modelManager";
+import type { MarkerManager } from "../terrain/markerManager";
+import type { PolygonManager } from "../terrain/polygonManager";
+import type { CircleManager } from "../terrain/circleManager";
+import type { ModelManager } from "../terrain/modelManager";
 
 /**
  * jpmap-terrain ビューア。
@@ -223,16 +223,15 @@ export class JpmapTerrain {
                 options.engine ?? JPMAP_TERRAIN_DEFAULTS.engine,
                 // globe（真の ECEF / floating origin）は high precision matrix（float64）が必須。
                 // 未設定だと真の ECEF が Float32 で量子化されメッシュがジッターする。
-                { highPrecisionMatrix: this._terrainEngine === "globe" },
+                { highPrecisionMatrix: true },
             );
             this._engine = engine;
 
             // globe バックエンドは Babylon Geospatial 等の重い依存を伴うため、選択時のみ動的 import する
-            // （planar 既定のバンドル/テストへ globe 依存を持ち込まない）。
-            const sceneFactory =
-                this._terrainEngine === "globe"
-                    ? new (await import("../scenes/globeSceneController")).GlobeSceneAdapter()
-                    : new DefaultScene();
+            // （既定のバンドル/テストへ globe 依存を静的に持ち込まない）。
+            const sceneFactory = new (
+                await import("../scenes/globeSceneController")
+            ).GlobeSceneAdapter();
             const scene = await sceneFactory.createScene(engine, canvas, {
                 lat: this._lat,
                 lon: this._lon,
@@ -296,37 +295,19 @@ export class JpmapTerrain {
                     if (this._showSunShadows) {
                         controller.setSunShadows(true);
                     }
-                    // マーカー (Issue #167)。境界コンテキスト経由で manager を構築する。
-                    // globe バックエンドでは marker（P4-0）/ polygon（Slice 2b-1）/ circle（Slice 2b-2）/
-                    // model（P4-2）が専用アダプタ（getMarkerManager / getPolygonManager /
-                    // getCircleManager / getModelManager）経由で公開 interface に対応する。
-                    if (this._terrainEngine === "planar") {
-                        this._markerManager = createMarkerManager(
-                            controller.getMarkerContext(),
-                        );
-                        // ポリゴン (Issue #170)。MarkerContext と同一のコンテキストを共有する。
-                        this._polygonManager = createPolygonManager(
-                            controller.getMarkerContext(),
-                        );
-                        // 円 (Issue #201)。MarkerContext と同一のコンテキストを共有する。
-                        this._circleManager = createCircleManager(
-                            controller.getMarkerContext(),
-                        );
-                        // 3Dモデル (Issue #243)。MarkerContext と同一のコンテキストを共有する。
-                        this._modelManager = createModelManager(
-                            controller.getMarkerContext(),
-                        );
-                    } else {
-                        this._markerManager =
-                            controller.getMarkerManager?.() ?? null;
-                        this._polygonManager =
-                            controller.getPolygonManager?.() ?? null;
-                        this._circleManager =
-                            controller.getCircleManager?.() ?? null;
-                        // 3Dモデル (Issue #243 / #275 Phase 4 P4-2)。globe 専用アダプタ経由。
-                        this._modelManager =
-                            controller.getModelManager?.() ?? null;
-                    }
+                    // マーカー (Issue #167)。globe バックエンドでは marker（P4-0）/
+                    // polygon（Slice 2b-1）/ circle（Slice 2b-2）/ model（P4-2）が専用アダプタ
+                    // （getMarkerManager / getPolygonManager / getCircleManager / getModelManager）
+                    // 経由で公開 interface に対応する。
+                    this._markerManager =
+                        controller.getMarkerManager?.() ?? null;
+                    this._polygonManager =
+                        controller.getPolygonManager?.() ?? null;
+                    this._circleManager =
+                        controller.getCircleManager?.() ?? null;
+                    // 3Dモデル (Issue #243 / #275 Phase 4 P4-2)。globe 専用アダプタ経由。
+                    this._modelManager =
+                        controller.getModelManager?.() ?? null;
                 },
             });
             this._scene = scene;
@@ -423,7 +404,7 @@ export class JpmapTerrain {
 
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
 
-    /** 地形描画バックエンド (Issue #349 / #275 Phase 4)。`"planar"` | `"globe"`。 */
+    /** 地形描画バックエンド (Issue #349 / #275 Phase 4 / #414)。`"globe"` 固定。 */
     public get terrainEngine(): TerrainEngine {
         return this._terrainEngine;
     }

@@ -139,7 +139,6 @@ describe("createWaypointManager", () => {
             radiusM: 2000,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
 
         // 2000m 半径 → 周長 ≈ 12566m → 12566/600 ≈ 20 → cap at MAX_WAYPOINT_COUNT=10
@@ -160,7 +159,6 @@ describe("createWaypointManager", () => {
             radiusM: 50000,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
         expect(CreateDiscMock).toHaveBeenCalledTimes(10);
     });
@@ -174,7 +172,6 @@ describe("createWaypointManager", () => {
             radiusM: 2000,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
         expect(() => mgr.dispose()).not.toThrow();
     });
@@ -189,7 +186,6 @@ describe("createWaypointManager", () => {
             radiusM: 2000,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
         expect(() =>
             mgr.update(
@@ -199,7 +195,6 @@ describe("createWaypointManager", () => {
                     radiusM: 2000,
                     altitudeM: 2000,
                     angleDeg: 10,
-                    modelNodeName: "model-plane",
                 },
                 1000,
             ),
@@ -218,7 +213,6 @@ describe("createWaypointManager", () => {
             radiusM,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
 
         // CreateDisc が返した最初のメッシュインスタンス（先頭ウェイポイント）
@@ -241,7 +235,6 @@ describe("createWaypointManager", () => {
                 radiusM,
                 altitudeM: 2000,
                 angleDeg: passingAngle,
-                modelNodeName: "model-plane",
             },
             1000,
         );
@@ -255,7 +248,6 @@ describe("createWaypointManager", () => {
                     radiusM,
                     altitudeM: 2000,
                     angleDeg: passingAngle,
-                    modelNodeName: "model-plane",
                 },
                 1000 + i * 20, // 20ms 刻み × 30 = 600ms
             );
@@ -282,7 +274,6 @@ describe("createWaypointManager", () => {
             radiusM,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
 
         // 先頭ウェイポイントの角度付近まで飛行機を進めて通過判定を発火
@@ -294,7 +285,6 @@ describe("createWaypointManager", () => {
                 radiusM,
                 altitudeM: 2000,
                 angleDeg: passingAngle,
-                modelNodeName: "model-plane",
             },
             1000,
         );
@@ -302,10 +292,10 @@ describe("createWaypointManager", () => {
         expect(onPass).toHaveBeenCalledTimes(1);
     });
 
-    // Issue #349 P4-3 レビュー指摘: globe 分岐（真 ECEF 配置 + ENU 姿勢）の回帰検知。
-    // isGlobe=true で geodeticToEcefToRef が呼ばれ、surfaceOrientationToRef の結果に応じて
+    // Issue #349 P4-3 レビュー指摘: 真 ECEF 配置 + ENU 姿勢の回帰検知。
+    // geodeticToEcefToRef が呼ばれ、surfaceOrientationToRef の結果に応じて
     // rotationQuaternion が設定される/されないことを検証する。
-    it("globe: isGlobe=true で geodeticToEcefToRef を呼び、姿勢成功時に rotationQuaternion を設定する", () => {
+    it("globe: geodeticToEcefToRef を呼び、姿勢成功時に rotationQuaternion を設定する", () => {
         CreateDiscMock.mockClear();
         geodeticToEcefToRefMock.mockClear();
         // 姿勢計算が成功するケース
@@ -321,8 +311,6 @@ describe("createWaypointManager", () => {
             radiusM: 2000,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "globe-model-0-root",
-            isGlobe: true,
         });
 
         const firstMesh = CreateDiscMock.mock.results[0].value as {
@@ -337,8 +325,6 @@ describe("createWaypointManager", () => {
                 radiusM: 2000,
                 altitudeM: 2000,
                 angleDeg: 10,
-                modelNodeName: "globe-model-0-root",
-                isGlobe: true,
             },
             1000,
         );
@@ -366,8 +352,6 @@ describe("createWaypointManager", () => {
             radiusM: 2000,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "globe-model-0-root",
-            isGlobe: true,
         });
 
         const firstMesh = CreateDiscMock.mock.results[0].value as {
@@ -381,8 +365,6 @@ describe("createWaypointManager", () => {
                 radiusM: 2000,
                 altitudeM: 2000,
                 angleDeg: 10,
-                modelNodeName: "globe-model-0-root",
-                isGlobe: true,
             },
             1000,
         );
@@ -403,7 +385,6 @@ describe("createWaypointManager", () => {
             radiusM,
             altitudeM: 2000,
             angleDeg: 0,
-            modelNodeName: "model-plane",
         });
 
         // 通過しても例外が発生しないこと（コールバックなし）
@@ -415,7 +396,6 @@ describe("createWaypointManager", () => {
                     radiusM,
                     altitudeM: 2000,
                     angleDeg: 8.5,
-                    modelNodeName: "model-plane",
                 },
                 1000,
             ),

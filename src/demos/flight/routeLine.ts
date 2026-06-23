@@ -56,17 +56,7 @@ export interface RouteLineContext {
     centerLon: number;
     /** 軌道半径 (m) */
     radiusM: number;
-    /** model の TransformNode 名。実際の world position 取得用 */
-    modelNodeName: string;
-    /**
-     * globe バックエンドかどうか。true の場合、リボンメッシュの position を「真の ECEF」
-     * アンカー（機体直下）に置き、各頂点はそのアンカー相対のローカル小座標で構築する。
-     * （floating origin の offset = アクティブカメラ位置のため、planar の absolutePosition
-     * 基準では二重リベースで位置がずれる。アンカー方式なら position が float64 でリベースされ、
-     * 頂点は数百 m オーダーで float32 でも精度十分・ジッターを抑えられる）
-     */
-    isGlobe?: boolean;
-    /** 飛行機の絶対標高 (m)。globe モードでの頂点 ECEF 計算に使用 */
+    /** 飛行機の絶対標高 (m)。頂点 ECEF 計算に使用 */
     altitudeM?: number;
 }
 
@@ -165,22 +155,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
     const gAnchor = new Vector3();
 
     const update = (ctx: RouteLineContext, time: number): void => {
-        const { angleDeg, centerLat, centerLon, radiusM, modelNodeName } = ctx;
-        const isGlobe = ctx.isGlobe === true;
+        const { angleDeg, centerLat, centerLon, radiusM } = ctx;
         const altitudeM = ctx.altitudeM ?? 0;
-
-        // 飛行機の root TransformNode からワールド位置を取得（flat のみ）。
-        // globe では機体ノード名が異なり（`globe-model-*`）、位置は lat/lon/alt から
-        // 直接 ECEF 算出するため、planar のノード参照は行わない。
-        let planeWorldPos: Vector3 | null = null;
-        if (!isGlobe) {
-            const root = ctx.scene.getTransformNodeByName(modelNodeName);
-            if (!root) return;
-            const childMesh = root.getChildMeshes(false)[0];
-            if (!childMesh) return;
-            childMesh.computeWorldMatrix(true);
-            planeWorldPos = childMesh.absolutePosition;
-        }
 
         const startArcLen = ROUTE_START_OFFSET_M;
         const endArcLen = ROUTE_START_OFFSET_M + ROUTE_LENGTH_M;
@@ -188,17 +164,13 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         // 飛行機の現在 lat/lon
         const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
 
-        // globe: リボンは機体直近（近接）のため、頂点を真の ECEF（~6.4e6）で焼くと
+        // リボンは機体直近（近接）のため、頂点を真の ECEF（~6.4e6）で焼くと
         // float32 精度（~0.5m）のジッターが目立つ。そこで機体直下を **アンカー（真の
         // ECEF）= リボンメッシュの position（translation）** とし、各頂点はアンカーからの
         // **ローカル小座標** で表現する。translation は floating origin により CPU 側で
         // float64 リベースされ、頂点（数百 m）は float32 でも精度十分でジッターを抑えられる。
-        if (isGlobe) {
-            geodeticToEcefToRef(planePos.lat, planePos.lon, altitudeM, gAnchor);
-            ribbon.position.copyFrom(gAnchor);
-        } else {
-            ribbon.position.setAll(0);
-        }
+        geodeticToEcefToRef(planePos.lat, planePos.lon, altitudeM, gAnchor);
+        ribbon.position.copyFrom(gAnchor);
 
         const timeSec = time * 0.001;
 
@@ -219,58 +191,32 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             const perpX = Math.cos(fhRad);
             const perpZ = -Math.sin(fhRad);
 
-            if (isGlobe) {
-                // 未来点の真の ECEF を求め、アンカーからのローカル小座標に変換する。
-                geodeticToEcefToRef(
-                    futurePos.lat,
-                    futurePos.lon,
-                    altitudeM + RIBBON_Y_OFFSET_M,
-                    gEcef,
-                );
-                if (!geographicTangentBasisToRef(gEcef, gEast, gNorth)) {
-                    continue;
-                }
-                // アンカー相対のローカル座標（数百 m オーダー）。
-                const lx = gEcef.x - gAnchor.x;
-                const ly = gEcef.y - gAnchor.y;
-                const lz = gEcef.z - gAnchor.z;
-                // planar の perp(perpX=east, perpZ=north) を ENU 基底に写像する。
-                const px =
-                    gEast.x * perpX * RIBBON_HALF_WIDTH_M +
-                    gNorth.x * perpZ * RIBBON_HALF_WIDTH_M;
-                const py =
-                    gEast.y * perpX * RIBBON_HALF_WIDTH_M +
-                    gNorth.y * perpZ * RIBBON_HALF_WIDTH_M;
-                const pz =
-                    gEast.z * perpX * RIBBON_HALF_WIDTH_M +
-                    gNorth.z * perpZ * RIBBON_HALF_WIDTH_M;
-                pathArray[0][i].set(lx - px, ly - py, lz - pz);
-                pathArray[1][i].set(lx + px, ly + py, lz + pz);
-            } else {
-                // lat/lon 差分をメートル換算で world offset に変換
-                const dLat = futurePos.lat - planePos.lat;
-                const dLon = futurePos.lon - planePos.lon;
-                const cosLat = Math.cos((planePos.lat * Math.PI) / 180);
-                const offsetX = dLon * 111320 * cosLat;
-                const offsetZ = dLat * 111320;
-
-                // 未来点のワールド座標 (Y は飛行機のワールド Y に合わせる)
-                const wx = planeWorldPos!.x + offsetX;
-                const wz = planeWorldPos!.z + offsetZ;
-                const wy = planeWorldPos!.y + RIBBON_Y_OFFSET_M;
-
-                // 左右のパスを設定
-                pathArray[0][i].set(
-                    wx - perpX * RIBBON_HALF_WIDTH_M,
-                    wy,
-                    wz - perpZ * RIBBON_HALF_WIDTH_M,
-                );
-                pathArray[1][i].set(
-                    wx + perpX * RIBBON_HALF_WIDTH_M,
-                    wy,
-                    wz + perpZ * RIBBON_HALF_WIDTH_M,
-                );
+            // 未来点の真の ECEF を求め、アンカーからのローカル小座標に変換する。
+            geodeticToEcefToRef(
+                futurePos.lat,
+                futurePos.lon,
+                altitudeM + RIBBON_Y_OFFSET_M,
+                gEcef,
+            );
+            if (!geographicTangentBasisToRef(gEcef, gEast, gNorth)) {
+                continue;
             }
+            // アンカー相対のローカル座標（数百 m オーダー）。
+            const lx = gEcef.x - gAnchor.x;
+            const ly = gEcef.y - gAnchor.y;
+            const lz = gEcef.z - gAnchor.z;
+            // perp(perpX=east, perpZ=north) を ENU 基底に写像する。
+            const px =
+                gEast.x * perpX * RIBBON_HALF_WIDTH_M +
+                gNorth.x * perpZ * RIBBON_HALF_WIDTH_M;
+            const py =
+                gEast.y * perpX * RIBBON_HALF_WIDTH_M +
+                gNorth.y * perpZ * RIBBON_HALF_WIDTH_M;
+            const pz =
+                gEast.z * perpX * RIBBON_HALF_WIDTH_M +
+                gNorth.z * perpZ * RIBBON_HALF_WIDTH_M;
+            pathArray[0][i].set(lx - px, ly - py, lz - pz);
+            pathArray[1][i].set(lx + px, ly + py, lz + pz);
 
             // 頂点カラーを colorBuffer に直接書き込み (path0[i], path1[i] それぞれ)
             const col = computeGradientColor(t, timeSec);

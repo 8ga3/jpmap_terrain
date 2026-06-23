@@ -20,11 +20,10 @@ export type MapType = "standard" | "photo";
 export type ViewMode = "3d" | "2d";
 
 /**
- * 地形描画バックエンド (Issue #349 / #275 Phase 4 / Phase 5 #413)。
- * - `"globe"` (既定): ECEF 楕円体 + GeospatialCamera + floating origin（`scenes/globe.ts`）。
- * - `"planar"`: 従来の平面ワールド（`scenes/default.ts`）。明示指定時のみ使用する。
+ * 地形描画バックエンド (Issue #349 / #275 Phase 4 / Phase 5 #413 / Phase 6 #414)。
+ * - `"globe"` (唯一): ECEF 楕円体 + GeospatialCamera + floating origin（`scenes/globe.ts`）。
  */
-export type TerrainEngine = "planar" | "globe";
+export type TerrainEngine = "globe";
 
 /**
  * `JpmapTerrain.create` 初期化オプション。
@@ -34,9 +33,8 @@ export interface JpmapTerrainOptions {
     /** 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバックする */
     engine?: EngineType;
     /**
-     * 地形描画バックエンド (Issue #349 / #275 Phase 4 / Phase 5 #413)。
-     * - `"globe"` (既定): ECEF 楕円体 + GeospatialCamera + floating origin。
-     * - `"planar"`: 従来の平面ワールド。明示指定時のみ使用する。
+     * 地形描画バックエンド (Issue #349 / #275 Phase 4 / Phase 5 #413 / Phase 6 #414)。
+     * - `"globe"` (唯一): ECEF 楕円体 + GeospatialCamera + floating origin。
      */
     terrainEngine?: TerrainEngine;
     /** 緯度（度） */

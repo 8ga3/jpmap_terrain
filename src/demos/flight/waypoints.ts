@@ -44,14 +44,6 @@ export interface WaypointManagerContext {
     radiusM: number;
     altitudeM: number;
     angleDeg: number;
-    modelNodeName: string;
-    /**
-     * globe バックエンドかどうか。true の場合、各ウェイポイントを「真の ECEF」位置
-     * （mesh.position = translation, CPU 側で floating origin リベースされ精度十分）へ置き、
-     * 向きは地表接線（ENU）基底で立たせる。planar の world 軸オフセット＋rotation.y では
-     * ECEF 上でリングがエッジオン化し実質不可視になるため分岐する。
-     */
-    isGlobe?: boolean;
 }
 
 export interface WaypointManager {
@@ -179,22 +171,6 @@ export const createWaypointManager = (scene: Scene, options?: WaypointManagerOpt
 
         const timeSec = time * 0.001;
 
-        // 飛行機のワールド座標（flat のみ）。globe では機体ノード名が異なるため、
-        // ウェイポイント位置は各自の lat/lon/alt から真の ECEF を直接算出する。
-        let planeWorldPos: Vector3 | null = null;
-        if (!ctx.isGlobe) {
-            const root = scene.getTransformNodeByName(ctx.modelNodeName);
-            if (!root) return;
-            const childMesh = root.getChildMeshes(false)[0];
-            if (!childMesh) return;
-            childMesh.computeWorldMatrix(true);
-            planeWorldPos = childMesh.absolutePosition;
-        }
-
-        const planeGeo = circularOrbitPosition(
-            ctx.centerLat, ctx.centerLon, ctx.radiusM, ctx.angleDeg,
-        );
-
         for (let i = 0; i < waypoints.length; i++) {
             const wp = waypoints[i];
             if (!wp.mesh) continue;
@@ -237,45 +213,22 @@ export const createWaypointManager = (scene: Scene, options?: WaypointManagerOpt
             // ─── メッシュ位置更新 ───
             const active = !wp.passed || wp.fadeAlpha > 0;
             if (active) {
-                if (ctx.isGlobe) {
-                    // globe: ウェイポイント自身の lat/lon を真の ECEF に変換して配置し、
-                    // 地表接線（ENU）基底で「立たせる」。mesh.position は translation のため
-                    // floating origin リベースが効き、リング法線が進行方向を向く。
-                    const wpGeo = circularOrbitPosition(
-                        ctx.centerLat, ctx.centerLon, ctx.radiusM, wp.angleDeg,
-                    );
-                    geodeticToEcefToRef(wpGeo.lat, wpGeo.lon, ctx.altitudeM, gWpEcef);
-                    wp.mesh.position.copyFrom(gWpEcef);
-                    const heading = circularOrbitHeading(wp.angleDeg);
-                    if (surfaceOrientationToRef(gWpEcef, heading, gWpQuat)) {
-                        if (!wp.mesh.rotationQuaternion) {
-                            wp.mesh.rotationQuaternion = gWpQuat.clone();
-                        } else {
-                            wp.mesh.rotationQuaternion.copyFrom(gWpQuat);
-                        }
-                    }
-                    wp.mesh.setEnabled(true);
-
-                    if (materials[i]) {
-                        updateWaypointMaterialTime(materials[i], timeSec);
-                    }
-                    continue;
-                }
-
+                // ウェイポイント自身の lat/lon を真の ECEF に変換して配置し、
+                // 地表接線（ENU）基底で「立たせる」。mesh.position は translation のため
+                // floating origin リベースが効き、リング法線が進行方向を向く。
                 const wpGeo = circularOrbitPosition(
                     ctx.centerLat, ctx.centerLon, ctx.radiusM, wp.angleDeg,
                 );
-                const dLat = wpGeo.lat - planeGeo.lat;
-                const dLon = wpGeo.lon - planeGeo.lon;
-                const cosLat = Math.cos((planeGeo.lat * Math.PI) / 180);
-                const offsetX = dLon * 111320 * cosLat;
-                const offsetZ = dLat * 111320;
-
-                wp.mesh.position.set(
-                    planeWorldPos!.x + offsetX,
-                    planeWorldPos!.y,
-                    planeWorldPos!.z + offsetZ,
-                );
+                geodeticToEcefToRef(wpGeo.lat, wpGeo.lon, ctx.altitudeM, gWpEcef);
+                wp.mesh.position.copyFrom(gWpEcef);
+                const heading = circularOrbitHeading(wp.angleDeg);
+                if (surfaceOrientationToRef(gWpEcef, heading, gWpQuat)) {
+                    if (!wp.mesh.rotationQuaternion) {
+                        wp.mesh.rotationQuaternion = gWpQuat.clone();
+                    } else {
+                        wp.mesh.rotationQuaternion.copyFrom(gWpQuat);
+                    }
+                }
                 wp.mesh.setEnabled(true);
 
                 if (materials[i]) {

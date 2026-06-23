@@ -330,7 +330,7 @@ const start = async (): Promise<void> => {
     // ただし globe バックエンド（#275 P4）では floating origin のため demo 側の
     // `scene.pick` は頂点メッシュをヒットできない。そこでライブラリの hover イベント
     // （pick 非依存の幾何ピックで発火）も併用し、どちらかが hover を示せば hover 扱いに
-    // する。planar では従来どおり scene.pick が主、globe ではライブラリ hover が効く。
+    // する。globe ではライブラリ hover が効く。
     let libHoveringPoint = false;
     const scene = viewer.__debugScene;
     const renderCanvas =

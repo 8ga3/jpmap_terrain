@@ -1,14 +1,13 @@
 /**
- * artillery のステージ座標フレーム (Issue #404 P4-4)
+ * artillery のステージ座標フレーム (Issue #404 P4-4 / #414)
  *
- * planar / globe の差を 1 箇所に閉じ込めるための薄い抽象。
+ * globe（ECEF + floating origin）上でステージ物理を成立させるための薄い抽象。
  *
- * - planar: ステージ座標 = シーン座標（恒等）。重力は (0, -g, 0)。
- * - globe : `stageRoot`（ENU→ECEF の world 変換を固定した TransformNode）を作り、
- *   ステージの全メッシュをその子として配置する。子はローカル座標（= ENU、planar と
- *   同一規約: X=East, Y=Up, Z=North）で扱えるため、既存の配置/発射/命中ロジックを
- *   ほぼ無改変で流用できる。描画は floating origin が ECEF を正しく扱い、Havok は
- *   `scene.floatingOriginMode` の region 機能でステージ ECEF 近傍を float32 安全に解く。
+ * `stageRoot`（ENU→ECEF の world 変換を固定した TransformNode）を作り、
+ * ステージの全メッシュをその子として配置する。子はローカル座標（= ENU:
+ * X=East, Y=Up, Z=North）で扱えるため、既存の配置/発射/命中ロジックを
+ * ほぼ無改変で流用できる。描画は floating origin が ECEF を正しく扱い、Havok は
+ * `scene.floatingOriginMode` の region 機能でステージ ECEF 近傍を float32 安全に解く。
  *
  * ステージのローカル軸割り当て（X=East, Y=Up, Z=North）は East×Up = -North、すなわち
  * X×Y = -Z となる左手順序のため、ENU 基底 [east, up, north] を列に並べた行列の
@@ -24,7 +23,6 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core/scene";
 
-import type { TerrainEngine } from "../../lib/types";
 import { buildEnuFrame, buildEnuWorldMatrix } from "../../terrain/geo/enu";
 import { DEMO_GRAVITY_Y } from "./physics";
 
@@ -35,50 +33,31 @@ export interface StageOrigin {
 }
 
 export interface StageFrame {
-    /** globe 時は ENU→ECEF の stageRoot。planar 時は null（恒等）。 */
-    readonly root: TransformNode | null;
+    /** ENU→ECEF の stageRoot。 */
+    readonly root: TransformNode;
     /** Havok へ渡すワールド重力ベクトル。 */
     readonly gravity: Vector3;
-    /** 生成したステージノードをフレームへ取り込む（globe は stageRoot へ parent）。 */
+    /** 生成したステージノードをフレームへ取り込む（stageRoot へ parent）。 */
     attach(node: TransformNode): void;
-    /** ステージローカル座標（= ENU）→ ワールド。planar は恒等。 */
+    /** ステージローカル座標（= ENU）→ ワールド。 */
     localToWorld(local: Vector3, ref: Vector3): Vector3;
-    /** ワールド → ステージローカル座標。planar は恒等。 */
+    /** ワールド → ステージローカル座標。 */
     worldToLocal(world: Vector3, ref: Vector3): Vector3;
-    /** ワールド方向ベクトル → ステージローカル方向。planar は恒等。 */
+    /** ワールド方向ベクトル → ステージローカル方向。 */
     worldDirToLocal(dir: Vector3, ref: Vector3): Vector3;
     /** ステージローカルの「下」方向（重力方向）をワールドで返す単位ベクトル。 */
     readonly downWorld: Vector3;
 }
 
-const copyTo = (v: Vector3, ref: Vector3): Vector3 => {
-    ref.copyFrom(v);
-    return ref;
-};
-
 /**
  * ステージフレームを構築する。
  * @param scene  ステージを配置するシーン。
- * @param engine "planar" | "globe"。
- * @param origin globe 時の ENU 原点（測地座標）。
+ * @param origin ENU 原点（測地座標）。
  */
 export const createStageFrame = (
     scene: Scene,
-    engine: TerrainEngine,
     origin: StageOrigin,
 ): StageFrame => {
-    if (engine !== "globe") {
-        return {
-            root: null,
-            gravity: new Vector3(0, DEMO_GRAVITY_Y, 0),
-            attach: () => {},
-            localToWorld: copyTo,
-            worldToLocal: copyTo,
-            worldDirToLocal: copyTo,
-            downWorld: new Vector3(0, -1, 0),
-        };
-    }
-
     const frame = buildEnuFrame(origin.lat, origin.lon, origin.alt ?? 0);
     const world = buildEnuWorldMatrix(frame);
     const inv = Matrix.Invert(world);

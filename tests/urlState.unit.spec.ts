@@ -65,21 +65,21 @@ describe("urlState", () => {
             expect(result!.lon).toBe(100.0);
         });
 
-        it("planar では JAPAN_BOUNDS を超える緯度はクランプされる (#413)", () => {
-            const result = parseLatLonFromUrl("http://localhost/@50.0,139.0", {
-                terrainEngine: "planar",
+        it("globe では WORLD_BOUNDS を超える緯度が ±90 にクランプされる (#414)", () => {
+            const result = parseLatLonFromUrl("http://localhost/@120.0,139.0", {
+                terrainEngine: "globe",
             });
             expect(result).not.toBeNull();
-            expect(result!.lat).toBe(46);
+            expect(result!.lat).toBe(90);
             expect(result!.lon).toBe(139.0);
         });
 
-        it("planar では JAPAN_BOUNDS を下回る経度はクランプされる (#413)", () => {
-            const result = parseLatLonFromUrl("http://localhost/@35.0,100.0", {
-                terrainEngine: "planar",
+        it("globe では WORLD_BOUNDS を超える経度が ±180 にクランプされる (#414)", () => {
+            const result = parseLatLonFromUrl("http://localhost/@35.0,200.0", {
+                terrainEngine: "globe",
             });
             expect(result).not.toBeNull();
-            expect(result!.lon).toBe(122);
+            expect(result!.lon).toBe(180);
         });
 
         it("lat のみ指定の場合は null を返す", () => {
@@ -111,9 +111,9 @@ describe("urlState", () => {
             );
         });
 
-        it("?terrainEngine=planar → 'planar'（明示指定は尊重）", () => {
+        it("?terrainEngine=planar（撤去済み）→ 'globe'（lib 既定にフォールバック）", () => {
             expect(resolveEffectiveTerrainEngine("?terrainEngine=planar")).toBe(
-                "planar",
+                "globe",
             );
         });
 
@@ -481,16 +481,6 @@ describe("urlState", () => {
             expect(result!.lon).toBe(180);
         });
 
-        it("terrainEngine=planar では従来どおり JAPAN_BOUNDS でクランプする (#375 / #413)", () => {
-            const planar = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148",
-                { terrainEngine: "planar" }
-            );
-            expect(planar).not.toBeNull();
-            expect(planar!.lat).toBe(20);
-            expect(planar!.lon).toBe(122);
-        });
-
         it("未指定（lib 既定 globe）では WORLD_BOUNDS でクランプする (#413)", () => {
             const noEngine = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148"
@@ -508,17 +498,6 @@ describe("urlState", () => {
             expect(result).not.toBeNull();
             expect(result!.lat).toBeCloseTo(17.316969, 6);
             expect(result!.lon).toBeCloseTo(38.639148, 6);
-        });
-
-        it("options.terrainEngine は URL クエリより優先される (#375)", () => {
-            // URL は globe だが options で planar を明示 → JAPAN_BOUNDS でクランプ。
-            const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148?terrainEngine=globe",
-                { terrainEngine: "planar" }
-            );
-            expect(result).not.toBeNull();
-            expect(result!.lat).toBe(20);
-            expect(result!.lon).toBe(122);
         });
     });
 

@@ -1,7 +1,7 @@
 /**
  * グローブ地形シーン (Issue #275 Phase 1 + Phase 2)。
  *
- * 平面ワールドの `scenes/default.ts` に対する **並行構築** のグローブ（ECEF 楕円体 +
+ * かつての平面ワールド（撤去済み planar 実装）に対する **並行構築** として生まれたグローブ（ECEF 楕円体 +
  * Large World Rendering の floating origin）シーン。`GeospatialCamera` を中核に、
  * `geo/globeTileManager` で動的 LOD タイルを描画し、注視点を地形表面へ追従させる。
  *
@@ -972,7 +972,7 @@ export class GlobeScene {
         };
 
         // ---- 地形クリック通知（pick 非依存・floating origin 対応, #275 P4） ----
-        // 平面版（default.ts）は scene.pick で地形メッシュをヒットするが、floating origin 下では
+        // 平面版（撤去済み）は scene.pick で地形メッシュをヒットするが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックがブレる。そこでズーム/パンと同じく
         // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で 1 回反復）と交差させて
         // 緯度経度・標高を求める。ドラッグ（パン/回転）はしきい値で除外する。
@@ -1116,7 +1116,7 @@ export class GlobeScene {
         };
 
         // ---- ポリゴン頂点インタラクション（pick 非依存・floating origin 対応, #275 P4） ----
-        // 平面版（default.ts）は scene.pick で頂点メッシュをヒットするが、floating origin 下では
+        // 平面版（撤去済み）は scene.pick で頂点メッシュをヒットするが、floating origin 下では
         // レンダリング座標がずれてピックがブレうる。そこで terrain-click と同じく、真の ECEF カメラ
         // 位置からカーソル方向のレイを作り、各頂点 ECEF（globePolygonManager.getPickablePoints）との
         // 幾何関係（レイ最近接距離 ≤ 点スフィア半径）でヒット判定する。ドラッグ中の幾何量も
@@ -1693,7 +1693,7 @@ export class GlobeScene {
         // 3D 復帰時に戻す pitch[rad]（2D 切替直前を保存）。初期 pitch（tilt 由来）を既定とする。
         let savedPitch = camera.pitch;
 
-        // 2D の正射フラスタムを radius・アスペクトから設定する（planar default.ts と同式）。
+        // 2D の正射フラスタムを radius・アスペクトから設定する（撤去済み平面版と同式）。
         // perspective でターゲット平面に映る範囲 = radius * tan(fov/2) と一致させる。
         const applyOrthoFrustum = (): void => {
             const w = engine.getRenderWidth();

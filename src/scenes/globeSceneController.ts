@@ -91,7 +91,7 @@ import type {
     DefaultSceneController,
     DefaultSceneInitOptions,
     MarkerContext,
-} from "./default";
+} from "./sceneContract";
 import {
     GlobeScene,
     type GlobeSceneController,
@@ -1070,8 +1070,8 @@ export const createGlobeCircleManagerAdapter = (
 };
 
 /**
- * `DefaultScene` と同一シグネチャの `createScene` を提供する globe シーンファクトリ。
- * `JpmapTerrain.initAsync` は `terrainEngine` に応じて `DefaultScene` か本クラスを選ぶ。
+ * `DefaultSceneController` 互換の `createScene` を提供する globe シーンファクトリ。
+ * `JpmapTerrain` は terrainEngine=globe 単一化（#414）後、常に本クラスを使う。
  */
 export class GlobeSceneAdapter {
     createScene = async (
@@ -1422,7 +1422,7 @@ export const createGlobeSceneController = (
     // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
     // timelapse デモは `dateTime` を毎フレーム駆動し setSunState を連打するため、
     // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)を再計算して `globe-sun` ライトへ適用する。
-    // 太陽方向は computeSunPosition（平面シーン scenes/default.ts と同じ）で求める。明るさは globe では
+    // 太陽方向は computeSunPosition（旧 planar シーンと同じ）で求める。明るさは globe では
     // 時刻に依らず一定で、昼夜の境界は指向性ライトの幾何で表現する（applyGlobeSunState 参照）。
     // `dateTime` 未指定（null）のときは planar と同様、決定的フォールバック日時
     // （SUN_FALLBACK_DATETIME_ISO）で太陽位置を計算する。これにより初期化時（既定 dateTime=null）でも
@@ -1632,7 +1632,7 @@ export const createGlobeSceneController = (
         // ガードフラグ。uiDispose で true にし、各 rAF ループは次フレームをスケジュールしない。
         let uiDisposed = false;
         // 視点切替ボタン: globe バックエンドでも 2D(ortho) を有効化 (#395 / #349)。
-        // ラベルは「次に切り替える先」を示すアクションとして表示する（planar default.ts と同パターン）。
+        // ラベルは「次に切り替える先」を示すアクションとして表示する（旧 planar と同パターン）。
         updateViewModeToggleLabel = (mode: ViewMode): void => {
             ui.viewModeButton.textContent = mode === "3d" ? "2D" : "3D";
             ui.viewModeButton.setAttribute(

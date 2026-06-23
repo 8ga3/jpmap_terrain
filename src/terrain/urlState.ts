@@ -1,6 +1,6 @@
 /** URL に緯度・経度・カメラ姿勢を埋め込み / 復元するモジュール (Issue #64) */
 
-import { clamp, JAPAN_BOUNDS } from "./gsiTile";
+import { clamp } from "./gsiTile";
 import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
 import type { MapType, ViewMode, TerrainEngine } from "../lib/types";
 
@@ -10,23 +10,10 @@ export interface LatLon {
 }
 
 /**
- * globe バックエンド用の緯度経度クランプ範囲（全球）。
- * planar は日本被覆域（{@link JAPAN_BOUNDS}）のみ描画するためクランプするが、
- * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する (#375)。
+ * 緯度経度クランプ範囲（全球）。
+ * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する (#375 / #414)。
  */
 export const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
-
-/**
- * terrainEngine に応じた緯度経度クランプ範囲を返す (#375 / #413)。
- * - `planar` → {@link JAPAN_BOUNDS}（日本被覆域）
- * - それ以外（globe / 未指定）→ {@link WORLD_BOUNDS}（全球）
- *
- * 未指定（`undefined`）は lib 既定（`globe`, #413）に従い全球を許容する。
- */
-const resolveLatLonBounds = (
-    terrainEngine?: TerrainEngine,
-): typeof JAPAN_BOUNDS | typeof WORLD_BOUNDS =>
-    terrainEngine === "planar" ? JAPAN_BOUNDS : WORLD_BOUNDS;
 
 /** カメラ姿勢を含む URL 状態 (Issue #64) */
 export interface CameraUrlState extends LatLon {
@@ -63,9 +50,7 @@ const GLOBE_MAX_RADIUS_SCALE = 4;
  * globe（GeospatialCamera）バックエンドはカメラの `radius` を altitude として URL に書き出す。
  * GeospatialCamera の既定 `radiusMax` は planetRadius × 4（= {@link WGS84_SEMI_MAJOR_AXIS_M} ×
  * {@link GLOBE_MAX_RADIUS_SCALE} = 25,512,548m）であり、高高度（全球視点）でもクランプで丸めない
- * よう上限をこの値に合わせる (#369)。planar では camera.position.y が upperRadiusLimit（75km）で
- * 自前クランプされるため、本上限の引き上げは planar の URL 復元挙動に影響しない
- * （planar 由来の値は最大でも ≈ 78776m）。
+ * よう上限をこの値に合わせる (#369)。
  */
 const ALTITUDE_MAX = WGS84_SEMI_MAJOR_AXIS_M * GLOBE_MAX_RADIUS_SCALE;
 
@@ -88,7 +73,6 @@ const ZOOM_LEVEL_PRECISION = 2;
  * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する (#275 Phase 4 / P4-1)。
  * 各デモ（viewer / polygon 等）で共通利用するため本モジュールに集約する。
  * - `globe` → `"globe"`（GeospatialCamera + ECEF の地球儀バックエンド）
- * - `planar` → `"planar"`（従来の平面シーン）
  * - 上記以外 / 未指定 → `undefined`（lib 既定の `"globe"` にフォールバック, #413）
  *
  * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
@@ -98,7 +82,6 @@ export const resolveTerrainEngine = (
 ): TerrainEngine | undefined => {
     const value = new URLSearchParams(search).get("terrainEngine");
     if (value === "globe") return "globe";
-    if (value === "planar") return "planar";
     return undefined;
 };
 
@@ -108,8 +91,8 @@ export const resolveTerrainEngine = (
  * （{@link JPMAP_TERRAIN_DEFAULTS}.terrainEngine = `"globe"`）を返す。
  *
  * 各デモが `JpmapTerrain.create` 前にカメラ高度・移動方向・物理ステージなどを
- * バックエンド別に分岐する際、`undefined` を旧既定 `planar` と誤認して globe シーン上で
- * planar 用ロジックを適用してしまうリグレッション（#413 既定化）を防ぐために使用する。
+ * バックエンド別に分岐する際、`undefined` を旧既定と誤認するリグレッション（#413 既定化）を
+ * 防ぐために使用する。
  *
  * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
  */
@@ -211,24 +194,19 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）は Google Maps 互換の
  * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する (#254)。
  *
- * `options.terrainEngine` が `"planar"` の場合、緯度経度を {@link JAPAN_BOUNDS}（日本被覆域）で
- * クランプする。`"globe"` / 未指定の場合は {@link WORLD_BOUNDS}（全球）でクランプする (#375 / #413)。
- * `options` 未指定（または `options.terrainEngine` 未指定）時は URL クエリ `?terrainEngine=` を
- * フォールバックとして解決する。URL にも指定が無ければ lib 既定（`globe`, #413）に従い全球で
- * クランプするため、呼び出し側が terrainEngine を渡さなくても URL 1本で正しく復元できる (#375)。
+ * 緯度経度は {@link WORLD_BOUNDS}（全球）でクランプする (#375 / #413 / #414)。
+ * `options.terrainEngine` シグネチャは後方互換のため維持する。
  */
 export const parseCameraStateFromUrl = (
     url: string,
+    // options は後方互換のため維持する（#414 で globe 単一化により bounds 解決には未使用）。
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     options?: { terrainEngine?: TerrainEngine },
 ): CameraUrlState | null => {
     try {
         const parsed = new URL(url, "http://localhost");
 
-        // options.terrainEngine 未指定時は URL クエリ `?terrainEngine=` をフォールバック解決する (#375)。
-        // これにより呼び出し側が terrainEngine を渡し忘れても URL 1本で globe 復元できる。
-        const terrainEngine =
-            options?.terrainEngine ?? resolveTerrainEngine(parsed.search);
-        const bounds = resolveLatLonBounds(terrainEngine);
+        const bounds = WORLD_BOUNDS;
 
         // pathname + hash のみに @lat,lon を適用（userinfo やクエリ値の @ を誤検出しない）
         const target = parsed.pathname + parsed.hash;

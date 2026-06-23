@@ -30,9 +30,9 @@ describe("resolveArtilleryTerrainEngine", () => {
         expect(r.engine).toBeUndefined();
     });
 
-    it("passes through planar", () => {
+    it("treats planar (removed backend) as unspecified → undefined", () => {
         const r = resolveArtilleryTerrainEngine("?terrainEngine=planar");
-        expect(r.engine).toBe("planar");
+        expect(r.engine).toBeUndefined();
     });
 
     it("passes through globe (now supported via stageFrame ENU physics)", () => {

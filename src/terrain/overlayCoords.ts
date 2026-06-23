@@ -13,7 +13,7 @@
  */
 
 import { JAPAN_BOUNDS } from "./gsiTile";
-import { METERS_PER_DEGREE_LAT, type MarkerContext } from "../scenes/default";
+import { METERS_PER_DEGREE_LAT, type MarkerContext } from "../scenes/sceneContract";
 
 /**
  * Marker / Polygon が共有する境界コンテキスト。

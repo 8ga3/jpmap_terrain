@@ -18,7 +18,7 @@ import {
     computeDynamicLineHeight,
     latLonToWorld,
 } from "./overlayCoords";
-import { type MarkerContext } from "../scenes/default";
+import { type MarkerContext } from "../scenes/sceneContract";
 import type {
     MarkerHandle,
     MarkerOptions,

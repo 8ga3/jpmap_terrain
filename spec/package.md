@@ -45,7 +45,7 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | パラメータ | 型 | デフォルト値 | 説明 |
 |---|---|---|---|
 | `engine` | `"webgpu" \| "webgl2"` | `"webgpu"` | 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバック |
-| `terrainEngine` | `"globe" \| "planar"` | `"globe"` | 地形描画バックエンド（Issue #349 Phase 4 / #413 Phase 5）。既定の `"globe"` は ECEF 楕円体 + GeospatialCamera + floating origin。`"planar"` は従来の平面ワールドで明示指定時のみ使用 |
+| `terrainEngine` | `"globe"` | `"globe"` | 地形描画バックエンド（Issue #349 Phase 4 / #413 Phase 5 / #414 Phase 6）。`"globe"` のみ（ECEF 楕円体 + GeospatialCamera + floating origin）。Phase 6 で従来の平面（planar）バックエンドは撤去済み |
 | `lat` | `number` | `35.681236` | 緯度（Babylon.js Z 軸に対応） |
 | `lon` | `number` | `139.767125` | 経度（Babylon.js X 軸に対応） |
 | `altitude` | `number` | `2000` | カメラのワールド高度（メートル）。`camera.position.y = target.y + radius·cos(beta)` で算出される値であり、カメラの地表からの距離（radius）とは異なる。Babylon.js Y 軸に対応 |
@@ -400,9 +400,8 @@ interface MarkerOptions {
 **2D モードにおけるパス形式（Issue #254）:**
 
 - 3D モードのパス形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。バックエンドにより意味が異なる (#369):
-    - planar: **カメラのワールド高度**（`camera.position.y`）。値は実質 ≈78776m（富士山頂 + upperRadiusLimit 75km）まで。
-    - globe（`terrainEngine=globe`）: **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）。上限は globe の最大 radius = planetRadius×4 に由来する。
+  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。globe（`terrainEngine=globe`）の意味 (#369):
+    - **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）。上限は globe の最大 radius = planetRadius×4 に由来する。
 - 2D モードのパス形式: `/@<lat>,<lon>,<zoom>z`（Google Maps 互換）
   - `zoom` は Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]
   - 2D では平行投影のためカメラの海抜高度は表示範囲に影響しないため、altitude の代わりにズームレベルを使用する
@@ -1165,7 +1164,6 @@ jpmap_terrain/
 ├── src/
 │   ├── index.ts             # 既存アプリ用エントリ（デモ用に残す）
 │   ├── lib.ts               # パッケージ用エントリ（新規）
-│   ├── createScene.ts
 │   └── terrain/
 └── package.json
 ```

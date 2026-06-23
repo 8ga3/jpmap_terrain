@@ -2,7 +2,7 @@
  * ModelManager の単体テスト (Issue #243)。
  *
  * - `@babylonjs/core/Meshes/transformNode` をスタブ化し Babylon 実体の生成を回避
- * - `./overlayCoords` をスタブ化し `scenes/default` の大きな依存チェーンを断ち切る
+ * - `./overlayCoords` をスタブ化し overlayCoords 経由の大きな依存チェーンを断ち切る
  * - `@babylonjs/core/Loading/sceneLoader` と `@babylonjs/loaders/glTF` もスタブ化
  *
  * 検証対象: CRUD / バリデーション / dispose の冪等性 / altitudeMode
@@ -38,7 +38,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/transformNode", () => {
     return { TransformNode };
 });
 
-// ---- overlayCoords スタブ（scenes/default 依存を断ち切る）----
+// ---- overlayCoords スタブ（重い依存チェーンを断ち切る）----
 jest.unstable_mockModule("../src/terrain/overlayCoords", () => ({
     latLonToWorld: () => ({ wx: 0, wz: 0 }),
     assertLatLonInBounds: (lat: number, lon: number, prefix: string) => {

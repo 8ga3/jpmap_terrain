@@ -294,7 +294,18 @@ jest.unstable_mockModule("../src/terrain/modelManager", () => ({
     },
 }));
 
-jest.unstable_mockModule("../src/scenes/default", () => {
+// globe バックエンドの overlay マネージャ生成は実関数を使う（内部の terrain/polygon・
+// terrain/circle・terrain/modelManager は上で軽量モック済み）。globe シーンモックの
+// controller.getXxxManager() からこれらへ委譲し、planar 経路撤去（#414）後も
+// addMarker/addPolygon/addCircle/addModel の公開 API テストを成立させる。
+const { createMarkerManager } = await import("../src/terrain/markerManager");
+const { createPolygonManager } = await import("../src/terrain/polygonManager");
+const { createCircleManager } = await import("../src/terrain/circleManager");
+const { createModelManager: createModelManagerMock } = await import(
+    "../src/terrain/modelManager"
+);
+
+jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
     // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
     let refreshCallCount = 0;
@@ -434,7 +445,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         azimuth?: number;
         tilt?: number;
     };
-    class DefaultScene {
+    class GlobeSceneAdapter {
         createScene = jest.fn(
             async (
                 _engine: unknown,
@@ -493,6 +504,29 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     }
                     if (shouldRefresh && centerChanged) refresh();
                 };
+                // globe コントローラの overlay 用コンテキスト（公開 managers 経由で消費される）。
+                const markerContext = {
+                    scene: { onBeforeRenderObservable: createSceneObservable() },
+                    tileManager: {
+                        queryElevationAtWorld: () => 0,
+                        subscribeTerrainUpdated: () => () => {
+                            /* no-op */
+                        },
+                    },
+                    getOrigin: () => ({
+                        lat,
+                        lon,
+                        gridResidualX: 0,
+                        gridResidualZ: 0,
+                    }),
+                    getCameraPosition: () => ({
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                        radius: 1000,
+                        beta: Math.PI / 4,
+                    }),
+                };
                 opts?.onReady?.({
                     getLat: () => lat,
                     getLon: () => lon,
@@ -542,28 +576,32 @@ jest.unstable_mockModule("../src/scenes/default", () => {
                     setSunShadows: (enabled: boolean) => {
                         sunShadowsCalls.push(enabled);
                     },
-                    getMarkerContext: () => ({
-                        scene: { onBeforeRenderObservable: createSceneObservable() },
-                        tileManager: {
-                            queryElevationAtWorld: () => 0,
-                            subscribeTerrainUpdated: () => () => {
-                                /* no-op */
-                            },
-                        },
-                        getOrigin: () => ({
-                            lat,
-                            lon,
-                            gridResidualX: 0,
-                            gridResidualZ: 0,
-                        }),
-                        getCameraPosition: () => ({
-                            x: 0,
-                            y: 0,
-                            z: 0,
-                            radius: 1000,
-                            beta: Math.PI / 4,
-                        }),
-                    }),
+                    getMarkerContext: () => markerContext,
+                    // globe バックエンド専用フック。公開 manager 互換アダプタを実関数で構築する。
+                    getMarkerManager: () =>
+                        createMarkerManager(
+                            markerContext as unknown as Parameters<
+                                typeof createMarkerManager
+                            >[0],
+                        ),
+                    getPolygonManager: () =>
+                        createPolygonManager(
+                            markerContext as unknown as Parameters<
+                                typeof createPolygonManager
+                            >[0],
+                        ),
+                    getCircleManager: () =>
+                        createCircleManager(
+                            markerContext as unknown as Parameters<
+                                typeof createCircleManager
+                            >[0],
+                        ),
+                    getModelManager: () =>
+                        createModelManagerMock(
+                            markerContext as unknown as Parameters<
+                                typeof createModelManagerMock
+                            >[0],
+                        ),
                     subscribeTerrainClick: (
                         listener: (e: TerrainClickEventLike) => void,
                     ) => {
@@ -605,8 +643,7 @@ jest.unstable_mockModule("../src/scenes/default", () => {
         );
     }
     return {
-        DefaultScene,
-        METERS_PER_DEGREE_LAT: 111320,
+        GlobeSceneAdapter,
         __getRefreshCount: (): number => refreshCallCount,
         __resetRefreshCount: (): void => {
             refreshCallCount = 0;
@@ -716,7 +753,7 @@ type UiTarget =
     | "mapToggle"
     | "viewModeButton"
     | "attribution";
-const sceneMockModule = (await import("../src/scenes/default")) as unknown as {
+const sceneMockModule = (await import("../src/scenes/globeSceneController")) as unknown as {
     __getRefreshCount: () => number;
     __resetRefreshCount: () => void;
     __getUiVisibility: () => Record<UiTarget, boolean>;
@@ -799,13 +836,10 @@ describe("JpmapTerrain (skeleton)", () => {
     type Viewer = Awaited<ReturnType<typeof JpmapTerrain.create>>;
     const createdViewers: Viewer[] = [];
     const create: typeof JpmapTerrain.create = async (mount, opts) => {
-        // 本スイートは planar の `scenes/default` のみモックしているため、
-        // 既定が globe へ切り替わった後（#413）も planar 経路を明示して固定する。
-        // 呼び出し側 opts より後に terrainEngine を置き、常に planar を強制する。
-        // globe 経路は globeSceneController.unit.spec.ts が担当する。
+        // 本スイートは globe の `scenes/globeSceneController` をモックしている。
+        // 既定（#413）が globe のためそのまま globe 経路を通る。
         const viewer = await JpmapTerrain.create(mount, {
             ...opts,
-            terrainEngine: "planar",
         });
         createdViewers.push(viewer);
         return viewer;
@@ -1315,8 +1349,8 @@ describe("JpmapTerrain (skeleton)", () => {
             // createBabylonEngine(canvas, preferredEngine, options) のシグネチャ
             const callArgs = createEngineMock.mock.calls[0];
             expect(callArgs[1]).toBe("webgl2");
-            // planar 経路では high precision matrix は不要（globe のみ true, #413）。
-            expect(callArgs[2]).toEqual({ highPrecisionMatrix: false });
+            // globe 経路では high precision matrix が必須（#413 / #414）。
+            expect(callArgs[2]).toEqual({ highPrecisionMatrix: true });
         });
 
         it("engine 未指定時はデフォルト (webgpu) で engineFactory を呼ぶ", async () => {

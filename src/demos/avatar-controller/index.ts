@@ -15,8 +15,8 @@
  * - 地面クリックでスポーン地点を変更
  * - 進行方向に自動回転
  * - 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
- * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 globe, #275 Phase 5 #413）
- *   globe では自動スクロール追従はカメラ中心（viewer.lat/lon）駆動で行う
+ * - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413）
+ *   自動スクロール追従はカメラ中心（viewer.lat/lon）駆動で行う
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
@@ -52,12 +52,6 @@ import {
     tickJump,
     type JumpState,
 } from "./jump";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Matrix } from "@babylonjs/core/Maths/math.vector";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
-import { Camera } from "@babylonjs/core/Cameras/camera";
-import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import { extractOrthoStableFrustumPlanes } from "../../terrain/tileManager";
 import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 
 const METERS_PER_DEGREE_LAT = 111320;
@@ -92,24 +86,16 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
-    // 実効エンジンで解決する（未指定は lib 既定 globe, #413）。undefined を旧既定 planar と
-    // 誤認すると、globe シーン上で planar 用の方位規約（azimuth 符号）・追従ロジックが適用され、
-    // 移動方向がカメラ向きに追従しない（北固定に見える）リグレッションを起こすため。
     const terrainEngine = resolveEffectiveTerrainEngine(location.search);
-    // globe バックエンドでは ArcRotateCamera("terrain-camera") と external frustum
-    // 系（detachTileCamera / refreshTerrainWithExternalFrustum）が存在しない（globe では
-    // GeospatialCamera ベースでタイルは camera.center 駆動で自動ストリーミングされる）。
-    // そのため自動スクロール追従はカメラ中心（viewer.lat/lon）を直接動かす方式に切替える。
-    const isGlobe = terrainEngine === "globe";
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
         ...(terrainEngine ? { terrainEngine } : {}),
         // globe は組み込みの WASD キーボードパンを持つ。本デモは WASD をアバター操作に
-        // 使い、カメラは自動スクロールでアバターを追従させるため、globe では WASD パンのみ
+        // 使い、カメラは自動スクロールでアバターを追従させるため、WASD パンのみ
         // 無効化して二重スクロール（カメラ競合）を防ぐ。ドラッグパンは手動での視点移動用に
         // 有効のまま残す。
-        ...(isGlobe ? { enableKeyboardPan: false } : {}),
+        enableKeyboardPan: false,
         lat: camera?.lat ?? TOKYO_STATION.lat,
         lon: camera?.lon ?? TOKYO_STATION.lon,
         altitude: camera?.altitude ?? 500,
@@ -140,98 +126,9 @@ const start = async (): Promise<void> => {
     let jumpRequested = false;
 
     /**
-     * 自動スクロール — Flight demo Follow モードと同じ手法 (Issue #287):
-     * - `detachTileCamera()` で内部の自動タイル更新監視を停止
-     * - 毎フレーム `arcCamera.target.x/z` を直接動かして滑らかに追従
-     *   (setter 経由だと毎回 `refreshTerrain → requestId++` で in-flight が
-     *    キャンセルされ、スクロール中に新規タイルがロードされない)
-     * - 距離スロットル + in-flight ガード付きで
-     *   `refreshTerrainWithExternalFrustum` を発火し新規タイルをロード
+     * 自動スクロール — カメラ中心（viewer.lat/lon）を直接動かす方式。
+     * globe ではタイルは camera.center 駆動で自動ストリーミングされる。
      */
-    const SCROLL_REFRESH_DISTANCE_M = 5;
-    const SCROLL_REFRESH_INTERVAL_MS = 100;
-    /** カメラ方位の変化がこれ以上で refresh 発火（度） */
-    const CAMERA_ROT_REFRESH_DEG = 3;
-    /** カメラ tilt の変化がこれ以上で refresh 発火（度） */
-    const CAMERA_TILT_REFRESH_DEG = 2;
-    let lastRefreshLat = viewer.lat;
-    let lastRefreshLon = viewer.lon;
-    let lastRefreshTime = 0;
-    let lastRefreshAzimuth = viewer.azimuth;
-    let lastRefreshTilt = viewer.tilt;
-    let lastRefreshAltitude = viewer.altitude;
-    /** 高度変化率がこれ以上で refresh 発火 */
-    const CAMERA_ALT_REFRESH_RATIO = 0.1;
-    let scrollRefreshInFlight = false;
-    /** detach は初回移動時に遅延実行する（初期表示の境界タイル欠けを防ぐ） */
-    let tileCameraDetached = false;
-
-    // ArcRotateCamera への直接アクセス (Flight Follow モードと同じパターン)
-    const scene = viewer.__debugScene;
-    const arcCamera = scene?.getCameraByName("terrain-camera") as
-        | ArcRotateCamera
-        | undefined;
-
-    /** in-flight ガード付きでタイル refresh を発火する共通ヘルパー */
-    const triggerTileRefresh = (timestamp: number): void => {
-        if (!arcCamera || scrollRefreshInFlight) return;
-        if (timestamp - lastRefreshTime < SCROLL_REFRESH_INTERVAL_MS) return;
-        const refLatNow = viewer.lat;
-        const refLonNow = viewer.lon;
-
-        // 2D (ortho) モードでは回転に依存しない安定 frustum planes を使う (#286)。
-        // 通常の view*proj から抽出すると alpha 回転でタイル選択が膨らみ
-        // maxTiles/maxVisited 到達や LOD 乱れが発生するため。
-        let frustumPlanes: { normal: { x: number; y: number; z: number }; d: number }[];
-        if (arcCamera.mode === Camera.ORTHOGRAPHIC_CAMERA) {
-            frustumPlanes = extractOrthoStableFrustumPlanes(arcCamera);
-        } else {
-            const viewMat = arcCamera.getViewMatrix();
-            const projMat = arcCamera.getProjectionMatrix();
-            const transform = Matrix.Identity();
-            viewMat.multiplyToRef(projMat, transform);
-            const rawPlanes: Plane[] = Array.from(
-                { length: 6 },
-                () => new Plane(0, 0, 0, 0),
-            );
-            Frustum.GetPlanesToRef(transform, rawPlanes);
-            frustumPlanes = rawPlanes.map((p) => ({
-                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
-                d: p.d,
-            }));
-        }
-
-        const cameraPosition = {
-            x: arcCamera.position.x - arcCamera.target.x,
-            y: arcCamera.position.y - arcCamera.target.y,
-            z: arcCamera.position.z - arcCamera.target.z,
-        };
-        lastRefreshLat = refLatNow;
-        lastRefreshLon = refLonNow;
-        lastRefreshAzimuth = viewer.azimuth;
-        lastRefreshTilt = viewer.tilt;
-        lastRefreshAltitude = viewer.altitude;
-        lastRefreshTime = timestamp;
-        scrollRefreshInFlight = true;
-        void viewer
-            .refreshTerrainWithExternalFrustum(
-                refLatNow,
-                refLonNow,
-                frustumPlanes,
-                cameraPosition,
-            )
-            .finally(() => {
-                scrollRefreshInFlight = false;
-                // タイル reposition 後にアバターの world 座標を再計算し origin ズレを解消する
-                viewer.updateModel(MODEL_ID, {
-                    lat: avatarLat,
-                    lon: avatarLon,
-                    altitudeMode: "terrain",
-                    altitude: jumpState.altitude,
-                    gravity: true,
-                });
-            });
-    };
 
     viewer.addModel(MODEL_ID, {
         url: humanWalkGlbUrl,
@@ -363,11 +260,6 @@ const start = async (): Promise<void> => {
         autoScrollCheckbox.checked = autoScrollEnabled;
         autoScrollCheckbox.addEventListener("change", () => {
             autoScrollEnabled = autoScrollCheckbox.checked;
-            // OFF にしたとき detach 済みなら通常のタイル監視を再開する
-            if (!autoScrollEnabled && tileCameraDetached) {
-                viewer.attachTileCamera();
-                tileCameraDetached = false;
-            }
         });
     }
 
@@ -449,9 +341,9 @@ const start = async (): Promise<void> => {
         // 画面（カメラ）方位に合わせて回転: 入力の "up" = カメラ前方。
         // `rotateByAzimuth` は planar（ArcRotateCamera alpha 由来, 北=0°・反時計回り正）の
         // 方位規約に合わせてある。globe の azimuth は標準（北=0°・時計回り正）で handedness が
-        // 逆のため、globe では符号を反転して入力をカメラ前方へ正しく揃える。
+        // 逆のため、符号を反転して入力をカメラ前方へ正しく揃える。
         const screen = combineInputs([kb, gp, js]);
-        const headingAzimuth = isGlobe ? -viewer.azimuth : viewer.azimuth;
+        const headingAzimuth = -viewer.azimuth;
         return rotateByAzimuth(screen, headingAzimuth);
     };
 
@@ -564,10 +456,6 @@ const start = async (): Promise<void> => {
             if (camDelta.deltaTilt !== 0) {
                 viewer.tilt = viewer.tilt + camDelta.deltaTilt;
             }
-            // detach 中は setter だけではタイル更新されないため手動 refresh
-            if (tileCameraDetached) {
-                triggerTileRefresh(timestamp);
-            }
         }
 
         // --- 自動スクロール ---
@@ -575,21 +463,9 @@ const start = async (): Promise<void> => {
         const isMovingForScroll = isJumping(jumpState)
             ? moveVectorMagnitude(jumpState.lockedDirection) > MOVING_THRESHOLD
             : mag > MOVING_THRESHOLD;
-        if (isMovingForScroll && autoScrollEnabled && (arcCamera || isGlobe)) {
+        if (isMovingForScroll && autoScrollEnabled) {
             const cameraLatNow = viewer.lat;
             const cameraLonNow = viewer.lon;
-            // 2D (ortho) モードでは altitude/tilt から可視範囲を推定できないため、
-            // ortho サイズを extent として渡す。
-            // 短辺側を使うことでアスペクト比に関わらず画面外に出ないことを保証する。
-            // globe は常に "3d" のためこの分岐には入らない。
-            const is2D = viewer.viewMode === "2d";
-            const viewExtentOverride =
-                is2D && arcCamera
-                    ? Math.min(
-                          arcCamera.orthoTop ?? 0,
-                          arcCamera.orthoRight ?? 0,
-                      ) || undefined
-                    : undefined;
             const scroll = computeAutoScroll({
                 avatarLat,
                 avatarLon,
@@ -599,75 +475,12 @@ const start = async (): Promise<void> => {
                 cameraTilt: viewer.tilt,
                 deadzoneRatio: DEFAULT_DEADZONE_RATIO,
                 scrollLerp: DEFAULT_SCROLL_LERP,
-                viewExtentOverride,
             });
             if (scroll.scrolled) {
-                if (isGlobe) {
-                    // globe: カメラ中心を直接動かす。タイルは camera.center 駆動で
-                    // 自動ストリーミングされるため external frustum refresh は不要。
-                    viewer.lat = scroll.lat;
-                    viewer.lon = scroll.lon;
-                } else if (arcCamera) {
-                    // 初回スクロール時に detach する（初期表示の境界タイル欠けを防ぐ）
-                    if (!tileCameraDetached) {
-                        viewer.detachTileCamera();
-                        tileCameraDetached = true;
-                    }
-                    // (1) camera.target を直接動かして滑らかに追従 (setter は呼ばない)
-                    const dLat = scroll.lat - cameraLatNow;
-                    const dLon = scroll.lon - cameraLonNow;
-                    const metersPerDegLon =
-                        METERS_PER_DEGREE_LAT *
-                        Math.cos((cameraLatNow * Math.PI) / 180);
-                    arcCamera.target.x += dLon * metersPerDegLon;
-                    arcCamera.target.z += dLat * METERS_PER_DEGREE_LAT;
-
-                    // (2) 距離スロットル + in-flight ガード付きでタイル refresh
-                    const refLatNow = viewer.lat;
-                    const refLonNow = viewer.lon;
-                    const movedLat =
-                        (refLatNow - lastRefreshLat) * METERS_PER_DEGREE_LAT;
-                    const movedLon =
-                        (refLonNow - lastRefreshLon) *
-                        METERS_PER_DEGREE_LAT *
-                        Math.cos((refLatNow * Math.PI) / 180);
-                    const movedM = Math.hypot(movedLat, movedLon);
-                    if (movedM >= SCROLL_REFRESH_DISTANCE_M) {
-                        triggerTileRefresh(timestamp);
-                    }
-                }
-            }
-        }
-
-        // カメラのチルト・パン（横回転）・ズーム・ユーザー操作に追従するタイル refresh。
-        // detach 後は内部 observer が無効なので、自前で変化を監視して発火する。
-        if (tileCameraDetached && arcCamera) {
-            const rotDelta = Math.abs(
-                ((viewer.azimuth - lastRefreshAzimuth + 540) % 360) - 180,
-            );
-            const tiltDelta = Math.abs(viewer.tilt - lastRefreshTilt);
-            const altRatio =
-                lastRefreshAltitude > 0
-                    ? Math.abs(viewer.altitude - lastRefreshAltitude) /
-                      lastRefreshAltitude
-                    : 0;
-            // パン操作（lat/lon 変化）の検出
-            const refLatNow2 = viewer.lat;
-            const refLonNow2 = viewer.lon;
-            const panM = Math.sqrt(
-                ((refLatNow2 - lastRefreshLat) * METERS_PER_DEGREE_LAT) ** 2 +
-                    ((refLonNow2 - lastRefreshLon) *
-                        METERS_PER_DEGREE_LAT *
-                        Math.cos((refLatNow2 * Math.PI) / 180)) **
-                        2,
-            );
-            if (
-                rotDelta >= CAMERA_ROT_REFRESH_DEG ||
-                tiltDelta >= CAMERA_TILT_REFRESH_DEG ||
-                altRatio >= CAMERA_ALT_REFRESH_RATIO ||
-                panM >= SCROLL_REFRESH_DISTANCE_M
-            ) {
-                triggerTileRefresh(timestamp);
+                // globe: カメラ中心を直接動かす。タイルは camera.center 駆動で
+                // 自動ストリーミングされるため external frustum refresh は不要。
+                viewer.lat = scroll.lat;
+                viewer.lon = scroll.lon;
             }
         }
 
