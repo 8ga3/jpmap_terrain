@@ -34,7 +34,6 @@ import { createRouteLine, type RouteLine } from "./routeLine";
 import { createWaypointManager, type WaypointManager } from "./waypoints";
 import { createFlightAudio, type FlightAudio } from "./flightAudio";
 import { createGlobeAfterburner, type Afterburner } from "./globeAfterburner";
-import { toTileXY, TILE_MAX_ZOOM } from "../../terrain/gsiTile";
 import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
@@ -158,15 +157,11 @@ const start = async (): Promise<void> => {
     // Follow モードでのタイル中心更新スロットル
     let lastTileUpdateTime = 0;
     let tileRefreshInFlight = false;
-    /** グリッド原点ジャンプが発生したフレームで1回だけ afterburner.reset() を呼ぶためのフラグ */
-    let afterburnerResetNeeded = false;
     let lastRefreshLat = TOKYO_STATION.lat;
     let lastRefreshLon = TOKYO_STATION.lon;
     let lastRefreshRotationOffset = FOLLOW_CAMERA_ROTATION_OFFSET;
     let lastRefreshHeightOffset = FOLLOW_CAMERA_HEIGHT_OFFSET;
     let lastRefreshRadius = FOLLOW_CAMERA_RADIUS;
-    /** 前回 refresh 時の centerTile (タイルジャンプ検出用) */
-    let lastCenterTile = toTileXY(TOKYO_STATION.lat, TOKYO_STATION.lon, TILE_MAX_ZOOM);
     /** Follow モードでタイル中心を飛行機位置に追従させる最小間隔 (ms) */
     const TILE_UPDATE_INTERVAL_MS = 300;
     /** 緯度/経度差がこの距離 (m) を超えたら更新を発火 */
@@ -976,13 +971,6 @@ const start = async (): Promise<void> => {
                 lastRefreshRadius = followCamRadius;
                 lastTileUpdateTime = timestamp;
                 tileRefreshInFlight = true;
-                // centerTile が変わるとき gridResidual がタイルサイズ単位でジャンプする。
-                // 事前に centerTile を比較して検出し、reset フラグを立てる。
-                const currentTile = toTileXY(pos.lat, pos.lon, TILE_MAX_ZOOM);
-                if (currentTile.x !== lastCenterTile.x || currentTile.y !== lastCenterTile.y) {
-                    afterburnerResetNeeded = true;
-                }
-                lastCenterTile = currentTile;
                 // この呼び出しの同期部分で gridResidualX/Z が更新される。
                 void viewer
                     .refreshTerrainWithExternalFrustum(
@@ -1012,14 +1000,6 @@ const start = async (): Promise<void> => {
             rotation: { y: heading },
             gravity: false,
         });
-
-        // updateModel で root.position が確定した後にトレイルをリセットする。
-        // refreshTerrainWithExternalFrustum が走ったフレームでのみ1回だけ実行。
-        // トレイルは絶対 ECEF 履歴で構築され origin ジャンプの影響を受けないため、
-        // reset するとタイル境界ごとに炎が一瞬畳まれて見えてしまう。フラグのみ消化する。
-        if (afterburnerResetNeeded) {
-            afterburnerResetNeeded = false;
-        }
 
         // アフターバーナーの毎フレーム更新（軌道パラメータから真 ECEF を算出して
         // トレイルをリビルド）。
