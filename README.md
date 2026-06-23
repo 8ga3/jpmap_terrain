@@ -5,7 +5,7 @@
 ## 概要
 
 - 目的: 標高タイルを使った地形可視化の実装と検証
-- 技術スタック: TypeScript / Babylon.js / Webpack / Playwright / Jest
+- 技術スタック: TypeScript / Babylon.js / Vite（デモ）/ tsup（ライブラリ）/ Playwright / Jest
 - バージョン: 0.1.0
 
 ## npm パッケージとしての利用
@@ -100,10 +100,9 @@ npm start
 
 - 形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
 - `altitude`: カメラの高さ（m）。範囲 [50, 25,512,548]
-  - planar バックエンドでは **カメラのワールド高度**（`camera.position.y`）を表す。値は実質 ≈78776m（富士山頂 + upperRadiusLimit 75km）まで。
-  - globe バックエンド（`terrainEngine=globe`）では意味が異なり、**GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）を表す。上限は globe の最大 radius = planetRadius×4 に由来する。
+  - 値は **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）を表す。上限はカメラの最大 radius = planetRadius×4（= WGS84 長半径 × 4 ≈ 25,512,548m）に由来する（#414 で globe 単一バックエンドに統合）。
 - `azimuth`: 方位角（度）。0 = 北、時計回り正
-- `tilt`: 仰角（度）。範囲 [約5.7, 75]
+- `tilt`: 仰角（度）。範囲 [約5.7, 89]（上限はカメラの upperBetaLimit ≈ 89°、#377）
 - 省略した場合は既定値（altitude=2000, azimuth=0, tilt=45）で補完されます
 
 ```
@@ -156,9 +155,15 @@ npm start
 
 ### 緯度経度の扱い
 
-- 緯度経度は `JAPAN_BOUNDS`（緯度 20〜46、経度 122〜154）でクランプされます（`terrainEngine=planar` / 既定）
-- `terrainEngine=globe` の場合は全球を描画できるため、クランプ範囲を全球（緯度 -90〜90、経度 -180〜180）に拡張します（#375）
+- 緯度経度は全球（緯度 -90〜90、経度 -180〜180）でクランプされます。globe（GeospatialCamera）バックエンドは地球全体を描画できるためです（#375 / #414）。
 - カメラ移動に追従して URL のパスが自動更新されます（既存のクエリパラメータは保持）
+
+### `lat` / `lon` クエリパラメータ
+
+- パス形式 `/@<lat>,<lon>` の代わりに、`?lat=<lat>&lon=<lon>` クエリでも初期カメラ位置を指定できます
+- パス形式（`/@...`）が存在する場合はそちらが優先されます
+- altitude / azimuth / tilt は既定値で補完されます（クエリでは指定不可）
+- 例: `http://localhost:8080/viewer.html?lat=35.681236&lon=139.767125`
 
 実装の詳細は `src/demos/viewer/index.ts` および `src/terrain/urlState.ts` を参照してください。
 
