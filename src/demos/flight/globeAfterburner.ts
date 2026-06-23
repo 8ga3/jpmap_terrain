@@ -24,7 +24,11 @@ import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
 
 // ─── 型 ─────────────────────────────────────────────────
 export interface AfterburnerContext {
-    /** model の TransformNode 名（generator の親に使う） */
+    /**
+     * model の TransformNode 名（旧 generator 実装向け）。
+     * 現実装（{@link createGlobeAfterburner}）はトレイルを軌道パラメータから
+     * 都度算出するため**参照しない**。互換目的で残す未使用フィールド。
+     */
     modelNodeName: string;
 }
 

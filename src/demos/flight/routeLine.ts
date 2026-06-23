@@ -47,7 +47,6 @@ const FADE_OUT_RATIO = 0.25;
 
 // ─── 型 ─────────────────────────────────────────────────
 export interface RouteLineContext {
-    scene: Scene;
     /** 現在の軌道角度 (deg) */
     angleDeg: number;
     /** 軌道の中心緯度 */

@@ -212,7 +212,12 @@ export interface DefaultSceneController {
      */
     dispose(): void;
 
-    /** @internal MarkerManager 構築用コンテキスト (Issue #167) */
+    /**
+     * @internal MarkerManager 構築用コンテキスト (Issue #167)。
+     *
+     * **legacy（旧 planar）向け**。globe 単一バックエンド（#414）では未対応で実装側が
+     * throw するため呼び出さないこと。globe では {@link getMarkerManager} アダプタを用いる。
+     */
     getMarkerContext(): MarkerContext;
     /**
      * globe バックエンド（#275 Phase 4 / P4-0）のフック。公開 `MarkerManager` 互換の
