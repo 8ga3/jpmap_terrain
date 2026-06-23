@@ -117,15 +117,53 @@ const renderCard = (demo: DemoEntry): string =>
         demo.title,
     )}</h2><p>${escapeHtml(demo.description)}</p></a></li>`;
 
+/**
+ * 国土地理院タイル等の出典表記（Issue #417）。
+ * 各項目はプレーンテキストとして `escapeHtml` を通して出力し、
+ * URL は明示的にリンク化する。
+ */
+const ATTRIBUTIONS: readonly string[] = [
+    "国土地理院発行 2.5万分1地形図",
+    "The bathymetric contours are derived from those contained within the GEBCO Digital Atlas, published by the BODC on behalf of IOC and IHO (2003) (https://www.gebco.net) 海上保安庁許可第292502号（水路業務法第25条に基づく類似刊行物）",
+    'Shoreline data is derived from: United States. National Imagery and Mapping Agency. "Vector Map Level 0 (VMAP0)." Bethesda, MD: Denver, CO: The Agency; USGS Information Services, 1997.',
+];
+
+/**
+ * テキストを `escapeHtml` した上で、含まれる http(s) URL を `<a>` リンクへ変換する。
+ * リンク化対象の URL は属性値としても安全になるよう、エスケープ後の文字列に対して処理する。
+ */
+const linkifyAttribution = (text: string): string => {
+    const escaped = escapeHtml(text);
+    // URL に続く末尾の閉じ括弧・句読点（`)` `.` `,`）はリンクへ含めない。
+    return escaped.replace(
+        /https?:\/\/[^\s<>"')]+/g,
+        (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`,
+    );
+};
+
+const renderAttributions = (attributions: readonly string[]): string =>
+    [
+        '<section class="attribution" aria-label="出典">',
+        "<h2>出典</h2>",
+        `<ul>${attributions
+            .map((text) => `<li>${linkifyAttribution(text)}</li>`)
+            .join("")}</ul>`,
+        "</section>",
+    ].join("");
+
 /** ポータル本体 HTML を組み立てる純粋関数（テスト用に export）。 */
 export const buildPortalHtml = (
     demos: readonly DemoEntry[] = DEMO_LIST,
+    attributions: readonly string[] = ATTRIBUTIONS,
 ): string =>
     [
         '<h1>jpmap_terrain デモ</h1>',
         '<p class="lead">地理院タイルの標高データを使った 3D 地形可視化のデモ集です。今後デモを順次追加していきます。</p>',
         `<ul class="demos">${demos.map(renderCard).join("")}</ul>`,
-        '<footer>Source: <a href="https://github.com/8ga3/jpmap_terrain">github.com/8ga3/jpmap_terrain</a></footer>',
+        '<footer>',
+        renderAttributions(attributions),
+        '<p class="source">Source: <a href="https://github.com/8ga3/jpmap_terrain">github.com/8ga3/jpmap_terrain</a></p>',
+        '</footer>',
     ].join("");
 
 const start = (): void => {
