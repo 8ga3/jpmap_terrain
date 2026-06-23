@@ -45,8 +45,6 @@ export interface Afterburner {
     start(): void;
     /** トレイル生成を停止（Follow モード OFF 時に呼ぶ） */
     stop(): void;
-    /** トレイルの頂点をリセット（グリッド原点ジャンプ後の折れ線防止） */
-    reset(): void;
     /** 表示/非表示切替 */
     setVisible(visible: boolean): void;
     /**
@@ -314,10 +312,6 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
     };
 
     /** 全履歴を現在のエンジン位置に揃えてトレイルを畳む（origin ジャンプ後などに呼ぶ）。 */
-    const reset = (): void => {
-        initialized = false;
-    };
-
     const setVisible = (v: boolean): void => {
         visible = v;
         for (const r of ribbons) r.mesh.setEnabled(v);
@@ -393,5 +387,5 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
         material.dispose();
     };
 
-    return { start, stop, reset, setVisible, update, dispose };
+    return { start, stop, setVisible, update, dispose };
 };
