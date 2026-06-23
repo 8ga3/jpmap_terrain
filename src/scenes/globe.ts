@@ -68,7 +68,7 @@ export const GLOBE_SCENE_DEFAULTS = {
     /** チルト[deg]（0=直下, 90=水平）→ pitch。 */
     tilt: 60,
     /** SSE 採用しきい値 [px]。 */
-    sseThreshold: 256 * 2.5,
+    sseThreshold: 256 * 2.0,
     /**
      * 同時保持タイル数の上限。#335 の視錐台フルカバー（前景〜地平線、横は水平 FOV 台形）を高 DPI
      * （3x≒render 3240px）かつ高チルトでも欠けなく収めるため拡大（実測最悪 ~329 枚 < 384）。
