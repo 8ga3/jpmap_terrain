@@ -134,11 +134,14 @@ const ATTRIBUTIONS: readonly string[] = [
  */
 const linkifyAttribution = (text: string): string => {
     const escaped = escapeHtml(text);
-    // URL に続く末尾の閉じ括弧・句読点（`)` `.` `,`）はリンクへ含めない。
-    return escaped.replace(
-        /https?:\/\/[^\s<>"')]+/g,
-        (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`,
-    );
+    // URL 本体を貪欲にマッチさせた後、末尾の括弧・句読点（半角/全角）は
+    // リンクへ含めず後続テキストとして戻す。
+    return escaped.replace(/https?:\/\/[^\s<>"']+/g, (match) => {
+        const trailing = match.match(/[).,）、。]+$/);
+        const url = trailing ? match.slice(0, match.length - trailing[0].length) : match;
+        const suffix = trailing ? trailing[0] : "";
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>${suffix}`;
+    });
 };
 
 const renderAttributions = (attributions: readonly string[]): string =>

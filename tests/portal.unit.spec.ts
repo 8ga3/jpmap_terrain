@@ -65,6 +65,33 @@ describe("buildPortalHtml", () => {
         );
     });
 
+    it("URL 末尾の括弧・句読点（半角/全角）はリンクへ含めない", () => {
+        const html = buildPortalHtml(undefined, [
+            "a (https://example.com/a).",
+            "b https://example.com/b、",
+            "c https://example.com/c。",
+            "d https://example.com/d,",
+        ]);
+        // 半角閉じ括弧 + ピリオドはリンク外へ戻る。
+        expect(html).toContain(
+            '<a href="https://example.com/a" target="_blank" rel="noopener noreferrer">https://example.com/a</a>).',
+        );
+        // 全角読点・句点もリンク外へ戻る。
+        expect(html).toContain(
+            '<a href="https://example.com/b" target="_blank" rel="noopener noreferrer">https://example.com/b</a>、',
+        );
+        expect(html).toContain(
+            '<a href="https://example.com/c" target="_blank" rel="noopener noreferrer">https://example.com/c</a>。',
+        );
+        // 半角カンマもリンク外へ戻る。
+        expect(html).toContain(
+            '<a href="https://example.com/d" target="_blank" rel="noopener noreferrer">https://example.com/d</a>,',
+        );
+        // href に句読点が混入していないこと。
+        expect(html).not.toContain('href="https://example.com/a).');
+        expect(html).not.toContain('href="https://example.com/d,');
+    });
+
     it("出典文言の HTML 特殊文字をエスケープする", () => {
         const html = buildPortalHtml(undefined, [
             "<b>x</b> & y http://example.com/?a=1&b=2",
