@@ -7,7 +7,6 @@
  *
  * URL 規約:
  * - `?engine=webgpu|webgl|webgl2`（既存と互換）
- * - `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414。globe では太陽方向が時刻追従する）
  * - `?lat=`, `?lon=` 等のカメラ初期値（viewer デモと共通の `parseCameraStateFromUrl`）
  * - `?start=<ISO8601>`: シミュレーション開始時刻（タイムゾーン無指定は UTC として解釈。`+09:00` の
  *   ような正オフセットは URL では `%2B09:00` とエンコードするか、`Z` 付き UTC を推奨）
@@ -26,8 +25,6 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
     createUrlUpdater,
-    resolveTerrainEngine,
-    resolveEffectiveTerrainEngine,
 } from "../../terrain/urlState";
 import { longitudeToOffsetMs, mountClock } from "./clockOverlay";
 import {
@@ -116,12 +113,6 @@ export const resolveEngine = (search: string): EngineType | undefined => {
     return undefined;
 };
 
-/**
- * `?terrainEngine=` クエリから地形バックエンドを解決する（viewer #352 / model #361 に倣う）。
- * 実装は `terrain/urlState` に集約し、既存 import 互換のため再 export する（#368 / P4-1）。
- */
-export { resolveTerrainEngine };
-
 /** `?showSunShadows=false` のときのみ false を返す。それ以外は既定 true。 */
 export const resolveShowSunShadows = (search: string): boolean => {
     const raw = new URLSearchParams(search).get("showSunShadows");
@@ -135,8 +126,6 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
-    // 実効エンジン（未指定は lib 既定 globe, #413 / #414）。globe 単一化後は常に globe。
-    const terrainEngine = resolveEffectiveTerrainEngine(location.search);
     const cameraInit = resolveCameraInit(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
     const showSunShadows = resolveShowSunShadows(location.search);
@@ -148,7 +137,6 @@ const start = async (): Promise<void> => {
         // globe では方位規約が逆のため、日の出が正面に見えるよう globe 専用デフォルトで上書きする。
         ...TIMELAPSE_GLOBE_CAMERA_DEFAULTS,
         ...(engine ? { engine } : {}),
-        terrainEngine,
         ...cameraInit,
         ...(mapType !== null ? { mapType } : {}),
         // タイムラプスでは autoSunPosition は必ず OFF（dateTime を毎フレーム駆動するため）。

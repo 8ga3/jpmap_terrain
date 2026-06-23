@@ -7,14 +7,12 @@
  * - Model API (`addModel` / `updateModel` / `playModelAnimation`) を使用
  * - Polygon API (`addPolygon`, `closed: true`) でリージョン境界を描画
  * - 地形追従 (`altitudeMode: "terrain"`, `gravity: true`)
- * - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414）
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import {
     type BoidState,
@@ -54,12 +52,10 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
-    const terrainEngine = resolveTerrainEngine(location.search);
     const region = DEFAULT_REGION;
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
-        ...(terrainEngine ? { terrainEngine } : {}),
         lat: camera?.lat ?? region.centerLat,
         lon: camera?.lon ?? region.centerLon,
         altitude: camera?.altitude ?? 800,

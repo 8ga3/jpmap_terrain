@@ -18,7 +18,6 @@ import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import humanGlbUrl from "../../../assets/human.glb";
 import humanObjUrl from "../../../assets/human.obj";
@@ -58,11 +57,9 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
-    const terrainEngine = resolveTerrainEngine(location.search);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
-        ...(terrainEngine ? { terrainEngine } : {}),
         lat: camera?.lat ?? TOKYO_STATION.lat,
         lon: camera?.lon ?? TOKYO_STATION.lon,
         altitude: camera?.altitude ?? 500,

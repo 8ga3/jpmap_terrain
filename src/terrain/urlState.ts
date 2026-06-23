@@ -2,7 +2,7 @@
 
 import { clamp } from "./gsiTile";
 import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
-import type { MapType, ViewMode, TerrainEngine } from "../lib/types";
+import type { MapType, ViewMode } from "../lib/types";
 
 export interface LatLon {
     lat: number;
@@ -68,36 +68,6 @@ export const CAMERA_URL_LIMITS = {
 
 /** ズームレベルの表示精度（小数桁数） */
 const ZOOM_LEVEL_PRECISION = 2;
-
-/**
- * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する (#275 Phase 4 / P4-1)。
- * 各デモ（viewer / polygon 等）で共通利用するため本モジュールに集約する。
- * - `globe` → `"globe"`（GeospatialCamera + ECEF の地球儀バックエンド）
- * - 上記以外 / 未指定 → `undefined`（lib 既定の `"globe"` にフォールバック, #413）
- *
- * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
- */
-export const resolveTerrainEngine = (
-    search: string,
-): TerrainEngine | undefined => {
-    const value = new URLSearchParams(search).get("terrainEngine");
-    if (value === "globe") return "globe";
-    return undefined;
-};
-
-/**
- * URL クエリから「実効的な」地形バックエンドを解決する (#413)。
- * {@link resolveTerrainEngine} が `undefined`（未指定）の場合は lib 既定
- * （{@link JPMAP_TERRAIN_DEFAULTS}.terrainEngine = `"globe"`）を返す。
- *
- * 各デモが `JpmapTerrain.create` 前にカメラ高度・移動方向・物理ステージなどを
- * バックエンド別に分岐する際、`undefined` を旧既定と誤認するリグレッション（#413 既定化）を
- * 防ぐために使用する。
- *
- * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
- */
-export const resolveEffectiveTerrainEngine = (search: string): TerrainEngine =>
-    resolveTerrainEngine(search) ?? JPMAP_TERRAIN_DEFAULTS.terrainEngine;
 
 /**
  * Web Mercator の赤道上 zoom 0 における 1 ピクセルあたりメートル。
@@ -195,13 +165,9 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する (#254)。
  *
  * 緯度経度は {@link WORLD_BOUNDS}（全球）でクランプする (#375 / #413 / #414)。
- * `options.terrainEngine` シグネチャは後方互換のため維持する。
  */
 export const parseCameraStateFromUrl = (
     url: string,
-    // options は後方互換のため維持する（#414 で globe 単一化により bounds 解決には未使用）。
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    options?: { terrainEngine?: TerrainEngine },
 ): CameraUrlState | null => {
     try {
         const parsed = new URL(url, "http://localhost");
@@ -278,9 +244,8 @@ export const parseCameraStateFromUrl = (
  */
 export const parseLatLonFromUrl = (
     url: string,
-    options?: { terrainEngine?: TerrainEngine },
 ): LatLon | null => {
-    const state = parseCameraStateFromUrl(url, options);
+    const state = parseCameraStateFromUrl(url);
     if (state === null) return null;
     return { lat: state.lat, lon: state.lon };
 };

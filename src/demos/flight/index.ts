@@ -26,7 +26,6 @@ import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveEffectiveTerrainEngine,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
@@ -68,8 +67,6 @@ const DEFAULT_RADIUS_M = 2000;
 const DEFAULT_SPEED_MPS = 100;
 /** 飛行高度 (m) */
 const DEFAULT_ALTITUDE_M = 2000;
-/** カメラ初期高度 (m) — ズームアウトで飛行機を見渡す */
-const INITIAL_CAMERA_ALTITUDE = 6000;
 /**
  * 3D/2D モードで飛行機を見つけやすくするための発光（emissive）色。
  * tick 内で点滅させて目立たせる。Follow モードでは元の emissive に戻す。
@@ -77,8 +74,8 @@ const INITIAL_CAMERA_ALTITUDE = 6000;
 const BEACON_EMISSIVE_COLOR = new Color3(1.0, 0.25, 0.05);
 /**
  * globe バックエンドのカメラ初期高度 (m)。
- * globe(GeospatialCamera) は planar(ArcRotateCamera) と画角・投影が異なり、6000m では
- * 円軌道（半径 2000m / 高度 2000m）の飛行機がフレーム外に出る。全周を見渡せるよう高めに設定。
+ * globe(GeospatialCamera) は画角・投影の都合で、6000m では円軌道（半径 2000m / 高度 2000m）の
+ * 飛行機がフレーム外に出る。全周を見渡せるよう高めに設定。
  */
 const GLOBE_INITIAL_CAMERA_ALTITUDE = 14000;
 /** クリック可能距離 (m) */
@@ -109,21 +106,14 @@ const start = async (): Promise<void> => {
     const mount = document.getElementById(DEMO_MOUNT_ID);
     if (!mount) return;
 
-    // 実効 terrainEngine（globe 単一。撤去済みの値や未指定/不正は lib 既定 globe にフォールバック (#413/#414)）。
-    const terrainEngine = resolveEffectiveTerrainEngine(location.search);
-    const camera = parseCameraStateFromUrl(location.href, { terrainEngine });
+    const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
-        terrainEngine,
         lat: camera?.lat ?? TOKYO_STATION.lat,
         lon: camera?.lon ?? TOKYO_STATION.lon,
-        altitude:
-            camera?.altitude ??
-            (terrainEngine === "globe"
-                ? GLOBE_INITIAL_CAMERA_ALTITUDE
-                : INITIAL_CAMERA_ALTITUDE),
+        altitude: camera?.altitude ?? GLOBE_INITIAL_CAMERA_ALTITUDE,
         azimuth: camera?.azimuth,
         tilt: camera?.tilt ?? 45,
         mapType: mapType ?? "standard",
@@ -269,7 +259,6 @@ const start = async (): Promise<void> => {
     if (pipMount) {
         const pipOpts: JpmapTerrainOptions = {
             engine: opts.engine,
-            terrainEngine,
             lat: initPos.lat,
             lon: initPos.lon,
             altitude: altitudeM,

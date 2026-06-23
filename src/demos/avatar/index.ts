@@ -12,14 +12,12 @@
  * - 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
  * - 半径・速度のスライダー操作
  * - アニメーション開始/停止トグル
- * - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414）
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import { circularOrbitPosition, circularOrbitHeading } from "./orbit";
 import humanWalkGlbUrl from "../../../assets/human_walk.glb";
@@ -52,11 +50,9 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
-    const terrainEngine = resolveTerrainEngine(location.search);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
-        ...(terrainEngine ? { terrainEngine } : {}),
         lat: camera?.lat ?? TOKYO_STATION.lat,
         lon: camera?.lon ?? TOKYO_STATION.lon,
         altitude: camera?.altitude ?? 500,

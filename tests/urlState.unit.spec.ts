@@ -2,7 +2,6 @@ import { describe, expect, it, jest } from "@jest/globals";
 import {
     parseLatLonFromUrl,
     parseCameraStateFromUrl,
-    resolveEffectiveTerrainEngine,
     toAtPath,
     createUrlUpdater,
     clampAltitude,
@@ -65,19 +64,15 @@ describe("urlState", () => {
             expect(result!.lon).toBe(100.0);
         });
 
-        it("globe では WORLD_BOUNDS を超える緯度が ±90 にクランプされる (#414)", () => {
-            const result = parseLatLonFromUrl("http://localhost/@120.0,139.0", {
-                terrainEngine: "globe",
-            });
+        it("WORLD_BOUNDS を超える緯度が ±90 にクランプされる (#414)", () => {
+            const result = parseLatLonFromUrl("http://localhost/@120.0,139.0");
             expect(result).not.toBeNull();
             expect(result!.lat).toBe(90);
             expect(result!.lon).toBe(139.0);
         });
 
-        it("globe では WORLD_BOUNDS を超える経度が ±180 にクランプされる (#414)", () => {
-            const result = parseLatLonFromUrl("http://localhost/@35.0,200.0", {
-                terrainEngine: "globe",
-            });
+        it("WORLD_BOUNDS を超える経度が ±180 にクランプされる (#414)", () => {
+            const result = parseLatLonFromUrl("http://localhost/@35.0,200.0");
             expect(result).not.toBeNull();
             expect(result!.lon).toBe(180);
         });
@@ -101,31 +96,6 @@ describe("urlState", () => {
         it("ハッシュ内の @lat,lon をパースできる", () => {
             const result = parseLatLonFromUrl("http://localhost/#/@35.681236,139.767125");
             expect(result).toEqual({ lat: 35.681236, lon: 139.767125 });
-        });
-    });
-
-    describe("resolveEffectiveTerrainEngine (#413)", () => {
-        it("?terrainEngine=globe → 'globe'", () => {
-            expect(resolveEffectiveTerrainEngine("?terrainEngine=globe")).toBe(
-                "globe",
-            );
-        });
-
-        it("?terrainEngine=planar（撤去済み）→ 'globe'（lib 既定にフォールバック）", () => {
-            expect(resolveEffectiveTerrainEngine("?terrainEngine=planar")).toBe(
-                "globe",
-            );
-        });
-
-        it("未指定 → lib 既定 'globe' を返す（undefined にしない）", () => {
-            expect(resolveEffectiveTerrainEngine("")).toBe("globe");
-            expect(resolveEffectiveTerrainEngine("?engine=webgpu")).toBe("globe");
-        });
-
-        it("不正値 → lib 既定 'globe' を返す", () => {
-            expect(resolveEffectiveTerrainEngine("?terrainEngine=sphere")).toBe(
-                "globe",
-            );
         });
     });
 
@@ -460,28 +430,26 @@ describe("urlState", () => {
             });
         });
 
-        // #375: globe では JAPAN_BOUNDS でクランプせず全球の緯度経度を許容する。
-        it("terrainEngine=globe では日本域外の緯度経度をクランプしない (#375)", () => {
+        // #375 / #414: globe（全球）では JAPAN_BOUNDS でクランプせず全球の緯度経度を許容する。
+        it("日本域外の緯度経度をクランプしない (#375)", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68",
-                { terrainEngine: "globe" }
+                "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68"
             );
             expect(result).not.toBeNull();
             expect(result!.lat).toBeCloseTo(17.316969, 6);
             expect(result!.lon).toBeCloseTo(38.639148, 6);
         });
 
-        it("terrainEngine=globe でも全球範囲外は WORLD_BOUNDS でクランプされる (#375)", () => {
+        it("全球範囲外は WORLD_BOUNDS でクランプされる (#375)", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@-120.0,200.0",
-                { terrainEngine: "globe" }
+                "http://localhost/viewer/@-120.0,200.0"
             );
             expect(result).not.toBeNull();
             expect(result!.lat).toBe(-90);
             expect(result!.lon).toBe(180);
         });
 
-        it("未指定（lib 既定 globe）では WORLD_BOUNDS でクランプする (#413)", () => {
+        it("WORLD_BOUNDS 内の緯度経度はそのまま返す (#413)", () => {
             const noEngine = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148"
             );
@@ -490,10 +458,10 @@ describe("urlState", () => {
             expect(noEngine!.lon).toBeCloseTo(38.639148, 6);
         });
 
-        // #375: options 未指定でも URL クエリ ?terrainEngine=globe をフォールバック解決する。
-        it("options 未指定でも URL の ?terrainEngine=globe でクランプ範囲が全球になる (#375)", () => {
+        // 未知クエリ（撤去済みのバックエンド指定等）はクランプ範囲に影響しない。
+        it("未知クエリが付いてもクランプ範囲は全球のまま (#375)", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148?terrainEngine=globe"
+                "http://localhost/viewer/@17.316969,38.639148?foo=bar"
             );
             expect(result).not.toBeNull();
             expect(result!.lat).toBeCloseTo(17.316969, 6);

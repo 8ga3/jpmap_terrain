@@ -10,7 +10,7 @@
  *   - 完全指定 (@lat,lon,altitude,azimuth,tilt): 全フィールドを返す
  */
 import { describe, it, expect } from "@jest/globals";
-import { resolveCameraInit, resolveEngine, resolveShowSunShadows, resolveTerrainEngine } from "../src/demos/timelapse/index";
+import { resolveCameraInit, resolveEngine, resolveShowSunShadows } from "../src/demos/timelapse/index";
 
 describe("resolveCameraInit", () => {
     it("URL 未指定は空オブジェクトを返す", () => {
@@ -76,23 +76,5 @@ describe("resolveShowSunShadows (timelapse)", () => {
     it("未指定・その他は true（タイムラプスは既定 ON）", () => {
         expect(resolveShowSunShadows("")).toBe(true);
         expect(resolveShowSunShadows("?showSunShadows=true")).toBe(true);
-    });
-});
-
-describe("resolveTerrainEngine (timelapse)", () => {
-    it("?terrainEngine=globe → 'globe'", () => {
-        expect(resolveTerrainEngine("?terrainEngine=globe")).toBe("globe");
-    });
-
-    it("?terrainEngine=planar（撤去済み）→ undefined", () => {
-        expect(resolveTerrainEngine("?terrainEngine=planar")).toBeUndefined();
-    });
-
-    it("不正値は undefined（lib 既定 globe にフォールバック, #413）", () => {
-        expect(resolveTerrainEngine("?terrainEngine=foo")).toBeUndefined();
-    });
-
-    it("未指定は undefined", () => {
-        expect(resolveTerrainEngine("")).toBeUndefined();
     });
 });

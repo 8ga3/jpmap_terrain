@@ -22,36 +22,6 @@ import {
     HIT_RADIUS,
     type CannonState,
 } from "../src/demos/artillery/gameLogic";
-import { resolveArtilleryTerrainEngine } from "../src/demos/artillery/terrainEngine";
-
-describe("resolveArtilleryTerrainEngine", () => {
-    it("returns undefined engine when terrainEngine is not specified", () => {
-        const r = resolveArtilleryTerrainEngine("");
-        expect(r.engine).toBeUndefined();
-    });
-
-    it("treats planar (removed backend) as unspecified → undefined", () => {
-        const r = resolveArtilleryTerrainEngine("?terrainEngine=planar");
-        expect(r.engine).toBeUndefined();
-    });
-
-    it("passes through globe (now supported via stageFrame ENU physics)", () => {
-        const r = resolveArtilleryTerrainEngine("?terrainEngine=globe");
-        expect(r.engine).toBe("globe");
-    });
-
-    it("ignores unknown values (treated as unspecified)", () => {
-        const r = resolveArtilleryTerrainEngine("?terrainEngine=foo");
-        expect(r.engine).toBeUndefined();
-    });
-
-    it("resolves globe even when combined with other query params", () => {
-        const r = resolveArtilleryTerrainEngine(
-            "?lat=35&terrainEngine=globe&engine=webgpu",
-        );
-        expect(r.engine).toBe("globe");
-    });
-});
 
 describe("ballistics", () => {
     describe("degToRad / radToDeg", () => {

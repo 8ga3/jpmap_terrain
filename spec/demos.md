@@ -25,7 +25,7 @@
 ## 設計方針
 
 - **公開ライブラリ層 (`src/lib/**`) は変更しない**。デモ層 (`src/demos/**`) は `JpmapTerrain` の公開 API 経由で機能を組み立てる。
-  - 例外: `geospatial` デモのみ、グローブ地形コア `scenes/globe.ts` の `GlobeScene` を直接起動する低レベル診断デモであり、公開 API では露出しない内部状態（floatingOrigin / LOD / タイル数）の確認を目的とする。同じ `GlobeScene` は `JpmapTerrain`（`terrainEngine=globe`）も `GlobeSceneAdapter` 経由で利用するため、エンジン実装の重複はない。
+  - 例外: `geospatial` デモのみ、グローブ地形コア `scenes/globe.ts` の `GlobeScene` を直接起動する低レベル診断デモであり、公開 API では露出しない内部状態（floatingOrigin / LOD / タイル数）の確認を目的とする。同じ `GlobeScene` は `JpmapTerrain` も `GlobeSceneAdapter` 経由で利用するため、エンジン実装の重複はない。
 - 各デモは独立した Vite エントリ。`public/<name>.html` を追加し、`vite.config.ts` の `HTML_ENTRIES` に登録すればビルド対象になる（エントリ HTML は `root` = `public/` に集約）。
 - デモ間で共通する Babylon.js 部分は `manualChunks` の `babylonBundle` / `webgpu-shaders` / `webgl-shaders` 等に分割され、複数デモで共有される。
 - ポータルは Babylon.js を読み込まない軽量ページ。バンドルサイズ最小化のため `JpmapTerrain` を import しない。
