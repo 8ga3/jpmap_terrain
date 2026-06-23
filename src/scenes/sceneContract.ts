@@ -55,10 +55,11 @@ export interface DefaultSceneController {
     /**
      * 複数のカメラ/位置パラメータをまとめて適用する (T5)。
      *
-     * `flyTo` のような高頻度更新では `options.refreshTerrain` を `false` にして
-     * タイル中心更新（`tileManager.setCenter` 経由の fetch）を抑制し、
-     * 遷移完了時など必要なタイミングで `true` を渡してまとめて反映する。
-     * 既定値は `true`（単体 setter と同じ挙動）。
+     * `options.refreshTerrain` はタイル中心更新（fetch）の即時反映を抑制するための
+     * ヒントで、既定は `true`。ただし**実装依存**であり、globe バックエンド
+     * （{@link createGlobeSceneController} の `setView`）は本オプションを解釈せず
+     * **no-op（無視）** する。globe ではタイルロードが `onBeforeRender` の
+     * `syncTiles` で次フレームに反映されるため、抑制フラグは不要。
      */
     setView(
         values: {
