@@ -1060,7 +1060,6 @@ const start = async (): Promise<void> => {
             if (showRibbon) {
                 routeLine.update(
                     {
-                        scene: viewer.__debugScene!,
                         angleDeg,
                         centerLat,
                         centerLon,
