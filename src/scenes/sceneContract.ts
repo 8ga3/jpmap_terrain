@@ -2,11 +2,10 @@
  * シーン層と `JpmapTerrain`（パッケージ層）/ overlay 層が共有する境界契約 (Issue #414)。
  *
  * カメラ・位置操作の {@link DefaultSceneController}、初期化オプション
- * {@link DefaultSceneInitOptions}、overlay 構築用の {@link MarkerContext}、および
- * 緯度メートル換算定数 {@link METERS_PER_DEGREE_LAT} を提供する。
+ * {@link DefaultSceneInitOptions}、および緯度メートル換算定数
+ * {@link METERS_PER_DEGREE_LAT} を提供する。
  * globe 単一バックエンド化（#414）に伴い、これらの共有シンボルを描画実装から切り離す。
  */
-import type { Scene } from "@babylonjs/core/scene";
 import type { FrustumPlane } from "../terrain/visibleTiles";
 import type {
     TerrainClickListener,
@@ -22,43 +21,6 @@ import type { ModelManager } from "../terrain/modelManager";
 
 /** 1度の緯度あたりのメートル数（概算） */
 export const METERS_PER_DEGREE_LAT = 111320;
-
-/**
- * MarkerManager 構築用の境界コンテキスト (Issue #167)。
- *
- * **legacy（旧 planar 実装）向けの契約**。globe 単一バックエンド（#414）では
- * {@link DefaultSceneController.getMarkerContext} は未対応で `globeSceneController` が throw し、
- * marker 構築は {@link DefaultSceneController.getMarkerManager} アダプタ経由で行う。
- * シーン内部のクロージャ（カメラ位置・grid 残差）を直接参照させず、
- * 必要な値・関数のみを露出する。
- */
-export interface MarkerContext {
-    scene: Scene;
-    tileManager: {
-        queryElevationAtWorld(wx: number, wz: number): number | null;
-        /** @returns 既存 onTerrainUpdated を chain で保持しつつ、追加 listener を register する unsubscribe 関数 */
-        subscribeTerrainUpdated(listener: () => void): () => void;
-    };
-    getOrigin(): {
-        lat: number;
-        lon: number;
-        gridResidualX: number;
-        gridResidualZ: number;
-    };
-    /**
-     * 現在のカメラ状態（legacy MarkerContext 向け）。
-     * - position: ワールド位置 (distScale 計算用)
-     * - radius / beta: カメラ距離・仰角に相当する値。マーカー高さをカメラ距離・
-     *   仰角に応じて動的に決めるために使用される（特定のカメラ実装には依存しない）。
-     */
-    getCameraPosition(): {
-        x: number;
-        y: number;
-        z: number;
-        radius: number;
-        beta: number;
-    };
-}
 
 /**
  * 外部からカメラ・位置を操作するためのコントローラ (T5 / Issue #119)。
@@ -212,13 +174,6 @@ export interface DefaultSceneController {
      */
     dispose(): void;
 
-    /**
-     * @internal MarkerManager 構築用コンテキスト (Issue #167)。
-     *
-     * **legacy（旧 planar）向け**。globe 単一バックエンド（#414）では未対応で実装側が
-     * throw するため呼び出さないこと。globe では {@link getMarkerManager} アダプタを用いる。
-     */
-    getMarkerContext(): MarkerContext;
     /**
      * globe バックエンド（#275 Phase 4 / P4-0）のフック。公開 `MarkerManager` 互換の
      * アダプタを返す。
