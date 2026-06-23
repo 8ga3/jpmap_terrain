@@ -17,6 +17,32 @@
  */
 
 import { jest } from "@jest/globals";
+import type { CircleManager } from "../src/terrain/circleManager";
+import type { MarkerManager } from "../src/terrain/markerManager";
+import type { ModelManager } from "../src/terrain/modelManager";
+import type { PolygonManager } from "../src/terrain/polygonManager";
+import { assertLatLonInBounds } from "../src/terrain/overlayCoords";
+import {
+    CIRCLE_DEFAULTS,
+    CIRCLE_RADIUS_MAX_M,
+    CIRCLE_SEGMENTS_MAX,
+    CIRCLE_SEGMENTS_MIN,
+    MARKER_DEFAULTS,
+    MODEL_DEFAULTS,
+    POLYGON_DEFAULTS,
+    type CircleOptions,
+    type CircleUpdate,
+    type MarkerHandle,
+    type MarkerOptions,
+    type MarkerUpdate,
+    type ModelHandle,
+    type ModelOptions,
+    type ModelUpdate,
+    type PolygonOptions,
+    type PolygonPointOptions,
+    type PolygonPointPartial,
+    type PolygonUpdate,
+} from "../src/lib/types";
 
 // Engine / Scene 生成はテスト対象外（Babylon.js に委譲）。
 // jsdom では WebGPU/WebGL2 を提供できないため、最低限のスタブで差し替える。
@@ -215,95 +241,448 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
     },
 }));
 
-// `modelManager.ts` は Babylon.js の TransformNode / SceneLoader に依存するため、
-// Model API テストでは `createModelManager` を軽量スタブに差し替える。
-jest.unstable_mockModule("../src/terrain/modelManager", () => ({
-    createModelManager: () => {
-        const models = new Map<
-            string,
-            {
-                id: string;
-                url: string;
-                lat: number;
-                lon: number;
-                altitude: number;
-                altitudeMode: string;
-                rotation: { x: number; y: number; z: number };
-                scaling: { x: number; y: number; z: number };
-                enabled: boolean;
-                gravity: boolean;
-                loaded: boolean;
-                elevationResolved: boolean;
-                animationNames: readonly string[];
-            }
-        >();
-        let disposed = false;
-        const toHandle = (m: (typeof models extends Map<string, infer V> ? V : never)) => ({ ...m });
-        return {
-            add(id: string, options: Record<string, unknown>) {
-                if (disposed) throw new Error("ModelManager has been disposed");
-                if (models.has(id)) throw new Error(`id "${id}" already exists`);
-                const entry = {
-                    id,
-                    url: options.url as string,
-                    lat: options.lat as number,
-                    lon: options.lon as number,
-                    altitude: (options.altitude as number) ?? 0,
-                    altitudeMode: (options.altitudeMode as string) ?? "terrain",
-                    rotation: { x: 0, y: 0, z: 0 },
-                    scaling: { x: 1, y: 1, z: 1 },
-                    enabled: (options.enabled as boolean) ?? true,
-                    gravity: (options.gravity as boolean) ?? true,
-                    loaded: false,
-                    elevationResolved: false,
-                    animationNames: [] as readonly string[],
-                };
-                models.set(id, entry);
-                return toHandle(entry);
-            },
-            get(id: string) {
-                const m = models.get(id);
-                return m ? toHandle(m) : null;
-            },
-            update(id: string, partial: Record<string, unknown>) {
-                if (disposed) throw new Error("ModelManager has been disposed");
-                const m = models.get(id);
-                if (!m) throw new Error(`id "${id}" not found`);
-                if (partial.lat !== undefined) m.lat = partial.lat as number;
-                if (partial.lon !== undefined) m.lon = partial.lon as number;
-                if (partial.altitude !== undefined) m.altitude = partial.altitude as number;
-                return toHandle(m);
-            },
-            remove(id: string) {
-                models.delete(id);
-            },
-            setEnabled(id: string, enabled: boolean) {
-                const m = models.get(id);
-                if (m) m.enabled = enabled;
-            },
-            list() {
-                return [...models.keys()];
-            },
-            playAnimation() { /* no-op */ },
-            stopAnimation() { /* no-op */ },
-            dispose() {
-                disposed = true;
-                models.clear();
-            },
-        };
-    },
-}));
+const { createPolygonNode } = await import("../src/terrain/polygon");
+const { createCircleNode } = await import("../src/terrain/circle");
 
-// globe バックエンドの overlay マネージャ生成は実関数を使う（内部の terrain/polygon・
-// terrain/circle・terrain/modelManager は上で軽量モック済み）。globe シーンモックの
-// controller.getXxxManager() からこれらへ委譲し、planar 経路撤去（#414）後も
-// addMarker/addPolygon/addCircle/addModel の公開 API テストを成立させる。
-const { createMarkerManager } = await import("../src/terrain/markerManager");
-const { createPolygonManager } = await import("../src/terrain/polygonManager");
-const { createCircleManager } = await import("../src/terrain/circleManager");
-const { createModelManager: createModelManagerMock } = await import(
-    "../src/terrain/modelManager"
-);
+const createMarkerManagerStub = (): MarkerManager => {
+    const markers = new Map<string, MarkerHandle>();
+    let disposed = false;
+    return {
+        add(id: string, options: MarkerOptions): MarkerHandle {
+            if (disposed) throw new Error("MarkerManager has been disposed");
+            if (markers.has(id)) throw new Error(`id "${id}" already exists`);
+            assertLatLonInBounds(options.lat, options.lon, "marker");
+            const handle: MarkerHandle = {
+                id,
+                lat: options.lat,
+                lon: options.lon,
+                enabled: options.enabled ?? MARKER_DEFAULTS.enabled,
+                icon: options.icon ? { ...options.icon } : null,
+                text: options.text ? { ...options.text } : null,
+                line: { ...MARKER_DEFAULTS.line, ...options.line },
+                elevationResolved: true,
+            };
+            markers.set(id, handle);
+            return handle;
+        },
+        get: (id: string): MarkerHandle | null => markers.get(id) ?? null,
+        update(id: string, partial: MarkerUpdate): MarkerHandle {
+            if (disposed) throw new Error("MarkerManager has been disposed");
+            const current = markers.get(id);
+            if (!current) throw new Error(`Marker id "${id}" not found`);
+            const lat = partial.lat ?? current.lat;
+            const lon = partial.lon ?? current.lon;
+            assertLatLonInBounds(lat, lon, "marker");
+            const next: MarkerHandle = {
+                ...current,
+                lat,
+                lon,
+                enabled: partial.enabled ?? current.enabled,
+                icon:
+                    partial.icon !== undefined
+                        ? { ...partial.icon }
+                        : current.icon,
+                text:
+                    partial.text !== undefined
+                        ? { ...partial.text }
+                        : current.text,
+                line:
+                    partial.line !== undefined
+                        ? { ...current.line, ...partial.line }
+                        : current.line,
+            };
+            markers.set(id, next);
+            return next;
+        },
+        remove: (id: string): void => {
+            markers.delete(id);
+        },
+        setEnabled: (id: string, enabled: boolean): void => {
+            const current = markers.get(id);
+            if (current) markers.set(id, { ...current, enabled });
+        },
+        list: (): readonly string[] => [...markers.keys()],
+        dispose: (): void => {
+            disposed = true;
+            markers.clear();
+        },
+    };
+};
+
+const validatePolygonOptions = (options: PolygonOptions): void => {
+    if (!options.points || options.points.length < 1) {
+        throw new Error("JpmapTerrain.addPolygon: points must contain at least 1 entry");
+    }
+    const altitudeMode = options.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode;
+    options.points.forEach((point, index) => {
+        assertLatLonInBounds(
+            point.lat,
+            point.lon,
+            `JpmapTerrain.addPolygon[${index}]`,
+        );
+        if (altitudeMode === "absolute" && point.altitude === undefined) {
+            throw new Error(
+                `JpmapTerrain.addPolygon: altitudeMode="absolute" requires altitude on every point (missing at index ${index})`,
+            );
+        }
+    });
+};
+
+const createPolygonManagerStub = (): PolygonManager => {
+    const nodes = new Map<string, ReturnType<typeof createPolygonNode>>();
+    let disposed = false;
+    const requireNode = (id: string): ReturnType<typeof createPolygonNode> => {
+        const node = nodes.get(id);
+        if (!node) throw new Error(`Polygon id "${id}" not found`);
+        return node;
+    };
+    const assertActive = (): void => {
+        if (disposed) throw new Error("PolygonManager has been disposed");
+    };
+    const validatePointForNode = (
+        node: ReturnType<typeof createPolygonNode>,
+        point: PolygonPointOptions,
+        prefix: string,
+    ): void => {
+        assertLatLonInBounds(point.lat, point.lon, prefix);
+        if (node.altitudeMode === "absolute" && point.altitude === undefined) {
+            throw new Error(`${prefix}: altitudeMode="absolute" requires altitude`);
+        }
+    };
+    return {
+        add(id: string, options: PolygonOptions) {
+            assertActive();
+            if (nodes.has(id)) throw new Error(`id "${id}" already exists`);
+            validatePolygonOptions(options);
+            const node = createPolygonNode({} as never, id, options);
+            node.setElevationResolved(true);
+            nodes.set(id, node);
+            return node.getHandle();
+        },
+        get: (id: string) => nodes.get(id)?.getHandle() ?? null,
+        update(id: string, partial: PolygonUpdate) {
+            assertActive();
+            const prev = requireNode(id);
+            const current = prev.getHandle();
+            const merged: PolygonOptions = {
+                points: (partial.points ?? current.points).map((p) => ({ ...p })),
+                closed: partial.closed ?? current.closed,
+                altitudeMode: partial.altitudeMode ?? current.altitudeMode,
+                labels: ("labels" in partial
+                    ? partial.labels
+                    : current.labels) as PolygonOptions["labels"],
+                edgeLabels:
+                    "edgeLabels" in partial ? partial.edgeLabels : current.edgeLabels,
+                style: "style" in partial ? partial.style : current.style,
+                enabled: partial.enabled ?? current.enabled,
+                verticalsEnabled:
+                    partial.verticalsEnabled ?? current.verticalsEnabled,
+                labelsEnabled: partial.labelsEnabled ?? current.labelsEnabled,
+                wallsEnabled: partial.wallsEnabled ?? current.wallsEnabled,
+            };
+            validatePolygonOptions(merged);
+            const node = createPolygonNode({} as never, id, merged);
+            node.setElevationResolved(true);
+            prev.dispose();
+            nodes.set(id, node);
+            return node.getHandle();
+        },
+        remove(id: string): void {
+            const node = nodes.get(id);
+            node?.dispose();
+            nodes.delete(id);
+        },
+        setEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            const node = nodes.get(id);
+            node?.setEnabledLogical(enabled);
+        },
+        setVerticalsEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setVerticalsEnabledLogical(enabled);
+        },
+        setLabelsEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setLabelsEnabledLogical(enabled);
+        },
+        setWallsEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setWallsEnabledLogical(enabled);
+        },
+        insertPoint(id: string, index: number, point: PolygonPointOptions) {
+            assertActive();
+            const node = requireNode(id);
+            validatePointForNode(node, point, `JpmapTerrain.insertPolygonPoint[${id}]`);
+            node.insertPoint(index, point);
+            return node.getHandle();
+        },
+        removePoint(id: string, index: number) {
+            assertActive();
+            const node = requireNode(id);
+            node.removePoint(index);
+            return node.getHandle();
+        },
+        updatePoint(id: string, index: number, partial: PolygonPointPartial) {
+            assertActive();
+            const node = requireNode(id);
+            const current = node.points[index];
+            if (!current) throw new Error(`Polygon point index "${index}" not found`);
+            const next = { ...current, ...partial };
+            validatePointForNode(
+                node,
+                next,
+                `JpmapTerrain.updatePolygonPoint[${id}][${index}]`,
+            );
+            node.updatePoint(index, partial);
+            return node.getHandle();
+        },
+        replacePoints(id: string, points: readonly PolygonPointOptions[]) {
+            assertActive();
+            const node = requireNode(id);
+            if (!points || points.length < 1) {
+                throw new Error("points must contain at least 1 entry");
+            }
+            points.forEach((point, index) =>
+                validatePointForNode(
+                    node,
+                    point,
+                    `JpmapTerrain.replacePolygonPoints[${id}][${index}]`,
+                ),
+            );
+            node.replacePoints(points);
+            return node.getHandle();
+        },
+        list: (): readonly string[] => [...nodes.keys()],
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            for (const node of nodes.values()) node.dispose();
+            nodes.clear();
+        },
+    };
+};
+
+const validateCircleOptions = (
+    options: CircleOptions,
+    prefix = "JpmapTerrain.addCircle",
+): void => {
+    assertLatLonInBounds(options.center.lat, options.center.lon, prefix);
+    if (
+        !Number.isFinite(options.radius) ||
+        options.radius <= 0 ||
+        options.radius > CIRCLE_RADIUS_MAX_M
+    ) {
+        throw new Error(`${prefix}: radius is out of range`);
+    }
+    if (
+        options.segments !== undefined &&
+        (!Number.isInteger(options.segments) ||
+            options.segments < CIRCLE_SEGMENTS_MIN ||
+            options.segments > CIRCLE_SEGMENTS_MAX)
+    ) {
+        throw new Error(`${prefix}: segments is out of range`);
+    }
+    const altitudeMode = options.altitudeMode ?? CIRCLE_DEFAULTS.altitudeMode;
+    if (altitudeMode === "absolute" && options.center.altitude === undefined) {
+        throw new Error(`${prefix}: altitudeMode="absolute" requires center.altitude`);
+    }
+};
+
+const createCircleManagerStub = (): CircleManager => {
+    const nodes = new Map<string, ReturnType<typeof createCircleNode>>();
+    const optionsById = new Map<string, CircleOptions>();
+    let disposed = false;
+    const requireNode = (id: string): ReturnType<typeof createCircleNode> => {
+        const node = nodes.get(id);
+        if (!node) throw new Error(`Circle id "${id}" not found`);
+        return node;
+    };
+    const assertActive = (): void => {
+        if (disposed) throw new Error("CircleManager has been disposed");
+    };
+    return {
+        add(id: string, options: CircleOptions) {
+            assertActive();
+            if (nodes.has(id)) throw new Error(`id "${id}" already exists`);
+            validateCircleOptions(options);
+            const node = createCircleNode({} as never, id, options);
+            node.setElevationResolved(true);
+            nodes.set(id, node);
+            optionsById.set(id, { ...options, center: { ...options.center } });
+            return node.getHandle();
+        },
+        update(id: string, partial: CircleUpdate) {
+            assertActive();
+            const node = requireNode(id);
+            const current = optionsById.get(id) ?? node.getHandle();
+            const merged: CircleOptions = {
+                ...current,
+                center: partial.center ? { ...partial.center } : { ...current.center },
+                radius: partial.radius ?? current.radius,
+                segments: partial.segments ?? current.segments,
+                altitudeMode: partial.altitudeMode ?? current.altitudeMode,
+                label: partial.label ?? current.label,
+                style: partial.style ? { ...current.style, ...partial.style } : current.style,
+                enabled: partial.enabled ?? current.enabled,
+                pointEnabled: partial.pointEnabled ?? current.pointEnabled,
+                lineEnabled: partial.lineEnabled ?? current.lineEnabled,
+                wallEnabled: partial.wallEnabled ?? current.wallEnabled,
+                labelEnabled: partial.labelEnabled ?? current.labelEnabled,
+            };
+            validateCircleOptions(merged, "JpmapTerrain.updateCircle");
+            const needsRebuild =
+                partial.segments !== undefined ||
+                partial.altitudeMode !== undefined ||
+                partial.label !== undefined ||
+                partial.style !== undefined;
+            const nextNode = needsRebuild
+                ? createCircleNode({} as never, id, merged)
+                : node;
+            if (partial.center !== undefined) nextNode.center = partial.center;
+            if (partial.radius !== undefined) nextNode.radius = partial.radius;
+            if (partial.enabled !== undefined)
+                nextNode.setEnabledLogical(partial.enabled);
+            if (partial.pointEnabled !== undefined)
+                nextNode.setPointEnabledLogical(partial.pointEnabled);
+            if (partial.lineEnabled !== undefined)
+                nextNode.setLineEnabledLogical(partial.lineEnabled);
+            if (partial.wallEnabled !== undefined)
+                nextNode.setWallEnabledLogical(partial.wallEnabled);
+            if (partial.labelEnabled !== undefined)
+                nextNode.setLabelEnabledLogical(partial.labelEnabled);
+            nextNode.setElevationResolved(true);
+            if (needsRebuild) {
+                node.dispose();
+                nodes.set(id, nextNode);
+            }
+            optionsById.set(id, { ...merged, center: { ...merged.center } });
+            return nextNode.getHandle();
+        },
+        get: (id: string) => nodes.get(id)?.getHandle() ?? null,
+        remove(id: string): void {
+            nodes.get(id)?.dispose();
+            nodes.delete(id);
+            optionsById.delete(id);
+        },
+        setEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setEnabledLogical(enabled);
+        },
+        setPointEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setPointEnabledLogical(enabled);
+        },
+        setLineEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setLineEnabledLogical(enabled);
+        },
+        setWallEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setWallEnabledLogical(enabled);
+        },
+        setLabelEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setLabelEnabledLogical(enabled);
+        },
+        list: (): readonly string[] => [...nodes.keys()],
+        dispose(): void {
+            if (disposed) return;
+            disposed = true;
+            for (const node of nodes.values()) node.dispose();
+            nodes.clear();
+            optionsById.clear();
+        },
+    };
+};
+
+const createModelManagerStub = (): ModelManager => {
+    const models = new Map<string, ModelHandle>();
+    let disposed = false;
+    const toHandle = (m: ModelHandle): ModelHandle => ({
+        ...m,
+        rotation: { ...m.rotation },
+        scaling: { ...m.scaling },
+        animationNames: [...m.animationNames],
+    });
+    return {
+        add(id: string, options: ModelOptions) {
+            if (disposed) throw new Error("ModelManager has been disposed");
+            if (models.has(id)) throw new Error(`id "${id}" already exists`);
+            assertLatLonInBounds(options.lat, options.lon, "JpmapTerrain.addModel");
+            if (
+                (options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode) ===
+                    "absolute" &&
+                options.altitude === undefined
+            ) {
+                throw new Error(
+                    "JpmapTerrain.addModel: altitudeMode=\"absolute\" requires altitude",
+                );
+            }
+            const entry: ModelHandle = {
+                id,
+                url: options.url,
+                lat: options.lat,
+                lon: options.lon,
+                altitude: options.altitude ?? MODEL_DEFAULTS.altitude,
+                altitudeMode: options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode,
+                rotation: { ...MODEL_DEFAULTS.rotation, ...options.rotation },
+                scaling: { ...MODEL_DEFAULTS.scaling, ...options.scaling },
+                enabled: options.enabled ?? MODEL_DEFAULTS.enabled,
+                gravity: options.gravity ?? MODEL_DEFAULTS.gravity,
+                loaded: false,
+                elevationResolved: false,
+                animationNames: [],
+            };
+            models.set(id, entry);
+            return toHandle(entry);
+        },
+        get(id: string) {
+            const model = models.get(id);
+            return model ? toHandle(model) : null;
+        },
+        update(id: string, partial: ModelUpdate) {
+            if (disposed) throw new Error("ModelManager has been disposed");
+            const current = models.get(id);
+            if (!current) throw new Error(`id "${id}" not found`);
+            const next: ModelHandle = {
+                ...current,
+                lat: partial.lat ?? current.lat,
+                lon: partial.lon ?? current.lon,
+                altitude: partial.altitude ?? current.altitude,
+                altitudeMode: partial.altitudeMode ?? current.altitudeMode,
+                rotation: partial.rotation
+                    ? { ...current.rotation, ...partial.rotation }
+                    : current.rotation,
+                scaling: partial.scaling
+                    ? { ...current.scaling, ...partial.scaling }
+                    : current.scaling,
+                enabled: partial.enabled ?? current.enabled,
+                gravity: partial.gravity ?? current.gravity,
+            };
+            assertLatLonInBounds(next.lat, next.lon, "JpmapTerrain.updateModel");
+            models.set(id, next);
+            return toHandle(next);
+        },
+        remove: (id: string): void => {
+            models.delete(id);
+        },
+        setEnabled: (id: string, enabled: boolean): void => {
+            const model = models.get(id);
+            if (model) models.set(id, { ...model, enabled });
+        },
+        list: (): readonly string[] => [...models.keys()],
+        playAnimation: (): void => {
+            /* no-op */
+        },
+        stopAnimation: (): void => {
+            /* no-op */
+        },
+        dispose: (): void => {
+            disposed = true;
+            models.clear();
+        },
+    };
+};
 
 jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
@@ -504,29 +883,6 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
                     }
                     if (shouldRefresh && centerChanged) refresh();
                 };
-                // globe コントローラの overlay 用コンテキスト（公開 managers 経由で消費される）。
-                const markerContext = {
-                    scene: { onBeforeRenderObservable: createSceneObservable() },
-                    tileManager: {
-                        queryElevationAtWorld: () => 0,
-                        subscribeTerrainUpdated: () => () => {
-                            /* no-op */
-                        },
-                    },
-                    getOrigin: () => ({
-                        lat,
-                        lon,
-                        gridResidualX: 0,
-                        gridResidualZ: 0,
-                    }),
-                    getCameraPosition: () => ({
-                        x: 0,
-                        y: 0,
-                        z: 0,
-                        radius: 1000,
-                        beta: Math.PI / 4,
-                    }),
-                };
                 opts?.onReady?.({
                     getLat: () => lat,
                     getLon: () => lon,
@@ -576,32 +932,10 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
                     setSunShadows: (enabled: boolean) => {
                         sunShadowsCalls.push(enabled);
                     },
-                    getMarkerContext: () => markerContext,
-                    // globe バックエンド専用フック。公開 manager 互換アダプタを実関数で構築する。
-                    getMarkerManager: () =>
-                        createMarkerManager(
-                            markerContext as unknown as Parameters<
-                                typeof createMarkerManager
-                            >[0],
-                        ),
-                    getPolygonManager: () =>
-                        createPolygonManager(
-                            markerContext as unknown as Parameters<
-                                typeof createPolygonManager
-                            >[0],
-                        ),
-                    getCircleManager: () =>
-                        createCircleManager(
-                            markerContext as unknown as Parameters<
-                                typeof createCircleManager
-                            >[0],
-                        ),
-                    getModelManager: () =>
-                        createModelManagerMock(
-                            markerContext as unknown as Parameters<
-                                typeof createModelManagerMock
-                            >[0],
-                        ),
+                    getMarkerManager: createMarkerManagerStub,
+                    getPolygonManager: createPolygonManagerStub,
+                    getCircleManager: createCircleManagerStub,
+                    getModelManager: createModelManagerStub,
                     subscribeTerrainClick: (
                         listener: (e: TerrainClickEventLike) => void,
                     ) => {

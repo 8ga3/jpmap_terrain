@@ -90,7 +90,6 @@ import type { GlobeModelManager } from "../terrain/geo/globeModelManager";
 import type {
     DefaultSceneController,
     DefaultSceneInitOptions,
-    MarkerContext,
 } from "./sceneContract";
 import {
     GlobeScene,
@@ -1942,14 +1941,6 @@ export const createGlobeSceneController = (
             gc.scene.onBeforeRenderObservable.remove(skyColorObserver);
             uiDispose();
             gc.dispose();
-        },
-
-        getMarkerContext: (): MarkerContext => {
-            // 平面版 MarkerContext（world XZ 前提）は globe（ECEF + 地心 up）に適合しない。
-            // marker/polygon は専用アダプタで対応する。
-            throw new Error(
-                "[globeSceneController] getMarkerContext is not supported on the globe backend; use dedicated overlay managers.",
-            );
         },
 
         getMarkerManager: () => markerManager,

@@ -1,8 +1,9 @@
 /**
- * 個別マーカーノード (Issue #167)。
+ * マーカー描画の共通ユーティリティ (Issue #167 / #414)。
  *
- * 地表からの線 (Tube)・アイコン Plane・テキスト Plane の組み合わせで
- * 1 マーカーを表現する。`MarkerManager` から生成・更新・破棄される。
+ * アイコン Plane・テキスト Plane を 1 枚の板ポリにまとめて描画する `createIconTextMesh` と、
+ * icon/text オプション解決・URL 検証を提供する。globe 単一バックエンド（#414）では
+ * `globeMarkerManager` がこれらを再利用してマーカーを表示する（座標系非依存）。
  */
 
 import type { Scene } from "@babylonjs/core/scene";
@@ -15,12 +16,8 @@ import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 
 import {
     MARKER_DEFAULTS,
-    type MarkerHandle,
     type MarkerIconOptions,
-    type MarkerLineOptions,
-    type MarkerOptions,
     type MarkerTextOptions,
-    type MarkerUpdate,
 } from "../lib/types";
 
 // グローブ版オーバーレイ（#275 Phase 3）が同じ描画レイヤーに揃えるため export する。
@@ -58,19 +55,6 @@ export const validateIconUrl = (url: string): void => {
     }
 };
 
-interface ResolvedMarker {
-    enabled: boolean;
-    line: Required<MarkerLineOptions>;
-    icon: Required<MarkerIconOptions> | null;
-    text: Required<MarkerTextOptions> | null;
-}
-
-const resolveLine = (line: MarkerLineOptions | undefined): Required<MarkerLineOptions> => ({
-    color: line?.color ?? MARKER_DEFAULTS.line.color,
-    width: line?.width ?? MARKER_DEFAULTS.line.width,
-    height: line?.height ?? MARKER_DEFAULTS.line.height,
-});
-
 // グローブ版オーバーレイ（#275 Phase 3, geo/globeMarkerManager）が同じアイコン/ラベル描画を
 // 再利用するため export する（座標系非依存のビルボード描画。平面版の挙動は不変）。
 export const resolveIcon = (
@@ -103,78 +87,6 @@ export const resolveText = (
             text.backgroundColor ?? MARKER_DEFAULTS.text.backgroundColor,
         lineHeight: text.lineHeight ?? MARKER_DEFAULTS.text.lineHeight,
     };
-};
-
-const resolve = (options: MarkerOptions): ResolvedMarker => ({
-    enabled: options.enabled ?? MARKER_DEFAULTS.enabled,
-    line: resolveLine(options.line),
-    icon: resolveIcon(options.icon),
-    text: resolveText(options.text),
-});
-
-interface LineMeshes {
-    mesh: Mesh;
-    material: StandardMaterial;
-    texture: DynamicTexture;
-}
-
-/**
- * 垂直線を 1 枚のビルボード平面 + DynamicTexture で表現する。
- *
- * - DT に「左右だけ白縁・中央は黒コア」を描き、平面を outerW × lineHeight に伸ばす。
- *   結果として常に「黒バー + 左右の白縁」になり、別メッシュ重ねによる z-fight が発生しない。
- * - 縁取りの太さは plane のスケール比例で決まる（applyTransform 側で
- *   `outerW = innerW + 2*border` に設定する。上下方向には白縁を持たない）。
- */
-const createLineMesh = (
-    scene: Scene,
-    id: string,
-    line: Required<MarkerLineOptions>,
-): LineMeshes => {
-    // 64x64 で十分。NEAREST サンプリングで境界がにじまない。
-    const TEX_W = 64;
-    const TEX_H = 64;
-    const texture = new DynamicTexture(
-        `marker-line-${id}`,
-        { width: TEX_W, height: TEX_H },
-        scene,
-        false,
-    );
-    texture.hasAlpha = true;
-    texture.updateSamplingMode(1); // NEAREST_NEAREST = 1
-    texture.wrapU = 0; // CLAMP_ADDRESSMODE = 0
-    texture.wrapV = 0;
-    const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, TEX_W, TEX_H);
-    // 左右だけに白縁を残し、上下方向は line.color が端まで届くようにする。
-    // 横の比率は 25/50/25（左白・中央色・右白）、縦は全域を塗りつぶす。
-    // line.color は CSS で許容される表記（"#RRGGBB" / "rgb(...)" / "red" 等）を
-    // そのまま fillStyle に代入できる。
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, TEX_W, TEX_H);
-    ctx.fillStyle = line.color;
-    const xL = Math.floor(TEX_W * 0.25);
-    const xR = Math.ceil(TEX_W * 0.75);
-    ctx.fillRect(xL, 0, xR - xL, TEX_H);
-    texture.update(false);
-
-    const mesh = CreatePlane(
-        `marker-line-${id}`,
-        { width: 1, height: 1 },
-        scene,
-    );
-    mesh.billboardMode = AbstractMesh.BILLBOARDMODE_Y;
-    mesh.renderingGroupId = RENDERING_GROUP_ID;
-    mesh.isPickable = false;
-    const material = new StandardMaterial(`marker-line-mat-${id}`, scene);
-    material.disableLighting = true;
-    material.backFaceCulling = false;
-    material.useAlphaFromDiffuseTexture = true;
-    material.emissiveColor = Color3.White();
-    material.diffuseTexture = texture;
-    mesh.material = material;
-
-    return { mesh, material, texture };
 };
 
 export interface IconTextMeshes {
@@ -370,192 +282,4 @@ export const createIconTextMesh = (
     }
 
     return handle;
-};
-
-export interface MarkerNode {
-    readonly id: string;
-    readonly lat: number;
-    readonly lon: number;
-    /**
-     * 位置・スケール・線高さを 1 フレーム分まとめて反映する。
-     * @param distScale カメラ距離に応じたスクリーン一定スケール（幅・アイコン・テキストへ適用）。
-     * @param dynamicLineHeight 線の高さ (m)。`undefined` の場合は `line.height` をそのまま使用する。
-     */
-    applyTransform(
-        wx: number,
-        elev: number,
-        wz: number,
-        distScale?: number,
-        dynamicLineHeight?: number,
-    ): void;
-    setEnabledLogical(enabled: boolean): void;
-    setElevationResolved(resolved: boolean): void;
-    update(partial: MarkerUpdate, newLat: number, newLon: number): void;
-    getHandle(): MarkerHandle;
-    dispose(): void;
-}
-
-export interface CreateMarkerNodeDeps {
-    /** 親 manager に lat/lon が変更されたことを通知する（manager 側の Map 整合用ではなく将来拡張） */
-    readonly _placeholder?: never;
-}
-
-export const createMarkerNode = (
-    scene: Scene,
-    id: string,
-    options: MarkerOptions,
-): MarkerNode => {
-    if (!options.icon && !options.text) {
-        throw new Error(
-            `addMarker: at least one of icon/text is required (id="${id}")`,
-        );
-    }
-    if (options.icon) validateIconUrl(options.icon.url);
-
-    let resolved = resolve(options);
-    let lat = options.lat;
-    let lon = options.lon;
-    let logicalEnabled = resolved.enabled;
-    let elevationResolved = false;
-
-    let lineMeshes: LineMeshes = createLineMesh(scene, id, resolved.line);
-    let iconTextMeshes: IconTextMeshes | null = createIconTextMesh(
-        scene,
-        id,
-        resolved.icon,
-        resolved.text,
-    );
-
-    const applyVisibility = (): void => {
-        const visible = logicalEnabled && elevationResolved;
-        lineMeshes.mesh.setEnabled(visible);
-        iconTextMeshes?.mesh.setEnabled(visible);
-    };
-    applyVisibility();
-
-    const applyTransform = (
-        wx: number,
-        elev: number,
-        wz: number,
-        distScale = 1,
-        dynamicLineHeight?: number,
-    ): void => {
-        // 線の高さ: 動的指定があればそれを使い、無ければ resolved.line.height (×distScale で screen-constant) にフォールバック。
-        const lineHeight =
-            dynamicLineHeight !== undefined && dynamicLineHeight > 0
-                ? dynamicLineHeight
-                : resolved.line.height * distScale;
-        // 線の幅は distScale でスクリーン定幅に保つ。
-        const innerW = Math.max(resolved.line.width, 0.5) * distScale;
-        // 縁取り幅 (片側) = 内側幅の 50%。左右だけに白縁を持たせる（上下は地表/アイコンに突き当たるので不要）。
-        const border = innerW * 0.5;
-        const outerW = innerW + border * 2;
-
-        // 1 枚プレーン: outerW × lineHeight に伸ばし、底辺を地表に合わせる。
-        lineMeshes.mesh.scaling.set(outerW, lineHeight, 1);
-        lineMeshes.mesh.position.set(wx, elev + lineHeight / 2, wz);
-
-        // アイコン+テキストの合成プレーン:
-        // - 線の先端 (lineTopY) をアイコン中心に合わせる。
-        // - プレーン内訳 (上→下): textHeight, iconHeight。
-        //   plane center.y = lineTopY + textHeight*distScale / 2
-        //   （icon 無しなら plane center = lineTopY = text bottom、
-        //     text 無しなら plane center = lineTopY = icon center）
-        if (iconTextMeshes) {
-            iconTextMeshes.mesh.scaling.set(distScale, distScale, distScale);
-            const lineTopY = elev + lineHeight;
-            const textH = iconTextMeshes.textHeightWorld * distScale;
-            iconTextMeshes.mesh.position.set(wx, lineTopY + textH / 2, wz);
-        }
-    };
-
-    const disposeIconText = (): void => {
-        if (!iconTextMeshes) return;
-        // 非同期アイコン onload がこの後に走ったときにガードされるよう
-        // 先に disposed フラグを立ててからリソースを解放する。
-        iconTextMeshes.disposed = true;
-        iconTextMeshes.texture.dispose();
-        iconTextMeshes.material.dispose();
-        iconTextMeshes.mesh.dispose();
-        iconTextMeshes = null;
-    };
-    const disposeLine = (): void => {
-        lineMeshes.material.dispose();
-        lineMeshes.texture.dispose();
-        lineMeshes.mesh.dispose();
-    };
-
-    return {
-        id,
-        get lat() {
-            return lat;
-        },
-        get lon() {
-            return lon;
-        },
-        applyTransform,
-        setEnabledLogical(enabled: boolean): void {
-            logicalEnabled = enabled;
-            applyVisibility();
-        },
-        setElevationResolved(r: boolean): void {
-            elevationResolved = r;
-            applyVisibility();
-        },
-        update(partial: MarkerUpdate, newLat: number, newLon: number): void {
-            lat = newLat;
-            lon = newLon;
-            if (partial.icon !== undefined) validateIconUrl(partial.icon.url);
-            // line 差分 → 再生成
-            if (partial.line !== undefined) {
-                resolved = {
-                    ...resolved,
-                    line: resolveLine(partial.line),
-                };
-                disposeLine();
-                lineMeshes = createLineMesh(scene, id, resolved.line);
-            }
-            // icon / text どちらかが変化したら 1 枚のプレーンを作り直す。
-            const iconChanged = partial.icon !== undefined;
-            const textChanged = partial.text !== undefined;
-            if (iconChanged || textChanged) {
-                if (iconChanged) {
-                    resolved = { ...resolved, icon: resolveIcon(partial.icon) };
-                }
-                if (textChanged) {
-                    resolved = { ...resolved, text: resolveText(partial.text) };
-                }
-                disposeIconText();
-                iconTextMeshes = createIconTextMesh(
-                    scene,
-                    id,
-                    resolved.icon,
-                    resolved.text,
-                );
-            }
-            if (partial.enabled !== undefined) {
-                logicalEnabled = partial.enabled;
-                resolved = { ...resolved, enabled: partial.enabled };
-            }
-            applyVisibility();
-        },
-        getHandle(): MarkerHandle {
-            // 利用者が返却オブジェクトを書き換えても内部状態に影響しないよう、
-            // 各 sub-object を浅いコピーして返す（read-only スナップショット）。
-            return {
-                id,
-                lat,
-                lon,
-                enabled: logicalEnabled,
-                icon: resolved.icon ? { ...resolved.icon } : null,
-                text: resolved.text ? { ...resolved.text } : null,
-                line: { ...resolved.line },
-                elevationResolved,
-            };
-        },
-        dispose(): void {
-            disposeIconText();
-            disposeLine();
-        },
-    };
 };

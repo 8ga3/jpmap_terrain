@@ -23,15 +23,6 @@ import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
 
 // ─── 型 ─────────────────────────────────────────────────
-export interface AfterburnerContext {
-    /**
-     * model の TransformNode 名（旧 generator 実装向け）。
-     * 現実装（{@link createGlobeAfterburner}）はトレイルを軌道パラメータから
-     * 都度算出するため**参照しない**。互換目的で残す未使用フィールド。
-     */
-    modelNodeName: string;
-}
-
 /**
  * 毎フレームの更新コンテキスト。軌道パラメータから真 ECEF を都度算出して
  * トレイルをリビルドするため、これらの値を受け取る。
@@ -51,7 +42,7 @@ export interface AfterburnerUpdateContext {
 
 export interface Afterburner {
     /** トレイル生成を開始（Follow モード ON 時に呼ぶ） */
-    start(ctx: AfterburnerContext): void;
+    start(): void;
     /** トレイル生成を停止（Follow モード OFF 時に呼ぶ） */
     stop(): void;
     /** トレイルの頂点をリセット（グリッド原点ジャンプ後の折れ線防止） */
@@ -302,8 +293,7 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
         initialized = false;
     };
 
-    // トレイルは軌道パラメータ（update のコンテキスト）から真 ECEF を都度算出するため、
-    // start の AfterburnerContext（modelNodeName 等の generator 情報）は使用しない。
+    // トレイルは軌道パラメータ（update のコンテキスト）から真 ECEF を都度算出する。
     const start = (): void => {
         if (disposed || running) return;
         disposeMeshes();

@@ -256,12 +256,6 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         expect(onMapTypeChange).toHaveBeenCalledTimes(1);
     });
 
-    it("getMarkerContext は globe 未対応のため throw する", () => {
-        const { gc } = makeStub(35, 139, 1000, 0, 0);
-        const c = createGlobeSceneController(gc, "std");
-        expect(() => c.getMarkerContext()).toThrow(/not supported on the globe backend/);
-    });
-
     it("subscribeTerrainClick は関数を返し、未実装の購読/設定メソッドは例外を投げない", () => {
         const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
         const { gc } = makeStub(35, 139, 1000, 0, 0);

@@ -525,7 +525,7 @@ const start = async (): Promise<void> => {
                 afterburner = createGlobeAfterburner(scene);
             }
             if (afterburner) {
-                afterburner.start({ modelNodeName: `model-${MODEL_ID}` });
+                afterburner.start();
                 afterburner.setVisible(showAfterburner);
             }
         }
