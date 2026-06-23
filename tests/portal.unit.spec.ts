@@ -65,6 +65,19 @@ describe("buildPortalHtml", () => {
         );
     });
 
+    it("URL 直後に < が続いても URL 抽出の境界が崩れない", () => {
+        const html = buildPortalHtml(undefined, [
+            "see https://example.com/p<b>bold</b>",
+        ]);
+        // URL は `<` の手前で終わり、後続の <b> はエスケープされる。
+        expect(html).toContain(
+            '<a href="https://example.com/p" target="_blank" rel="noopener noreferrer">https://example.com/p</a>',
+        );
+        expect(html).toContain("&lt;b&gt;bold&lt;/b&gt;");
+        // `&lt;` 以降が href に取り込まれていないこと。
+        expect(html).not.toContain('href="https://example.com/p&lt;');
+    });
+
     it("URL 末尾の括弧・句読点（半角/全角）はリンクへ含めない", () => {
         const html = buildPortalHtml(undefined, [
             "a (https://example.com/a).",
