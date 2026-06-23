@@ -185,7 +185,18 @@ const start = async (): Promise<void> => {
             err,
         );
         terrainEngine = "planar";
-        viewer = await JpmapTerrain.create(mount, { ...opts, terrainEngine });
+        // planar フォールバック時は JAPAN_BOUNDS 基準でカメラを再解決する (#413 review)。
+        // 初回 opts の lat/lon は globe 既定（WORLD_BOUNDS）でパース済みのため、planar の
+        // 被覆域外座標がそのまま採用されると空描画になり得る。planar 基準で再クランプして反映する。
+        const planarCamera = parseCameraStateFromUrl(location.href, {
+            terrainEngine: "planar",
+        });
+        viewer = await JpmapTerrain.create(mount, {
+            ...opts,
+            terrainEngine,
+            lat: planarCamera?.lat ?? STAGE_CENTER.lat,
+            lon: planarCamera?.lon ?? STAGE_CENTER.lon,
+        });
     }
     // 実際に構築されたバックエンド (#413: 未指定は lib 既定 globe)。
     // undefined を旧既定 planar と誤認して globe シーン上に planar の恒等ステージを

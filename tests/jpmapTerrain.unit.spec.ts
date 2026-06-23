@@ -801,10 +801,11 @@ describe("JpmapTerrain (skeleton)", () => {
     const create: typeof JpmapTerrain.create = async (mount, opts) => {
         // 本スイートは planar の `scenes/default` のみモックしているため、
         // 既定が globe へ切り替わった後（#413）も planar 経路を明示して固定する。
+        // 呼び出し側 opts より後に terrainEngine を置き、常に planar を強制する。
         // globe 経路は globeSceneController.unit.spec.ts が担当する。
         const viewer = await JpmapTerrain.create(mount, {
-            terrainEngine: "planar",
             ...opts,
+            terrainEngine: "planar",
         });
         createdViewers.push(viewer);
         return viewer;
