@@ -1,18 +1,11 @@
 /**
- * globe バックエンド用アフターバーナーエフェクト (Issue #349 / P4-3)。
+ * アフターバーナーエフェクト (Issue #349 / P4-3)。
  *
- * planar 版（`afterburner.ts`）は Babylon `TrailMesh` を使うが、TrailMesh は generator の
- * **絶対位置（world座標）を毎フレーム float32 頂点バッファへ焼き込む**設計のため、globe
- * （真 ECEF ≈ 6.4e6 + floating origin）では:
- *   1. float32 量子化（~0.76m）でトレイルがジッターする
- *   2. 焼き込み済み頂点は floating origin リベース対象外で位置がずれる
- * という二重の問題が起きる（リボン/ウェイポイントで解決済みの問題と同質）。
- *
- * そこで本モジュールは `routeLine.ts` の globe 対応と同じ「アンカー（真 ECEF）= メッシュの
- * translation、各頂点はアンカーからのローカル小座標」パターンで短尺トレイルを自作する。
- * トレイル頂点は常にアンカーとの差分（数十 m）なので float32 で精度十分、translation は
- * floating origin により CPU 側で float64 リベースされる。絶対 ECEF 履歴を保持して毎フレーム
- * ローカル座標へ変換するため、グリッド原点ジャンプの影響も受けない。
+ * `routeLine.ts` と同じ「アンカー（真 ECEF）= メッシュの translation、各頂点はアンカーからの
+ * ローカル小座標」パターンで短尺トレイルを自作する。トレイル頂点は常にアンカーとの差分
+ * （数十 m）なので float32 で精度十分、translation は floating origin により CPU 側で
+ * float64 リベースされる。絶対 ECEF 履歴を保持して毎フレームローカル座標へ変換するため、
+ * グリッド原点ジャンプの影響も受けない。
  */
 
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -28,13 +21,50 @@ import type { Scene } from "@babylonjs/core/scene";
 import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
-import type {
-    Afterburner,
-    AfterburnerUpdateContext,
-} from "./afterburner";
+
+// ─── 型 ─────────────────────────────────────────────────
+export interface AfterburnerContext {
+    /** model の TransformNode 名（generator の親に使う） */
+    modelNodeName: string;
+}
+
+/**
+ * 毎フレームの更新コンテキスト。軌道パラメータから真 ECEF を都度算出して
+ * トレイルをリビルドするため、これらの値を受け取る。
+ */
+export interface AfterburnerUpdateContext {
+    /** 軌道の中心緯度 */
+    centerLat: number;
+    /** 軌道の中心経度 */
+    centerLon: number;
+    /** 軌道半径 (m) */
+    radiusM: number;
+    /** 飛行機の絶対標高 (m) */
+    altitudeM: number;
+    /** 現在の軌道角度 (deg) */
+    angleDeg: number;
+}
+
+export interface Afterburner {
+    /** トレイル生成を開始（Follow モード ON 時に呼ぶ） */
+    start(ctx: AfterburnerContext): void;
+    /** トレイル生成を停止（Follow モード OFF 時に呼ぶ） */
+    stop(): void;
+    /** トレイルの頂点をリセット（グリッド原点ジャンプ後の折れ線防止） */
+    reset(): void;
+    /** 表示/非表示切替 */
+    setVisible(visible: boolean): void;
+    /**
+     * 毎フレーム更新。軌道パラメータから真 ECEF を算出してトレイルをリビルドする。
+     * Follow モードかつモデルロード後に呼ぶこと。
+     */
+    update(ctx: AfterburnerUpdateContext): void;
+    /** リソース解放 */
+    dispose(): void;
+}
 
 // ─── 調整可能な定数 ─────────────────────────────────────
-/** 左右エンジンの横方向オフセット (m)。planar 版と揃える */
+/** 左右エンジンの横方向オフセット (m) */
 const ENGINE_LATERAL_OFFSET_M = 1.4;
 /** エンジン位置の後方オフセット (m) */
 const ENGINE_REAR_OFFSET_M = 4.5;
@@ -212,7 +242,7 @@ const createAfterburnerMaterial = (scene: Scene): StandardMaterial => {
 };
 
 /**
- * globe 用アフターバーナーを作成する。planar 版と同じ `Afterburner` インターフェースを実装し、
+ * アフターバーナーを作成する。`Afterburner` インターフェースを実装し、
  * 毎フレーム `update()` で軌道パラメータから真 ECEF を算出してトレイルをリビルドする。
  */
 export const createGlobeAfterburner = (scene: Scene): Afterburner => {
@@ -268,9 +298,8 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
         initialized = false;
     };
 
-    // globe トレイルは軌道パラメータ（update のコンテキスト）から真 ECEF を都度算出するため、
+    // トレイルは軌道パラメータ（update のコンテキスト）から真 ECEF を都度算出するため、
     // start の AfterburnerContext（modelNodeName 等の generator 情報）は使用しない。
-    // 引数は planar 版と Afterburner インターフェースを統一するためのダミー。
     const start = (): void => {
         if (disposed || running) return;
         disposeMeshes();

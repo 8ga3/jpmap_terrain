@@ -7,7 +7,7 @@
  * - Model API (`addModel` / `updateModel` / `playModelAnimation`) を使用
  * - Polygon API (`addPolygon`, `closed: true`) でリージョン境界を描画
  * - 地形追従 (`altitudeMode: "terrain"`, `gravity: true`)
- * - 地形バックエンド: `?terrainEngine=globe|planar`（既定 globe, #275 Phase 5 #413）
+ * - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414）
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";

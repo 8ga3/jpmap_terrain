@@ -7,7 +7,7 @@
  *
  * URL 規約:
  * - `?engine=webgpu|webgl|webgl2`（既存と互換）
- * - `?terrainEngine=globe|planar`（既定 globe, #275 Phase 5 #413。globe では太陽方向が時刻追従する）
+ * - `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414。globe では太陽方向が時刻追従する）
  * - `?lat=`, `?lon=` 等のカメラ初期値（viewer デモと共通の `parseCameraStateFromUrl`）
  * - `?start=<ISO8601>`: シミュレーション開始時刻（タイムゾーン無指定は UTC として解釈。`+09:00` の
  *   ような正オフセットは URL では `%2B09:00` とエンコードするか、`Z` 付き UTC を推奨）
@@ -135,8 +135,7 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
-    // 実効エンジンで解決（未指定は lib 既定 globe, #413）。undefined を旧既定 planar と
-    // 誤認すると globe シーンで globe 専用カメラデフォルト（日の出が正面）が適用されない。
+    // 実効エンジン（未指定は lib 既定 globe, #413 / #414）。globe 単一化後は常に globe。
     const terrainEngine = resolveEffectiveTerrainEngine(location.search);
     const cameraInit = resolveCameraInit(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
@@ -147,9 +146,9 @@ const start = async (): Promise<void> => {
         // タイムラプス固有のカメラデフォルト（URLで明示指定された値のみ上書きされる）。
         ...TIMELAPSE_CAMERA_DEFAULTS,
         // globe では方位規約が逆のため、日の出が正面に見えるよう globe 専用デフォルトで上書きする。
-        ...(terrainEngine === "globe" ? TIMELAPSE_GLOBE_CAMERA_DEFAULTS : {}),
+        ...TIMELAPSE_GLOBE_CAMERA_DEFAULTS,
         ...(engine ? { engine } : {}),
-        ...(terrainEngine ? { terrainEngine } : {}),
+        terrainEngine,
         ...cameraInit,
         ...(mapType !== null ? { mapType } : {}),
         // タイムラプスでは autoSunPosition は必ず OFF（dateTime を毎フレーム駆動するため）。

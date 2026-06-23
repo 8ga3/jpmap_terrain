@@ -4,7 +4,7 @@
  * 真上からの平行光源 (DirectionalLight) と ShadowGenerator を用いて、
  * 砲台メッシュと砲弾メッシュの影を地形 (tile-ground-*) に落とす。
  *
- * 設定方針（src/scenes/default.ts の太陽影実装 Issue #39 / #393 に倣う）:
+ * 設定方針（旧 planar シーンの太陽影実装 Issue #39 / #393 に倣う）:
  * - フィルタは Poisson sampling。`useBlurExponentialShadowMap` は WebGPU 経路で
  *   infiniteDistance メッシュ（太陽メッシュ等）と干渉して破綻し、PCF
  *   (`usePercentageCloserFiltering`) は WebGPU で comparison サンプラのバインドに
@@ -61,7 +61,7 @@ export const createArtilleryShadows = (
     //
     // シーンには環境光（HemisphericLight）と影を持たない主たる平行光
     // （DirectionalLight）の 2 つがある。命名はシーンで異なる:
-    //   - planar (src/scenes/default.ts): `sky-light` / `sun-light`
+    //   - 旧 planar シーン: `sky-light` / `sun-light`
     //   - globe  (src/scenes/globe.ts)  : `globe-hemi` / `globe-sun`
     //
     // この主平行光が「影を持たないまま」地面全体をフル照明するため、こちらの
@@ -145,7 +145,7 @@ export const createArtilleryShadows = (
     // フィルタ選定: PCF (`usePercentageCloserFiltering`) は WebGPU で comparison 付き
     // depth-stencil サンプラ（`shadowTexture2` / `shadowTexture2Sampler`）を要求するが、
     // 影マップのテクスチャがバインドされず `createBindGroup` がクラッシュし、シーン全体
-    // （地形・砲台）が一切描画されず白画面になる（#393 と同根。src/scenes/default.ts の
+    // （地形・砲台）が一切描画されず白画面になる（#393 と同根。旧 planar シーンの
     // 太陽影と同じ対処）。Poisson sampling は通常テクスチャとしてバインドされ PostProcess も
     // 伴わないため、WebGL2 / WebGPU 双方で安定して動作する。
     generator.usePoissonSampling = true;

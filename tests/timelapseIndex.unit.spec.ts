@@ -84,8 +84,8 @@ describe("resolveTerrainEngine (timelapse)", () => {
         expect(resolveTerrainEngine("?terrainEngine=globe")).toBe("globe");
     });
 
-    it("?terrainEngine=planar → 'planar'", () => {
-        expect(resolveTerrainEngine("?terrainEngine=planar")).toBe("planar");
+    it("?terrainEngine=planar（撤去済み）→ undefined", () => {
+        expect(resolveTerrainEngine("?terrainEngine=planar")).toBeUndefined();
     });
 
     it("不正値は undefined（lib 既定 globe にフォールバック, #413）", () => {
