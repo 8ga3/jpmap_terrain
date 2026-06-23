@@ -45,7 +45,6 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | パラメータ | 型 | デフォルト値 | 説明 |
 |---|---|---|---|
 | `engine` | `"webgpu" \| "webgl2"` | `"webgpu"` | 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバック |
-| `terrainEngine` | `"globe"` | `"globe"` | 地形描画バックエンド（Issue #349 Phase 4 / #413 Phase 5 / #414 Phase 6）。`"globe"` のみ（ECEF 楕円体 + GeospatialCamera + floating origin）。Phase 6 で従来の平面（planar）バックエンドは撤去済み |
 | `lat` | `number` | `35.681236` | 緯度（Babylon.js Z 軸に対応） |
 | `lon` | `number` | `139.767125` | 経度（Babylon.js X 軸に対応） |
 | `altitude` | `number` | `2000` | カメラのワールド高度（メートル）。`camera.position.y = target.y + radius·cos(beta)` で算出される値であり、カメラの地表からの距離（radius）とは異なる。Babylon.js Y 軸に対応 |
@@ -400,7 +399,7 @@ interface MarkerOptions {
 **2D モードにおけるパス形式（Issue #254）:**
 
 - 3D モードのパス形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。globe（`terrainEngine=globe`）の意味 (#369):
+  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。globe バックエンドの意味 (#369):
     - **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）。上限は globe の最大 radius = planetRadius×4 に由来する。
 - 2D モードのパス形式: `/@<lat>,<lon>,<zoom>z`（Google Maps 互換）
   - `zoom` は Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]

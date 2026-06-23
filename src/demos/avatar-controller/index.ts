@@ -15,7 +15,6 @@
  * - 地面クリックでスポーン地点を変更
  * - 進行方向に自動回転
  * - 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
- * - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413）
  *   自動スクロール追従はカメラ中心（viewer.lat/lon）駆動で行う
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
@@ -23,7 +22,6 @@ import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveEffectiveTerrainEngine,
 } from "../../terrain/urlState";
 import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
 import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad";
@@ -86,11 +84,9 @@ const start = async (): Promise<void> => {
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
-    const terrainEngine = resolveEffectiveTerrainEngine(location.search);
 
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
-        ...(terrainEngine ? { terrainEngine } : {}),
         // globe は組み込みの WASD キーボードパンを持つ。本デモは WASD をアバター操作に
         // 使い、カメラは自動スクロールでアバターを追従させるため、WASD パンのみ
         // 無効化して二重スクロール（カメラ競合）を防ぐ。ドラッグパンは手動での視点移動用に

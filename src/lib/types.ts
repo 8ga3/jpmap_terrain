@@ -20,23 +20,12 @@ export type MapType = "standard" | "photo";
 export type ViewMode = "3d" | "2d";
 
 /**
- * 地形描画バックエンド (Issue #349 / #275 Phase 4 / Phase 5 #413 / Phase 6 #414)。
- * - `"globe"` (唯一): ECEF 楕円体 + GeospatialCamera + floating origin（`scenes/globe.ts`）。
- */
-export type TerrainEngine = "globe";
-
-/**
  * `JpmapTerrain.create` 初期化オプション。
  * すべて任意指定で、未指定時は spec/package.md §3.2 のデフォルト値が適用される。
  */
 export interface JpmapTerrainOptions {
     /** 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバックする */
     engine?: EngineType;
-    /**
-     * 地形描画バックエンド (Issue #349 / #275 Phase 4 / Phase 5 #413 / Phase 6 #414)。
-     * - `"globe"` (唯一): ECEF 楕円体 + GeospatialCamera + floating origin。
-     */
-    terrainEngine?: TerrainEngine;
     /** 緯度（度） */
     lat?: number;
     /** 経度（度） */
@@ -124,7 +113,6 @@ export interface FlyToOptions {
  */
 export const JPMAP_TERRAIN_DEFAULTS = {
     engine: "webgpu" as EngineType,
-    terrainEngine: "globe" as TerrainEngine,
     lat: 35.681236,
     lon: 139.767125,
     altitude: 2000,

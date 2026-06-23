@@ -25,7 +25,6 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { resolveArtilleryTerrainEngine } from "./terrainEngine";
 import { createStageFrame, type StageFrame } from "./stageFrame";
 import {
     createProjectilePool,
@@ -149,13 +148,8 @@ const start = async (): Promise<void> => {
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
 
-    // Issue #404 (P4-4): globe バックエンドは stageFrame による局所 ENU 物理で対応する。
-    const { engine: terrainEngine } =
-        resolveArtilleryTerrainEngine(location.search);
-
     const opts: JpmapTerrainOptions = {
         engine: resolveEngine(location.search),
-        terrainEngine,
         lat: camera?.lat ?? STAGE_CENTER.lat,
         lon: camera?.lon ?? STAGE_CENTER.lon,
         altitude: camera?.altitude ?? 2000,

@@ -3,8 +3,8 @@
  *
  * `JpmapTerrain`（公開ライブラリ）は `DefaultSceneController` インターフェース越しに
  * シーンを操作する。本アダプタは `scenes/globe.ts`（GeospatialCamera + ECEF + floating origin）の
- * `GlobeSceneController` を同インターフェースへ橋渡しし、`JpmapTerrain` が `terrainEngine` で
- * planar↔globe を切替えるだけで globe 描画へ移行できるようにする。
+ * `GlobeSceneController` を同インターフェースへ橋渡しし、`JpmapTerrain` が globe 描画を
+ * 利用できるようにする。
  *
  * 本スライス（Slice 1）はカメラ get/set/flyTo・mapType（生成時固定）・dispose を実装する。
  * overlay マネージャ・UI コントロールパネル・2D(ortho)・太陽/影・external frustum・terrain click /
@@ -1071,7 +1071,7 @@ export const createGlobeCircleManagerAdapter = (
 
 /**
  * `DefaultSceneController` 互換の `createScene` を提供する globe シーンファクトリ。
- * `JpmapTerrain` は terrainEngine=globe 単一化（#414）後、常に本クラスを使う。
+ * `JpmapTerrain` は globe 単一化（#414）後、常に本クラスを使う。
  */
 export class GlobeSceneAdapter {
     createScene = async (

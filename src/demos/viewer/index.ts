@@ -5,7 +5,6 @@
  * - URL 形式:
  *   - 3D: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
  *   - 2D: `/@lat,lon,Xz?viewMode=2d` （X はズームレベル, Issue #254）
- *   - 地形バックエンド: `?terrainEngine=globe`（既定 globe, #275 Phase 5 #413 / #414）
  *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可、Issue #64）
  * - `#root` 要素にビューアをマウントする。
  * - URL ↔ カメラ同期はパッケージ層から切り離し、デモ層 (本ファイル) で
@@ -16,7 +15,7 @@
  * `window.showToast` を露出する。これらは公開 API ではない。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
-import type { EngineType, JpmapTerrainOptions, TerrainEngine } from "../../lib/types";
+import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
 import { showToast } from "../../terrain/controlPanel";
 import {
     parseCameraStateFromUrl,
@@ -25,7 +24,6 @@ import {
     updateMapTypeInUrl,
     parseViewModeFromUrl,
     updateViewModeInUrl,
-    resolveTerrainEngine,
     type CameraUrlState,
 } from "../../terrain/urlState";
 
@@ -47,25 +45,16 @@ export const resolveEngine = (search: string): EngineType | undefined => {
 };
 
 /**
- * `?terrainEngine=` クエリ文字列から地形バックエンドを解決する。
- * 実装は `terrain/urlState` に集約し、既存 import 互換のため再 export する。
- */
-export { resolveTerrainEngine };
-
-/**
  * URL からカメラ状態（緯度経度＋altitude/azimuth/tilt）を解決する (Issue #64)。
  * 内部的に {@link parseCameraStateFromUrl} を再利用する薄いラッパー。
  *
  * @param url 解析対象 URL（`location.href` 等）
- * @param terrainEngine 後方互換のため受け取るが、緯度経度は常に全球（`WORLD_BOUNDS`）で
- *   クランプする (#414)。
  * @returns 取得できた場合は `CameraUrlState`、取得できない場合は `undefined`
  */
 export const resolveCameraState = (
     url: string,
-    terrainEngine?: TerrainEngine,
 ): CameraUrlState | undefined =>
-    parseCameraStateFromUrl(url, { terrainEngine }) ?? undefined;
+    parseCameraStateFromUrl(url) ?? undefined;
 
 /**
  * URL から初期表示の緯度経度を解決する。
@@ -73,9 +62,8 @@ export const resolveCameraState = (
  */
 export const resolveLatLon = (
     url: string,
-    terrainEngine?: TerrainEngine,
 ): { lat: number; lon: number } | undefined => {
-    const state = resolveCameraState(url, terrainEngine);
+    const state = resolveCameraState(url);
     return state ? { lat: state.lat, lon: state.lon } : undefined;
 };
 
@@ -150,8 +138,7 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const engine = resolveEngine(location.search);
-    const terrainEngine = resolveTerrainEngine(location.search);
-    const cameraState = resolveCameraState(location.href, terrainEngine);
+    const cameraState = resolveCameraState(location.href);
     const dateTime = resolveDateTime(location.search);
     const autoSunPosition = resolveAutoSunPosition(location.search);
     const showSunShadows = resolveShowSunShadows(location.search);
@@ -159,7 +146,6 @@ const start = async (): Promise<void> => {
     const viewMode = parseViewModeFromUrl(location.href);
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
-        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? {}),
         ...(dateTime !== undefined ? { dateTime } : {}),
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),

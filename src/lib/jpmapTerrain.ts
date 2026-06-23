@@ -40,7 +40,6 @@ import {
     PolygonUpdate,
     SUN_AUTO_UPDATE_INTERVAL_MS,
     TerrainClickListener,
-    TerrainEngine,
     PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
@@ -128,13 +127,8 @@ export class JpmapTerrain {
     /** 3Dモデル管理 (Issue #243)。`onReady` で初期化される */
     private _modelManager: ModelManager | null = null;
 
-    /** 地形描画バックエンド (Issue #349 / #275 Phase 4)。 */
-    private readonly _terrainEngine: TerrainEngine;
-
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
         this.mountElement = mountElement;
-        this._terrainEngine =
-            options.terrainEngine ?? JPMAP_TERRAIN_DEFAULTS.terrainEngine;
         this._lat = options.lat ?? JPMAP_TERRAIN_DEFAULTS.lat;
         this._lon = options.lon ?? JPMAP_TERRAIN_DEFAULTS.lon;
         this._altitude = options.altitude ?? JPMAP_TERRAIN_DEFAULTS.altitude;
@@ -403,11 +397,6 @@ export class JpmapTerrain {
     }
 
     // ---- 位置・カメラ制御 (spec §3.3.1) ----
-
-    /** 地形描画バックエンド (Issue #349 / #275 Phase 4 / #414)。`"globe"` 固定。 */
-    public get terrainEngine(): TerrainEngine {
-        return this._terrainEngine;
-    }
 
     public get lat(): number {
         return this._controller?.getLat() ?? this._lat;

@@ -27,7 +27,6 @@ import type {
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    resolveTerrainEngine,
 } from "../../terrain/urlState";
 import {
     DEFAULT_DISTANCE_DEMO_MODE,
@@ -240,7 +239,6 @@ const start = async (): Promise<void> => {
     }
 
     const engine = resolveEngine(location.search);
-    const terrainEngine = resolveTerrainEngine(location.search);
     const cameraState = parseCameraStateFromUrl(location.href) ?? undefined;
     const mapType = parseMapTypeFromUrl(location.href);
     // よみうりランド近傍を初期視点（URL 指定がない場合）。
@@ -254,7 +252,6 @@ const start = async (): Promise<void> => {
 
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
-        ...(terrainEngine ? { terrainEngine } : {}),
         ...(cameraState ?? defaultCamera),
         ...(mapType !== null ? { mapType } : {}),
     };

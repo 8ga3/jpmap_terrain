@@ -3,8 +3,8 @@
  *
  * `scenes/globe.ts` の共有コア `GlobeScene`（`GeospatialCamera` + ECEF 楕円体 +
  * floating origin）を **`JpmapTerrain` を介さず直接起動** する開発者向けの診断デモ。
- * 同じ `GlobeScene` を公開 API 経路（`JpmapTerrain` の `terrainEngine=globe` →
- * `GlobeSceneAdapter`）も利用しており、エンジン重複はない（Phase 3 で統合済み）。
+ * 同じ `GlobeScene` を公開 API 経路（`JpmapTerrain` → `GlobeSceneAdapter`）も
+ * 利用しており、エンジン重複はない（Phase 3 で統合済み）。
  *
  * 本デモの固有の役割は、公開 API では露出しない内部状態の実機確認:
  * - `floatingOrigin` モード / LOD ズーム範囲 / 選択・読込タイル数の表示
