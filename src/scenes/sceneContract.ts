@@ -44,9 +44,16 @@ export interface DefaultSceneController {
      */
     getZoomLevel(): number | undefined;
 
-    /** 緯度を即時反映する。緯度経度クランプ範囲（globe: WORLD_BOUNDS）でクランプされる */
+    /**
+     * 緯度を即時反映する。値のクランプ・正規化は**実装依存**で、globe 実装
+     * （{@link createGlobeSceneController}）は値をそのまま `camera.center` へ反映し
+     * クランプしない。範囲保証が必要な場合は呼び出し側で検証すること。
+     */
     setLat(value: number): void;
-    /** 経度を即時反映する。緯度経度クランプ範囲（globe: WORLD_BOUNDS）でクランプされる */
+    /**
+     * 経度を即時反映する。値のクランプ・正規化は**実装依存**で、globe 実装は
+     * 値をそのまま反映しクランプしない（{@link setLat} 参照）。
+     */
     setLon(value: number): void;
     setAltitude(value: number): void;
     setAzimuth(value: number): void;
