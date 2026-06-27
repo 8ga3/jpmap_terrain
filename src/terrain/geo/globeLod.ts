@@ -215,7 +215,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // **分数（fractional）タイル座標**で持つ。整数タイル（toTileXY）だと、低高度・斜め見で
     // nadir↔center の水平距離が 1 タイル未満のとき t0==t1 になり dirLen=0 ＝ 帯の方向（方位）が
     // 失われ、nadir 中心ボックスのフォールバックに落ちて帯が視線方向とは無関係（軸整列）に
-    // 敷かれる。結果、前景（地平線方向）が横方向スプレッドぶんしか覆われず奥に穴が空く（
+    // 敷かれる。結果、前景（地平線方向）が横方向スプレッドぶんしか覆われず奥に穴が空く（例:
     // radius 8000・tilt 67°・az 174.9° で nadir 直下の z7 タイルが未被覆）。分数座標なら nadir と
     // center が同一整数タイル内でも真の方位差が残り、帯を正しく視線方向へ向けられる。
     const nadir = ecefToGeodetic(cameraEcef);
