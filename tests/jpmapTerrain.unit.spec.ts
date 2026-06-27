@@ -1369,6 +1369,23 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(ev.defaultPrevented).toBe(true);
         });
 
+        it("canvas 上の ctrl+wheel（トラックパッドのピンチ）で preventDefault される", async () => {
+            const mount = createMountElement();
+            await create(mount);
+
+            const canvas = mount.querySelector("canvas")!;
+            const pinch = new Event("wheel", { bubbles: true, cancelable: true });
+            Object.assign(pinch, { ctrlKey: true, deltaY: -10 });
+            canvas.dispatchEvent(pinch);
+            expect(pinch.defaultPrevented).toBe(true);
+
+            // ctrlKey なしの通常 wheel には干渉しない（地図ズーム/スクロール用）。
+            const normal = new Event("wheel", { bubbles: true, cancelable: true });
+            Object.assign(normal, { ctrlKey: false, deltaY: -10 });
+            canvas.dispatchEvent(normal);
+            expect(normal.defaultPrevented).toBe(false);
+        });
+
         it("同一ページで複数インスタンスを共存できる", async () => {
             const mountA = createMountElement();
             const mountB = createMountElement();
