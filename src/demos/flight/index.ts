@@ -91,6 +91,8 @@ const FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG = 3;
 const DRAG_ROT_DEG_PER_PX = 0.5;
 const DRAG_HEIGHT_M_PER_PX = 0.5;
 const WHEEL_RADIUS_M_PER_DELTA = 0.5;
+/** 2本指ピンチの間隔変化[px] → radius[m] 係数（広げる=ズームイン=radius 減） */
+const PINCH_RADIUS_M_PER_PX = 0.5;
 
 type CameraMode = "3d" | "2d" | "follow";
 
@@ -247,7 +249,9 @@ const start = async (): Promise<void> => {
             'button[aria-label^="地図切替"]',
         );
         if (mapToggleBtn) {
-            mapToggleBtn.style.left = `${12 + pixelWidth + 8}px`;
+            // coarse-pointer 端末ではライブラリの `.cp-maptoggle { left:16px !important }`
+            // が inline style を上書きして PIP と重なるため、!important で確実に右隣へ移す。
+            mapToggleBtn.style.setProperty("left", `${12 + pixelWidth + 8}px`, "important");
         }
     };
 
@@ -417,15 +421,83 @@ const start = async (): Promise<void> => {
     let followDragging = false;
     let followLastX = 0;
     let followLastY = 0;
+    // タッチの2本指ジェスチャ（ピンチ=ズーム / 重心移動=回転・高度）の状態。
+    const followTouches = new Map<number, { x: number; y: number }>();
+    let followPinchPrevDist = 0;
+    let followPinchPrevCx = 0;
+    let followPinchPrevCy = 0;
+
+    /** followTouches から先頭2点でピンチ基準（間隔・重心）を取り直す */
+    const recomputeFollowPinchRef = (): void => {
+        const it = followTouches.values();
+        const a = it.next().value as { x: number; y: number } | undefined;
+        const b = it.next().value as { x: number; y: number } | undefined;
+        if (!a || !b) return;
+        followPinchPrevDist = Math.hypot(a.x - b.x, a.y - b.y);
+        followPinchPrevCx = (a.x + b.x) / 2;
+        followPinchPrevCy = (a.y + b.y) / 2;
+    };
+
+    /** 2本指ジェスチャ1ステップ: ピンチ→radius、重心左右→回転、重心上下→高度。 */
+    const handleFollowPinch = (): void => {
+        const it = followTouches.values();
+        const a = it.next().value as { x: number; y: number } | undefined;
+        const b = it.next().value as { x: number; y: number } | undefined;
+        if (!a || !b) return;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const cx = (a.x + b.x) / 2;
+        const cy = (a.y + b.y) / 2;
+
+        // ピンチ: 指を広げる（間隔増）= ズームイン = radius 減。
+        const dDist = dist - followPinchPrevDist;
+        if (dDist !== 0) {
+            followCamRadius = Math.max(1, followCamRadius - dDist * PINCH_RADIUS_M_PER_PX);
+        }
+        // 重心の左右移動 → 水平回転、上下移動 → 高度オフセット。
+        const dCx = cx - followPinchPrevCx;
+        const dCy = cy - followPinchPrevCy;
+        if (dCx !== 0) {
+            followCamRotationOffset = ((followCamRotationOffset + dCx * DRAG_ROT_DEG_PER_PX) % 360 + 360) % 360;
+        }
+        const maxOffset = followCamRadius * FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG;
+        followCamHeightOffset = Math.max(
+            1,
+            Math.min(maxOffset, followCamHeightOffset + dCy * DRAG_HEIGHT_M_PER_PX),
+        );
+
+        followPinchPrevDist = dist;
+        followPinchPrevCx = cx;
+        followPinchPrevCy = cy;
+        updateFollowCamDisplay();
+    };
 
     const onFollowPointerDown = (e: PointerEvent): void => {
+        if (e.pointerType === "touch") {
+            followTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (followTouches.size >= 2) {
+                // 2本指開始: 単指ドラッグを止め、ピンチ基準を初期化する。
+                followDragging = false;
+                recomputeFollowPinchRef();
+                e.stopImmediatePropagation();
+                return;
+            }
+        }
         followDragging = true;
         followLastX = e.clientX;
         followLastY = e.clientY;
         e.stopImmediatePropagation();
     };
     const onFollowPointerMove = (e: PointerEvent): void => {
-        if (!followDragging || !followCamera) return;
+        if (!followCamera) return;
+        if (e.pointerType === "touch" && followTouches.has(e.pointerId)) {
+            followTouches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (followTouches.size >= 2) {
+                handleFollowPinch();
+                e.stopImmediatePropagation();
+                return;
+            }
+        }
+        if (!followDragging) return;
         const dx = e.clientX - followLastX;
         const dy = e.clientY - followLastY;
         followLastX = e.clientX;
@@ -442,6 +514,22 @@ const start = async (): Promise<void> => {
         e.stopImmediatePropagation();
     };
     const onFollowPointerUp = (e: PointerEvent): void => {
+        if (e.pointerType === "touch") {
+            followTouches.delete(e.pointerId);
+            if (followTouches.size >= 2) {
+                recomputeFollowPinchRef();
+            } else if (followTouches.size === 1) {
+                // 2本→1本: 残った指でジャンプせず単指ドラッグを継続する。
+                const p = followTouches.values().next().value as { x: number; y: number };
+                followDragging = true;
+                followLastX = p.x;
+                followLastY = p.y;
+            } else {
+                followDragging = false;
+            }
+            e.stopImmediatePropagation();
+            return;
+        }
         followDragging = false;
         e.stopImmediatePropagation();
     };
@@ -463,15 +551,19 @@ const start = async (): Promise<void> => {
         canvas.addEventListener("pointerdown", onFollowPointerDown, { capture: true });
         canvas.addEventListener("pointermove", onFollowPointerMove, { capture: true });
         canvas.addEventListener("pointerup", onFollowPointerUp, { capture: true });
+        canvas.addEventListener("pointercancel", onFollowPointerUp, { capture: true });
         canvas.addEventListener("wheel", onFollowWheel, { capture: true, passive: false });
     };
     const detachFollowPointerHandlers = (): void => {
         const scene = viewer.__debugScene;
         const canvas = scene?.getEngine().getRenderingCanvas();
+        followTouches.clear();
+        followDragging = false;
         if (!canvas) return;
         canvas.removeEventListener("pointerdown", onFollowPointerDown, { capture: true });
         canvas.removeEventListener("pointermove", onFollowPointerMove, { capture: true });
         canvas.removeEventListener("pointerup", onFollowPointerUp, { capture: true });
+        canvas.removeEventListener("pointercancel", onFollowPointerUp, { capture: true });
         canvas.removeEventListener("wheel", onFollowWheel, { capture: true });
     };
 
