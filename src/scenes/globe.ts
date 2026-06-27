@@ -410,6 +410,20 @@ export class GlobeScene {
         camera.addBehavior(new GeospatialClippingBehavior());
         camera.attachControl(true);
 
+        // 2本指タッチジェスチャは独自実装（ひねり=yaw / 平行移動=pan / 近接時=tilt。後述の
+        // pointer handler）に置き換えるため、GeospatialCamera 組み込みの multi-touch パン
+        // （= 2本指ドラッグでの tilt 回転）を無効化する。ピンチによるズームは温存する（pinchZoom）。
+        for (const name of Object.keys(camera.inputs.attached)) {
+            const input = camera.inputs.attached[name] as unknown as {
+                multiTouchPanning?: boolean;
+                multiTouchPanAndZoom?: boolean;
+            };
+            if (typeof input.multiTouchPanning === "boolean") {
+                input.multiTouchPanning = false;
+                input.multiTouchPanAndZoom = false;
+            }
+        }
+
         // zoom-to-cursor（カーソル下の地点へ寄るズーム）を有効化する。ネイティブ実装は
         // ホイール毎に scene.pick でカーソル下の点を取り直すが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックが毎回ブレ、ズームが揺れる。
@@ -471,9 +485,9 @@ export class GlobeScene {
         let dragging = false;
         let lastX = 0;
         let lastY = 0;
-        // アクティブなタッチポインタ集合（ピンチ等のマルチタッチ検出用）。2本指以上が接地している
-        // 間は独自のシングルタッチパンを無効化し、GeospatialCamera のピンチズームと競合させない。
-        const activeTouchPointers = new Set<number>();
+        // アクティブなタッチポインタの現在位置（clientX/Y）。2本指ジェスチャ（ピンチ/ひねり/平行移動）
+        // と、2本指以上の間のシングルタッチパン抑止に使う。キー = pointerId。
+        const touchPoints = new Map<number, { x: number; y: number }>();
         // ---- ポリゴン頂点インタラクション状態 ----
         // パン handler（onPointerDown/Move）から参照するため早期に宣言する。実体の購読 API・
         // 幾何ピック・ドラッグハンドラはカメラ/レイ補助関数（後述）の後で定義・遅延登録する。
@@ -492,10 +506,10 @@ export class GlobeScene {
         const onPointerDown = (e: PointerEvent): void => {
             canvas.focus(); // WASD のためにフォーカスを確保（右/左/中ボタンいずれでも）
             if (e.pointerType === "touch") {
-                activeTouchPointers.add(e.pointerId);
-                // 2本指以上はピンチ等のマルチタッチジェスチャ。進行中の独自パンを打ち切り、
-                // 以降の pointermove ではパンしない（ピンチズームと同時発火させない）。
-                if (activeTouchPointers.size >= 2) {
+                touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                // 2本指以上はマルチタッチジェスチャ（ピンチ/ひねり/平行移動）。進行中の独自シングル
+                // タッチパンを打ち切り、以降は 2本指ハンドラに委ねる。
+                if (touchPoints.size >= 2) {
                     dragging = false;
                     return;
                 }
@@ -510,11 +524,11 @@ export class GlobeScene {
             dragging = false;
         };
         const onPointerUp = (e: PointerEvent): void => {
-            if (e.pointerType === "touch") activeTouchPointers.delete(e.pointerId);
+            if (e.pointerType === "touch") touchPoints.delete(e.pointerId);
             if (e.button === 0) endDrag();
         };
         const onPointerCancel = (e: PointerEvent): void => {
-            if (e.pointerType === "touch") activeTouchPointers.delete(e.pointerId);
+            if (e.pointerType === "touch") touchPoints.delete(e.pointerId);
             endDrag();
         };
         // パン用の再利用バッファ（毎フレーム/毎 move 呼び出しでの割当を避ける）。
@@ -524,24 +538,12 @@ export class GlobeScene {
         const tangent = new Vector3();
         const panned = new Vector3();
 
-        const onPointerMove = (e: PointerEvent): void => {
-            // ポリゴン頂点ジェスチャ進行中はパンしない。ドラッグ処理は専用 handler が行う。
-            if (
-                polygonPointGesture &&
-                polygonPointGesture.pointerId === e.pointerId
-            ) {
-                return;
-            }
-            if (!dragging) return;
-            if (!panEnabled) return;
-            // 2本指以上のタッチ（ピンチ等）進行中はパンしない。GeospatialCamera のピンチズームに委ねる。
-            if (activeTouchPointers.size >= 2) return;
-            const dx = e.clientX - lastX;
-            const dy = e.clientY - lastY;
-            lastX = e.clientX;
-            lastY = e.clientY;
+        /**
+         * 画面上の (dx, dy) [px] 分だけ「マップを掴んで引く」パンを行う（center を地表接線方向へ移動）。
+         * シングルタッチ／マウスドラッグと、2本指の平行移動の双方から共用する。
+         */
+        const panByPixels = (dx: number, dy: number): void => {
             if (dx === 0 && dy === 0) return;
-
             // カメラ→center 方向(lookAt)から地表接線の右・前方向を作る。
             ComputeLookAtFromYawPitchToRef(
                 camera.yaw,
@@ -562,6 +564,88 @@ export class GlobeScene {
             // 極付近の高速回転を抑える。極では東西の一定メートル移動が経度の巨大変化に対応する。
             tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
+        };
+
+        // ---- 2本指ジェスチャ（タッチ）パラメータ（Issue #424）----
+        // 指の間隔がこの値[px]未満なら「近い」とみなしチルト、以上なら移動＋回転に切り替える。
+        const TWO_FINGER_TILT_SPREAD_PX = 160;
+        // 重心の縦移動[px] → pitch[rad] 係数（チルト感度）。
+        const TWO_FINGER_TILT_SENS = 0.005;
+        // 指の「ひねり」角[rad] → yaw[rad] 係数（回転感度）。
+        const TWO_FINGER_YAW_SENS = 1.0;
+        const MIN_PITCH_RAD = 0;
+        const MAX_PITCH_RAD = MAX_TILT_DEG * DEG2RAD;
+
+        /**
+         * 2本指タッチの 1 ステップ分のジェスチャを適用する。
+         * - 指の間隔が近い（< TWO_FINGER_TILT_SPREAD_PX）: 重心の縦移動でチルト（pitch）。
+         * - 指の間隔が離れている: 重心移動で平行移動（pan）＋ 指のひねりで方位回転（yaw）。
+         * ピンチ（間隔変化）によるズームは GeospatialCamera 側が別途処理する。
+         */
+        const handleTwoFingerMove = (
+            movedId: number,
+            prev: { x: number; y: number },
+            now: { x: number; y: number },
+        ): void => {
+            let other: { x: number; y: number } | undefined;
+            for (const [id, p] of touchPoints) {
+                if (id !== movedId) {
+                    other = p;
+                    break;
+                }
+            }
+            if (!other) return;
+
+            // 指のひねり角の差分（前フレーム→現フレーム）。
+            const angPrev = Math.atan2(prev.y - other.y, prev.x - other.x);
+            const angNow = Math.atan2(now.y - other.y, now.x - other.x);
+            let dAng = angNow - angPrev;
+            if (dAng > Math.PI) dAng -= 2 * Math.PI;
+            else if (dAng < -Math.PI) dAng += 2 * Math.PI;
+
+            // 現在の指の間隔。
+            const spread = Math.hypot(now.x - other.x, now.y - other.y);
+
+            // 2本指の重心移動（前フレーム→現フレーム）。動いたのは movedId の指のみ。
+            const dCx = (now.x - prev.x) / 2;
+            const dCy = (now.y - prev.y) / 2;
+
+            if (spread < TWO_FINGER_TILT_SPREAD_PX) {
+                // 近い: チルト。上方向ドラッグ（dCy<0）でチルトアップ（pitch 増）。limits 範囲にクランプ。
+                const next = camera.pitch - dCy * TWO_FINGER_TILT_SENS;
+                camera.pitch = Math.min(MAX_PITCH_RAD, Math.max(MIN_PITCH_RAD, next));
+            } else {
+                // 離れている: 平行移動 ＋ 回転（ひねり）。
+                if (panEnabled) panByPixels(dCx, dCy);
+                if (dAng !== 0) camera.yaw = camera.yaw + dAng * TWO_FINGER_YAW_SENS;
+            }
+        };
+
+        const onPointerMove = (e: PointerEvent): void => {
+            // ポリゴン頂点ジェスチャ進行中はパンしない。ドラッグ処理は専用 handler が行う。
+            if (
+                polygonPointGesture &&
+                polygonPointGesture.pointerId === e.pointerId
+            ) {
+                return;
+            }
+            // タッチの位置追跡を更新し、2本指以上なら 2本指ハンドラへ委譲（シングルパンはしない）。
+            if (e.pointerType === "touch" && touchPoints.has(e.pointerId)) {
+                const prev = touchPoints.get(e.pointerId)!;
+                const now = { x: e.clientX, y: e.clientY };
+                touchPoints.set(e.pointerId, now);
+                if (touchPoints.size >= 2) {
+                    handleTwoFingerMove(e.pointerId, prev, now);
+                    return;
+                }
+            }
+            if (!dragging) return;
+            if (!panEnabled) return;
+            const dx = e.clientX - lastX;
+            const dy = e.clientY - lastY;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            panByPixels(dx, dy);
         };
         canvas.addEventListener("pointerdown", onPointerDown);
         canvas.addEventListener("pointerup", onPointerUp);

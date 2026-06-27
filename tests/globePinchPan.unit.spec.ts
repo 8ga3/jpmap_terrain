@@ -1,14 +1,17 @@
 /**
  * @jest-environment jsdom
  *
- * タッチ操作のピンチ／シングルタッチ競合ガードの統合テスト（Issue #424）。
+ * タッチ操作の2本指ジェスチャ統合テスト（Issue #424）。
  *
  * NullEngine + jsdom で `GlobeScene.createSceneWithController` を実体構築し、canvas へ
  * PointerEvent 相当を dispatch して以下を検証する:
- *   - 1本指タッチのドラッグでは center が動く（従来のパン挙動）。
- *   - 2本指タッチ（ピンチ）進行中は独自シングルタッチパンが発火せず center が動かない。
+ *   - 1本指タッチのドラッグでは center が動く（パン）。
+ *   - 2本指（間隔が広い）で平行移動すると center が動き、ひねりで yaw が変わる（移動＋回転）。
+ *   - 2本指（間隔が狭い）で縦移動すると pitch が変わり center は動かない（チルト）。
+ *   - 2本指中はシングルタッチパン（dragging 経路）が暴発しない。
  *   - マウス（fine pointer）のドラッグは従来どおりパンする。
- * ピンチズーム自体（GeospatialCamera 側）は対象外。3DCG の見た目は別ゲート（HITL）。
+ * ピンチズーム自体（GeospatialCamera 側）は scene.pick 依存のため本テスト対象外。
+ * 3DCG の見た目は別ゲート（HITL）。
  */
 import { describe, it, expect, afterEach } from "@jest/globals";
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
@@ -86,7 +89,7 @@ const dispatchPointer = (
 
 const centerOf = (gc: GlobeSceneController): Vector3 => gc.camera.center.clone();
 
-describe("globe タッチ ピンチ/シングルタッチ競合ガード (#424)", () => {
+describe("globe タッチ 2本指ジェスチャ (#424)", () => {
     it("1本指タッチのドラッグで center が動く", () => {
         const { gc, canvas, teardown } = build();
         const before = centerOf(gc);
@@ -97,17 +100,53 @@ describe("globe タッチ ピンチ/シングルタッチ競合ガード (#424)"
         teardown();
     });
 
-    it("2本指タッチ（ピンチ）進行中は center が動かない", () => {
+    it("2本指（間隔が広い）平行移動で center が動く（移動）", () => {
         const { gc, canvas, teardown } = build();
-        // 1本目を接地（この時点ではまだドラッグ可能）。
-        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100 });
-        // 2本目を接地 → マルチタッチ判定。以降パンは無効化されるべき。
-        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 300, clientY: 300 });
+        // 間隔を広く（spread ≈ 300px > 160）取って 2本指接地。
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 100, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 400, clientY: 200 });
         const before = centerOf(gc);
-        // 1本目を動かしてもパンしない。
-        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 180, clientY: 160 });
+        // 1本目を縦に動かす → 重心が移動し pan が発火する。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 100, clientY: 260 });
         const moved = Vector3.Distance(before, gc.camera.center);
-        expect(moved).toBe(0);
+        expect(moved).toBeGreaterThan(0);
+        teardown();
+    });
+
+    it("2本指（間隔が広い）ひねりで yaw が変わる（回転）", () => {
+        const { gc, canvas, teardown } = build();
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 100, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 400, clientY: 200 });
+        const yawBefore = gc.camera.yaw;
+        // 1本目を回り込ませる（ペアの角度が変化）→ yaw が変わる。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 130, clientY: 280 });
+        expect(gc.camera.yaw).not.toBe(yawBefore);
+        teardown();
+    });
+
+    it("2本指（間隔が狭い）縦移動で pitch が変わり center は動かない（チルト）", () => {
+        const { gc, canvas, teardown } = build();
+        // 間隔を狭く（spread ≈ 60px < 160）取って 2本指接地。
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 200, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 260, clientY: 200 });
+        const pitchBefore = gc.camera.pitch;
+        const centerBefore = centerOf(gc);
+        // 1本目を縦に動かす → チルト（pitch 変化）、center は不変。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 200, clientY: 150 });
+        expect(gc.camera.pitch).not.toBe(pitchBefore);
+        expect(Vector3.Distance(centerBefore, gc.camera.center)).toBe(0);
+        teardown();
+    });
+
+    it("2本指中はシングルタッチパン（dragging 経路）が暴発しない", () => {
+        const { gc, canvas, teardown } = build();
+        // 間隔を狭く取り、チルトモードにする。1本目移動で pan（center 移動）は起きないこと。
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 200, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 250, clientY: 200 });
+        const before = centerOf(gc);
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 200, clientY: 160 });
+        // チルトのみで center は動かない（シングルパンが暴発していない）。
+        expect(Vector3.Distance(before, gc.camera.center)).toBe(0);
         teardown();
     });
 
