@@ -107,6 +107,13 @@ export class JpmapTerrain {
      * ナビゲーションが抑止できないため、`preventDefault` で明示的に止める。
      */
     private _onCanvasTouchMove: ((ev: TouchEvent) => void) | null = null;
+    /**
+     * canvas に登録した `wheel` ハンドラ。
+     * タッチパッドのピンチ操作は `ctrlKey=true` の wheel イベントとして届き、
+     * 既定では PC ブラウザ（Chrome 等）のページズームを引き起こす。地図側の
+     * ズームと衝突するため、`ctrlKey` の wheel を `preventDefault` で抑止する。
+     */
+    private _onCanvasWheel: ((ev: WheelEvent) => void) | null = null;
     private _disposed = false;
     private _controller: DefaultSceneController | null = null;
     /** 進行中の flyTo をキャンセルするためのトークン */
@@ -233,6 +240,19 @@ export class JpmapTerrain {
             passive: false,
         });
         this._onCanvasTouchMove = onCanvasTouchMove;
+
+        // タッチパッドのピンチは ctrlKey=true の wheel として届き、既定では PC
+        // ブラウザのページズーム（Ctrl+ホイール相当）を発火させる。地図のズームと
+        // 衝突するため preventDefault で抑止する。地図ズームは Babylon が wheel を
+        // 直接読むため、既定動作のキャンセルでは妨げられない。通常スクロール用の
+        // wheel（ctrlKey=false）には干渉しない。
+        const onCanvasWheel = (ev: WheelEvent): void => {
+            if (ev.ctrlKey && ev.cancelable) {
+                ev.preventDefault();
+            }
+        };
+        canvas.addEventListener("wheel", onCanvasWheel, { passive: false });
+        this._onCanvasWheel = onCanvasWheel;
 
         try {
             const engine = await createBabylonEngine(
@@ -389,6 +409,10 @@ export class JpmapTerrain {
             if (this._onCanvasTouchMove) {
                 canvas.removeEventListener("touchmove", this._onCanvasTouchMove);
                 this._onCanvasTouchMove = null;
+            }
+            if (this._onCanvasWheel) {
+                canvas.removeEventListener("wheel", this._onCanvasWheel);
+                this._onCanvasWheel = null;
             }
             this._canvas = null;
             throw error;
@@ -1461,6 +1485,10 @@ export class JpmapTerrain {
             this._canvas.removeEventListener("touchmove", this._onCanvasTouchMove);
         }
         this._onCanvasTouchMove = null;
+        if (this._canvas && this._onCanvasWheel) {
+            this._canvas.removeEventListener("wheel", this._onCanvasWheel);
+        }
+        this._onCanvasWheel = null;
         this._canvas = null;
     }
 
