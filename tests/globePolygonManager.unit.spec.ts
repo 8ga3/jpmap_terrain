@@ -485,10 +485,10 @@ describe("dispose 後ガード", () => {
 });
 
 describe("色フォールバック", () => {
-    it("非 hex の outline/wall 色でも throw しない", () => {
+    it("非 hex の line/wall 色でも throw しない", () => {
         const { mgr } = makeManager();
         expect(() =>
-            mgr.add({ points: pts3, outlineColor: "red", wallColor: "blue" }),
+            mgr.add({ points: pts3, style: { lineColor: "red", wallColor: "blue" } }),
         ).not.toThrow();
     });
 });
