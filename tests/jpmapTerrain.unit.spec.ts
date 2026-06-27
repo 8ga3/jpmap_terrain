@@ -1358,6 +1358,17 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(canvas.id).toBe("");
         });
 
+        it("canvas 上の touchmove で preventDefault される（ブラウザ既定スクロール抑止）", async () => {
+            const mount = createMountElement();
+            await create(mount);
+
+            const canvas = mount.querySelector("canvas")!;
+            const ev = new Event("touchmove", { bubbles: true, cancelable: true });
+            canvas.dispatchEvent(ev);
+
+            expect(ev.defaultPrevented).toBe(true);
+        });
+
         it("同一ページで複数インスタンスを共存できる", async () => {
             const mountA = createMountElement();
             const mountB = createMountElement();

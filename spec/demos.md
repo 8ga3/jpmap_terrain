@@ -42,7 +42,7 @@
   - モードは最初の 2 本指 move 時に間隔で確定し、指を離す（2 本未満になる）まで維持する。途中で間隔がしきい値を跨いでもモードを切り替えない（誤切替防止）。
   - 感度・しきい値は `TWO_FINGER_TILT_SPREAD_PX` / `TWO_FINGER_TILT_SENS` / `TWO_FINGER_YAW_SENS` で調整可能。動作確認は iOS Safari / Android Chrome 実機で行う（Issue #424 の完了定義）。
 - 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。
-- **ブラウザ既定ジェスチャの抑止**: 操作ボタン（`.cp-btn` / `.cp-compass`）に `touch-action: manipulation` を付与し、iOS Safari のダブルタップズームを抑止する（タップは従来どおり機能）。viewer ページ（`public/viewer.html`）の `html, body` に `touch-action: none; overscroll-behavior: none;` を付与し、Android Chrome 等での 2 本指スクロール/オーバースクロール（自動スクロール）を抑止する。地図キャンバスは従来どおり `touch-action: none`（`src/lib/jpmapTerrain.ts`）。
+- **ブラウザ既定ジェスチャの抑止**: 操作ボタン（`.cp-btn` / `.cp-compass`）に `touch-action: manipulation` を付与し、iOS Safari のダブルタップズームを抑止する（タップは従来どおり機能）。viewer ページ（`public/viewer.html`）の `html, body` に `touch-action: none; overscroll-behavior: none;` を付与する。さらに、`touch-action` だけでは Android Chrome 等のオーバースクロール（2 本指スワイプによる自動スクロール）や画面端スワイプの戻る/進むナビゲーションが残るため、地図キャンバスの `touchmove` を `{ passive: false }` で捕捉し `preventDefault()` する（`src/lib/jpmapTerrain.ts`。Babylon はポインタイベントで操作を処理するためジェスチャ実装には影響しない）。
 - **現在地（Geolocation）**: `navigator.geolocation.getCurrentPosition` はセキュアコンテキスト（HTTPS、または `localhost`）でのみ動作する。LAN の IP に対する `http://` の dev サーバではブラウザがブロックするため、スマホ実機では取得できない（本番/`localhost` では動作）。仕様であり実装上の不具合ではない。
 
 

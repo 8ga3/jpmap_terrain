@@ -100,6 +100,13 @@ export class JpmapTerrain {
     private _scene: Scene | null = null;
     private _onWindowResize: (() => void) | null = null;
     private _resizeObserver: ResizeObserver | null = null;
+    /**
+     * canvas に登録した `touchmove` ハンドラ。
+     * `touch-action: none` だけでは Android Chrome 等のオーバースクロール
+     * （2 本指スワイプによる自動スクロール）や画面端スワイプの戻る/進む
+     * ナビゲーションが抑止できないため、`preventDefault` で明示的に止める。
+     */
+    private _onCanvasTouchMove: ((ev: TouchEvent) => void) | null = null;
     private _disposed = false;
     private _controller: DefaultSceneController | null = null;
     /** 進行中の flyTo をキャンセルするためのトークン */
@@ -210,6 +217,22 @@ export class JpmapTerrain {
         canvas.style.visibility = "hidden";
         this.mountElement.appendChild(canvas);
         this._canvas = canvas;
+
+        // Android Chrome 等では `touch-action: none` だけではブラウザ既定の
+        // オーバースクロール（2 本指スワイプによる自動スクロール）や画面端
+        // スワイプによる戻る/進むナビゲーションが残ることがある。canvas 上の
+        // touchmove を passive:false で握って preventDefault し、これらを抑止する。
+        // Babylon はポインタイベントで操作を処理するため、touch のキャンセルは
+        // ジェスチャ実装に影響しない。
+        const onCanvasTouchMove = (ev: TouchEvent): void => {
+            if (ev.cancelable) {
+                ev.preventDefault();
+            }
+        };
+        canvas.addEventListener("touchmove", onCanvasTouchMove, {
+            passive: false,
+        });
+        this._onCanvasTouchMove = onCanvasTouchMove;
 
         try {
             const engine = await createBabylonEngine(
@@ -362,6 +385,10 @@ export class JpmapTerrain {
             }
             if (canvas.parentElement === this.mountElement) {
                 this.mountElement.removeChild(canvas);
+            }
+            if (this._onCanvasTouchMove) {
+                canvas.removeEventListener("touchmove", this._onCanvasTouchMove);
+                this._onCanvasTouchMove = null;
             }
             this._canvas = null;
             throw error;
@@ -1430,6 +1457,10 @@ export class JpmapTerrain {
         if (this._canvas && this._canvas.parentElement === this.mountElement) {
             this.mountElement.removeChild(this._canvas);
         }
+        if (this._canvas && this._onCanvasTouchMove) {
+            this._canvas.removeEventListener("touchmove", this._onCanvasTouchMove);
+        }
+        this._onCanvasTouchMove = null;
         this._canvas = null;
     }
 
