@@ -754,13 +754,14 @@ const start = async (): Promise<void> => {
         });
     }
 
-    // ウェイポイント / リボン 表示切替チェックボックス
-    const waypointToggle = document.getElementById("waypoint-toggle") as HTMLInputElement | null;
-    const ribbonToggle = document.getElementById("ribbon-toggle") as HTMLInputElement | null;
+    // ウェイポイント / リボン 表示切替ボタン
+    const waypointToggle = document.getElementById("waypoint-toggle") as HTMLButtonElement | null;
+    const ribbonToggle = document.getElementById("ribbon-toggle") as HTMLButtonElement | null;
     if (waypointToggle) {
-        waypointToggle.checked = showWaypoints;
-        waypointToggle.addEventListener("change", () => {
-            showWaypoints = waypointToggle.checked;
+        waypointToggle.classList.toggle("active", showWaypoints);
+        waypointToggle.addEventListener("click", () => {
+            showWaypoints = !showWaypoints;
+            waypointToggle.classList.toggle("active", showWaypoints);
             if (!showWaypoints && waypointManager) {
                 waypointManager.dispose();
                 waypointManager = null;
@@ -768,21 +769,23 @@ const start = async (): Promise<void> => {
         });
     }
     if (ribbonToggle) {
-        ribbonToggle.checked = showRibbon;
-        ribbonToggle.addEventListener("change", () => {
-            showRibbon = ribbonToggle.checked;
+        ribbonToggle.classList.toggle("active", showRibbon);
+        ribbonToggle.addEventListener("click", () => {
+            showRibbon = !showRibbon;
+            ribbonToggle.classList.toggle("active", showRibbon);
             if (routeLine) {
                 routeLine.setVisible(showRibbon);
             }
         });
     }
 
-    // アフターバーナー表示切替チェックボックス
-    const afterburnerToggle = document.getElementById("afterburner-toggle") as HTMLInputElement | null;
+    // アフターバーナー表示切替ボタン
+    const afterburnerToggle = document.getElementById("afterburner-toggle") as HTMLButtonElement | null;
     if (afterburnerToggle) {
-        afterburnerToggle.checked = showAfterburner;
-        afterburnerToggle.addEventListener("change", () => {
-            showAfterburner = afterburnerToggle.checked;
+        afterburnerToggle.classList.toggle("active", showAfterburner);
+        afterburnerToggle.addEventListener("click", () => {
+            showAfterburner = !showAfterburner;
+            afterburnerToggle.classList.toggle("active", showAfterburner);
             if (afterburner) {
                 afterburner.setVisible(showAfterburner);
             }

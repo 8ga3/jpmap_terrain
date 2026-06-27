@@ -92,16 +92,16 @@
       top: 12px;
       right: 64px;
       pointer-events: auto;
-      padding: 10px 12px;
-      font-size: 13px;
+      padding: 8px 10px;
+      font-size: 12px;
       color: #fff;
       background: rgba(0, 0, 0, 0.5);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 8px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      min-width: 200px;
+      gap: 5px;
+      min-width: 176px;
     }
 
     #flight-controls .btn-row {
@@ -111,6 +111,8 @@
 
     #flight-controls .btn-row button {
       flex: 1;
+      padding: 6px 4px;
+      white-space: nowrap;
     }
 
     #flight-controls .inline-row {
@@ -172,15 +174,6 @@
     #flight-controls button.active {
       background: rgba(59, 130, 246, 0.5);
       border-color: rgba(59, 130, 246, 0.8);
-    }
-
-    #flight-controls .camera-buttons {
-      display: flex;
-      gap: 4px;
-    }
-
-    #flight-controls .camera-buttons button {
-      flex: 1;
     }
 
     /* PIP overlay */
@@ -349,11 +342,8 @@
         <input type="range" id="altitude-slider" min="100" max="10000" value="500" step="50">
       </div>
       <div class="btn-row">
-        <button id="toggle-animation">⏸ 停止</button>
+        <button id="toggle-animation">⏸停止</button>
         <button id="fly-to-center">移動</button>
-      </div>
-      <div style="font-size: 11px; color: #e0e4ea;">カメラモード</div>
-      <div class="camera-buttons">
         <button id="camera-3d" class="active">3D</button>
         <button id="camera-2d">2D</button>
         <button id="camera-follow">Follow</button>
@@ -375,18 +365,11 @@
       </div>
       <div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 6px; margin-top: 2px; display: flex; flex-direction: column; gap: 4px;">
         <strong style="font-size: 11px;">表示切替</strong>
-        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
-          <input type="checkbox" id="waypoint-toggle" checked style="cursor: pointer;">
-          ウェイポイント
-        </label>
-        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
-          <input type="checkbox" id="ribbon-toggle" checked style="cursor: pointer;">
-          リボン (飛行経路)
-        </label>
-        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer;">
-          <input type="checkbox" id="afterburner-toggle" checked style="cursor: pointer;">
-          アフターバーナー
-        </label>
+        <div class="btn-row">
+          <button id="waypoint-toggle" class="active" title="ウェイポイント">WP</button>
+          <button id="ribbon-toggle" class="active" title="リボン (飛行経路)">経路</button>
+          <button id="afterburner-toggle" class="active" title="アフターバーナー">噴射</button>
+        </div>
       </div>
     </div>
     <div id="pip-frame">
