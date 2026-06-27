@@ -3,11 +3,11 @@
  *
  * spec/package.md §3 (Initial Implementation) の API を提供する。
  *
- * - T3 (#117): クラス骨格 / 公開型
- * - T4 (#118): mountElement への canvas 配置と Scene 初期化
- * - T5 (#119): カメラ get/set / flyTo の実体
- * - T6 (#120): UI 表示 get/set / mapType 切替
- * - T7 (#121): dispose / resize の実体
+ * - クラス骨格 / 公開型
+ * - mountElement への canvas 配置と Scene 初期化
+ * - カメラ get/set / flyTo の実体
+ * - UI 表示 get/set / mapType 切替
+ * - dispose / resize の実体
  */
 
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
@@ -66,7 +66,7 @@ export class JpmapTerrain {
     private _tilt: number;
     private _mapType: MapType;
     private _viewMode: ViewMode;
-    /** 2D モード初期化用ズームレベル (#254)。URL 復元時にのみ設定される。 */
+    /** 2D モード初期化用ズームレベル。URL 復元時にのみ設定される。 */
     private _zoomLevel?: number;
 
     private _showCompass = true;
@@ -86,10 +86,10 @@ export class JpmapTerrain {
     /** auto モード中、最後に内部反映した実時刻。`dateTime` getter が返す値 */
     private _autoLastAppliedDate: Date | null = null;
 
-    /** 太陽 DirectionalLight 影描画 (Issue #39)。既定 OFF */
+    /** 太陽 DirectionalLight 影描画。既定 OFF */
     private _showSunShadows: boolean;
 
-    /** ドラッグによるマップのパン操作 (Issue #259)。既定 ON */
+    /** ドラッグによるマップのパン操作。既定 ON */
     private _enablePan: boolean;
 
     /** WASD キーボードによるマップのパン操作（globe のみ）。既定 ON */
@@ -110,21 +110,21 @@ export class JpmapTerrain {
     private _cameraObserver: Observer<Scene> | null = null;
     /** 直近にリスナー通知した値のスナップショット（初回は null） */
     private _lastCameraSnapshot: CameraChangeEvent | null = null;
-    /** `onMapTypeChange` で登録されたリスナー一覧 (Issue #149) */
+    /** `onMapTypeChange` で登録されたリスナー一覧 */
     private _mapTypeListeners: MapTypeChangeListener[] = [];
-    /** `onViewModeChange` で登録されたリスナー一覧 (Issue #193) */
+    /** `onViewModeChange` で登録されたリスナー一覧 */
     private _viewModeListeners: ViewModeChangeListener[] = [];
 
-    /** マーカー管理 (Issue #167)。`onReady` で初期化される */
+    /** マーカー管理。`onReady` で初期化される */
     private _markerManager: MarkerManager | null = null;
 
-    /** ポリゴン管理 (Issue #170)。`onReady` で初期化される */
+    /** ポリゴン管理。`onReady` で初期化される */
     private _polygonManager: PolygonManager | null = null;
 
-    /** 円管理 (Issue #201)。`onReady` で初期化される */
+    /** 円管理。`onReady` で初期化される */
     private _circleManager: CircleManager | null = null;
 
-    /** 3Dモデル管理 (Issue #243)。`onReady` で初期化される */
+    /** 3Dモデル管理。`onReady` で初期化される */
     private _modelManager: ModelManager | null = null;
 
     private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
@@ -140,7 +140,7 @@ export class JpmapTerrain {
         this._showViewModeButton =
             options.showViewModeButton ??
             JPMAP_TERRAIN_DEFAULTS.showViewModeButton;
-        // 太陽位置 (Issue #35)。`Invalid Date` は `console.warn` のうえ null に倒す。
+        // 太陽位置。`Invalid Date` は `console.warn` のうえ null に倒す。
         this._dateTime = JpmapTerrain._sanitizeDateTimeOption(options.dateTime);
         this._autoSunPosition =
             options.autoSunPosition ?? JPMAP_TERRAIN_DEFAULTS.autoSunPosition;
@@ -193,7 +193,7 @@ export class JpmapTerrain {
 
     /**
      * mountElement に canvas を配置し Babylon.js Engine / Scene を初期化する (T4)。
-     * UI を mountElement 配下に完全に閉じ込める作業は T6 (#120) で行う。
+     * UI を mountElement 配下に完全に閉じ込める作業を行う。
      *
      * 初期化途中で例外が発生した場合は append した canvas / 確保済み Engine をクリーンアップして再 throw する。
      */
@@ -206,7 +206,7 @@ export class JpmapTerrain {
         canvas.style.outline = "none";
         canvas.style.touchAction = "none";
         // 初回レンダリングまでキャンバスを非表示にし、
-        // URL 復元時のカメラ高度ずれによるフラッシュを防ぐ (Issue #225)。
+        // URL 復元時のカメラ高度ずれによるフラッシュを防ぐ。
         canvas.style.visibility = "hidden";
         this.mountElement.appendChild(canvas);
         this._canvas = canvas;
@@ -240,7 +240,7 @@ export class JpmapTerrain {
                 enablePan: this._enablePan,
                 enableKeyboardPan: this._enableKeyboardPan,
                 onCameraInteractionEnd: () => {
-                    // #225: ドラッグリリース時にスナップショットを無効化し、
+                    // ドラッグリリース時にスナップショットを無効化し、
                     // 次フレームで新しいベースラインを取得させる。
                     // Babylon.js の内部状態確定後に差分が検知されれば
                     // urlUpdater の debounce タイマーがリセットされる。
@@ -277,7 +277,7 @@ export class JpmapTerrain {
                         "attribution",
                         this._showAttribution,
                     );
-                    // 太陽位置（Issue #35）。auto モードならタイマー始動 + 即時 1 回反映、
+                    // 太陽位置。auto モードならタイマー始動 + 即時 1 回反映、
                     // 固定モードなら `_dateTime`（or null）で初期反映する。
                     if (this._autoSunPosition) {
                         this._startSunTimer();
@@ -285,12 +285,11 @@ export class JpmapTerrain {
                     } else {
                         controller.setSunState(this._dateTime);
                     }
-                    // 太陽影 (Issue #39)。既定 OFF のため通常は no-op。
+                    // 太陽影。既定 OFF のため通常は no-op。
                     if (this._showSunShadows) {
                         controller.setSunShadows(true);
                     }
-                    // マーカー (Issue #167)。globe バックエンドでは marker（P4-0）/
-                    // polygon（Slice 2b-1）/ circle（Slice 2b-2）/ model（P4-2）が専用アダプタ
+                    // マーカー。globe バックエンドでは marker / polygon / circle / model が専用アダプタ
                     // （getMarkerManager / getPolygonManager / getCircleManager / getModelManager）
                     // 経由で公開 interface に対応する。
                     this._markerManager =
@@ -299,7 +298,7 @@ export class JpmapTerrain {
                         controller.getPolygonManager?.() ?? null;
                     this._circleManager =
                         controller.getCircleManager?.() ?? null;
-                    // 3Dモデル (Issue #243 / #275 Phase 4 P4-2)。globe 専用アダプタ経由。
+                    // 3Dモデル。globe 専用アダプタ経由。
                     this._modelManager =
                         controller.getModelManager?.() ?? null;
                 },
@@ -317,7 +316,7 @@ export class JpmapTerrain {
             window.addEventListener("resize", onResize);
             this._onWindowResize = onResize;
 
-            // mountElement のサイズ変化にも追従させる (T7 / #121)。
+            // mountElement のサイズ変化にも追従させる。
             // サポートしない環境 (古いブラウザや jsdom) ではスキップし、`window.resize` にフォールバックする。
             if (typeof ResizeObserver !== "undefined") {
                 const ro = new ResizeObserver(() => {
@@ -547,7 +546,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 外部カメラの frustum でタイルの可視判定・LOD 更新を行う (C案 / Issue #245)。
+     * 外部カメラの frustum でタイルの可視判定・LOD 更新を行う (C案)。
      *
      * Follow カメラなど、terrain 用 ArcRotateCamera とは別のカメラで描画しているときに、
      * そのカメラの frustum planes と位置を渡してタイルを更新する。
@@ -572,7 +571,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * terrain camera の自動タイル更新監視を停止する (Issue #245)。
+     * terrain camera の自動タイル更新監視を停止する。
      * Follow モードなど外部カメラ使用中に呼び出す。
      */
     public detachTileCamera(): void {
@@ -580,14 +579,14 @@ export class JpmapTerrain {
     }
 
     /**
-     * terrain camera の自動タイル更新監視を再開する (Issue #245)。
+     * terrain camera の自動タイル更新監視を再開する。
      */
     public attachTileCamera(): void {
         this._controller?.attachTileCamera();
     }
 
     /**
-     * コンパスの回転角を外部から上書きする (Issue #245)。
+     * コンパスの回転角を外部から上書きする。
      * `null` を渡すと通常の terrain camera 連動に戻る。
      */
     public setExternalCompassDegrees(degrees: number | null): void {
@@ -661,7 +660,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 現在のカメラ視点モード (Issue #193)。
+     * 現在のカメラ視点モード。
      * `"3d"` (透視投影) / `"2d"` (平行投影、tilt=0 固定)。
      */
     public get viewMode(): ViewMode {
@@ -673,7 +672,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 2D モード時の Google Maps 互換ズームレベル。
      * 3D モードでは `undefined` を返す。
      */
     public get zoomLevel(): number | undefined {
@@ -681,7 +680,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * `viewMode` が変化した際に呼ばれるリスナーを登録する (Issue #193)。
+     * `viewMode` が変化した際に呼ばれるリスナーを登録する。
      *
      * `onMapTypeChange` と対称な API。UI ボタン操作・`viewMode` setter のいずれの
      * 経路でも、値が変化したフレームのみ通知する。同値再 set では通知しない。
@@ -709,7 +708,7 @@ export class JpmapTerrain {
 
     /**
      * controller から伝播される `viewMode` 変化を受け取り、
-     * 内部状態の更新と登録リスナーへの通知を行う (Issue #193)。
+     * 内部状態の更新と登録リスナーへの通知を行う。
      * controller 側で同値再 set はフィルタ済みのため、ここでは無条件に通知する。
      */
     private _handleViewModeChange(next: ViewMode): void {
@@ -726,7 +725,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * `mapType` が変化した際に呼ばれるリスナーを登録する (Issue #149)。
+     * `mapType` が変化した際に呼ばれるリスナーを登録する。
      *
      * - `onCameraChange` と対称な API。
      * - UI ボタン操作・`mapType` setter のいずれの経路でも、値が変化したフレームのみ通知する。
@@ -758,7 +757,7 @@ export class JpmapTerrain {
 
     /**
      * controller から伝播される `mapType` 変化を受け取り、
-     * 内部状態の更新と登録リスナーへの通知を行う (Issue #149)。
+     * 内部状態の更新と登録リスナーへの通知を行う。
      * controller 側で同値再 set はフィルタ済みのため、ここでは無条件に通知する。
      */
     private _handleMapTypeChange(next: MapType): void {
@@ -774,7 +773,7 @@ export class JpmapTerrain {
         }
     }
 
-    // ---- 地形クリック通知 (Issue #183) ----
+    // ---- 地形クリック通知 ----
 
     /**
      * 地形タイル上での「クリック」を購読する。
@@ -799,7 +798,7 @@ export class JpmapTerrain {
         return this._controller.subscribeTerrainClick(listener);
     }
 
-    // ---- ポリゴン頂点インタラクション (Issue #184) ----
+    // ---- ポリゴン頂点インタラクション ----
 
     /**
      * ポリゴン頂点上の hover を購読する。リスナーは頂点に入った/対象切替時に
@@ -834,7 +833,7 @@ export class JpmapTerrain {
         return this._controller.subscribePolygonPointClick(listener);
     }
 
-    /** ポリゴン頂点ドラッグ開始 (#184)。閾値は 3 CSS px。 */
+    /** ポリゴン頂点ドラッグ開始。閾値は 3 CSS px。 */
     public onPolygonPointDragStart(
         listener: PolygonPointDragListener,
     ): () => void {
@@ -847,7 +846,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * ポリゴン頂点ドラッグ中（`pointermove` 毎） (#184)。
+     * ポリゴン頂点ドラッグ中（`pointermove` 毎）。
      * カーソル位置の地形メッシュ交点を `lat` / `lon` / `groundAltitude` で通知する
      * （地形にヒットしなかった場合は `null`）。
      */
@@ -862,7 +861,7 @@ export class JpmapTerrain {
         return this._controller.subscribePolygonPointDrag(listener);
     }
 
-    /** ポリゴン頂点ドラッグ終了 (#184)。`pointerup` または `pointercancel` で発火する。 */
+    /** ポリゴン頂点ドラッグ終了。`pointerup` または `pointercancel` で発火する。 */
     public onPolygonPointDragEnd(
         listener: PolygonPointDragListener,
     ): () => void {
@@ -874,7 +873,7 @@ export class JpmapTerrain {
         return this._controller.subscribePolygonPointDragEnd(listener);
     }
 
-    // ---- 太陽位置 (spec §3.3.6 / Issue #35) ----
+    // ---- 太陽位置 (spec §3.3.6) ----
 
     /**
      * 太陽位置計算に使う日時を取得する。
@@ -918,7 +917,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 太陽 DirectionalLight による地形への影描画の有効/無効 (Issue #39)。
+     * 太陽 DirectionalLight による地形への影描画の有効/無効。
      *
      * - `true`: `ShadowGenerator` を生成し、地形タイル全体を caster / receiver に登録する。
      * - `false`（既定）: `ShadowGenerator` を生成しない / 既存があれば dispose する。
@@ -960,7 +959,7 @@ export class JpmapTerrain {
         this._controller?.setSunState(now);
     }
 
-    // ---- カメラ変化通知 (Issue #136) ----
+    // ---- カメラ変化通知 ----
 
     /**
      * カメラ位置・姿勢のいずれかが変化したタイミングで呼ばれるリスナーを登録する。
@@ -1046,7 +1045,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * カメラスナップショットを無効化する (#225)。
+     * カメラスナップショットを無効化する。
      * 次回の `_notifyIfChanged` で新しいベースラインが記録され、
      * その次のフレームから通常の差分検知が再開される。
      * `onCameraChange` の「値が変化したときだけ通知する」契約を破らない。
@@ -1055,7 +1054,7 @@ export class JpmapTerrain {
         this._lastCameraSnapshot = null;
     }
 
-    // ---- マーカー (Issue #167) ----
+    // ---- マーカー ----
 
     private _assertAlive(): void {
         if (this._disposed) {
@@ -1108,7 +1107,7 @@ export class JpmapTerrain {
         return this._markerManager?.list() ?? [];
     }
 
-    // ---- ポリゴン (Issue #170) ----
+    // ---- ポリゴン ----
 
     private _requirePolygonManager(): PolygonManager {
         if (!this._polygonManager) {
@@ -1163,7 +1162,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 指定 index に新しい頂点を挿入する (#173)。`index === points.length` で末尾追加。
+     * 指定 index に新しい頂点を挿入する。`index === points.length` で末尾追加。
      * 範囲外 index・JAPAN_BOUNDS 外・`absolute` モードで altitude 未指定 は throw。
      * dispose 後 / マネージャ未初期化 / 未存在 id は throw。
      */
@@ -1177,7 +1176,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 指定 index の頂点を削除する (#173)。残り 1 点未満になる場合は throw。
+     * 指定 index の頂点を削除する。残り 1 点未満になる場合は throw。
      */
     public removePolygonPoint(id: string, index: number): PolygonHandle {
         this._assertAlive();
@@ -1185,7 +1184,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 指定 index の頂点を部分更新する (#173)。
+     * 指定 index の頂点を部分更新する。
      * `partial.label === null` のときラベルを削除する。`undefined` のフィールドは現状維持。
      */
     public updatePolygonPoint(
@@ -1209,7 +1208,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 全頂点を置き換える (#173)。`points.length < 1` は throw。
+     * 全頂点を置き換える。`points.length < 1` は throw。
      */
     public replacePolygonPoints(
         id: string,
@@ -1219,7 +1218,7 @@ export class JpmapTerrain {
         return this._requirePolygonManager().replacePoints(id, points);
     }
 
-    // ---- 円 (Issue #201) ----
+    // ---- 円 ----
 
     private _requireCircleManager(): CircleManager {
         if (!this._circleManager) {
@@ -1283,7 +1282,7 @@ export class JpmapTerrain {
         return this._circleManager?.list() ?? [];
     }
 
-    // ---- 3Dモデル (Issue #243) ----
+    // ---- 3Dモデル ----
 
     private _requireModelManager(): ModelManager {
         if (!this._modelManager) {
@@ -1340,7 +1339,7 @@ export class JpmapTerrain {
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
-     * ビューアを破棄し、`mountElement` 配下の canvas と controlPanel が生成した UI 要素を除去する (T7 / Issue #121)。
+     * ビューアを破棄し、`mountElement` 配下の canvas と controlPanel が生成した UI 要素を除去する。
      *
      * - 進行中の `flyTo` を中断
      * - `ResizeObserver` / `window.resize` リスナを解除
@@ -1355,7 +1354,7 @@ export class JpmapTerrain {
         this._disposed = true;
         // 進行中の flyTo を中断
         this._flyToToken++;
-        // 太陽位置タイマー (Issue #35) を停止
+        // 太陽位置タイマー  を停止
         this._stopSunTimer();
         this._autoLastAppliedDate = null;
         // カメラ変化通知を解除し、リスナー一覧もクリアする
@@ -1375,7 +1374,7 @@ export class JpmapTerrain {
             window.removeEventListener("resize", this._onWindowResize);
             this._onWindowResize = null;
         }
-        // マーカーマネージャを Scene dispose 前に解放する (Issue #167)。
+        // マーカーマネージャを Scene dispose 前に解放する。
         if (this._markerManager) {
             try {
                 this._markerManager.dispose();
@@ -1384,7 +1383,7 @@ export class JpmapTerrain {
             }
             this._markerManager = null;
         }
-        // ポリゴンマネージャも Scene dispose 前に解放する (Issue #170)。
+        // ポリゴンマネージャも Scene dispose 前に解放する。
         if (this._polygonManager) {
             try {
                 this._polygonManager.dispose();
@@ -1393,7 +1392,7 @@ export class JpmapTerrain {
             }
             this._polygonManager = null;
         }
-        // 円マネージャも Scene dispose 前に解放する (Issue #201)。
+        // 円マネージャも Scene dispose 前に解放する。
         if (this._circleManager) {
             try {
                 this._circleManager.dispose();
@@ -1402,7 +1401,7 @@ export class JpmapTerrain {
             }
             this._circleManager = null;
         }
-        // 3Dモデルマネージャも Scene dispose 前に解放する (Issue #243)。
+        // 3Dモデルマネージャも Scene dispose 前に解放する。
         if (this._modelManager) {
             try {
                 this._modelManager.dispose();
@@ -1435,7 +1434,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * リサイズを通知し Engine を再計測する (T7 / Issue #121)。
+     * リサイズを通知し Engine を再計測する。
      *
      * 内部は `ResizeObserver` で自動追従しているため、通常は手動呼び出し不要。
      * レイアウトをスクリプトから一気に変更した場合などに明示的に呼ぶ。

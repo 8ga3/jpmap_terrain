@@ -1,7 +1,7 @@
 import { test, expect } from "./tileCache.fixture";
 
 /**
- * Issue #157: `/viewer/@...` および `/timelapse/@...` のデモ識別子付きパスで
+ * `/viewer/@...` および `/timelapse/@...` のデモ識別子付きパスで
  * 直接アクセス（リロード相当）した際に、HTML が inject する script 等が
  * 相対パスで解決されて 404 になる回帰を防止する E2E テスト。
  *
@@ -26,7 +26,7 @@ for (const target of targets) {
         const failedJs: string[] = [];
         // `/js/` チャンクの取得状況を追跡する。タイル取得が継続して
         // `networkidle` に到達しない環境でも、スクリプト読み込みの完了だけを
-        // 根拠に判定できるようにする（Issue #157 の趣旨は /js/ ロード成功確認）。
+        // 根拠に判定できるようにする（/js/ ロード成功確認）。
         let pendingJs = 0;
         page.on("request", (request) => {
             if (request.url().includes("/js/")) pendingJs++;
@@ -38,7 +38,7 @@ for (const target of targets) {
         page.on("requestfailed", (request) => {
             onJsSettled(request);
             // ネットワーク切断/abort 等で response が発火しないケース（requestfailed）も
-            // 取りこぼさず失敗として記録する（/js/ ロード成功検証への忠実性, #157 PR レビュー）。
+            // 取りこぼさず失敗として記録する（/js/ ロード成功検証への忠実性）。
             if (request.url().includes("/js/")) {
                 failedJs.push(`${request.url()} (requestfailed: ${request.failure()?.errorText ?? "unknown"})`);
             }
@@ -73,7 +73,7 @@ for (const target of targets) {
             { timeout: 30000 },
         );
         // 遅延チャンクや初期タイル取得が出揃うまで待機することでレースを防ぐ
-        // (Issue #157 PR レビュー対応)。タイル取得は継続し得るため全体の
+        // タイル取得は継続し得るため全体の
         // `networkidle` ではなく、`/js/` チャンクの取得が完了する（in-flight が
         // 0 に収束する）ことを待つ。
         await expect

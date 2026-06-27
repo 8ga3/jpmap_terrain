@@ -1,9 +1,9 @@
 /**
- * グローブ（ECEF）向け LOD/SSE タイル選択 (Issue #275 Phase 1)。
+ * グローブ（ECEF）向け LOD/SSE タイル選択。
  *
  * 平面ワールド前提の `src/terrain/visibleTiles.ts`（Quadtree+SSE）を、グローブ
- * （地心 ECEF）向けに再定義したもの。PoC (#321) を本体共有モジュールへ昇格し、
- * ECEF 変換を Phase 0 の `geo/ecef` に委譲する。
+ * （地心 ECEF）向けに再定義したもの。PoC  を本体共有モジュールへ昇格し、
+ * ECEF 変換を  の `geo/ecef` に委譲する。
  *
  * 平面版との差分:
  * - タイル距離は AABB との XZ 最短距離＋カメラ高度の合成ではなく、タイル中心 ECEF と
@@ -70,7 +70,7 @@ export interface GlobeLodOptions {
      */
     horizonDotThreshold: number;
     /**
-     * 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。
+     * 遠景 root の最粗 zoom（距離適応ルートレベルの下限）。
      * 高チルト時、近景 minZoom 帯の外側を距離に応じて minZoom-1, -2, … rootZoomFloor まで
      * 粗く張り、少数の粗タイルで地平線まで安価に被覆する（SSE が近景のみ細分化）。
      * 省略時は minZoom（粗化なし＝従来挙動）。下限はデータソース依存で選ぶ。GSI はテクスチャ
@@ -125,7 +125,7 @@ export interface GlobeRootSeedOptions {
     rootSearchRadius: number;
     /** root タイル数の予算（上限）。 */
     maxRootTiles: number;
-    /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。省略時 minZoom。 */
+    /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限）。省略時 minZoom。 */
     rootZoomFloor?: number;
     /** ビューポート高さ [px]（root ズームの SSE 算出に使用）。 */
     viewportHeight: number;
@@ -150,7 +150,7 @@ const LATERAL_TILE_CAP = 16;
 const FORWARD_REACH_MARGIN = 1.25;
 
 /**
- * 全球モードに切り替える地球の見かけ角半径しきい値 [rad]（Issue #335）。地球の角半径
+ * 全球モードに切り替える地球の見かけ角半径しきい値 [rad]。地球の角半径
  * `asin(R/(R+h))` がこの値以下＝高高度で可視領域が地球の大きな部分（広いキャップ）になると、
  * 視線方向に沿う 1 次元の帯（swath）では 2 次元キャップを覆い切れず縁が欠ける。そこで全球を最粗
  * `floorZoom` で種付けし、traverse の SSE 細分化＋地平線カリングに委ねる方式へ切り替える。
@@ -159,7 +159,7 @@ const FORWARD_REACH_MARGIN = 1.25;
 const GLOBAL_VIEW_EARTH_ANG_RADIUS = 1.0;
 
 /**
- * SSE しきい値の距離累進係数（Issue #335）。実効しきい値を
+ * SSE しきい値の距離累進係数。実効しきい値を
  * `sseThreshold · (1 + SSE_FALLOFF_RATE · distance / altitude)` とし、遠方ほど大きく＝粗く受容する。
  * 近景（distance≈altitude）はほぼ不変、遠方は幾何 LOD（距離 2 倍で 1 段粗）より速く粗化して
  * 高チルト時の総タイル数を抑える（遠方タイルは文字も読めず粗くて問題ない）。root emit と
@@ -176,13 +176,13 @@ const effectiveSseThreshold = (
     sseThreshold *
     (1 + (SSE_FALLOFF_RATE * Math.max(0, distance)) / Math.max(1, altMeters));
 /**
- * 可視地表を覆う root タイル集合を選定する（Issue #329 の帯 ＋ Issue #335 の高度/距離適応）。
+ * 可視地表を覆う root タイル集合を選定する（の帯 ＋  の高度/距離適応）。
  *
- * **帯の張り方（#329）**: カメラ直下点（nadir, 前景）から注視点（center）を通り視線方向へ伸びる
+ * **帯の張り方**: カメラ直下点（nadir, 前景）から注視点（center）を通り視線方向へ伸びる
  * ground-track の帯（swath）に root を張る。along-track は nadir 手前のマージンから center を越え
  * FOV 端まで、lateral は ±`rootSearchRadius`。これによりチルト時も前景（nadir）が欠落しない。
  *
- * **高度/距離適応ルートレベル（#335）**: 各 root の zoom を固定 `minZoom` ではなく、その地点までの
+ * **高度/距離適応ルートレベル**: 各 root の zoom を固定 `minZoom` ではなく、その地点までの
  * カメラ距離 d に対する **SSE（256px タイルの表示サイズ）最適 zoom** から決める。すなわち
  * `tileEdge(z)·viewportHeight / (d·2·tan(fov/2)) ≈ sseThreshold` を満たす最も粗い z。これにより
  * 高高度では粗い root（例: 500km 上空で日本列島が数枚〜十数枚）になり、低高度では細かい root に
@@ -215,7 +215,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // **分数（fractional）タイル座標**で持つ。整数タイル（toTileXY）だと、低高度・斜め見で
     // nadir↔center の水平距離が 1 タイル未満のとき t0==t1 になり dirLen=0 ＝ 帯の方向（方位）が
     // 失われ、nadir 中心ボックスのフォールバックに落ちて帯が視線方向とは無関係（軸整列）に
-    // 敷かれる。結果、前景（地平線方向）が横方向スプレッドぶんしか覆われず奥に穴が空く（#335:
+    // 敷かれる。結果、前景（地平線方向）が横方向スプレッドぶんしか覆われず奥に穴が空く（
     // radius 8000・tilt 67°・az 174.9° で nadir 直下の z7 タイルが未被覆）。分数座標なら nadir と
     // center が同一整数タイル内でも真の方位差が残り、帯を正しく視線方向へ向けられる。
     const nadir = ecefToGeodetic(cameraEcef);
@@ -290,7 +290,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // 地平線までの地表弧長（中心角 acos(R/(R+h))）。帯の along-track 距離（弧長）と整合。
     const horizonArc = R * Math.acos(Math.min(1, R / (R + h)));
 
-    // ---- 全球モード（高高度, #335） ----
+    // ---- 全球モード（高高度） ----
     // 地球の見かけ角半径が小さい（高高度で地球の大部分＝広いキャップが視界に入る）と、視線方向に
     // 沿う 1 次元の帯では 2 次元キャップを覆い切れず縁が欠ける（低高度の帯アルゴリズムを高高度へ
     // 流用するのは無理がある）。この帯域では全球（反対側も含む）を最粗 floorZoom で一様に種付けし、
@@ -360,7 +360,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         const cy = t0.y + uy * s;
         // lateral も **半タイル刻み**で張る。帯（track）がタイル格子に対して斜め（az が格子非整列）
         // のとき、横方向に 1 タイル（px·f, py·f）ずつ進めると配置点が対角線上に並び、直交隣接の
-        // global タイルを飛ばして横帯に穴が空く（#335: 例 az174.9°・arc127km で root 未被覆）。
+        // global タイルを飛ばして横帯に穴が空く（例 az174.9°・arc127km で root 未被覆）。
         // 0.5 刻みにすると帯をタイルサイズの半分の解像度で標本化でき、斜めでも重なる global タイルを
         // 1 枚も飛ばさない。重複は addAt の seen でデデュプ。
         for (let w = -halfTiles; w <= halfTiles; w += 0.5) {
@@ -416,7 +416,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // タイル格子に量子化し、重複は seen 集合でデデュプされるため、半刻みの重なりはコスト（反復数）
     // のみで結果のタイル数は被覆相当に有界。旧実装は s 空間の f-セル単位で歩いたため、s 格子（nadir
     // 起点）と global タイル格子（lon/lat 原点起点）のオフセットが zoom 遷移と重なると最遠側で
-    // global タイル 1 枚分（例: 389-630km 帯）を張り残し、奥（地平線側）が 1 行欠けた（#335）。
+    // global タイル 1 枚分（例: 389-630km 帯）を張り残し、奥（地平線側）が 1 行欠けた。
     // 最遠端まで確実に含めるよう reach に最遠 emit タイル 1 枚分の余白を足す。
     const STEP_MIN_S = 0.5; // s（minZoom タイル）刻みの下限（停滞防止）。
     const fFar = 2 ** (minZoom - zoomForDist(chordDist(forwardReachM)));
@@ -442,7 +442,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
  *
  * 地理院テクスチャ（std/seamlessphoto）は世界全域を z0–`WORLD_TEXTURE_MAX_ZOOM` まで、それより
  * 高ズームは日本周辺のみ配信する。域外を高ズーム細分化するとタイルが 404 で欠けるため、交差判定で
- * 域外タイルの細分化上限をクランプする（Issue #347）。タイルの北西・南東角の緯度経度から範囲を
+ * 域外タイルの細分化上限をクランプする。タイルの北西・南東角の緯度経度から範囲を
  * 求め、`JAPAN_BOUNDS` と AABB 交差するかを返す。
  */
 const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
@@ -466,7 +466,7 @@ const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
 /**
  * グローブ向け Quadtree+SSE でカメラ近傍の可視タイルを選択する。
  *
- * root は `selectGlobeRootTiles` が選ぶ「nadir→center→地平線」の帯（Issue #329）。
+ * root は `selectGlobeRootTiles` が選ぶ「nadir→center→地平線」の帯。
  * 各ノードで「地平線カリング → SSE 判定」を行い、受容 or 4 子へ分割。
  * 最後にカメラ距離の昇順で maxTiles 件に打ち切る。
  */
@@ -500,7 +500,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 食い違って余計な分割・訪問が起き得るため（選択ごとに 1 回のみの呼び出しでコストは無視できる）。
     const camAlt = Math.max(1, ecefToGeodetic(cameraEcef).altMeters);
     // 可視地平線の中心角（acos(R/r), r=カメラ地心距離）。地平線カリングの「タイルサイズ考慮」救済に
-    // 使う（高高度の全球被覆で粗タイルの可視縁を取りこぼさないため, #335）。
+    // 使う（高高度の全球被覆で粗タイルの可視縁を取りこぼさないため）。
     const capAngle = Math.acos(
         Math.max(-1, Math.min(1, EARTH_MEAN_RADIUS_M / Math.max(1, cameraEcef.length()))),
     );
@@ -535,7 +535,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             // 内に入る場合に取りこぼし、高高度の全球視点で縁/内側に穴が空く。タイルの角半径ぶん緩めた
             // 「可視キャップ（capAngle）と重なるか」で救済する。角半径はメルカトルタイルの経度幅
             // (2π/2^zoom) の 0.75 倍と十分大きめに見積もり、可視縁を確実に含める（裏側は依然カリング。
-            // 余分な裏寄りタイルは描画時に背面/深度で隠れ無害, #335）。低高度では cap が小さく、かつ
+            // 余分な裏寄りタイルは描画時に背面/深度で隠れ無害）。低高度では cap が小さく、かつ
             // 帯 root が地平線裏を種付けしないため、この救済は実質高高度のみで効く。
             const centerAngle = Math.acos(Math.max(-1, Math.min(1, horizonDot)));
             const nodeAngRadius = ((2 * Math.PI) / (1 << zoom)) * 0.75;
@@ -549,7 +549,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         // 近景を内包して整形で誤除去されるのを防ぐ粗さ上限）。maxZoom 到達時はそれ以上分割不可。
         // 日本テクスチャ被覆域外のタイルは z>WORLD_TEXTURE_MAX_ZOOM のテクスチャが存在せず 404 で
         // 欠けるため、実効 maxZoom を WORLD_TEXTURE_MAX_ZOOM にクランプして低レベル表示を維持する
-        // （Issue #347）。交差判定は z>=WORLD_TEXTURE_MAX_ZOOM のノードに限定してコストを抑える。
+        // 。交差判定は z>=WORLD_TEXTURE_MAX_ZOOM のノードに限定してコストを抑える。
         const effMaxZoom =
             zoom >= WORLD_TEXTURE_MAX_ZOOM &&
             maxZoom > WORLD_TEXTURE_MAX_ZOOM &&
@@ -595,7 +595,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     });
     // root シードを traverse 開始点とする。日本被覆域外の root が minZoom(>WORLD_TEXTURE_MAX_ZOOM)
     // で生成されると、それ以上分割しなくても root タイル自体のテクスチャが存在せず(404)白く欠ける。
-    // そこで域外 root は WORLD_TEXTURE_MAX_ZOOM の祖先に丸めて開始する（Issue #347）。複数 root が
+    // そこで域外 root は WORLD_TEXTURE_MAX_ZOOM の祖先に丸めて開始する。複数 root が
     // 同一祖先へ collapse しても acceptedKeys の重複排除で吸収される。
     for (const r of roots) {
         if (
@@ -610,7 +610,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         }
     }
 
-    // 正しい quadtree カットへ整える（#335）: 距離適応で root の zoom が位置ごとに変わるため、
+    // 正しい quadtree カットへ整える: 距離適応で root の zoom が位置ごとに変わるため、
     // ズーム遷移の継ぎ目で粗いタイルと、その中に含まれる細いタイル（子孫）が同じ地表を二重に
     // 覆うことがある（タイルの重なり描画）。各採用タイルについて、より粗い採用タイル（祖先）が
     // 存在する＝その粗タイルに包含されるものを除外する（粗い方を残す＝被覆は維持される）。

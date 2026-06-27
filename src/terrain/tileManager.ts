@@ -91,9 +91,9 @@ export interface TileManager {
     queryElevationAtWorld(wx: number, wz: number): number | null;
     /** メッシュ頂点の標高が更新されたときに呼ばれるコールバック */
     onTerrainUpdated: (() => void) | null;
-    /** 太陽影 (Issue #39) caster/receiver フックを設定する。`null` で解除 */
+    /** 太陽影  caster/receiver フックを設定する。`null` で解除 */
     setShadowHooks(hooks: ShadowHooks | null): void;
-    /** 現在アクティブな全タイルメッシュを列挙する（Issue #39 ON/OFF 切替用） */
+    /** 現在アクティブな全タイルメッシュを列挙する（ON/OFF 切替用） */
     forEachActiveMesh(cb: (mesh: Mesh) => void): void;
 }
 
@@ -114,7 +114,7 @@ interface PendingReleaseTile {
     timerId: ReturnType<typeof setTimeout>;
     /**
      * pendingRelease 中も隣接細タイルから cross-level 縫い合わせ参照されるため、
-     * cache が LRU で退避されても elevation を保持しておく (Issue #290)。
+     * cache が LRU で退避されても elevation を保持しておく。
      * filled が無い場合は raw elevation を利用する。
      */
     elevation: Float32Array;
@@ -130,7 +130,7 @@ const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
 /*
- * 旧 NEAR_DISTANCE_TILES_FACTOR 定数は Issue #290 対応で isTileNearCamera と共に撤廃。
+ * 旧 NEAR_DISTANCE_TILES_FACTOR 定数は  対応で isTileNearCamera と共に撤廃。
  */
 /** 旧タイルの強制解放までのタイムアウト (ms) */
 const PENDING_RELEASE_TIMEOUT_MS = 5000;
@@ -217,7 +217,7 @@ const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
     // 2D (ortho) では camera.alpha 変更（画面回転）に伴って AABB-frustum 交差が
     // 拡大し、`computeQuadtreeTiles` の maxTiles / maxVisited に達して粗LODへの
     // 強制フォールバックや遠方タイル切捨てが起き、回転中にタイルレベルが乱れる
-    // (#286)。タイル選択は地理的中心と orthoサイズだけで決めれば十分なので、
+    // 。タイル選択は地理的中心と orthoサイズだけで決めれば十分なので、
     // ortho 時は回転に依存しない axis-aligned な frustum 平面を構築する。
     if (camera.mode === Camera.ORTHOGRAPHIC_CAMERA) {
         return extractOrthoStableFrustumPlanes(camera);
@@ -236,7 +236,7 @@ const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
 };
 
 /**
- * 2D (ortho) 用の回転安定な frustum 平面を返す (#286)。
+ * 2D (ortho) 用の回転安定な frustum 平面を返す。
  *
  * orthoLeft/Right/Top/Bottom が定義する可視矩形を、`camera.alpha` がどの値でも
  * 完全に内包する正方形（中心 `camera.target`、半辺 `hypot(halfW, halfH)`）
@@ -449,7 +449,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         meshPool.release(pending.mesh);
         removePendingRelease(key);
         // 解放した粗タイルにスナップしていた可能性のある隣接細 active タイルを
-        // 再ステッチして、スナップ元消失後の整合性を取り直す (Issue #290)。
+        // 再ステッチして、スナップ元消失後の整合性を取り直す。
         restitchNeighbors(pending.coord);
     };
 
@@ -694,7 +694,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // 重い mesh sync 処理（elevation 適用 + GPU upload + 隣接ステッチ）を
             // フレーム単位でシリアライズする。並列ワーカーが同フレームに集中して
             // sync 処理を積み上げて Babylon の rAF レンダーを抜かさないようにし、
-            // 飛行機アニメーションがちらつくのを防ぐ (Issue #245)。
+            // 飛行機アニメーションがちらつくのを防ぐ。
             const releaseSlot = await acquireApplySlot();
             try {
                 if (rid !== requestId) return;
@@ -807,7 +807,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * 不変なので、 elevation を再 apply する必要はない。Follow モードでは
      * 飛行機が連続的に中心タイル境界を跨ぐため、フル再ステッチ
      * (applyStitchedElevation × N) を毎秒走らせると全画面フラッシュとして
-     * 視認されるため、Follow パスではこちらを呼ぶ (Issue #245)。
+     * 視認されるため、Follow パスではこちらを呼ぶ。
      */
     const repositionActiveTilesGeom = (): void => {
         if (!currentCenter) return;
@@ -900,7 +900,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * ComputeNormals / GPU upload / restitchNeighbors）を
      * シリアライズする Promise チェーン排他制御。
      * Follow モードでは 1 フレームに 1 タイルだけ走らせて
-     * 飛行機アニメーションのちらつきを防ぐ (Issue #245)。
+     * 飛行機アニメーションのちらつきを防ぐ。
      * 通常リフレッシュではフレーム yield を省略し高速に適用する。
      */
     let applyChain: Promise<void> = Promise.resolve();
@@ -928,7 +928,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * が同フレームに集中してフレーム飛びを起こす。並列度を
      * {@link FOLLOW_FRIENDLY_CONCURRENT} に制限し、かつ各 loadTile の後に
      * フレーム境界 yield を挟むことで GPU/メインスレッドのスパイクを
-     * 時間方向に分散する (Issue #245)。
+     * 時間方向に分散する。
      */
     const FOLLOW_FRIENDLY_CONCURRENT = 2;
 
@@ -969,7 +969,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
      * - `new Texture` の発行を「1フレームあたり最大 textureBudgetLimit 個」
-     *   に制限することで GPU upload + mipmap 生成のスパイクを時間方向に分散する (Issue #245)
+     *   に制限することで GPU upload + mipmap 生成のスパイクを時間方向に分散する
      * - Follow モードでは 2/frame に制限し、通常リフレッシュでは 8/frame まで許容する
      * - スロット枠は requestAnimationFrame でフレーム境界ごとにリセットされるため、
      *   onLoad/onError が呼ばれないケース（tile unload による先 dispose、
@@ -1148,7 +1148,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /*
-     * 旧 isTileNearCamera ヘルパーは Issue #290 対応により撤廃。
+     * 旧 isTileNearCamera ヘルパーは  対応により撤廃。
      * 高 zoom (例: 18) では tileSize が小さく、カメラ高度が少しでもあると
      * 近傍判定が常に false になり cross-level 縫い合わせが走らず、zoom 17/18
      * 混在境界で隙間が顕在化していた。現在は粗タイル隣接が存在する場合のみ
@@ -1165,7 +1165,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const isSameZoomVisible = (c: { zoom: number; x: number; y: number }): boolean => {
             const k = toTileKey(c);
             // hiddenChildTiles に入っている同 zoom 隣接は実画面上は未描画 (親 pendingRelease を表示中)
-            // のため、cross-level 探索を継続させる (Issue #290)。
+            // のため、cross-level 探索を継続させる。
             return activeTiles.has(k) && !hiddenChildTiles.has(k);
         };
         const lookupCoarse = (c: { zoom: number; x: number; y: number }): CoarseTileSource | undefined => {
@@ -1181,7 +1181,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     };
                 }
             }
-            // フォールバック: pendingRelease 中の旧粗タイル (Issue #290)
+            // フォールバック: pendingRelease 中の旧粗タイル
             // cache が LRU 退避済みでも pending entry は elevation を保持している。
             const pending = pendingRelease.get(k);
             if (pending) {
@@ -1284,7 +1284,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // - 粗タイル隣接が存在する場合のみ実コストが発生する純粋な no-op 安全な処理。
         //   高 zoom (例: 18) ではタイル辺長が小さく、旧 `isTileNearCamera` ゲートが
         //   ほぼ常に false となり cross-level が走らず、zoom 17/18 混在境界で
-        //   隙間が顕在化していた (Issue #290)。よって候補が無ければ no-op になる
+        //   隙間が顕在化していた。よって候補が無ければ no-op になる
         //   stitchAndCheckSeed に常に crossLevel=true を渡し、近傍距離ゲートは撤廃する。
         // - all-NaN タイルは同 zoom 近傍からシードが得られない場合があるため、
         //   こちらも従来通り cross-level でシードを取りに行く（true なので包含）。
@@ -1535,7 +1535,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         if (!currentCenter) return null;
         // activeTiles には可視タイル（minZoom〜zoom）が登録される。
         // zoom > maxElevationZoom のタイルも activeTiles に含まれるため、
-        // maxElevationZoom ではなく zoom から探索を開始する（#260）。
+        // maxElevationZoom ではなく zoom から探索を開始する。
         for (let z = zoom; z >= minElevationZoom; z--) {
             const ts = tileSizeForZoom(z);
             const center = convertTileZoom(currentCenter, z);
@@ -1557,7 +1557,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (hiddenChildTiles.has(key)) continue;
             if (!activeTiles.has(key) && !pendingRelease.has(key)) continue;
             // cache が LRU 退避済みの pendingRelease タイルは PendingReleaseTile に保持した
-            // elevation/filled をフォールバックとして使う (Issue #290)。
+            // elevation/filled をフォールバックとして使う。
             const cacheEntry = cache.get(key);
             const pendingEntry = cacheEntry ? undefined : pendingRelease.get(key);
             if (!cacheEntry && !pendingEntry) continue;
@@ -1695,7 +1695,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                             releasePendingTile(key);
                         }, PENDING_RELEASE_TIMEOUT_MS);
                         // cache が LRU 退避しても cross-level 縫い合わせから参照できるように
-                        // elevation/filled を pending entry に保持する (Issue #290)。
+                        // elevation/filled を pending entry に保持する。
                         // entry が undefined（LRU 退避済み）の場合は NaN バッファを保持し、
                         // wasAllNaN=true / unblocked=false で cross-level 候補から自動除外する。
                         const entry = cache.get(key);
@@ -1711,7 +1711,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                             unblocked: entry?.unblocked ?? false,
                         });
                         // pendingRelease に新規追加された粗タイルの境界に接する
-                        // 既存細 active タイルを再ステッチキューに積む (Issue #290)。
+                        // 既存細 active タイルを再ステッチキューに積む。
                         restitchNeighbors(tile.coord);
                     }
                 } else {
@@ -1766,7 +1766,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         // 2D 回転や同一可視集合での再 refresh など、新規ロードが発生しないケースでは
         // loadTile 経路の checkAndReleaseCoveredTiles が呼ばれないため、既に祖先タイルが
-        // ロード済みの pendingRelease タイルがタイムアウト (5s) まで滞留してしまう (#286)。
+        // ロード済みの pendingRelease タイルがタイムアウト (5s) まで滞留してしまう。
         // ここで全 pending を対象に再判定し、カバー済みのものを即時解放する。
         if (pendingRelease.size > 0) {
             checkAndReleaseCoveredTiles();
@@ -1886,7 +1886,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // ArcRotateCamera の onViewMatrixChangedObservable は毎フレーム発火する
             // 仕様のため、単純に debounce すると永遠に reset され refresh が走らない。
             // 直近 refresh トリガ時のカメラ状態と比較し、実質的な変化があった場合のみ
-            // debounce タイマを再設定する (#286)。
+            // debounce タイマを再設定する。
             const snapshot = (): {
                 alpha: number;
                 beta: number;

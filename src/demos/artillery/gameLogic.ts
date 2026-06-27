@@ -1,5 +1,5 @@
 /**
- * Artillery Game ゲームロジック (Issue #259)
+ * Artillery Game ゲームロジック
  *
  * ターン管理・スコア・命中判定・リスポーンの純粋関数群。
  */

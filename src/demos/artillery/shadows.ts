@@ -1,14 +1,14 @@
 /**
- * 砲台・砲弾の影描画 (Issue #259)
+ * 砲台・砲弾の影描画
  *
  * 真上からの平行光源 (DirectionalLight) と ShadowGenerator を用いて、
  * 砲台メッシュと砲弾メッシュの影を地形 (tile-ground-*) に落とす。
  *
- * 設定方針（旧 planar シーンの太陽影実装 Issue #39 / #393 に倣う）:
+ * 設定方針（旧 planar シーンの太陽影実装に倣う）:
  * - フィルタは Poisson sampling。`useBlurExponentialShadowMap` は WebGPU 経路で
  *   infiniteDistance メッシュ（太陽メッシュ等）と干渉して破綻し、PCF
  *   (`usePercentageCloserFiltering`) は WebGPU で comparison サンプラのバインドに
- *   失敗してシーン全体が白画面になる（#393）。Poisson sampling は双方で安定する。
+ *   失敗してシーン全体が白画面になる。Poisson sampling は双方で安定する。
  * - DirectionalLight は orthographic frustum を明示指定する。`autoUpdateExtends` /
  *   `autoCalcShadowZBounds` は使わず、戦場サイズに合わせた固定 frustum にすることで
  *   毎フレームコストと WebGPU 不安定要因を避ける。
@@ -131,7 +131,7 @@ export const createArtilleryShadows = (
     // orthographic frustum を戦場サイズに固定する。
     // autoUpdateExtends=true（デフォルト）のままにすると、毎フレーム砲台メッシュのバウンディング
     // ボックスから XY 範囲が自動計算され、手動設定した ortho 値が上書きされる。
-    // false にして手動設定を使う（Issue #39 の太陽影と同じ方式）。
+    // false にして手動設定を使う（太陽影と同じ方式）。
     light.autoUpdateExtends = false;
     light.autoCalcShadowZBounds = false;
     light.shadowMinZ = 1;
@@ -145,7 +145,7 @@ export const createArtilleryShadows = (
     // フィルタ選定: PCF (`usePercentageCloserFiltering`) は WebGPU で comparison 付き
     // depth-stencil サンプラ（`shadowTexture2` / `shadowTexture2Sampler`）を要求するが、
     // 影マップのテクスチャがバインドされず `createBindGroup` がクラッシュし、シーン全体
-    // （地形・砲台）が一切描画されず白画面になる（#393 と同根。旧 planar シーンの
+    // （地形・砲台）が一切描画されず白画面になる（同根。旧 planar シーンの
     // 太陽影と同じ対処）。Poisson sampling は通常テクスチャとしてバインドされ PostProcess も
     // 伴わないため、WebGL2 / WebGPU 双方で安定して動作する。
     generator.usePoissonSampling = true;

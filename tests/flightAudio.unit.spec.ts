@@ -1,5 +1,5 @@
 /**
- * `src/demos/flight/flightAudio.ts` の unit test (Issue #269)。
+ * `src/demos/flight/flightAudio.ts` の unit test。
  *
  * AudioV2 API (CreateAudioEngineAsync / CreateSoundAsync) と
  * .mp3 import をモックして、初期化成功/失敗・SE 再生・停止・dispose を検証する。

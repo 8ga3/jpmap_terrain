@@ -1,8 +1,8 @@
 /**
  * @jest-environment jsdom
  *
- * `createGlobeSceneController` の UI コントロールパネル配線（#275 Phase 4 / P4-1）の
- * 挙動検証。Copilot レビュー指摘（PR #355）への回帰テスト:
+ * `createGlobeSceneController` の UI コントロールパネル配線の
+ * 挙動検証。Copilot レビュー指摘への回帰テスト:
  * - コンパス回転角は丸めて DOM へ書く（浮動小数で毎フレーム書かない）
  * - スケールバー幅は変化時のみ更新する
  * - dispose 後はズーム/コンパスのアニメーション（rAF）が camera を更新せず再スケジュールしない
@@ -59,7 +59,7 @@ const makeGcWithScene = (
 } => {
     const onBeforeRender = makeObservable<() => void>();
     let disposedFlag = false;
-    // viewMode 切替の最小スタブ（#395）。UI は gc.getViewMode/setViewMode を参照する。
+    // viewMode 切替の最小スタブ。UI は gc.getViewMode/setViewMode を参照する。
     let mockViewMode: import("../src/lib/types").ViewMode = "3d";
     const gc = {
         camera,
@@ -115,7 +115,7 @@ afterEach(() => {
     global.requestAnimationFrame = originalRaf;
 });
 
-describe("globe UI コントロールパネル配線 (#275 P4-1)", () => {
+describe("globe UI コントロールパネル配線", () => {
     it("コンパス回転角は 0.1 度に丸めて transform へ書く", () => {
         const camera = makeCamera();
         // ほぼゼロでない方位を作る（丸めの効果を観察する）。
@@ -335,7 +335,7 @@ describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
         expect(sunMesh.setEnabled).toHaveBeenLastCalledWith(false);
         expect(hemiLight.intensity).toBeCloseTo(1.0, 6);
 
-        // 3D へ戻すと太陽光が再有効化され、太陽状態（方向・メッシュ）が再計算される (#395 / PR #407)。
+        // 3D へ戻すと太陽光が再有効化され、太陽状態（方向・メッシュ）が再計算される。
         gc.setViewMode("3d");
         onBeforeRender.fire();
         expect(sunLight.setEnabled).toHaveBeenLastCalledWith(true);
@@ -346,7 +346,7 @@ describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
     });
 });
 
-describe("globe external frustum / tile camera 配線 (#275 P4-3 / #402)", () => {
+describe("globe external frustum / tile camera 配線", () => {
     it("setExternalCompassDegrees: 外部指定値を優先し、null で yaw 連動へ復帰する", () => {
         const camera = makeCamera();
         camera.yaw = 0.5;

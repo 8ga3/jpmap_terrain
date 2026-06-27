@@ -1,14 +1,14 @@
 /**
- * 個別ポリゴンノード (Issue #170 / #171)。
+ * 個別ポリゴンノード。
  *
  * - 頂点ごとの球（{@link CreateSphere}）
  * - 頂点列を結ぶチューブ（{@link CreateTube}、`updatable: true`）
- * - 各頂点から地表へ落ちる垂線（#171, 1 頂点 1 Tube、`updatable: true`）
- * - `labels[i]` が指定された頂点に対応するラベル平面（#171, ビルボード + DynamicTexture）
+ * - 各頂点から地表へ落ちる垂線（1 頂点 1 Tube、`updatable: true`）
+ * - `labels[i]` が指定された頂点に対応するラベル平面（ビルボード + DynamicTexture）
  * を 1 つの root TransformNode 配下に親子化して管理する。
  *
  * `closed=true` のときはチューブ末端に最初の頂点を append し、可視的に閉じる。
- * 面塗り・壁は本タスクでは実装しない（#172 / #173）。
+ * 面塗り・壁は本タスクでは実装しない。
  */
 
 import type { Scene } from "@babylonjs/core/scene";
@@ -37,7 +37,7 @@ import {
 const RENDERING_GROUP_ID = 1;
 /**
  * 垂線 / 壁は地表メッシュ（既定グループ 0）と同グループで
- * 描画し、地表の深度バッファで地中部分をオクルードさせる (#186)。
+ * 描画し、地表の深度バッファで地中部分をオクルードさせる。
  * 頂点球 / ポリラインは `RENDERING_GROUP_ID` にて地表より手前に描画される。
  */
 const SUBTERRAIN_RENDERING_GROUP_ID = 0;
@@ -50,7 +50,7 @@ const LABEL_RENDERING_GROUP_ID = 2;
 const LABEL_MAX_DT_SIZE = 1024;
 // テキストにフィットさせるため MIN は小さくし、余白は innerPad のみで表現する。
 const LABEL_MIN_DT_SIZE = 32;
-// 球トップとラベル下端の間隔 (フォント高さに対する比率をスケール反映)。 (#171)
+// 球トップとラベル下端の間隔 (フォント高さに対する比率をスケール反映)。
 const LABEL_GAP_FONT_RATIO = 0.0;
 
 interface ResolvedStyle {
@@ -120,7 +120,7 @@ export interface PolygonNode {
     setWallsEnabledLogical(enabled: boolean): void;
     setElevationResolved(resolved: boolean): void;
     /**
-     * 頂点列の編集 API (#173)。
+     * 頂点列の編集 API。
      * いずれも内部状態（points / labels / メッシュ配列）を更新したのち、
      * 即時の applyTransform を呼ばずに完了する（呼び出し側が tick で反映する）。
      * 点数が変化した場合 lineMesh / wallMesh は dispose され、次回 applyTransform
@@ -156,7 +156,7 @@ const createPointSphere = (
     material.alpha = style.pointOpacity;
     mesh.material = material;
     mesh.renderingGroupId = RENDERING_GROUP_ID;
-    // 頂点インタラクション API (#184) のため pickable にする。
+    // 頂点インタラクション API  のため pickable にする。
     // 名前 `polygon-${id}-point-${index}` は DefaultScene 側の
     // `pickPolygonPoint` でパースされ、polygonId / index の解決に使われる。
     mesh.isPickable = true;
@@ -193,7 +193,7 @@ const createDropLine = (
     material.alpha = style.dropLineOpacity;
     mesh.material = material;
     // 地表と同グループで描画し、地表の深度バッファで
-    // 地表より下のセグメントをオクルードさせる (#186)。
+    // 地表より下のセグメントをオクルードさせる。
     mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
     mesh.isPickable = false;
     mesh.parent = parent;
@@ -219,7 +219,7 @@ const createLabelMesh = (
     parent: TransformNode,
     /**
      * mesh / material / texture 名のプレフィクス。`"label"`（点ラベル）または
-     * `"edge-label"`（#185 辺ラベル）。命名以外の挙動は共通。
+     * `"edge-label"`（辺ラベル）。命名以外の挙動は共通。
      */
     namePrefix: "label" | "edge-label" = "label",
 ): LabelEntry => {
@@ -350,7 +350,7 @@ const buildLinePath = (
 
 /**
  * 壁 Ribbon の pathArray を構築する。
- * 上側 row = 各頂点の世界座標、下側 row = 同じ XZ で Y=0 に落とした座標 (#186)。
+ * 上側 row = 各頂点の世界座標、下側 row = 同じ XZ で Y=0 に落とした座標。
  * `closed=true` のときは先頭頂点を末尾にも追加して閉じる。
  *
  * Ribbon は updatable + instance 更新時に長さを変えられないため、
@@ -417,7 +417,7 @@ export const createPolygonNode = (
         altitude: p.altitude,
     }));
 
-    // ラベルは常に points と同じ長さで保持する (#173)。`undefined` はラベルなし。
+    // ラベルは常に points と同じ長さで保持する。`undefined` はラベルなし。
     // 一度でも labels が指定された（または `updatePoint(label)` で設定された）場合、
     // getHandle().labels で外部に露出する。
     let hasLabels = options.labels !== undefined;
@@ -425,7 +425,7 @@ export const createPolygonNode = (
         options.labels ? options.labels[i] : undefined,
     );
 
-    // 辺ラベル (#185)。長さは `closed && N>=2 ? N : Math.max(0, N-1)`。つまり N<2 のときは 0 。
+    // 辺ラベル。長さは `closed && N>=2 ? N : Math.max(0, N-1)`。つまり N<2 のときは 0。
     // closed=true のときの末尾要素 (i = N-1) は points[N-1]→points[0] のラベル。
     const expectedEdgeCount = (): number =>
         closed && points.length >= 2
@@ -456,7 +456,7 @@ export const createPolygonNode = (
         return createLabelMesh(scene, id, index, text, style, root);
     });
 
-    // edgeLabels[i] が指定された辺にのみ辺ラベルを作る (#185)。indexed by 辺 index。
+    // edgeLabels[i] が指定された辺にのみ辺ラベルを作る。indexed by 辺 index。
     const edgeLabelEntries: (LabelEntry | null)[] = edgeLabels.map(
         (text, index) => {
             if (text === undefined || text === null) return null;
@@ -503,7 +503,7 @@ export const createPolygonNode = (
     lineMesh.isPickable = false;
     lineMesh.parent = root;
 
-    // 壁 Ribbon (#172): 上 row = 各頂点 world、下 row = 地表 Y。
+    // 壁 Ribbon : 上 row = 各頂点 world、下 row = 地表 Y。
     // 構築時は groundY を 0 とした placeholder を渡し、applyTransform で実値で更新する。
     // N<2 のときも path>=2 が必要なため placeholder 長さをそろえる。
     const initialGroundYs: (number | null)[] = Array.from(
@@ -537,7 +537,7 @@ export const createPolygonNode = (
     }
     wallMesh.material = wallMaterial;
     // 地表と同グループで描画し、地表の深度バッファで
-    // 地表より下のセグメントをオクルードさせる (#186)。
+    // 地表より下のセグメントをオクルードさせる。
     wallMesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
     wallMesh.isPickable = false;
     wallMesh.parent = root;
@@ -556,7 +556,7 @@ export const createPolygonNode = (
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
         }
-        // 辺ラベル (#185) も labelsEnabled を共用する。
+        // 辺ラベル  も labelsEnabled を共用する。
         for (const entry of edgeLabelEntries) {
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
@@ -567,7 +567,7 @@ export const createPolygonNode = (
     applyVisibility();
 
     /**
-     * 点数変更時の lineMesh / wallMesh 再生成 (#173)。
+     * 点数変更時の lineMesh / wallMesh 再生成。
      * Babylon の `CreateTube` / `CreateRibbon` は instance 更新時に頂点数を変えられないため、
      * insert/remove/replace で点数が変わった直後に既存メッシュを dispose し、
      * 新しい点数に合わせた placeholder で作り直す。Material は再 attach する。
@@ -646,7 +646,7 @@ export const createPolygonNode = (
 
     /**
      * 配列上の index と mesh / material / texture 名の整合を保つために
-     * sphere / drop / label の name を index に合わせて再採番する (#173)。
+     * sphere / drop / label の name を index に合わせて再採番する。
      * insert/remove での部分編集では同名 mesh の共存と index ズレを招くため、
      * splice 後に必ず呼び出して名前を再付与する。
      */
@@ -668,7 +668,7 @@ export const createPolygonNode = (
             e.material.name = `polygon-${id}-label-mat-${i}`;
             e.texture.name = `polygon-${id}-label-${i}`;
         }
-        // 辺ラベル (#185) も同様に index に合わせて再採番する。
+        // 辺ラベル  も同様に index に合わせて再採番する。
         for (let i = 0; i < edgeLabelEntries.length; i++) {
             const e = edgeLabelEntries[i];
             if (!e) continue;
@@ -678,7 +678,7 @@ export const createPolygonNode = (
         }
     };
 
-    /** 内部: lat/lon/altitude のバリデーション (#173)。 */
+    /** 内部: lat/lon/altitude のバリデーション。 */
     const assertValidPoint = (p: PolygonPointOptions, prefix: string): void => {
         if (!Number.isFinite(p.lat) || p.lat < -90 || p.lat > 90) {
             throw new RangeError(`${prefix}: lat out of range (got ${p.lat})`);
@@ -698,7 +698,7 @@ export const createPolygonNode = (
         }
     };
 
-    /** ラベル mesh を index に対応するエントリに設定 / 解放する (#173)。 */
+    /** ラベル mesh を index に対応するエントリに設定 / 解放する。 */
     const setLabelAt = (index: number, value: string | undefined): void => {
         const existing = labelEntries[index];
         if (value === undefined) {
@@ -743,7 +743,7 @@ export const createPolygonNode = (
         // カメラから見た「画面上方向」を、各点で算出する。
         // ラベル中心を `球中心 + screenUp * offsetY` に置くことで、
         // ラベル平面の billboard 回転は事実上「球中心まわり」の回転として振る舞い、
-        // どのカメラ角度でもラベルが球を覆い隠さない (#186 PR レビュー指摘)。
+        // どのカメラ角度でもラベルが球を覆い隠さない (PR レビュー指摘)。
         const camera = scene.activeCamera;
         const camPos = camera ? camera.globalPosition : null;
         const camUp = camera ? camera.upVector : null;
@@ -753,7 +753,7 @@ export const createPolygonNode = (
             sphere.position.set(wp.x, wp.y, wp.z);
             sphere.scaling.setAll(sphereDiameter * pointScale);
 
-            // 垂線: top = wp.y, bottom = 0。地表を貫通して Y=0 まで伸ばす (#186)。
+            // 垂線: top = wp.y, bottom = 0。地表を貫通して Y=0 まで伸ばす。
             // verticalsEnabled が false（非表示中）はメッシュ更新をスキップして
             // フレーム負荷を下げる。次回 enable 時にこのループで再更新される。
             if (verticalsEnabled) {
@@ -815,10 +815,10 @@ export const createPolygonNode = (
                 label.mesh.scaling.setAll(pointScale);
             }
         }
-        // 辺ラベル (#185): edgeLabels[i] は worldPoints[i] と worldPoints[(i+1) % N]
+        // 辺ラベル : edgeLabels[i] は worldPoints[i] と worldPoints[(i+1) % N]
         // の中点に配置する。closed=false の末尾辺は対象外（edgeLabelEntries の長さで吸収）。
         // 中点そのままだと線と重なるため、線より上（画面上方向）にオフセットして
-        // 線を覆い隠さないようにする (#186)。点ラベルと同じく billboard と組み合わせて
+        // 線を覆い隠さないようにする。点ラベルと同じく billboard と組み合わせて
         // 「線中点まわりの公転」として振る舞わせる。
         const lineRadiusWorld = Math.max(style.lineWidth, 0.001);
         const edgeLabelGap = style.labelFontSize * pointScale * LABEL_GAP_FONT_RATIO;
@@ -877,7 +877,7 @@ export const createPolygonNode = (
             );
         }
 
-        // 壁 Ribbon (#172) の更新。非表示中はスキップしてフレーム負荷を下げるが、
+        // 壁 Ribbon  の更新。非表示中はスキップしてフレーム負荷を下げるが、
         // 上で lastWorldPoints / lastGroundYs の参照を保持しておき、setWallsEnabled(true)
         // 時に同一データで Ribbon を再適用して stale 表示を避ける。
         lastWorldPoints = worldPoints;
@@ -929,7 +929,7 @@ export const createPolygonNode = (
             entry.mesh.dispose();
         }
         labelEntries.length = 0;
-        // 辺ラベル (#185) も dispose する。
+        // 辺ラベル  も dispose する。
         for (const entry of edgeLabelEntries) {
             if (!entry) continue;
             entry.texture.dispose();
@@ -1017,7 +1017,7 @@ export const createPolygonNode = (
             dropEntries.splice(index, 0, drop);
             labels.splice(index, 0, undefined);
             labelEntries.splice(index, 0, null);
-            // 辺ラベル (#185): 点ラベルと同じ規則で同 index にシフト。
+            // 辺ラベル : 点ラベルと同じ規則で同 index にシフト。
             // expectedEdgeCount は points 増加で 1 増えるので 1 件挿入する。
             edgeLabels.splice(index, 0, undefined);
             edgeLabelEntries.splice(index, 0, null);
@@ -1050,7 +1050,7 @@ export const createPolygonNode = (
                 lbl.material.dispose();
                 lbl.mesh.dispose();
             }
-            // 辺ラベル (#185): 点ラベルと同じ規則で同 index を 1 件削除する。
+            // 辺ラベル : 点ラベルと同じ規則で同 index を 1 件削除する。
             // 開ポリゴンで末尾頂点を削除する場合、edgeLabels.length === points.length-1
             // なので index を `length-1` にクランプして末尾の辺ラベルを削除する。
             if (edgeLabels.length > 0) {
@@ -1137,7 +1137,7 @@ export const createPolygonNode = (
             labelEntries.length = 0;
             labels.length = 0;
             hasLabels = false;
-            // 辺ラベル (#185): replacePolygonPoints 後は全 undefined で再構成する。
+            // 辺ラベル : replacePolygonPoints 後は全 undefined で再構成する。
             for (const entry of edgeLabelEntries) {
                 if (!entry) continue;
                 entry.texture.dispose();

@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * 3D ビューアデモエントリ (`src/demos/viewer/index.ts`) の純粋関数 export ユニットテスト (Issue #136 / Issue #147)。
+ * 3D ビューアデモエントリ (`src/demos/viewer/index.ts`) の純粋関数 export ユニットテスト。
  *
  * - `resolveEngine`: クエリ文字列からエンジン種別を解決する。
  * - `resolveLatLon`: URL から初期表示の緯度経度を解決する（`parseLatLonFromUrl` の薄いラッパー）。
@@ -67,7 +67,7 @@ describe("resolveLatLon", () => {
     });
 });
 
-describe("resolveDateTime (Issue #35)", () => {
+describe("resolveDateTime", () => {
     it("?dateTime=<ISO 8601 with Z> → Date を返す", () => {
         const result = resolveDateTime("?dateTime=2025-06-21T03:00:00Z");
         expect(result).toBeInstanceOf(Date);
@@ -111,7 +111,7 @@ describe("resolveDateTime (Issue #35)", () => {
         }
     });
 
-    it("?dateTime=<ISO with +09:00 offset> → UTC 等価値の Date を返す (Issue #143)", () => {
+    it("?dateTime=<ISO with +09:00 offset> → UTC 等価値の Date を返す", () => {
         const result = resolveDateTime(
             "?dateTime=2025-04-25T05:13:00+09:00",
         );
@@ -119,7 +119,7 @@ describe("resolveDateTime (Issue #35)", () => {
         expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
     });
 
-    it("?dateTime=<ISO with -05:00 offset> → 負オフセットも正しく解釈する (Issue #143)", () => {
+    it("?dateTime=<ISO with -05:00 offset> → 負オフセットも正しく解釈する", () => {
         const result = resolveDateTime(
             "?dateTime=2025-04-25T05:13:00-05:00",
         );
@@ -127,7 +127,7 @@ describe("resolveDateTime (Issue #35)", () => {
         expect(result?.toISOString()).toBe("2025-04-25T10:13:00.000Z");
     });
 
-    it("?dateTime=<percent-encoded +09:00> も同値で解釈する (Issue #143)", () => {
+    it("?dateTime=<percent-encoded +09:00> も同値で解釈する", () => {
         const result = resolveDateTime(
             "?dateTime=2025-04-25T05:13:00%2B09:00",
         );
@@ -135,7 +135,7 @@ describe("resolveDateTime (Issue #35)", () => {
         expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
     });
 
-    it("複数パラメータ混在時も dateTime のみ正しく抽出する (Issue #143)", () => {
+    it("複数パラメータ混在時も dateTime のみ正しく抽出する", () => {
         const result = resolveDateTime(
             "?engine=webgpu&dateTime=2025-04-25T05:13:00+09:00&autoSunPosition=false",
         );
@@ -161,7 +161,7 @@ describe("resolveDateTime (Issue #35)", () => {
     });
 });
 
-describe("resolveAutoSunPosition (Issue #35)", () => {
+describe("resolveAutoSunPosition", () => {
     it("?autoSunPosition=true → true", () => {
         expect(resolveAutoSunPosition("?autoSunPosition=true")).toBe(true);
     });
@@ -178,7 +178,7 @@ describe("resolveAutoSunPosition (Issue #35)", () => {
     });
 });
 
-describe("resolveShowSunShadows (Issue #39)", () => {
+describe("resolveShowSunShadows", () => {
     it("?showSunShadows=true → true", () => {
         expect(resolveShowSunShadows("?showSunShadows=true")).toBe(true);
     });

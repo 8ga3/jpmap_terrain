@@ -1,5 +1,5 @@
 /**
- * 距離計測デモ (#186)
+ * 距離計測デモ
  *
  * 1 本のポリラインを動的に編集し、各頂点の lat/lon/altitude と各辺の水平距離・
  * 高低差をラベル表示する。`altitudeMode: "absolute"` を採用し、`addPolygon` /
@@ -12,8 +12,8 @@
  * - `remove`: 頂点クリックで当該点を削除（残り 0/1 点も許容、1 点未満時はマーカ表示）
  * - `edit`: 頂点ドラッグで lat/lon 移動、Shift+ドラッグで altitude を ±移動
  *
- * ポイント上 hover は API 既定動作でカーソル `pointer` に切り替わる（#184）。
- * 編集中はカメラ操作が API 側で抑制される（#184）。
+ * ポイント上 hover は API 既定動作でカーソル `pointer` に切り替わる。
+ * 編集中はカメラ操作が API 側で抑制される。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type {
@@ -124,7 +124,7 @@ const rebuildPolygon = (viewer: JpmapTerrain, state: DemoState): void => {
         return;
     }
     // 点数が変わる追加/削除、または未生成時のみ add/remove で再構築する。
-    // 1 点でも `addPolygon` 可能（#186）。そのまま 点 + 垂線 + 点ラベル を描画する。
+    // 1 点でも `addPolygon` 可能。そのまま 点 + 垂線 + 点ラベル を描画する。
     if (existing) viewer.removePolygon(POLYGON_ID);
     viewer.addPolygon(POLYGON_ID, options);
 };
@@ -202,7 +202,7 @@ const buildToolbar = (
 };
 
 /**
- * 矢印 + 記号を組み合わせた SVG カスタムカーソルを data URL として返す (#186)。
+ * 矢印 + 記号を組み合わせた SVG カスタムカーソルを data URL として返す。
  *
  * - 左上 (0, 0) を矢印先端（hot-spot）とする 24x24 SVG
  * - 矢印部はブラウザ既定に近い黒塗り＋白縁
@@ -280,7 +280,7 @@ const start = async (): Promise<void> => {
     // ドラッグ中の pointermove ごとに `removePolygon` → `addPolygon` を実行すると
     // 球体・線・壁・ラベルを毎フレーム破棄/再生成することになりコストが大きい。
     // ドラッグハンドラからは `requestAnimationFrame` で 1 フレーム 1 回に
-    // まとめた版を呼び出す (#191)。
+    // まとめた版を呼び出す。
     let pendingFrameHandle: number | null = null;
     const onStateChangeScheduled = (): void => {
         if (pendingFrameHandle !== null) return;
@@ -301,13 +301,13 @@ const start = async (): Promise<void> => {
     if (toolbar instanceof HTMLElement) {
         buildToolbar(toolbar, state, onStateChange);
     }
-    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する (Issue #193)。
+    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する。
     // 視点モードで編集ヒント（高度操作の可否）が変わるため、切替時にステータスを再描画する。
     viewer.onViewModeChange(() => {
         updateStatus(state, statusEl, viewer.viewMode === "2d");
     });
 
-    // モード別のカーソル表示 (#186)。
+    // モード別のカーソル表示。
     //
     // - add    : 矢印 + 「+」記号（地形クリックで頂点追加できることを示す）
     // - remove : 球体ホバー時のみ 矢印 + 「-」記号
@@ -319,12 +319,12 @@ const start = async (): Promise<void> => {
     const ARROW_PLUS_CURSOR = buildArrowSignCursor("+");
     const ARROW_MINUS_CURSOR = buildArrowSignCursor("-");
 
-    // ライブラリの hover dispatch（#184）は遷移時のみ cursor を更新するため、
+    // ライブラリの hover dispatch は遷移時のみ cursor を更新するため、
     // 連続 pointermove 中に scene.pick が一瞬外れて hover が解除されると
     // cursor が `""` に戻ってしまう。そこで demo 側で pointermove ごとに
     // 自前でピックし直し、ライブラリ後段で cursor を再適用する。
     //
-    // ただし globe バックエンド（#275 P4）では floating origin のため demo 側の
+    // ただし globe バックエンドでは floating origin のため demo 側の
     // `scene.pick` は頂点メッシュをヒットできない。そこでライブラリの hover イベント
     // （pick 非依存の幾何ピックで発火）も併用し、どちらかが hover を示せば hover 扱いに
     // する。globe ではライブラリ hover が効く。
@@ -376,7 +376,7 @@ const start = async (): Promise<void> => {
             applyModeCursor(sx, sy);
         });
     }
-    // ライブラリ hover（#184, pick 非依存の幾何ピックで発火）を購読し、globe でも
+    // ライブラリ hover（pick 非依存の幾何ピックで発火）を購読し、globe でも
     // remove/edit のモード別カーソルが効くようにする。遷移時にカーソルを再適用する。
     viewer.onPolygonPointHover((e) => {
         libHoveringPoint = e !== null;
@@ -394,7 +394,7 @@ const start = async (): Promise<void> => {
     window.addEventListener("keydown", onShiftKey(true));
     window.addEventListener("keyup", onShiftKey(false));
 
-    // 追加: 地形クリック (#183) で末尾追加。`add` モード以外では無視する。
+    // 追加: 地形クリックで末尾追加。`add` モード以外では無視する。
     viewer.onTerrainClick((e: TerrainClickEvent) => {
         if (state.mode !== "add") return;
         state.points.push({
@@ -446,7 +446,7 @@ const start = async (): Promise<void> => {
             // Shift+drag: altitude 移動。頂点の (lat, lon) を通る垂直線とカーソル
             // レイの最近接点 Y (= pointerAltitude) を採用し、ポイントをカーソル
             // 位置に追従させる。地表より下に行かないようクランプ（pointerAltitude
-            // が得られない場合は従来のピクセル換算へフォールバック） (#186)。
+            // が得られない場合は従来のピクセル換算へフォールバック）。
             const ground = e.groundAltitude ?? dragAlt.groundAltitude;
             let next: number;
             if (e.pointerAltitude !== null) {
@@ -459,7 +459,7 @@ const start = async (): Promise<void> => {
         } else if (e.planeLat !== null && e.planeLon !== null) {
             // 通常ドラッグ: 頂点の現在の altitude を保つ水平面とカーソルレイの
             // 交点 (planeLat/planeLon) を採用する。地形交点 (lat/lon) を使うと
-            // 頂点が垂線と地表の交点に張り付いてしまうため不可 (#186)。
+            // 頂点が垂線と地表の交点に張り付いてしまうため不可。
             current.lat = e.planeLat;
             current.lon = e.planeLon;
         } else if (e.lat !== null && e.lon !== null) {

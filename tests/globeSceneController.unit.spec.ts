@@ -1,5 +1,5 @@
 /**
- * `createGlobeSceneController` のカメラ get/set マッピング検証 (Issue #349 / #275 Phase 4 P4-0)。
+ * `createGlobeSceneController` のカメラ get/set マッピング検証。
  *
  * GeospatialCamera を実体ではなく軽量スタブ（center: 実 Vector3 / radius / yaw / pitch）に
  * 差し替え、ECEF 変換（`geo/ecef`）と yaw/pitch ↔ azimuth/tilt（`geo/cameraMapping`）は実物で
@@ -86,7 +86,7 @@ const makeStub = (
     const dragStartListeners: GlobePolygonPointDragListener[] = [];
     const dragListeners: GlobePolygonPointDragListener[] = [];
     const dragEndListeners: GlobePolygonPointDragListener[] = [];
-    // viewMode 切替の最小スタブ（#395）。adapter は gc へ委譲するだけなので、
+    // viewMode 切替の最小スタブ。adapter は gc へ委譲するだけなので、
     // ここでは可変の currentViewMode を保持し getZoomLevel を 2D 時のみ数値で返す。
     let mockViewMode: import("../src/lib/types").ViewMode = "3d";
     const makeSub =
@@ -108,7 +108,7 @@ const makeStub = (
             scaling: new Vector3(1, 1, 1),
             setEnabled: jest.fn(),
         },
-        // 時刻連動の背景基調色（#380）。applyGlobeSunState が copyFrom で更新する。
+        // 時刻連動の背景基調色。applyGlobeSunState が copyFrom で更新する。
         skyBaseColor: new Color3(0.75, 0.86, 0.95),
         // 太陽メッシュの毎フレーム再配置オブザーバ登録/解除に必要な最小 scene スタブ。
         scene: {
@@ -170,7 +170,7 @@ const makeStub = (
     };
 };
 
-describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
+describe("createGlobeSceneController (globe backend adapter)", () => {
     it("getLat/getLon は center(ECEF) を測地座標へ逆変換して返す", () => {
         const { gc } = makeStub(35.36, 138.72, 60000, 0, Math.PI / 4);
         const c = createGlobeSceneController(gc, "std");
@@ -221,7 +221,7 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         // 既定は 3d。2D 概念を持たないため getZoomLevel は undefined。
         expect(c.getViewMode()).toBe("3d");
         expect(c.getZoomLevel()).toBeUndefined();
-        // 2D へ切替えると委譲先 gc が "2d" を返し、getZoomLevel が数値になる (#395)。
+        // 2D へ切替えると委譲先 gc が "2d" を返し、getZoomLevel が数値になる。
         c.setViewMode("2d");
         expect(c.getViewMode()).toBe("2d");
         expect(typeof c.getZoomLevel()).toBe("number");
@@ -239,7 +239,7 @@ describe("createGlobeSceneController (P4-0 globe backend adapter)", () => {
         expect(c2.getMapType()).toBe("standard");
     });
 
-    it("setMapType は実行時切替を tileManager に委譲し getMapType に反映、onMapTypeChange を発火する (#275 P4-1)", () => {
+    it("setMapType は実行時切替を tileManager に委譲し getMapType に反映、onMapTypeChange を発火する", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const setMapTypeSpy = (
             gc.tileManager as unknown as { setMapType: jest.Mock }
@@ -644,7 +644,7 @@ const makeGlobePolygonStub = (): {
     };
 };
 
-describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () => {
+describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
     const VALID_LAT = 35.36;
     const VALID_LON = 138.72;
     /** 既定の有効オプション（icon/text の少なくとも一方が必須）。 */
@@ -793,7 +793,7 @@ describe("createGlobeMarkerManagerAdapter (P4-0 Slice 2a marker overlay)", () =>
     });
 });
 
-        describe("createGlobePolygonManagerAdapter (P4-0 Slice 2b-1 polygon overlay)", () => {
+        describe("createGlobePolygonManagerAdapter (polygon overlay)", () => {
             const PTS = [
                 { lat: 35.36, lon: 138.72, altitude: 100 },
                 { lat: 35.37, lon: 138.73, altitude: 120 },
@@ -1007,7 +1007,7 @@ const makeGlobeCircleStub = (): {
     return { mgr, added, removed, enabledCalls, disposed: () => disposedFlag };
 };
 
-describe("createGlobeCircleManagerAdapter (P4-0 Slice 2b-2 circle overlay)", () => {
+describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
     const CENTER = { lat: 35.36, lon: 138.72 };
 
     it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {
@@ -1223,7 +1223,7 @@ const makeGlobeModelStub = (): {
     };
 };
 
-describe("createGlobeModelManagerAdapter (P4-2 model overlay)", () => {
+describe("createGlobeModelManagerAdapter (model overlay)", () => {
     const POS = { lat: 35.681236, lon: 139.767125 };
 
     it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {

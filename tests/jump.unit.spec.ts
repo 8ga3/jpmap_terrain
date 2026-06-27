@@ -1,5 +1,5 @@
 /**
- * `src/demos/avatar-controller/jump.ts` の unit test (Issue #288)。
+ * `src/demos/avatar-controller/jump.ts` の unit test。
  *
  * ジャンプ物理: startJump / tickJump / 着地判定 / 方向ロックを検証する。
  */

@@ -1,5 +1,5 @@
 /**
- * グローブ用ポリゴンマネージャ (Issue #275 Phase 4 Slice 2b-1)。
+ * グローブ用ポリゴンマネージャ。
  *
  * 公開 PolygonManager 互換アダプタから渡される解決済みオプションを、ECEF 上の
  * 点・線・垂線・ラベル・壁として描画する。構造変化を伴う編集（点数・closed・各種フラグ・
@@ -178,7 +178,7 @@ interface GlobePolygonNode {
     relTop: Vector3[];
     relBottom: Vector3[];
     elevs: number[];
-    /** 直近 placeNode で算出した点スフィアのワールド半径 [m]（幾何ピック用, #275 P4）。 */
+    /** 直近 placeNode で算出した点スフィアのワールド半径 [m]（幾何ピック用）。 */
     pointWorldRadius: number;
 }
 
@@ -187,7 +187,7 @@ export interface GlobePolygonManager {
     remove(id: string): void;
     setEnabled(id: string, enabled: boolean): void;
     /**
-     * 2D（トップダウン正射）縮退の有効/無効を切り替える (#395)。`true` で全ポリゴンの壁
+     * 2D（トップダウン正射）縮退の有効/無効を切り替える。`true` で全ポリゴンの壁
      * （カーテン）と垂線を無効化し、接地アウトライン・頂点・ラベルのみを残す。`false` で復元する。
      */
     setFlatten(flat: boolean): void;
@@ -203,7 +203,7 @@ export interface GlobePolygonManager {
     setContent(id: string, content: GlobePolygonContentUpdate): boolean;
     /**
      * 現在表示中・ピック可能な頂点（点メッシュ）の真の ECEF 位置と当該フレームの
-     * ワールド半径を `out` に書き込み、件数を返す（floating origin 非依存の幾何ピック用, #275 P4）。
+     * ワールド半径を `out` に書き込み、件数を返す（floating origin 非依存の幾何ピック用）。
      * 非表示ノード・点無効ノード・標高未解決ノードは含めない。closed の重複末尾点は除外する。
      * pointermove ごとに呼ばれるため、`out` の要素オブジェクトを再利用して割り当て/GC を抑える。
      * 呼び出し側は返り値の件数ぶん（`out[0..count)`）のみ参照すること。
@@ -438,7 +438,7 @@ export const createGlobePolygonManager = (
     const nodes = new Map<string, GlobePolygonNode>();
     let seq = 0;
     let disposed = false;
-    // 2D（トップダウン正射）縮退フラグ (#395)。true の間は壁（カーテン）と垂線を無効化し、
+    // 2D（トップダウン正射）縮退フラグ。true の間は壁（カーテン）と垂線を無効化し、
     // 接地アウトライン・頂点・ラベルのみを残す。3D 復帰（false）で元の表示へ戻る。
     let flat = false;
     // 直近フレームの距離スケール基準（add 時に新規ポリゴンを即座に正しいスケールで配置するため）。

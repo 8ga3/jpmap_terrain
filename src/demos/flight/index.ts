@@ -1,5 +1,5 @@
 /**
- * フライトデモ (Issue #245)
+ * フライトデモ
  *
  * `JpmapTerrain` の Model 公開 API を使って飛行機が上空を大きな円軌道で
  * 高速旋回し、Babylon.js FollowCamera で追跡するデモ。
@@ -36,7 +36,7 @@ import { createFlightAudio, type FlightAudio } from "./flightAudio";
 import { createGlobeAfterburner, type Afterburner } from "./globeAfterburner";
 import planeGlbUrl from "../../../assets/plane.glb";
 
-/** PIP 用セカンダリ Viewer 設定 (Issue #264 Option C: 別 Canvas + 別 Engine) */
+/** PIP 用セカンダリ Viewer 設定 (別 Canvas + 別 Engine) */
 const PIP_WIDTH_FRACTION_DEFAULT = 0.2;
 const PIP_WIDTH_FRACTION_MIN = 0.1;
 const PIP_WIDTH_FRACTION_MAX = 0.4;
@@ -189,21 +189,21 @@ const start = async (): Promise<void> => {
         gravity: false,
     });
 
-    // --- ルートライン (Issue #265) ---
+    // --- ルートライン ---
     let routeLine: RouteLine | null = null;
 
-    // --- ウェイポイント (Issue #274) ---
+    // --- ウェイポイント ---
     let waypointManager: WaypointManager | null = null;
     /** ウェイポイント表示フラグ */
     let showWaypoints = true;
     /** リボン表示フラグ */
     let showRibbon = true;
 
-    // --- SE (Issue #269) ---
+    // --- SE ---
     let flightAudio: FlightAudio | null = null;
     let audioInitializing = false;
 
-    // --- アフターバーナー (Issue #276) ---
+    // --- アフターバーナー ---
     let afterburner: Afterburner | null = null;
     let showAfterburner = true;
 
@@ -221,7 +221,7 @@ const start = async (): Promise<void> => {
     };
 
     // --- PIP (Picture-in-Picture) セカンダリ Viewer セットアップ ---
-    // Issue #264 Option C: 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
+    // 別 Canvas + 別 Engine + 別 Scene による完全独立構成。
     // - メイン Viewer の入力系・タイル管理・カメラに一切手を入れない（バグ非導入）
     // - PIP は独立タイルマネージャーで動作し、メインのズーム/ドラッグの影響を受けない
     // - 将来の N 分割ビューも `JpmapTerrain` を複数並べるだけで実現可能
@@ -262,7 +262,7 @@ const start = async (): Promise<void> => {
             // 由来）なので azimuth=heading。
             azimuth: circularOrbitHeading(angleDeg),
             tilt: PIP_BELLY_TILT_DEG,
-            // PIP は写真タイルを表示 (Issue #264)
+            // PIP は写真タイルを表示
             mapType: "photo",
             showViewModeButton: false,
         };
@@ -274,7 +274,7 @@ const start = async (): Promise<void> => {
         pipViewer.showScaleBar = false;
         pipViewer.showMapToggle = false;
         pipViewer.showAttribution = false;
-        // PIP はリサイズ以外のマウス操作を一切受け付けない (Issue #264)。
+        // PIP はリサイズ以外のマウス操作を一切受け付けない。
         // - secondary canvas に attach されている Babylon カメラ入力を解除
         // - canvas 自体の pointer-events を切ってクリック/ドラッグを無視する
         const pipScene = pipViewer.__debugScene;
@@ -492,7 +492,7 @@ const start = async (): Promise<void> => {
             showFollowCamInfo(true);
             updateFollowCamDisplay();
 
-            // SE 開始 (Issue #269)
+            // SE 開始
             if (!flightAudio && !audioInitializing) {
                 audioInitializing = true;
                 createFlightAudio()
@@ -511,7 +511,7 @@ const start = async (): Promise<void> => {
                 flightAudio.startEngineSound();
             }
 
-            // アフターバーナー開始 (Issue #276 / globe: Issue #349)
+            // globe 用アフターバーナー開始
             // モデルロード完了後に start() する。未ロードなら pending フラグを立て
             // tick() 内でリトライすることで「原点→機体位置」の折れ線トレイルを防ぐ。
             // 軌道パラメータから真 ECEF を都度算出してリビルドするカスタムトレイル
@@ -548,10 +548,10 @@ const start = async (): Promise<void> => {
         viewer.setExternalCompassDegrees(null);
         showFollowCamInfo(false);
 
-        // SE 停止 (Issue #269)
+        // SE 停止
         flightAudio?.stopEngineSound();
 
-        // アフターバーナー停止 (Issue #276)
+        // アフターバーナー停止
         afterburner?.stop();
     };
 
@@ -650,7 +650,7 @@ const start = async (): Promise<void> => {
         });
     }
 
-    // ウェイポイント / リボン 表示切替チェックボックス (Issue #274)
+    // ウェイポイント / リボン 表示切替チェックボックス
     const waypointToggle = document.getElementById("waypoint-toggle") as HTMLInputElement | null;
     const ribbonToggle = document.getElementById("ribbon-toggle") as HTMLInputElement | null;
     if (waypointToggle) {
@@ -673,7 +673,7 @@ const start = async (): Promise<void> => {
         });
     }
 
-    // アフターバーナー表示切替チェックボックス (Issue #276)
+    // アフターバーナー表示切替チェックボックス
     const afterburnerToggle = document.getElementById("afterburner-toggle") as HTMLInputElement | null;
     if (afterburnerToggle) {
         afterburnerToggle.checked = showAfterburner;
@@ -1028,7 +1028,7 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // ルートライン更新 (Issue #265) — 遅延初期化
+        // ルートライン更新 — 遅延初期化
         if (!routeLine) {
             const scene = viewer.__debugScene;
             if (scene) {
@@ -1051,7 +1051,7 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // ウェイポイント更新 (Issue #274) — Followモードのみ
+        // ウェイポイント更新 — Followモードのみ
         if (currentCameraMode === "follow" && showWaypoints) {
             if (!waypointManager) {
                 const scene = viewer.__debugScene;

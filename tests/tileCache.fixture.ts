@@ -149,7 +149,7 @@ export const test = base.extend({
             const contentType =
                 response.headers()["content-type"] ?? "application/octet-stream";
             // 404（タイル非存在）は決定的なので negative cache する。
-            // レイヤー合成（Issue #384）は欠測タイルで下位 DEM の 404 を多数プローブするため、
+            // レイヤー合成は欠測タイルで下位 DEM の 404 を多数プローブするため、
             // これをキャッシュしないと毎回実ネットワークに出て networkidle に到達できなくなる。
             const cacheable =
                 (response.ok() && contentType.startsWith("image/")) ||

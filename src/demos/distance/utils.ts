@@ -1,5 +1,5 @@
 /**
- * 距離計測デモのための純粋関数群 (#186)。
+ * 距離計測デモのための純粋関数群。
  *
  * - `formatPointLabel`: 頂点ラベル（lat / lon / altitude）を整形する。
  * - `formatEdgeLabel`: 辺ラベル（水平距離 + 高低差）を整形する。

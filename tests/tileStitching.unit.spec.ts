@@ -438,7 +438,7 @@ describe("stitchTileEdgesCrossLevel", () => {
     });
 });
 
-// --- selectCoarseEdgeNeighbors (Issue #290) ---
+// --- selectCoarseEdgeNeighbors ---
 
 describe("selectCoarseEdgeNeighbors", () => {
     const makeElev = (v: number, size = 4): Float32Array => new Float32Array(size * size).fill(v);

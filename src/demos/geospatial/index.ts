@@ -1,18 +1,18 @@
 /**
- * グローブ地形 低レベル診断/参照デモエントリ (Issue #275 / #349 P4-5 / #411)。
+ * グローブ地形 低レベル診断/参照デモエントリ。
  *
  * `scenes/globe.ts` の共有コア `GlobeScene`（`GeospatialCamera` + ECEF 楕円体 +
  * floating origin）を **`JpmapTerrain` を介さず直接起動** する開発者向けの診断デモ。
  * 同じ `GlobeScene` を公開 API 経路（`JpmapTerrain` → `GlobeSceneAdapter`）も
- * 利用しており、エンジン重複はない（Phase 3 で統合済み）。
+ * 利用しており、エンジン重複はない（統合済み）。
  *
  * 本デモの固有の役割は、公開 API では露出しない内部状態の実機確認:
  * - `floatingOrigin` モード / LOD ズーム範囲 / 選択・読込タイル数の表示
  * - `?snap=off` によるクロスレベル標高スナップの ON/OFF 比較
  * - `window.scene` / `window.camera`（非公開）でのデバッグ
- * 既定が `globe` となった現在（#413）も、`JpmapTerrain` を介さない最短のグローブ診断経路として機能する。
+ * 既定が `globe` となった現在も、`JpmapTerrain` を介さない最短のグローブ診断経路として機能する。
  *
- * URL（既存共有形式と後方互換, Issue #275 Phase 2 / #64 / #254）:
+ * URL（既存共有形式と後方互換）:
  * - パス/ハッシュ `@lat,lon,altitude,azimuth,tilt`（3D 共有形式。altitude ⇄ radius）
  * - パス/ハッシュ `@lat,lon,Xz`（2D 互換ズームレベル形式。zoomLevel → radius へ換算して受理）
  * - `?engine=webgpu|webgl|webgl2`（既定: 自動。webgl/webgl2 は webgl2 に正規化）
@@ -211,7 +211,7 @@ const start = async (): Promise<void> => {
         );
     }
 
-    // グローブマーカー（Phase 3）のデモ表示。`?marker=off` で無効化できる。既定は富士山頂に
+    // グローブマーカーのデモ表示。`?marker=off` で無効化できる。既定は富士山頂に
     // ラベル付きマーカーを 1 つ置き、接地・地心 up ポール・カメラ正対ラベルを実機確認する。
     if (params.get("marker") !== "off") {
         // 2d context 取得失敗時は空文字になり validateIconUrl が例外を投げるため、空なら
@@ -225,7 +225,7 @@ const start = async (): Promise<void> => {
         });
     }
 
-    // グローブポリゴン（Phase 3）のデモ表示。富士山頂を囲む三角形を接地アウトライン＋
+    // グローブポリゴンのデモ表示。富士山頂を囲む三角形を接地アウトライン＋
     // 地心 up カーテン壁で表示する。`?polygon=off` で無効化できる。
     if (params.get("polygon") !== "off") {
         controller.polygonManager.add({
@@ -240,7 +240,7 @@ const start = async (): Promise<void> => {
         });
     }
 
-    // グローブサークル（Phase 3）のデモ表示。富士山を囲む半径 8km の円を地形ドレープで表示する。
+    // グローブサークルのデモ表示。富士山を囲む半径 8km の円を地形ドレープで表示する。
     // `?circle=off` で無効化できる。
     if (params.get("circle") !== "off") {
         controller.circleManager.add({
@@ -253,7 +253,7 @@ const start = async (): Promise<void> => {
         });
     }
 
-    // グローブモデル（Phase 3）のデモ表示。富士山頂に human.glb を接地し、地心 up へ起立させる。
+    // グローブモデルのデモ表示。富士山頂に human.glb を接地し、地心 up へ起立させる。
     // human.glb は約 1m なので地形上で視認できるよう拡大する。`?model=off` で無効化できる。
     if (params.get("model") !== "off") {
         controller.modelManager.add({

@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * `JpmapTerrain` クラス公開 API のユニットテスト (T3-T4 / Issues #117, #118)
+ * `JpmapTerrain` クラス公開 API のユニットテスト (T3-T4)
  *
  * - デフォルト値の適用
  * - get/set による状態保持
@@ -68,7 +68,7 @@ jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
 }));
 
-// jsdom には ResizeObserver が無いため、テスト用に簡易実装を注入する (T7 / #121)。
+// jsdom には ResizeObserver が無いため、テスト用に簡易実装を注入する (T7)。
 // 観測対象 → 観測コールバックを覚えておき、テストから手動で trigger できる。
 type RoCallback = (entries: unknown[], observer: unknown) => void;
 const resizeObservers: Array<{
@@ -691,18 +691,18 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
     // T6: setMapType / setUiVisibility の記録もテストから検証できるよう保持する。
     let lastMapType: "standard" | "photo" = "standard";
     const setMapTypeCalls: Array<"standard" | "photo"> = [];
-    // Issue #193: viewMode の状態と setViewMode 呼び出し履歴。
+    // viewMode の状態と setViewMode 呼び出し履歴。
     let lastViewMode: "3d" | "2d" = "3d";
     const setViewModeCalls: Array<"3d" | "2d"> = [];
     // T7: controller.dispose の呼び出し回数も検証する。
     let controllerDisposeCount = 0;
-    // #225: onCameraInteractionEnd コールバック参照（テストから __triggerCameraInteractionEnd で疑似発火）。
+    // onCameraInteractionEnd コールバック参照（テストから __triggerCameraInteractionEnd で疑似発火）。
     let latestOnCameraInteractionEnd: (() => void) | null = null;
-    // Issue #35: setSunState 呼び出し履歴を保持する。
+    // setSunState 呼び出し履歴を保持する。
     const sunStateCalls: Array<{ dateTime: Date | null }> = [];
-    // Issue #39: setSunShadows 呼び出し履歴を保持する。
+    // setSunShadows 呼び出し履歴を保持する。
     const sunShadowsCalls: boolean[] = [];
-    // Issue #183: subscribeTerrainClick の登録リスナー一覧（テストから __triggerTerrainClick で疑似発火）。
+    // subscribeTerrainClick の登録リスナー一覧（テストから __triggerTerrainClick で疑似発火）。
     type TerrainClickEventLike = {
         readonly lat: number;
         readonly lon: number;
@@ -711,7 +711,7 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
         readonly pointerEvent: PointerEvent;
     };
     const terrainClickListeners: Array<(e: TerrainClickEventLike) => void> = [];
-    // Issue #184: 頂点インタラクション API のリスナー一覧。
+    // 頂点インタラクション API のリスナー一覧。
     type PolygonPointPointerEventLike = {
         readonly polygonId: string;
         readonly index: number;
@@ -750,7 +750,7 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
             if (idx !== -1) arr.splice(idx, 1);
         };
     };
-    // #136: scene.onBeforeRenderObservable のテスト用簡易実装。
+    // scene.onBeforeRenderObservable のテスト用簡易実装。
     // jpmapTerrain.ts は `add(callback)` の戻り値を `Observer` として保持し、
     // dispose 時に `remove(observer)` する。テストからは `__triggerSceneRender` で
     // 全 observer を疑似発火させる。
@@ -843,7 +843,7 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
                     onReady?: (controller: unknown) => void;
                 },
             ) => {
-                // #225: pointerup 後のスナップショット無効化テスト用
+                // pointerup 後のスナップショット無効化テスト用
                 latestOnCameraInteractionEnd = opts?.onCameraInteractionEnd ?? null;
                 // T5: コントローラのインメモリ実装をテスト用に提供する。
                 let lat = opts?.lat ?? 0;
@@ -1041,7 +1041,6 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
         __resetTerrainClickListeners: (): void => {
             terrainClickListeners.length = 0;
         },
-        // Issue #184
         __triggerPolygonPointHover: (
             event: PolygonPointPointerEventLike | null,
         ): void => {
@@ -1171,7 +1170,7 @@ describe("JpmapTerrain (skeleton)", () => {
     const createdViewers: Viewer[] = [];
     const create: typeof JpmapTerrain.create = async (mount, opts) => {
         // 本スイートは globe の `scenes/globeSceneController` をモックしている。
-        // 既定（#413）が globe のためそのまま globe 経路を通る。
+        // 既定が globe のためそのまま globe 経路を通る。
         const viewer = await JpmapTerrain.create(mount, {
             ...opts,
         });
@@ -1187,9 +1186,9 @@ describe("JpmapTerrain (skeleton)", () => {
                 /* dispose の副作用テストでは事前に呼ばれている可能性があり、無視 */
             }
         }
-        // テスト間でモック内のリスナー残留が副作用にならないよう毎回クリアする (Issue #183)。
+        // テスト間でモック内のリスナー残留が副作用にならないよう毎回クリアする。
         sceneMockModule.__resetTerrainClickListeners();
-        // Issue #184: 頂点インタラクションのリスナーも同様にクリアする。
+        // 頂点インタラクションのリスナーも同様にクリアする。
         sceneMockModule.__resetPolygonPointListeners();
     });
 
@@ -1683,7 +1682,7 @@ describe("JpmapTerrain (skeleton)", () => {
             // createBabylonEngine(canvas, preferredEngine, options) のシグネチャ
             const callArgs = createEngineMock.mock.calls[0];
             expect(callArgs[1]).toBe("webgl2");
-            // globe 経路では high precision matrix が必須（#413 / #414）。
+            // globe 経路では high precision matrix が必須。
             expect(callArgs[2]).toEqual({ highPrecisionMatrix: true });
         });
 
@@ -1771,7 +1770,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("onCameraChange (Issue #136)", () => {
+    describe("onCameraChange", () => {
         it("初回登録時には即時発火しない", async () => {
             const viewer = await create(createMountElement());
             const listener = jest.fn();
@@ -1956,7 +1955,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("onMapTypeChange (Issue #149)", () => {
+    describe("onMapTypeChange", () => {
         beforeEach(() => {
             sceneMockModule.__resetSetMapTypeCalls();
             sceneMockModule.__setLastMapType("standard");
@@ -2073,7 +2072,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("viewMode (Issue #193)", () => {
+    describe("viewMode", () => {
         beforeEach(() => {
             sceneMockModule.__resetSetViewModeCalls();
             sceneMockModule.__setLastViewMode("3d");
@@ -2229,7 +2228,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("sun position (Issue #35)", () => {
+    describe("sun position", () => {
         beforeEach(() => {
             sceneMockModule.__resetSunStateCalls();
         });
@@ -2402,7 +2401,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("sun shadows (Issue #39)", () => {
+    describe("sun shadows", () => {
         beforeEach(() => {
             sceneMockModule.__resetSunShadowsCalls();
         });
@@ -2457,7 +2456,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("Polygon API (Issue #170)", () => {
+    describe("Polygon API", () => {
         const validPoints = [
             { lat: 35.681, lon: 139.767 },
             { lat: 35.682, lon: 139.768 },
@@ -2486,7 +2485,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setPolygonEnabled("p1", false)).not.toThrow();
         });
 
-        it("setVerticalsEnabled / setLabelsEnabled は存在する id に対して throw しない (Issue #171)", async () => {
+        it("setVerticalsEnabled / setLabelsEnabled は存在する id に対して throw しない", async () => {
             const viewer = await create(createMountElement());
             viewer.addPolygon("p1", { points: validPoints });
             expect(() => viewer.setVerticalsEnabled("p1", false)).not.toThrow();
@@ -2495,7 +2494,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(() => viewer.setLabelsEnabled("p1", true)).not.toThrow();
         });
 
-        it("setWallsEnabled は存在する id に対して throw しない (Issue #172)", async () => {
+        it("setWallsEnabled は存在する id に対して throw しない", async () => {
             const viewer = await create(createMountElement());
             viewer.addPolygon("p1", { points: validPoints });
             expect(() => viewer.setWallsEnabled("p1", false)).not.toThrow();
@@ -2516,7 +2515,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("Polygon point edit API (Issue #173)", () => {
+    describe("Polygon point edit API", () => {
         const validPoints = [
             { lat: 35.681, lon: 139.767 },
             { lat: 35.682, lon: 139.768 },
@@ -2608,7 +2607,6 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    // Issue #183
     describe("onTerrainClick", () => {
         // jsdom には PointerEvent が無いため、必要な形だけスタブする。
         const stubPointerEvent = (): PointerEvent =>
@@ -2670,7 +2668,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    // Issue #184: ポリゴン頂点インタラクション API
+    // ポリゴン頂点インタラクション API
     describe("onPolygonPoint*", () => {
         const stubPointerEvent = (): PointerEvent =>
             ({ shiftKey: false, ctrlKey: false } as unknown as PointerEvent);
@@ -2780,7 +2778,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("Circle API (Issue #201)", () => {
+    describe("Circle API", () => {
         const validCenter = { lat: 35.681, lon: 139.767 };
 
         it("addCircle → getCircle / listCircles で参照できる", async () => {
@@ -2838,7 +2836,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("Model API (Issue #243)", () => {
+    describe("Model API", () => {
         const validPos = { lat: 35.681, lon: 139.767 };
         const validOpts = { url: "test.glb", ...validPos };
 

@@ -1,5 +1,5 @@
 /**
- * `src/demos/avatar-controller/autoScroll.ts` の unit test (Issue #287)。
+ * `src/demos/avatar-controller/autoScroll.ts` の unit test。
  *
  * デッドゾーン方式の自動スクロール判定・追従計算の純粋関数を検証する。
  */

@@ -1,11 +1,11 @@
 /**
- * 開発用デモエントリ (T9 / Issue #123, #136)
+ * 開発用デモエントリ
  *
  * パッケージ公開 API である `JpmapTerrain` を直接利用してデモを起動する。
  * - URL 形式:
  *   - 3D: `/@lat,lon[,altitude,azimuth,tilt]?engine=webgpu|webgl|webgl2`
- *   - 2D: `/@lat,lon,Xz?viewMode=2d` （X はズームレベル, Issue #254）
- *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可、Issue #64）
+ *   - 2D: `/@lat,lon,Xz?viewMode=2d` （X はズームレベル）
+ *   （`webgl`/`webgl2` は `webgl2` に正規化、既定: 自動。altitude/azimuth/tilt は省略可）
  * - `#root` 要素にビューアをマウントする。
  * - URL ↔ カメラ同期はパッケージ層から切り離し、デモ層 (本ファイル) で
  *   `parseCameraStateFromUrl` で初期値を解決し、`onCameraChange` で URL を更新する。
@@ -45,7 +45,7 @@ export const resolveEngine = (search: string): EngineType | undefined => {
 };
 
 /**
- * URL からカメラ状態（緯度経度＋altitude/azimuth/tilt）を解決する (Issue #64)。
+ * URL からカメラ状態（緯度経度＋altitude/azimuth/tilt）を解決する。
  * 内部的に {@link parseCameraStateFromUrl} を再利用する薄いラッパー。
  *
  * @param url 解析対象 URL（`location.href` 等）
@@ -58,7 +58,7 @@ export const resolveCameraState = (
 
 /**
  * URL から初期表示の緯度経度を解決する。
- * @deprecated Issue #64 以降は {@link resolveCameraState} を利用すること。
+ * @deprecated {@link resolveCameraState} を利用すること。
  */
 export const resolveLatLon = (
     url: string,
@@ -68,7 +68,7 @@ export const resolveLatLon = (
 };
 
 /**
- * `?dateTime=` クエリ文字列から太陽位置計算用の日時を解決する (Issue #35, #143)。
+ * `?dateTime=` クエリ文字列から太陽位置計算用の日時を解決する。
  * - ISO 8601 を受け付ける。`Z` に加えてローカルタイムオフセット (`+09:00`, `-05:00` 等) も
  *   `Z` と等価に解釈する。
  * - 未指定 / パース失敗時は `undefined` を返し、デモ起動時の `opts` には含めない（既存挙動維持）。
@@ -76,7 +76,7 @@ export const resolveLatLon = (
  *
  * 実装メモ: `URLSearchParams` は仕様により `+` を空白にデコードするため、
  * `+09:00` 等のオフセット表記が壊れる。これを避けるため正規表現で raw 値を抽出し、
- * `decodeURIComponent` で復元する (Issue #143)。
+ * `decodeURIComponent` で復元する。
  *
  * @param search `location.search` 等のクエリ文字列（先頭 `?` 任意）
  */
@@ -107,7 +107,7 @@ export const resolveDateTime = (search: string): Date | undefined => {
 };
 
 /**
- * `?autoSunPosition=` クエリ文字列から太陽位置自動更新フラグを解決する (Issue #35)。
+ * `?autoSunPosition=` クエリ文字列から太陽位置自動更新フラグを解決する。
  * - `"true"` / `"false"` のみを許容し、それ以外は `undefined`（既定挙動を維持）。
  */
 export const resolveAutoSunPosition = (
@@ -120,7 +120,7 @@ export const resolveAutoSunPosition = (
 };
 
 /**
- * `?showSunShadows=` クエリ文字列から太陽影描画フラグを解決する (Issue #39)。
+ * `?showSunShadows=` クエリ文字列から太陽影描画フラグを解決する。
  * - `"true"` / `"false"` のみを許容し、それ以外は `undefined`（既定 OFF を維持）。
  */
 export const resolveShowSunShadows = (
@@ -151,7 +151,7 @@ const start = async (): Promise<void> => {
         ...(autoSunPosition !== undefined ? { autoSunPosition } : {}),
         ...(showSunShadows !== undefined ? { showSunShadows } : {}),
         ...(mapType !== null ? { mapType } : {}),
-        // zoomLevel が URL に含まれていれば 2D モードを暗黙に指定する (#254)。
+        // zoomLevel が URL に含まれていれば 2D モードを暗黙に指定する。
         ...(viewMode !== null
             ? { viewMode }
             : cameraState?.zoomLevel !== undefined
@@ -161,7 +161,7 @@ const start = async (): Promise<void> => {
     const viewer = await JpmapTerrain.create(mount, opts);
 
     // URL 同期: カメラ変化のたびに URL を更新する。
-    // 2D モードでは `@lat,lon,Xz`（ズームレベル）、3D では `@lat,lon,altitude,azimuth,tilt` (#254)。
+    // 2D モードでは `@lat,lon,Xz`（ズームレベル）、3D では `@lat,lon,altitude,azimuth,tilt`。
     const urlUpdater = createUrlUpdater(1000);
     viewer.onCameraChange((event) =>
         urlUpdater({
@@ -174,16 +174,16 @@ const start = async (): Promise<void> => {
         }),
     );
 
-    // URL 同期: mapType 変化のたびに `?mapType=` を反映する (Issue #149)。
+    // URL 同期: mapType 変化のたびに `?mapType=` を反映する。
     viewer.onMapTypeChange((next) => updateMapTypeInUrl(next));
     // 起動完了直後に一度書き込み、`?mapType=Photo` のような大小混在の値を小文字に揃える。
     updateMapTypeInUrl(viewer.mapType);
 
-    // URL 同期: viewMode 変化のたびに `?viewMode=` を反映する (Issue #193)。
+    // URL 同期: viewMode 変化のたびに `?viewMode=` を反映する。
     viewer.onViewModeChange((next) => updateViewModeInUrl(next));
     updateViewModeInUrl(viewer.viewMode);
 
-    // デモ用マーカー: 東京駅・皇居・都庁 (Issue #167)
+    // デモ用マーカー: 東京駅・皇居・都庁
     // マーカーはカメラ距離に応じてスクリーン空間サイズが一定になるよう自動スケールされる。
     // アイコン: WebGPU の ImageBitmap デコーダは SVG を扱えないため、
     // Canvas API で「丸 + グリフ」を描画して PNG data URL に変換する。

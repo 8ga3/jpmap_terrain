@@ -1,7 +1,7 @@
 /**
- * overlayCoords ユーティリティの単体テスト (Issue #170 / #414)。
+ * overlayCoords ユーティリティの単体テスト。
  *
- * globe 単一バックエンド化（#414）後は `assertLatLonInBounds` のみを検証する。
+ * globe 単一バックエンド化後は `assertLatLonInBounds` のみを検証する。
  * - assertLatLonInBounds: bounds 外で throw、prefix がメッセージに含まれる
  */
 

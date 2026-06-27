@@ -1,7 +1,7 @@
 import { test, expect } from "./tileCache.fixture";
 
 /**
- * VR テストを時刻依存から切り離すための固定クエリ (Issue #35)。
+ * VR テストを時刻依存から切り離すための固定クエリ。
  * - `dateTime`: 夏至日本時間正午 (UTC 表記) — 太陽高度が高く陰影変動が最小。
  * - `autoSunPosition=false`: 自動更新タイマーを起動させずスナップショットを完全決定的にする。
  */
@@ -229,12 +229,10 @@ for (const engine of engines) {
     });
 }
 
-// ---------- Skybox 昼夜比較テスト (Issue #35) ----------
-//
+// ---------- Skybox 昼夜比較テスト ----------
 // チルト角を最大近くまで倒して画面上部に Skybox が映り込むようにし、
 // `dateTime` を「昼」「夜」で固定した 2 ケースのスクリーンショットを撮る。
 // 両者の差異により Skybox が時刻に追従して変化していることを保証する。
-//
 // 注意: 本テストは「昼/夜のスナップショットそのもの」を VR ベースラインとして固定する。
 // 別ケース同士の自動比較は行わず、開発者が両 PNG を目視で比較して差異を確認する運用とする。
 
@@ -343,8 +341,7 @@ for (const engine of engines) {
     });
 }
 
-// ---------- ポリゴン点編集 API 視覚回帰 (Issue #173) ----------
-//
+// ---------- ポリゴン点編集 API 視覚回帰 ----------
 // 4 種の点編集 API (insertPolygonPoint / removePolygonPoint /
 // updatePolygonPoint / replacePolygonPoints) を順に適用し、
 // 「初期」と「最終 (4 API 適用後)」の 2 枚のスクリーンショットを取得して
@@ -431,8 +428,7 @@ test("Polygon point edit (after all edits) with WebGL2", async ({
     expect(testInfo.errors).toHaveLength(0);
 });
 
-// ---------- サークル API 視覚回帰 (Issue #201 / #207) ----------
-//
+// ---------- サークル API 視覚回帰 ----------
 // circle デモページ（terrain / absolute / custom-segments の 3 円）を
 // ロードし、標高解決後の初期描画スナップショットを VR baseline として取得する。
 // WebGL2 のみで実行し、時刻と autoSunPosition を固定する。

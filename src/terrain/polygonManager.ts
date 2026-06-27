@@ -1,8 +1,8 @@
 /**
- * PolygonManager の公開契約 interface (Issue #170 / #414)。
+ * PolygonManager の公開契約 interface。
  *
  * `JpmapTerrain.addPolygon / getPolygon / removePolygon / setPolygonEnabled / listPolygons`
- * から利用される polygon 操作の境界型。globe 単一バックエンド（#414）では
+ * から利用される polygon 操作の境界型。globe 単一バックエンドでは
  * `globeSceneController` のアダプタがこの契約を実装する。
  */
 
@@ -28,7 +28,7 @@ export interface PolygonManager {
     setLabelsEnabled(id: string, enabled: boolean): void;
     setWallsEnabled(id: string, enabled: boolean): void;
     /**
-     * 指定 index に新しい頂点を挿入する (#173)。`index === points.length` で末尾追加。
+     * 指定 index に新しい頂点を挿入する。`index === points.length` で末尾追加。
      * 範囲外 / 緯度経度範囲外 / `absolute` モードでの altitude 未指定 は throw。
      */
     insertPoint(
@@ -36,15 +36,15 @@ export interface PolygonManager {
         index: number,
         point: PolygonPointOptions,
     ): PolygonHandle;
-    /** 指定 index の頂点を削除する (#173)。残り 2 点未満になる場合は throw。 */
+    /** 指定 index の頂点を削除する。残り 2 点未満になる場合は throw。 */
     removePoint(id: string, index: number): PolygonHandle;
-    /** 指定 index の頂点を部分更新する (#173)。 */
+    /** 指定 index の頂点を部分更新する。 */
     updatePoint(
         id: string,
         index: number,
         partial: PolygonPointPartial,
     ): PolygonHandle;
-    /** 全頂点を置き換える (#173)。`points.length < 1` は throw。 */
+    /** 全頂点を置き換える。`points.length < 1` は throw。 */
     replacePoints(
         id: string,
         points: readonly PolygonPointOptions[],

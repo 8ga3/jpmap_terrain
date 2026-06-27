@@ -1,5 +1,5 @@
 /**
- * geo/mapping の単体テスト (Issue #275 Phase 0)。
+ * geo/mapping の単体テスト。
  *
  * - pixelToLatLon ⇄ latLonToPixel の往復精度
  * - totalPixelsForZoom が TILE_SIZE * 2^zoom

@@ -1,5 +1,5 @@
 /**
- * グローブ地形タイルのライフサイクル管理 (Issue #275 Phase 1)。
+ * グローブ地形タイルのライフサイクル管理。
  *
  * 平面版 `src/terrain/tileManager.ts` のグローブ（ECEF）相当。`globeLod` で可視タイルを
  * 選択し、`globeMesh` のジオメトリ + 地理院タイル画像テクスチャから Babylon `Mesh` を
@@ -44,7 +44,7 @@ import { sampleElevBilinear } from "./elevSample";
 const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
 
 /**
- * 海面（標高 0m）フラット標高の共有バッファ（Issue #335）。海上など DEM が no-data で確定失敗した
+ * 海面（標高 0m）フラット標高の共有バッファ。海上など DEM が no-data で確定失敗した
  * タイルは、これを使って平坦メッシュとして建築し、GSI テクスチャ（海・海岸の画像）を描画する。
  * これがないと no-data タイルはメッシュ未生成のままで、背景スフィアの単色が見えるだけになる
  * （相模湾などで「タイルが欠ける」症状）。読み取り専用で共有（建築側で値を書き換えない）。
@@ -52,23 +52,23 @@ const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
 const FLAT_SEA_ELEV = new Float32Array(TILE_SIZE * TILE_SIZE);
 
 /**
- * 常時表示の粗いベースレイヤの zoom（Issue #341）。全球を 4^zoom 枚の固定タイルで覆う
+ * 常時表示の粗いベースレイヤの zoom。全球を 4^zoom 枚の固定タイルで覆う
  * （z2=16枚）。地理院タイルは std/seamlessphoto が z0〜供給されるため z2 をマッピングできる。
  * ズームアップ／回転で地平線の縁へ新規に回転インするタイルは、自身も全祖先も未ロードのため
  * LOD シームレス機構（pendingRelease / 祖先カバー）では橋渡しできず、テクスチャ到着まで背景球
- * （青）が一瞬透ける（#341）。この粗タイル集合を恒久背景として常時描画し、露出を防ぐ。
+ * （青）が一瞬透ける。この粗タイル集合を恒久背景として常時描画し、露出を防ぐ。
  */
 const BASE_LAYER_ZOOM = 2;
 
 /**
  * geom 標高タイルが全 DEM レイヤー 404 のとき、何段階まで粗ズーム DEM へフォールバックして
- * 切り出すか（#384）。DEM5 非整備領域では dem_png の最大 zoom=14 を超える z15 geom が 404 に
+ * 切り出すか。DEM5 非整備領域では dem_png の最大 zoom=14 を超える z15 geom が 404 に
  * なるため、最低 1 段（z15→z14）で十分だが、深い欠落にも耐えるよう数段許す。失敗時のみ発動。
  */
 const GEOM_ELEV_FALLBACK_DEPTH = 4;
 
 /**
- * ベースレイヤ 1 タイルあたりの分割数（Issue #341）。マネージャ既定（globe 32）より細かくする。
+ * ベースレイヤ 1 タイルあたりの分割数。マネージャ既定（globe 32）より細かくする。
  * z2 タイルは 90° 角を張るため、分割が粗いとメッシュ（三角形弦）が真球面から大きく内側へたるみ
  * （32 分割で最大 ~3840m）、地平線（limb）でタイルが背景球より内側に退いて青球が縁から透ける。
  * 96 分割でたるみを ~430m まで抑え、地平線をベースのテクスチャ面で覆う（背景球露出を防ぐ）。
@@ -77,13 +77,13 @@ const GEOM_ELEV_FALLBACK_DEPTH = 4;
 const BASE_LAYER_SEGMENTS = 96;
 
 /**
- * ベースレイヤのテクスチャ到着前の塗り色（海色, #341）。背景球と同系色にして、初回ロード前の
+ * ベースレイヤのテクスチャ到着前の塗り色（海色）。背景球と同系色にして、初回ロード前の
  * 白フラッシュや青球露出を避ける。テクスチャ到着後は地理院タイル画像へ差し替わる。
  */
 const BASE_LAYER_OCEAN = new Color3(0.16, 0.26, 0.36);
 
 /**
- * ベースレイヤのテクスチャ到着後の diffuseColor（白, #341）。StandardMaterial は diffuseTexture に
+ * ベースレイヤのテクスチャ到着後の diffuseColor（白）。StandardMaterial は diffuseTexture に
  * diffuseColor を乗算するため、暫定の海色（BASE_LAYER_OCEAN）のままだと地図画像が暗く青く
  * ティントされる。テクスチャ設定時に白へ戻し、LOD タイル（diffuseColor 既定=白）と同じ発色にする。
  */
@@ -99,7 +99,7 @@ const retryBackoffMs = (attempts: number): number =>
     Math.min(FAILED_RETRY_MAX_MS, FAILED_RETRY_BASE_MS * 2 ** (attempts - 1));
 
 /**
- * LOD 遷移中に残した旧タイルを強制解放するまでのタイムアウト [ms]（平面版 #281 と同値）。
+ * LOD 遷移中に残した旧タイルを強制解放するまでのタイムアウト [ms]（平面版  と同値）。
  * 新タイルのテクスチャ/標高が揃わずカバー判定が成立しない場合の安全網。短すぎると遷移途中で
  * 背景球が見え、長すぎると古い LOD のタイルが残ってちらつく。
  */
@@ -110,7 +110,7 @@ const PENDING_RELEASE_TIMEOUT_MS = 5_000;
  * 最下限 zoom。manager の `minZoom`（標高が視覚的に意味を持つ下限。グローブ既定 11）とは別概念で、
  * selectGlobeTiles は `rootZoomFloor`(既定 2) まで粗いタイルを返すため、祖先探索を `minZoom` で
  * 打ち切ると zoom 11 未満の LOD 遷移で祖先が一切見つからず、旧タイルが即破棄されて背景球が
- * ちらつく（#330）。四分木の全祖先を対象にするため floor は 0 とする（探索回数は最大でも zoom 段数）。
+ * ちらつく。四分木の全祖先を対象にするため floor は 0 とする（探索回数は最大でも zoom 段数）。
  */
 const SEAMLESS_FLOOR_ZOOM = 0;
 
@@ -156,7 +156,7 @@ export interface GlobeTileSyncParams {
     horizonDotThreshold: number;
     /** SSE 距離評価の基準標高 [m]（中心付近の地形標高）。 */
     referenceAltitude: number;
-    /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限, Issue #335）。省略時 minZoom。 */
+    /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限）。省略時 minZoom。 */
     rootZoomFloor?: number;
 }
 
@@ -180,7 +180,7 @@ export interface GlobeTileSyncStats {
 }
 
 /**
- * LOD 遷移中に画面へ残す旧タイル（平面版 #281 の PendingReleaseTile 相当）。
+ * LOD 遷移中に画面へ残す旧タイル（平面版  の PendingReleaseTile 相当）。
  * 新タイルが描画可能になるまで表示を維持し、カバー完了 or タイムアウトで解放する。
  */
 interface PendingTile {
@@ -213,7 +213,7 @@ export interface GlobeTileManager {
     /** 現在の地図種別（"std"/"photo"）。 */
     getMapType: () => MapType;
     /**
-     * 地図種別を実行時に切り替える (#275 Phase 4 / P4-1)。
+     * 地図種別を実行時に切り替える。
      * 現在ロード済みの LOD タイル・LOD 遷移中の pendingRelease タイル・常時表示ベースレイヤの
      * 各メッシュのテクスチャを新しい mapType の URL で差し替える（新テクスチャ onLoad で適用し
      * 旧テクスチャを破棄）。以降に sync が新規生成するタイルも新 mapType の URL を参照する。
@@ -231,12 +231,12 @@ export const createGlobeTileManager = (
     opts: GlobeTileManagerOptions,
 ): GlobeTileManager => {
     const { scene, minZoom, geomMaxZoom, segments, snapEnabled } = opts;
-    // 地図種別は実行時に切替可能（#275 P4-1）。buildTile / buildBaseLayer のテクスチャ URL は
+    // 地図種別は実行時に切替可能。buildTile / buildBaseLayer のテクスチャ URL は
     // この可変値を参照するため、以降の新規タイルは切替後の mapType を使う。
     let currentMapType: MapType = opts.mapType;
 
     const loaded = new Map<string, Mesh>();
-    // 常時表示の粗いベースレイヤのメッシュ（Issue #341, key="z/x/y"）。LOD の loaded とは別管理で
+    // 常時表示の粗いベースレイヤのメッシュ（key="z/x/y"）。LOD の loaded とは別管理で
     // sync の選択/解放対象に含めず、マネージャ生存中ずっと保持する（新規回転インタイルの背景）。
     const baseLoaded = new Map<string, Mesh>();
     // 各ロード済みタイルがどのクロスレベル coarse-edge 集合で建築されたかの署名。
@@ -246,11 +246,11 @@ export const createGlobeTileManager = (
     const loading = new Set<string>();
     // クロスレベルスナップのため、ビルド後も標高配列を保持する（隣接細タイルが参照）。
     const elevCache = new Map<string, Float32Array>();
-    // 元データが all-NaN（湖面・no-data 領域全面）だった geom タイルキーの集合（#339）。
+    // 元データが all-NaN（湖面・no-data 領域全面）だった geom タイルキーの集合。
     // 取得直後は隣接が未ロードでシードが無いため穴埋めできない。隣接の補間結果が揃い次第
     // `refineAllNaNTiles` で同 zoom 隣接からシードして反復補間する。解決したらこの集合から外す。
     const allNanGeom = new Set<string>();
-    // all-NaN タイルの粗ズーム祖先 DEM から得た代表標高（湖面標高近似）のキャッシュ（#339）。
+    // all-NaN タイルの粗ズーム祖先 DEM から得た代表標高（湖面標高近似）のキャッシュ。
     // 視界が全面水面で同 zoom に有効タイルが一切無い場合（大きな湖を z15 で接写等）、
     // 同 zoom 縫い合わせも視界内代表標高レスキューも効かない。粗ズーム祖先タイルは
     // 湖岸（陸地）を含むため、その有効ピクセル平均を湖面標高として平坦化に用いる。
@@ -260,7 +260,7 @@ export const createGlobeTileManager = (
     // 粗ズームタイル取得結果のメモ（coarseKey `z/x/y` → 標高配列 or null）。
     // 同一湖の複数 all-NaN タイルが同じ粗タイルを参照するため取得を重複させない。
     const coarseTileMemo = new Map<string, Promise<Float32Array | null>>();
-    // 直近に得られた有効な代表標高[m]（視界内有効タイル平均または粗ズーム祖先標高）。#339
+    // 直近に得られた有効な代表標高[m]（視界内有効タイル平均または粗ズーム祖先標高）。
     // 大きな湖へ陸地から接近して全面水面になった瞬間でも、直前まで見えていた湖岸標高を
     // 暫定代表として保持し、未解決 all-NaN タイルを生 NaN(=0m クレーター) ではなく湖面相当で
     // 平坦化するために用いる（粗ズーム取得が完了するまでの同期フォールバック）。
@@ -280,7 +280,7 @@ export const createGlobeTileManager = (
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
 
-    // --- LOD シームレス遷移（Issue #330 / 平面版 #281 同等） ---
+    // --- LOD シームレス遷移（平面版  同等） ---
     // LOD 切替で不要になった旧タイルを即破棄せず、新タイルが描画可能になるまで画面に残す。
     // これにより zoom-in/out の遷移中にタイルが欠けて背景球が見える/ちらつくのを防ぐ。
     const pendingRelease = new Map<string, PendingTile>();
@@ -307,7 +307,7 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * 粗ズーム親 DEM から geom タイル (gz,gx,gy) 領域を最近傍で TILE_SIZE 角に切り出す（#384 globe 版）。
+     * 粗ズーム親 DEM から geom タイル (gz,gx,gy) 領域を最近傍で TILE_SIZE 角に切り出す（globe 版）。
      * 平面版 `tileManager.extractSubTileElevation` と同等。切り出した raster は (gz,gx,gy) タイル
      * の地理範囲を表すため、`buildGlobeTileMeshData` から実 geom タイルと同一に扱える。
      */
@@ -345,7 +345,7 @@ export const createGlobeTileManager = (
     // 粗ズーム親 DEM の in-flight フェッチを (cz/x/y) 単位で共有する。DEM5 非整備領域を広く表示すると
     // 404 フォールバックが多発し、同一親（例: z14 の 1 枚）を参照する 4 枚の子 geom タイルが同時に
     // フォールバックして同一リクエストが重複し得る。in-flight Promise を共有して重複フェッチを抑える
-    // （Issue #386 PR レビュー）。settle 後はエントリを削除し、後続の再試行は新規取得に倒す（一時障害
+    // （PR レビュー）。settle 後はエントリを削除し、後続の再試行は新規取得に倒す（一時障害
     // 解消後の再取得を阻害しない）。
     const coarseParentInFlight = new Map<string, Promise<Float32Array>>();
     const loadCoarseParent = (cz: number, px: number, py: number): Promise<Float32Array> => {
@@ -362,12 +362,12 @@ export const createGlobeTileManager = (
     /**
      * geom タイル標高を取得する。geom zoom の `loadElevationTile` が決定的な 404（全レイヤー未配信）で
      * reject した場合（DEM5 非整備かつ dem_png の最大 zoom=14 を超える z15 山岳地帯など）に限り、平面版
-     * `tileManager` と同様に粗ズーム DEM へ段階フォールバックし、該当領域を切り出して返す（#384）。粗ズームも
+     * `tileManager` と同様に粗ズーム DEM へ段階フォールバックし、該当領域を切り出して返す。粗ズームも
      * 全て失敗した場合は元の reject を再 throw する。
      *
      * 一時的な取得失敗（タイムアウト/ネットワーク障害など、`TileFetchError.status` が 404 でないもの）は
      * 粗ズームへ倒さず再 throw する。これにより `loadTile` のバックオフ再取得が働き、一時障害の解消後に
-     * 高 zoom の高詳細標高へ復帰できる（粗ズームの低詳細に固定されるのを防ぐ, Issue #386）。
+     * 高 zoom の高詳細標高へ復帰できる（粗ズームの低詳細に固定されるのを防ぐ）。
      *
      * 404 フォールバックが無いと globe は geom zoom 単一しか試さず、失敗時に標高ロード失敗 → 暫定平坦化
      * （代表標高 /0m）へ倒れ、本来の地形が「ずっと下（≒0m）」へ落ちて見える。
@@ -391,7 +391,7 @@ export const createGlobeTileManager = (
                     return extractSubTileElev(parent, cz, gz, gx, gy);
                 } catch (e) {
                     // 404（未配信）のみさらに 1 段粗く再試行。一時障害（タイムアウト/ネットワーク/5xx 等）は
-                    // 握りつぶさず再 throw し、バックオフ再取得に委ねる（誤って平坦化に倒さない, Issue #386）。
+                    // 握りつぶさず再 throw し、バックオフ再取得に委ねる（誤って平坦化に倒さない）。
                     if (e instanceof TileFetchError && e.status === 404) continue;
                     throw e;
                 }
@@ -411,7 +411,7 @@ export const createGlobeTileManager = (
             // 未解決 all-NaN（湖面・no-data）タイルは生 NaN を保持しており bilinear が 0m を返す。
             // これを採用すると湖上で centerElevation→0→referenceAltitude→0 と循環して暫定代表標高
             // まで 0m へ崩れる（湖中央 0m クレーターの一因）。未解決の間はこの zoom を飛ばし、
-            // より粗い zoom（無ければ null）へ委ねて直前の有効な centerElevation を維持させる。#339
+            // より粗い zoom（無ければ null）へ委ねて直前の有効な centerElevation を維持させる。
             if (allNanGeom.has(gk)) continue;
             const e = elevCache.get(gk);
             if (!e) continue;
@@ -437,7 +437,7 @@ export const createGlobeTileManager = (
                 // （不要・dispose 済みマネージャの状態を書き戻さない）。
                 if (!loading.has(gk)) return;
                 loading.delete(gk);
-                // 穴埋め（#339, 平面版 #211/#221 相当）。
+                // 穴埋め（平面版 / 相当）。
                 // - 部分欠測（一部 NaN）: 自タイル内の有効ピクセルから BFS で内部の穴を即補間。
                 // - all-NaN（全面 no-data: 大きな湖など）: 自タイルにシードが無いため即補間できない。
                 //   `allNanGeom` に記録し、隣接の補間結果が揃い次第 `refineAllNaNTiles` で補間する。
@@ -468,7 +468,7 @@ export const createGlobeTileManager = (
             });
     };
 
-    /** geom タイル全面を単一標高 v[m] で埋めた Float32Array を生成する（湖面平坦化用, #339）。 */
+    /** geom タイル全面を単一標高 v[m] で埋めた Float32Array を生成する（湖面平坦化用）。 */
     const flatElevArray = (v: number): Float32Array =>
         new Float32Array(TILE_SIZE * TILE_SIZE).fill(Number.isFinite(v) ? v : 0);
 
@@ -499,7 +499,7 @@ export const createGlobeTileManager = (
 
     /**
      * geom タイル (gz,gx,gy) が「取得失敗(404)」「全面 no-data」等で実標高を持たない場合に、
-     * 上下左右の隣接タイルの「接する辺」の有効標高平均から代表標高[m] を推定する（#339）。
+     * 上下左右の隣接タイルの「接する辺」の有効標高平均から代表標高[m] を推定する。
      * これにより 0m 平坦（海面）に倒さず、隣接タイルの接線と段差なく連続した高さで平坦化できる。
      * GSI は湖面など水域の z15 タイルを 404 で配信しないことがあり（本栖湖 15/28998/12927 等）、
      * その場合この近傍代表標高（湖岸/湖面 ≒ 湖面標高）で穴を埋める。隣接が一切無効なら undefined。
@@ -747,7 +747,7 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * 元データが all-NaN（全面 no-data）だった geom タイルを穴埋めする（#339, 平面版 #221 相当）。
+     * 元データが all-NaN（全面 no-data）だった geom タイルを穴埋めする（平面版  相当）。
      *
      * 大きな湖（本栖湖・諏訪湖など）では、対象タイルだけでなく同 zoom 隣接タイルも all-NaN になり、
      * さらに LOD により隣接が粗 zoom で描画されると同 zoom 隣接自体が存在せず、同 zoom 縫い合わせ
@@ -758,7 +758,7 @@ export const createGlobeTileManager = (
      *    中心へリング状に補間が前進する。1 sync 内で収束するよう内部反復する。
      * 2. レスキュー（粗ズーム祖先 DEM）: 反復後も残った all-NaN タイルは、粗ズーム祖先 DEM タイル
      *    （湖岸＝陸地を含むため湖面標高の近似が得られる）の有効ピクセル平均を非同期取得し、その
-     *    代表標高で平坦化する（#339）。最優先。誤って早期確定しないよう、同 zoom 隣接が in-flight
+     *    代表標高で平坦化する。最優先。誤って早期確定しないよう、同 zoom 隣接が in-flight
      *    （`loading`）の間はそのタイルの確定を見送る。
      *    - 粗ズーム祖先にも有効標高が無い（真の no-data: 外洋等）場合は、視界内の有効タイルがあれば
      *      その代表標高で、無ければ海面 0m（外洋として妥当）で確定する。
@@ -782,7 +782,7 @@ export const createGlobeTileManager = (
             coarseTileMemo.set(ck, p);
             // メモは「同一粗タイルへの同時並行取得の重複排除」が目的。確定後も Promise
             // （256x256 の Float32Array を保持）を残すと、多数の湖/外洋を巡るとメモリが単調
-            // 増加する。settle 後にエントリを削除して上限を設けない（#339 レビュー指摘）。
+            // 増加する。settle 後にエントリを削除して上限を設けない（レビュー指摘）。
             void p.finally(() => {
                 if (coarseTileMemo.get(ck) === p) coarseTileMemo.delete(ck);
             });
@@ -814,7 +814,7 @@ export const createGlobeTileManager = (
                     }
                     // 取得完了までに当該 geom タイルが prune（eviction/dispose）または解決済み
                     // （allNanGeom から除外）になっている場合は書き込まない。さもないと dispose/prune
-                    // 後に coarseSeed が再増加（リーク）・不要な seed が残る（#339 レビュー指摘）。
+                    // 後に coarseSeed が再増加（リーク）・不要な seed が残る（レビュー指摘）。
                     if (n > 0) {
                         if (allNanGeom.has(gk) && elevCache.has(gk)) coarseSeed.set(gk, sum / n);
                         return;
@@ -824,7 +824,7 @@ export const createGlobeTileManager = (
             } finally {
                 coarseSeedPending.delete(gk);
                 // done フラグも、まだ未解決(allNanGeom)かつキャッシュに在るタイルにのみ立てる。
-                // prune/解決済みのタイルで完了フラグだけ復活させない（#339 レビュー指摘）。
+                // prune/解決済みのタイルで完了フラグだけ復活させない（レビュー指摘）。
                 if (allNanGeom.has(gk) && elevCache.has(gk)) coarseSeedDone.add(gk);
             }
         })();
@@ -858,7 +858,7 @@ export const createGlobeTileManager = (
                 if (!allNanGeom.has(nKey)) hasNeighbor = true;
             }
             // シード源となる隣接が一つも無ければ stitch しても all-NaN のまま。
-            // 大きな湖で all-NaN タイルが多い場合の無駄な 256x256 コピーを避ける（#339 レビュー指摘）。
+            // 大きな湖で all-NaN タイルが多い場合の無駄な 256x256 コピーを避ける（レビュー指摘）。
             if (!hasNeighbor) return false;
             const copy = Float32Array.from(target);
             stitchTileEdges(copy, neighbors, TILE_SIZE);
@@ -880,7 +880,7 @@ export const createGlobeTileManager = (
         // --- Step 2: レスキュー（到達不能な残存 all-NaN タイルを代表標高で平坦化） ---
         if (allNanGeom.size > 0) {
             // 粗ズーム取得が真の no-data（外洋等）だった場合のフォールバック用に、視界内の
-            // 有効タイル代表標高（中央ピクセル平均）を一度だけ算出する（#221 同様の近似）。
+            // 有効タイル代表標高（中央ピクセル平均）を一度だけ算出する（同様の近似）。
             const mid = (TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1);
             let inViewSum = 0;
             let inViewCount = 0;
@@ -891,7 +891,7 @@ export const createGlobeTileManager = (
             }
             const inViewRep = inViewCount > 0 ? inViewSum / inViewCount : undefined;
             // 視界内に有効タイルがあれば代表標高を更新して保持する（全面水面化後の同期
-            // フォールバックに使う）。湖へ陸地から接近する経路では湖岸標高が記録される。#339
+            // フォールバックに使う）。湖へ陸地から接近する経路では湖岸標高が記録される。
             if (inViewRep !== undefined) lastRepElev = inViewRep;
 
             for (const gk of [...allNanGeom]) {
@@ -937,7 +937,7 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * 同一ズーム隣接（同 geom zoom）の有効標高を `elevCache` から収集する（#387）。
+     * 同一ズーム隣接（同 geom zoom）の有効標高を `elevCache` から収集する。
      * planar の `getNeighborElevations` 相当。実標高タイルの辺を `stitchTileEdges` で平均化し、
      * タイル境界の陰影シームを解消するために用いる。未解決 all-NaN 隣接（湖面・no-data 全面）は
      * 有効な辺標高を持たないためシード源にしない（`nanMean` で自然除外されるが署名を意味のある
@@ -978,14 +978,14 @@ export const createGlobeTileManager = (
             // 実標高が未取得（ロード中 or 取得失敗でバックオフ中）の場合の暫定値（海面フラット 0m）。
             // ただしフラットで暫定建築するのは「取得失敗でバックオフ中(failedRetryAt)」または
             // 「minZoom 未満（高高度で標高が無意味）」に限る。それ以外（minZoom 以上のロード中）は
-            // 直後の分岐で建築自体をスキップする（フラット→実標高の近景チラつきを避けるため, #330）。
+            // 直後の分岐で建築自体をスキップする（フラット→実標高の近景チラつきを避けるため）。
             // loadElevationTile は no-data(404) と一時的障害を区別できないため、失敗は一律バックオフ
             // 扱い。実標高が届いたら次 sync で実標高へ再構築（sig で検知）、失敗継続なら海面のまま残す。
             const isFlatFallback = !cachedElev;
             let geomElev = cachedElev ?? FLAT_SEA_ELEV;
 
             // 標高が視覚的に意味を持つ zoom レベル（minZoom 以上）では、標高ロード中は建築をスキップ。
-            // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため (#330)。
+            // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため。
             // - failedRetryAt（取得失敗でバックオフ中）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
             // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
             if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
@@ -995,7 +995,7 @@ export const createGlobeTileManager = (
 
             // (A) 取得失敗(404/no-data)タイル（本栖湖の z15 湖面タイル 15/28998/12927 等は 404）。
             //     GSI は水域の高 zoom タイルを 404 で配信しないため、従来は FLAT_SEA_ELEV(0m) で
-            //     平坦建築され「湖中央が 0m に沈む（≒900m クレーター）」原因になっていた（#339）。
+            //     平坦建築され「湖中央が 0m に沈む（≒900m クレーター）」原因になっていた。
             //     隣接タイルの接線標高（湖岸/湖面 ≒ 湖面標高）で平坦化し、段差無く連続させる。
             //     隣接も全て無効なら従来どおり 0m（外洋として妥当）。高高度(minZoom 未満)は標高無意味。
             if (isFlatFallback && t.zoom >= minZoom) {
@@ -1019,7 +1019,7 @@ export const createGlobeTileManager = (
                 geomElev = flatElevArray(repElev);
             }
 
-            // 同一ズーム隣接辺スティッチング（#387）。実標高 geom タイル（フラット/暫定 all-NaN
+            // 同一ズーム隣接辺スティッチング。実標高 geom タイル（フラット/暫定 all-NaN
             // 建築ではない）に限り、同 geom zoom 隣接の有効標高で辺を平均化したコピーを建築入力に
             // する。隣接 GSI DEM タイルは辺が 1 セルずれるため、平均化しないと境界に段差（陰影シーム）
             // が出る（planar は `applyStitchedElevation` で縫合済み）。原本 `elevCache` は破壊せず
@@ -1027,7 +1027,7 @@ export const createGlobeTileManager = (
             // を対象とし排他的に共存する。揃っていた隣接方位を sig に含め、隣接後ロードで再縫合させる。
             // ここでは隣接収集（軽量）と署名計算のみ行い、256x256 コピー＋`stitchTileEdges` は再建築が
             // 必要な場合（sig 不一致 or 新規）に限定する。隣接が揃った定常フレームで sig 一致による
-            // 再建築スキップが、無駄な全コピーを伴わないようにするため（#387 レビュー指摘）。
+            // 再建築スキップが、無駄な全コピーを伴わないようにするため（レビュー指摘）。
             let stitchNeighbors: StitchNeighbors | undefined;
             let stitchSig = "";
             if (!isFlatFallback && !isAllNanPending && t.zoom >= minZoom) {
@@ -1043,7 +1043,7 @@ export const createGlobeTileManager = (
             // 粗ラスタへ写像するため。z16-18 は z15 をサブサンプルして共有するので intra-level
             // は連続で、LOD 境界の「亀裂/穴」自体はスカート（垂直フランジ）が全境界で隠す。
             // 残る z16-18×粗 境界の「陰影シーム」除去（geom 座標へ写像した粗表面評価）は
-            // 後続フェーズの磨き込み対象（#275）。
+            // 後続フェーズの磨き込み対象。
             let edges: readonly CoarseEdge[] = [];
             if (snapEnabled && t.zoom <= geomMaxZoom && !isFlatFallback && !isAllNanPending) {
                 const r = selectCoarseEdges(
@@ -1056,14 +1056,14 @@ export const createGlobeTileManager = (
                 // r.pending（粗隣接の標高がまだロード中）でもビルドは遅延しない。遅延すると、
                 // 海上・列島外など no-data の粗タイルが 404 を返すまで（または視界出入りで失敗記録が
                 // 消える間）、その粗タイルに接する細タイルが恒久的に未建築＝LOD 境界で「四分木の
-                // 2 個／1 ライン分が欠ける」症状になる（#335, tilt 65-70°）。利用可能な edges だけで
+                // 2 個／1 ライン分が欠ける」症状になる（tilt 65-70°）。利用可能な edges だけで
                 // 即建築し、粗標高が届いたら sig 変化で再建築してスナップを適用する（一時的な陰影
                 // シームは許容。欠けるよりは良い）。
                 edges = r.edges;
             }
             // フラット建築・暫定 all-NaN 建築かどうかと、暫定代表標高（10m 量子化）も署名に含める。
             // 実標高で確定したら coarse-edge 同一でも再構築させ、隣接ロードで代表標高が変わったら
-            // （0m→湖面標高 等）追従して再構築させるため（#339）。
+            // （0m→湖面標高 等）追従して再構築させるため。
             const sig =
                 (isFlatFallback ? "flat|" : "") +
                 (isAllNanPending ? "allnan|" : "") +
@@ -1074,7 +1074,7 @@ export const createGlobeTileManager = (
             // 既存メッシュは coarse-edge 集合が同一ならそのまま、変化していれば
             // ジオメトリのみ差し替える（テクスチャ・マテリアルは再利用し再読込を避ける）。
             const existing = loaded.get(k);
-            // sig 一致（再建築不要）ならコピー＋縫合に入る前に早期スキップする（#387 レビュー指摘）。
+            // sig 一致（再建築不要）ならコピー＋縫合に入る前に早期スキップする（レビュー指摘）。
             if (existing && builtEdgeSig.get(k) === sig) continue;
 
             // 再建築が確定したのでここで初めて同一ズーム縫合を適用する（原本 elevCache は非破壊）。
@@ -1110,7 +1110,7 @@ export const createGlobeTileManager = (
 
             const mesh = new Mesh(`tile-${k}`, scene);
             applyGeometry(mesh, data);
-            // 前景タイルも非ピッカブルにする（#337）。ピッカブルだと `GeospatialCamera` 内蔵パン
+            // 前景タイルも非ピッカブルにする。ピッカブルだと `GeospatialCamera` 内蔵パン
             // の `scene.pick` がこのメッシュにヒットし、独自パン（scenes/globe.ts の onPointerMove）
             // と二重にカメラを動かして水平方向にガタつく。基準タイル（base-tile）と挙動を揃える。
             mesh.isPickable = false;
@@ -1124,10 +1124,10 @@ export const createGlobeTileManager = (
             mesh.material = mat;
 
             // テクスチャ未ロード中は白色メッシュが見えるので非表示にする。
-            // onLoad / onError 到着時に表示する（背景球が代わりに見える）。#330
+            // onLoad / onError 到着時に表示する（背景球が代わりに見える）。
             mesh.setEnabled(false);
 
-            // 祖先タイルが pendingRelease 中なら、この子タイルは非表示待機として登録する（#281）。
+            // 祖先タイルが pendingRelease 中なら、この子タイルは非表示待機として登録する。
             // テクスチャ onLoad での表示を抑止し、旧粗タイル解放と同時に一斉表示して原子的に
             // スワップする（レベルの違うタイルの重なりちらつきを防ぐ）。多段 zoom も全祖先を確認。
             let isHiddenChild = false;
@@ -1236,7 +1236,7 @@ export const createGlobeTileManager = (
         };
 
         // 不要になったメッシュを処理: zoom 階層関係があれば pendingRelease で表示を維持し、
-        // なければ即破棄する（平面版 #281 の applyVisibleTiles 同等）。
+        // なければ即破棄する（平面版  の applyVisibleTiles 同等）。
         for (const [key, mesh] of loaded) {
             if (desiredKeys.has(key)) continue;
             const c = parseKey(key);
@@ -1309,13 +1309,13 @@ export const createGlobeTileManager = (
         }
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
         for (const t of tiles) loadTile(t);
-        // 隣接が揃った all-NaN タイルを補間してから建築（#339）。
+        // 隣接が揃った all-NaN タイルを補間してから建築。
         refineAllNaNTiles();
         buildReadyTiles(tiles);
 
         // 新規ロードが発生しない再 sync（同一可視集合での再評価など）では loadTile 経路の
         // checkAndReleaseCoveredTiles が呼ばれず、既に祖先/子孫が揃った pending が
-        // タイムアウトまで滞留しうる。全 pending を対象に再判定し即時解放する（#281 同等）。
+        // タイムアウトまで滞留しうる。全 pending を対象に再判定し即時解放する（同等）。
         if (pendingRelease.size > 0) checkAndReleaseCoveredTiles();
 
 
@@ -1351,7 +1351,7 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * 常時表示の粗いベースレイヤを構築する（Issue #341）。全球を覆う z=BASE_LAYER_ZOOM の固定
+     * 常時表示の粗いベースレイヤを構築する。全球を覆う z=BASE_LAYER_ZOOM の固定
      * タイル集合（4^zoom 枚）を、海面フラット（0m）の楕円体パッチとして一度だけ生成し、以後ずっと
      * 保持する。新規に回転インする地平線の縁のタイルが未ロードでも、この背景が見えるため背景球
      * （青）が露出しない。
@@ -1428,7 +1428,7 @@ export const createGlobeTileManager = (
     const dispose = (): void => {
         for (const mesh of loaded.values()) mesh.dispose(false, true);
         loaded.clear();
-        // 常時表示ベースレイヤ（#341）もテクスチャごと破棄する。
+        // 常時表示ベースレイヤもテクスチャごと破棄する。
         for (const mesh of baseLoaded.values()) mesh.dispose(false, true);
         baseLoaded.clear();
         // LOD 遷移中に残した pending タイルのタイマー解除＋メッシュ破棄。
@@ -1549,7 +1549,7 @@ export const createGlobeTileManager = (
         return true;
     };
 
-    // 常時表示の粗いベースレイヤを一度だけ構築する（Issue #341）。
+    // 常時表示の粗いベースレイヤを一度だけ構築する。
     buildBaseLayer();
 
     return { sync, terrainElevAt, isIdle, getMapType, setMapType, dispose };

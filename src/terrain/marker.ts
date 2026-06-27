@@ -1,8 +1,8 @@
 /**
- * マーカー描画の共通ユーティリティ (Issue #167 / #414)。
+ * マーカー描画の共通ユーティリティ。
  *
  * アイコン Plane・テキスト Plane を 1 枚の板ポリにまとめて描画する `createIconTextMesh` と、
- * icon/text オプション解決・URL 検証を提供する。globe 単一バックエンド（#414）では
+ * icon/text オプション解決・URL 検証を提供する。globe 単一バックエンドでは
  * `globeMarkerManager` がこれらを再利用してマーカーを表示する（座標系非依存）。
  */
 
@@ -20,7 +20,7 @@ import {
     type MarkerTextOptions,
 } from "../lib/types";
 
-// グローブ版オーバーレイ（#275 Phase 3）が同じ描画レイヤーに揃えるため export する。
+// グローブ版オーバーレイが同じ描画レイヤーに揃えるため export する。
 export const RENDERING_GROUP_ID = 1;
 const MAX_DT_SIZE = 1024;
 
@@ -55,7 +55,7 @@ export const validateIconUrl = (url: string): void => {
     }
 };
 
-// グローブ版オーバーレイ（#275 Phase 3, geo/globeMarkerManager）が同じアイコン/ラベル描画を
+// グローブ版オーバーレイ（geo/globeMarkerManager）が同じアイコン/ラベル描画を
 // 再利用するため export する（座標系非依存のビルボード描画。平面版の挙動は不変）。
 export const resolveIcon = (
     icon: MarkerIconOptions | undefined,

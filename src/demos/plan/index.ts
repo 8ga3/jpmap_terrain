@@ -306,7 +306,7 @@ const start = async (): Promise<void> => {
     const btnGeofence = document.getElementById(BTN_GEOFENCE_ID) as HTMLButtonElement | null;
     const btnRally = document.getElementById(BTN_RALLY_ID) as HTMLButtonElement | null;
 
-    // 2D/3D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する (Issue #193)。
+    // 2D/3D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する。
 
     const refreshButtons = (hasPlan: boolean): void => {
         if (btnWaypoints) {

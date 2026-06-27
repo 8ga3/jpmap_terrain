@@ -1,5 +1,5 @@
 /**
- * `src/demos/flight/globeAfterburner.ts` の純関数 unit test (Issue #349 / P4-3)。
+ * `src/demos/flight/globeAfterburner.ts` の純関数 unit test。
  *
  * - computeEngineEcefToRef: 軌道パラメータ → 左右エンジンの真 ECEF
  * - buildTrailRibbonLocal: 絶対 ECEF 履歴 → アンカー相対のローカルリボン頂点

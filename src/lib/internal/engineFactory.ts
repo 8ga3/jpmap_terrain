@@ -1,5 +1,5 @@
 /**
- * Babylon.js Engine 生成 (T4 / Issue #118)
+ * Babylon.js Engine 生成
  *
  * 指定された描画モード ("webgpu" | "webgl2") に応じて適切な Engine を生成する。
  * WebGPU 非対応環境では自動的に WebGL2 にフォールバックする。

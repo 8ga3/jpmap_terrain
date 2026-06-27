@@ -1,10 +1,10 @@
 /**
- * グローブ曲面タイルメッシュのジオメトリ生成（純粋関数） (Issue #275 Phase 1)。
+ * グローブ曲面タイルメッシュのジオメトリ生成（純粋関数）。
  *
  * 1 タイルぶんの標高データから ECEF 曲面メッシュの頂点データ
  * （positions / normals / uvs / indices / anchor）を生成する。Babylon の `Mesh` /
  * `Texture` 生成からは分離し、座標計算を純関数として切り出すことで単体テスト可能にする
- * （`globeTileManager` が本データから実際の `Mesh` を組み立てる）。PoC (#321) の
+ * （`globeTileManager` が本データから実際の `Mesh` を組み立てる）。PoC  の
  * メッシュ生成から幾何部分を昇格したもの。
  *
  * floating origin 下での Float32 頂点バッファ精度を担保するため、頂点はタイル中心の
@@ -116,7 +116,7 @@ export const buildGlobeTileMeshData = (
             const snapped = snapEdgeElevation(edges, row, col, segments, tx, ty, pxF, pyF);
             if (snapped !== null) elev = snapped;
             // no-data（NaN）は海面(0m)に倒す。GSI 標高は海上・湖面・カバー外で NaN を返すことがあり、
-            // そのまま使うと頂点座標が NaN になりメッシュが不可視＝タイルが欠ける（#335）。海域は
+            // そのまま使うと頂点座標が NaN になりメッシュが不可視＝タイルが欠ける。海域は
             // 海面、海岸の部分 no-data も海面として描画する（GSI テクスチャは別途貼られる）。
             if (!Number.isFinite(elev)) elev = 0;
 

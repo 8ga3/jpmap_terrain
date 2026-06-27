@@ -1,10 +1,10 @@
 /**
- * シーン層と `JpmapTerrain`（パッケージ層）/ overlay 層が共有する境界契約 (Issue #414)。
+ * シーン層と `JpmapTerrain`（パッケージ層）/ overlay 層が共有する境界契約。
  *
  * カメラ・位置操作の {@link DefaultSceneController}、初期化オプション
  * {@link DefaultSceneInitOptions}、および緯度メートル換算定数
  * {@link METERS_PER_DEGREE_LAT} を提供する。
- * globe 単一バックエンド化（#414）に伴い、これらの共有シンボルを描画実装から切り離す。
+ * globe 単一バックエンド化に伴い、これらの共有シンボルを描画実装から切り離す。
  */
 import type { FrustumPlane } from "../terrain/visibleTiles";
 import type {
@@ -23,7 +23,7 @@ import type { ModelManager } from "../terrain/modelManager";
 export const METERS_PER_DEGREE_LAT = 111320;
 
 /**
- * 外部からカメラ・位置を操作するためのコントローラ (T5 / Issue #119)。
+ * 外部からカメラ・位置を操作するためのコントローラ。
  *
  * `JpmapTerrain` (パッケージ層) から get/set/flyTo を呼び出す際の境界となる。
  * シーン内部のクロージャ (`currentLat` / `camera` / `refreshTerrain`) を直接公開せず、
@@ -39,7 +39,7 @@ export interface DefaultSceneController {
     /** チルト角（度）。0 = 真下、90 = 水平 */
     getTilt(): number;
     /**
-     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 2D モード時の Google Maps 互換ズームレベル。
      * 3D モードでは `undefined` を返す。
      */
     getZoomLevel(): number | undefined;
@@ -80,7 +80,7 @@ export interface DefaultSceneController {
     ): void;
 
     /**
-     * 外部カメラの frustum を使ってタイルの可視判定・LOD 更新を行う (C案 / Issue #245)。
+     * 外部カメラの frustum を使ってタイルの可視判定・LOD 更新を行う (C案)。
      *
      * terrain 用 ArcRotateCamera とは異なるカメラ（Follow カメラ等）で
      * 地形を描画している場合に、そのカメラの frustum と位置から
@@ -105,7 +105,7 @@ export interface DefaultSceneController {
     attachTileCamera(): void;
 
     /**
-     * コンパスの回転角を外部から上書きする (Issue #245)。
+     * コンパスの回転角を外部から上書きする。
      *
      * `degrees` が `number` の場合、コンパスの回転を外部指定値に固定し、
      * terrain camera の alpha による自動更新とクリック時のリセット動作を抑制する。
@@ -113,14 +113,14 @@ export interface DefaultSceneController {
      */
     setExternalCompassDegrees(degrees: number | null): void;
 
-    // ---- UI / mapType (T6 / Issue #120) ----
+    // ---- UI / mapType ----
 
     /** 現在の地図種類を spec 表記 (`standard` / `photo`) で返す */
     getMapType(): "standard" | "photo";
     /** 地図種類を切り替える。ボタン表示も一緒に追従させる */
     setMapType(value: "standard" | "photo"): void;
 
-    // ---- 視点モード (Issue #193) ----
+    // ---- 視点モード ----
 
     /** 現在のカメラ視点モードを返す */
     getViewMode(): ViewMode;
@@ -149,7 +149,7 @@ export interface DefaultSceneController {
     ): void;
 
     /**
-     * 太陽位置計算に使う日時を設定し、太陽位置（時間による明るさ・方向）の状態を即時 1 回反映する (Issue #35)。
+     * 太陽位置計算に使う日時を設定し、太陽位置（時間による明るさ・方向）の状態を即時 1 回反映する。
      *
      * `dateTime` が `null` の場合は内部の決定的フォールバック時刻
      * （{@link SUN_FALLBACK_DATETIME_ISO}）を使用する。
@@ -159,7 +159,7 @@ export interface DefaultSceneController {
     setSunState(dateTime: Date | null): void;
 
     /**
-     * 太陽 DirectionalLight による地形への影描画を有効/無効化する (Issue #39)。
+     * 太陽 DirectionalLight による地形への影描画を有効/無効化する。
      *
      * - `true`: `ShadowGenerator` を生成し、`tileManager` 経由でアクティブな全タイルおよび
      *   以後 `meshPool.acquire` されるメッシュを caster / receiver として登録する。
@@ -174,7 +174,7 @@ export interface DefaultSceneController {
     isTerrainIdle(): boolean;
 
     /**
-     * `JpmapTerrain.dispose()` から呼ばれる UI クリーンアップ (T7 / Issue #121)。
+     * `JpmapTerrain.dispose` から呼ばれる UI クリーンアップ。
      *
      * `controlPanel` が `document.body` に追加した UI 要素 (コンパス / ズームボタンコンテナ / 地図切替) を
      * 親要素から除去する。複数インスタンス共存および再マウント時に UI が残留するのを防ぐ。
@@ -183,7 +183,7 @@ export interface DefaultSceneController {
     dispose(): void;
 
     /**
-     * globe バックエンド（#275 Phase 4 / P4-0）のフック。公開 `MarkerManager` 互換の
+     * globe バックエンドのフック。公開 `MarkerManager` 互換の
      * アダプタを返す。
      */
     getMarkerManager?(): MarkerManager | null;
@@ -196,12 +196,12 @@ export interface DefaultSceneController {
      */
     getCircleManager?(): CircleManager | null;
     /**
-     * globe バックエンドのフック。公開 `ModelManager` 互換のアダプタを返す (#275 Phase 4 / P4-2)。
+     * globe バックエンドのフック。公開 `ModelManager` 互換のアダプタを返す。
      */
     getModelManager?(): ModelManager | null;
 
     /**
-     * 地形タイルへのクリック通知を購読する (Issue #183)。
+     * 地形タイルへのクリック通知を購読する。
      *
      * - `pointerdown` から `pointerup` までの移動量が
      *   {@link TERRAIN_CLICK_DRAG_THRESHOLD_PX} 以下の場合にのみ発火する。
@@ -214,39 +214,39 @@ export interface DefaultSceneController {
     subscribeTerrainClick(listener: TerrainClickListener): () => void;
 
     /**
-     * ポリゴン頂点上の hover 通知を購読する (Issue #184)。
+     * ポリゴン頂点上の hover 通知を購読する。
      * リスナーは hover 開始/対象切替時にイベントを、hover 解除時に `null` を受け取る。
      */
     subscribePolygonPointHover(
         listener: PolygonPointHoverListener,
     ): () => void;
     /**
-     * ポリゴン頂点上の click 通知を購読する (Issue #184)。
+     * ポリゴン頂点上の click 通知を購読する。
      * `pointerdown` → `pointerup` の移動量が
      * {@link POLYGON_POINT_DRAG_THRESHOLD_PX} 未満のときのみ発火する。
      */
     subscribePolygonPointClick(
         listener: PolygonPointClickListener,
     ): () => void;
-    /** 頂点ドラッグ開始 (Issue #184) */
+    /** 頂点ドラッグ開始 */
     subscribePolygonPointDragStart(
         listener: PolygonPointDragListener,
     ): () => void;
-    /** 頂点ドラッグ中（移動毎） (Issue #184) */
+    /** 頂点ドラッグ中（移動毎） */
     subscribePolygonPointDrag(
         listener: PolygonPointDragListener,
     ): () => void;
-    /** 頂点ドラッグ終了 (Issue #184) */
+    /** 頂点ドラッグ終了 */
     subscribePolygonPointDragEnd(
         listener: PolygonPointDragListener,
     ): () => void;
 }
 
 /**
- * シーン初期化オプション (T4 / Issue #118)。
+ * シーン初期化オプション。
  *
  * パッケージ利用 (`JpmapTerrain.create`) で初期パラメータを指定するために導入。
- * URL からの初期位置解決はデモ層 (`src/index.ts`) に移管されており (Issue #136)、
+ * URL からの初期位置解決はデモ層 (`src/index.ts`) に移管されており、
  * このシーン側では「options で指定された値 > デフォルト値」の順で解決する。
  */
 export interface DefaultSceneInitOptions {
@@ -261,24 +261,24 @@ export interface DefaultSceneInitOptions {
     /** カメラチルト角（度）。0 で真下、90 で水平 */
     tilt?: number;
     /**
-     * 2D モード時の初期ズームレベル (Google Maps 互換, #254)。
+     * 2D モード時の初期ズームレベル (Google Maps 互換)。
      * 定義時は `altitude` より優先して `camera.radius` を設定する。
      */
     zoomLevel?: number;
     /** 地図種類（T6 で配線） */
     mapType?: "standard" | "photo";
     /**
-     * `mapType` が実際に変化した際に呼ばれるコールバック (Issue #149)。
+     * `mapType` が実際に変化した際に呼ばれるコールバック。
      *
      * - `controller.setMapType` 経由・UI ボタンクリック経由のいずれの変化でも発火する。
      * - 起動時の初期値設定では発火しない（呼び出し側との重複通知防止）。
      * - 同値再 set では発火しない。
      */
     onMapTypeChange?: (mapType: "standard" | "photo") => void;
-    /** 初期視点モード (Issue #193)。未指定時は `"3d"`。 */
+    /** 初期視点モード。未指定時は `"3d"`。 */
     viewMode?: ViewMode;
     /**
-     * `viewMode` が実際に変化した際に呼ばれるコールバック (Issue #193)。
+     * `viewMode` が実際に変化した際に呼ばれるコールバック。
      *
      * - `controller.setViewMode` 経由・UI ボタンクリック経由のいずれの変化でも発火する。
      * - 起動時の初期値設定では発火しない（呼び出し側との重複通知防止）。
@@ -286,14 +286,14 @@ export interface DefaultSceneInitOptions {
      */
     onViewModeChange?: (viewMode: ViewMode) => void;
     /**
-     * カメラのドラッグ操作終了時に呼ばれるコールバック (#225)。
+     * カメラのドラッグ操作終了時に呼ばれるコールバック。
      *
      * pointerup の `commitPanOffset` 後に発火する。`_notifyIfChanged` が
      * 「変化なし」と判定して URL 更新を取りこぼすケースを救済する。
      */
     onCameraInteractionEnd?: () => void;
     /**
-     * ドラッグによるマップのパン（平行移動）操作を有効にするかどうか (Issue #259)。
+     * ドラッグによるマップのパン（平行移動）操作を有効にするかどうか。
      * 既定 `true`。`false` の場合、単純ドラッグでのパンを無効化する
      * （Ctrl/Cmd+ドラッグの回転・チルト、ホイールズームは有効のまま）。
      */

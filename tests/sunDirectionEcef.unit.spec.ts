@@ -1,5 +1,5 @@
 /**
- * `src/terrain/geo/sunDirectionEcef.ts` の純粋関数ユニットテスト (#368 / P4-1)。
+ * `src/terrain/geo/sunDirectionEcef.ts` の純粋関数ユニットテスト。
  *
  * 太陽の地平座標(azimuth/altitude)@観測点(lat/lon) を、右手系 ECEF
  * （X→経度0 / Y→東経90° / Z→北極）の太陽方向単位ベクトルへ変換する関数の代表値を固定する。

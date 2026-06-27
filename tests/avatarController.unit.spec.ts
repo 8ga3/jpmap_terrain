@@ -1,5 +1,5 @@
 /**
- * `src/demos/avatar-controller/movement.ts` の unit test (Issue #270)。
+ * `src/demos/avatar-controller/movement.ts` の unit test。
  *
  * 入力ベクトル合成・デッドゾーン・移動・方位計算の純粋関数を検証する。
  */

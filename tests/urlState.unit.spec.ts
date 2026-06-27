@@ -208,7 +208,7 @@ describe("urlState", () => {
             );
         });
 
-        it("altitude/azimuth/tilt を含む 5要素 URL を replaceState する (Issue #64)", () => {
+        it("altitude/azimuth/tilt を含む 5要素 URL を replaceState する", () => {
             const updater = createUrlUpdater(200);
             updater({
                 lat: 35.681236,
@@ -227,7 +227,7 @@ describe("urlState", () => {
             );
         });
 
-        it("pathname にデモ識別子（/viewer）が含まれる場合は保持される (Issue #155)", () => {
+        it("pathname にデモ識別子（/viewer）が含まれる場合は保持される", () => {
             globalThis.location = { pathname: "/viewer", search: "" } as unknown as Location;
             const updater = createUrlUpdater(200);
             updater({
@@ -245,7 +245,7 @@ describe("urlState", () => {
             );
         });
 
-        it("pathname に `.html` 付きデモ識別子がある場合は剥がして書き戻す (Issue #155)", () => {
+        it("pathname に `.html` 付きデモ識別子がある場合は剥がして書き戻す", () => {
             globalThis.location = { pathname: "/viewer.html", search: "" } as unknown as Location;
             const updater = createUrlUpdater(200);
             updater({
@@ -263,7 +263,7 @@ describe("urlState", () => {
             );
         });
 
-        it("pathname に既に `@lat,lon` が含まれる場合は新しい値で置き換える (Issue #155)", () => {
+        it("pathname に既に `@lat,lon` が含まれる場合は新しい値で置き換える", () => {
             globalThis.location = {
                 pathname: "/timelapse/@10.0,20.0,1000,0,30",
                 search: "?speed=60",
@@ -285,7 +285,7 @@ describe("urlState", () => {
         });
     });
 
-    describe("extractDemoPathPrefix (Issue #155)", () => {
+    describe("extractDemoPathPrefix", () => {
         it("ルート pathname は空文字を返す", () => {
             expect(extractDemoPathPrefix("/")).toBe("");
         });
@@ -307,7 +307,7 @@ describe("urlState", () => {
         });
     });
 
-    describe("parseCameraStateFromUrl (Issue #64)", () => {
+    describe("parseCameraStateFromUrl", () => {
         it("5要素（lat,lon,alt,az,tilt）をパースできる", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.681236,139.767125,1500,90,60"
@@ -430,7 +430,7 @@ describe("urlState", () => {
             });
         });
 
-        // #375 / #414: globe（全球）では JAPAN_BOUNDS でクランプせず全球の緯度経度を許容する。
+        // globe（全球）では JAPAN_BOUNDS でクランプせず全球の緯度経度を許容する。
         it("日本域外の緯度経度をクランプしない (#375)", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68"
@@ -524,7 +524,7 @@ describe("urlState", () => {
         });
     });
 
-    describe("parseMapTypeFromUrl (Issue #149)", () => {
+    describe("parseMapTypeFromUrl", () => {
         it("?mapType=standard を読み取る", () => {
             expect(parseMapTypeFromUrl("http://localhost/?mapType=standard")).toBe(
                 "standard"
@@ -567,7 +567,7 @@ describe("urlState", () => {
         });
     });
 
-    describe("withMapTypeInUrl (Issue #149)", () => {
+    describe("withMapTypeInUrl", () => {
         it("既存クエリ (engine 等) を保持して mapType を追記する", () => {
             const result = withMapTypeInUrl(
                 "http://localhost/?engine=webgl",
@@ -614,7 +614,7 @@ describe("urlState", () => {
         );
     });
 
-    describe("updateMapTypeInUrl (Issue #149)", () => {
+    describe("updateMapTypeInUrl", () => {
         const originalWindow = (globalThis as { window?: unknown }).window;
 
         afterEach(() => {
@@ -664,7 +664,7 @@ describe("urlState", () => {
         });
     });
 
-    describe("既存 parseCameraStateFromUrl への mapType の影響なし (Issue #149)", () => {
+    describe("既存 parseCameraStateFromUrl への mapType の影響なし", () => {
         it("?mapType=photo が混入してもカメラ状態は解析される", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.681236,139.767125,1500,90,60?mapType=photo"
@@ -679,7 +679,7 @@ describe("urlState", () => {
         });
     });
 
-    describe("parseViewModeFromUrl / withViewModeInUrl (Issue #193)", () => {
+    describe("parseViewModeFromUrl / withViewModeInUrl", () => {
         it("?viewMode=3d / 2d を解析できる", () => {
             expect(parseViewModeFromUrl("http://localhost/?viewMode=3d")).toBe(
                 "3d",
@@ -747,7 +747,7 @@ describe("urlState", () => {
         });
     });
 
-    // ---- ズームレベル (Issue #254) ----
+    // ---- ズームレベル ----
 
     describe("clampZoomLevel", () => {
         it("範囲内はそのまま返す", () => {

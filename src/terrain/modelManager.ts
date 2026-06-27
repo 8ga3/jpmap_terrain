@@ -1,9 +1,9 @@
 /**
- * ModelManager の公開契約 interface とローダー解決ユーティリティ (Issue #243 / #414)。
+ * ModelManager の公開契約 interface とローダー解決ユーティリティ。
  *
  * `JpmapTerrain.addModel / getModel / updateModel / removeModel / setModelEnabled /
  *  listModels / playModelAnimation / stopModelAnimation`
- * から利用される 3D モデル操作の境界型。globe 単一バックエンド（#414）では
+ * から利用される 3D モデル操作の境界型。globe 単一バックエンドでは
  * `globeSceneController` のアダプタがこの契約を実装する。
  * `importLoaderForUrl` は座標系非依存のため globe 実装（`globeModelManager`）から再利用する。
  */

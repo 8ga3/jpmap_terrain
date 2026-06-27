@@ -1,5 +1,5 @@
 /**
- * geo/globeTileManager のユニットテスト (Issue #275 Phase 1)。
+ * geo/globeTileManager のユニットテスト。
  *
  * Babylon の GPU 系（Scene/Mesh/VertexData/StandardMaterial/Texture/Color3）はモックし、
  * 座標計算（ecef/mapping/globeLod/globeMesh）は実物のまま動かして、マネージャの状態遷移を検証する:
@@ -92,7 +92,7 @@ jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
 // 穴埋め系の純関数（isAllNaN / fillInvalidPixels / isInvalidElev / NO_DATA_SENTINEL 等）や
 // 座標定数は本実装をそのまま再利用し（jest.requireActual）、テストで差し替えたい DOM 依存・
 // 制御対象（loadElevationTile / toTileXY など）だけを最小限モックする。本実装を再実装すると
-// 実装変更時にテスト側が取り残されて偽陽性/偽陰性になりやすいため（PR #344 レビュー指摘）。
+// 実装変更時にテスト側が取り残されて偽陽性/偽陰性になりやすいため。
 jest.unstable_mockModule("../src/terrain/gsiTile", () => {
     const actual = jest.requireActual(
         "../src/terrain/gsiTile",
@@ -134,7 +134,7 @@ jest.unstable_mockModule("../src/terrain/geo/globeLod", () => ({
 // ---- globeMesh スパイ（建築時に渡される geomElev を捕捉して建築標高を検証可能にする） ----
 // 実装（純粋関数）はそのまま動かしつつ、404/all-NaN タイルがどの代表標高で平坦建築されたかを
 // 観測する。terrainElevAt は elevCache を参照するため、elevCache に載らない 404 タイルの
-// 建築標高はメッシュ生成入力（geomElev）でしか検証できない（#339）。
+// 建築標高はメッシュ生成入力（geomElev）でしか検証できない。
 const capturedBuilds: { tx: number; ty: number; geomElev: Float32Array }[] = [];
 jest.unstable_mockModule("../src/terrain/geo/globeMesh", () => {
     const actual = jest.requireActual(
@@ -193,7 +193,7 @@ const makeManager = () => {
         segments: 2,
         snapEnabled: false,
     });
-    // Issue #341: 常時表示ベースレイヤがコンストラクタで生成する 16 枚（全球 z2）のメッシュ／
+    // 常時表示ベースレイヤがコンストラクタで生成する 16 枚（全球 z2）のメッシュ／
     // テクスチャは、以降の sync 挙動テストの数え上げ対象外。ここでクリアして、各テストの
     // MeshMock / capturedTextures が sync 由来のみを反映するようにする（ベースレイヤ自体の検証は
     // 専用テストで直接構築して行う）。
@@ -282,7 +282,7 @@ describe("createGlobeTileManager", () => {
     it("標高ロード完了後に初めてメッシュを建築し、テクスチャ onLoad で表示する", async () => {
         const mgr = makeManager();
         const s1 = mgr.sync(syncParams());
-        // 標高ロード中はメッシュを建築しない（フラット→実標高のチラつきを防ぐ, #330）。
+        // 標高ロード中はメッシュを建築しない（フラット→実標高のチラつきを防ぐ）。
         expect(s1.selected.length).toBe(1);
         expect(MeshMock).toHaveBeenCalledTimes(0);
         expect(loadElevationTile).toHaveBeenCalledTimes(1);
@@ -294,7 +294,7 @@ describe("createGlobeTileManager", () => {
         expect(MeshMock).toHaveBeenCalledTimes(1);
         expect(s2.loadedCount).toBe(1);
 
-        // onLoad 前: 非表示（白色チラつき防止 #330）。
+        // onLoad 前: 非表示（白色チラつき防止）。
         const tex = capturedTextures[0];
         const mesh = MeshMock.mock.results[0].value as {
             material: { diffuseTexture: unknown };
@@ -329,7 +329,7 @@ describe("createGlobeTileManager", () => {
         expect(mgr.isIdle()).toBe(true);
     });
 
-    it("setMapType は実行時にロード済み LOD・ベースレイヤを新 mapType で再テクスチャする (#275 P4-1)", async () => {
+    it("setMapType は実行時にロード済み LOD・ベースレイヤを新 mapType で再テクスチャする", async () => {
         const textureUrlMock = gsiMock.textureUrl as jest.Mock;
         const mgr = makeManager();
         expect(mgr.getMapType()).toBe("std");
@@ -360,7 +360,7 @@ describe("createGlobeTileManager", () => {
         expect(textureUrlMock).not.toHaveBeenCalled();
     });
 
-    it("setMapType 連打時、追い越された旧種別テクスチャは適用せず破棄し最後の選択を保つ (#275 P4-1)", async () => {
+    it("setMapType 連打時、追い越された旧種別テクスチャは適用せず破棄し最後の選択を保つ", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
         await flush(); // 標高到着
@@ -391,7 +391,7 @@ describe("createGlobeTileManager", () => {
         expect(mgr.getMapType()).toBe("std");
     });
 
-    it("初回テクスチャ in-flight 中の setMapType: 旧種別 onLoad は無視し再テクスチャ側が描画可能化する (#275 P4-1)", async () => {
+    it("初回テクスチャ in-flight 中の setMapType: 旧種別 onLoad は無視し再テクスチャ側が描画可能化する", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
         await flush(); // 標高到着
@@ -423,7 +423,7 @@ describe("createGlobeTileManager", () => {
         expect(mgr.isIdle()).toBe(true);
     });
 
-    it("ベースレイヤ初回テクスチャ in-flight 中の setMapType: 旧種別 onLoad は適用しない (#275 P4-1)", () => {
+    it("ベースレイヤ初回テクスチャ in-flight 中の setMapType: 旧種別 onLoad は適用しない", () => {
         // ベースレイヤはコンストラクタで生成されるため、makeManager のクリアを通さず直接構築する。
         MeshMock.mockClear();
         MaterialMock.mockClear();
@@ -460,7 +460,7 @@ describe("createGlobeTileManager", () => {
         expect(MeshMock).toHaveBeenCalledTimes(1);
         const mesh = MeshMock.mock.results[0].value as { isPickable?: boolean };
         // ピッカブルだと GeospatialCamera 内蔵パンの scene.pick がヒットし、独自パンと二重に
-        // カメラを動かして水平方向にガタつく（#337）。基準タイル同様に非ピッカブルへ固定する。
+        // カメラを動かして水平方向にガタつく。基準タイル同様に非ピッカブルへ固定する。
         expect(mesh.isPickable).toBe(false);
     });
 
@@ -658,7 +658,7 @@ describe("createGlobeTileManager", () => {
         expect(mesh.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    // ===== LOD シームレス遷移（Issue #330 / 平面版 #281 同等） =====
+    // ===== LOD シームレス遷移（平面版同等） =====
 
     it("zoom-out: 低レベル(親)タイルが描画可能になるまで高レベル(子)タイルを保持する", async () => {
         const mgr = makeManager();
@@ -779,7 +779,7 @@ describe("createGlobeTileManager", () => {
     it("zoom-in: minZoom 未満の親(粗タイル)でも子が揃うまで保持し原子スワップする (#330 回帰)", async () => {
         // minZoom=10。親 z8・子 z9 はいずれも minZoom 未満。祖先探索の下限を minZoom に
         // すると hasZoomRelation/visibleAncestorKeys が空になり、親が即破棄されて背景球が
-        // 露出した（#330 のズームアップちらつき）。SEAMLESS_FLOOR_ZOOM=0 で全 zoom を橋渡し。
+        // 露出した。SEAMLESS_FLOOR_ZOOM=0 で全 zoom を橋渡し。
         const mgr = makeManager();
         selectedTiles = [tile(50, 50, 8)];
         mgr.sync(syncParams()); // zoom<minZoom は標高待ちせず即建築。
@@ -832,7 +832,7 @@ describe("createGlobeTileManager", () => {
         expect(meshA.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    // ===== 標高タイルの穴埋め（Issue #339 / 平面版 #211・#221 相当） =====
+    // ===== 標高タイルの穴埋め（平面版相当） =====
 
     it("部分欠測タイルの内部 NaN を周囲の有効標高で穴埋めする (#339)", async () => {
         const mgr = makeManager();
@@ -923,7 +923,7 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(900, 3);
     });
 
-    // ===== 同一ズーム隣接辺スティッチング（Issue #387 / 平面版相当） =====
+    // ===== 同一ズーム隣接辺スティッチング（平面版相当） =====
 
     it("同一ズーム隣接の実標高タイル辺を平均化してタイル境界の段差を解消する (#387)", async () => {
         const mgr = makeManager();
@@ -1069,7 +1069,7 @@ describe("createGlobeTileManager", () => {
         mgr.sync(syncParams()); // 隣接到着後、中央を隣接接線 900m で平坦建築
 
         // 中央タイル(404)は FLAT_SEA_ELEV(0m) ではなく隣接接線標高 900m で平坦建築されること。
-        // これが「湖中央が 0m に沈む（≒900m クレーター）」(#339) の根本修正。
+        // これが「湖中央が 0m に沈む（≒900m クレーター）」の根本修正。
         const centerBuilds = capturedBuilds.filter((b) => b.tx === 100 && b.ty === 100);
         expect(centerBuilds.length).toBeGreaterThan(0);
         const built = centerBuilds[centerBuilds.length - 1].geomElev;

@@ -1,8 +1,8 @@
 /**
- * CircleManager の公開契約 interface (Issue #201 / #203 / #414)。
+ * CircleManager の公開契約 interface。
  *
  * `JpmapTerrain.addCircle / getCircle / removeCircle / setCircle*Enabled / listCircles`
- * から利用される circle 操作の境界型。globe 単一バックエンド（#414）では
+ * から利用される circle 操作の境界型。globe 単一バックエンドでは
  * `globeSceneController` のアダプタがこの契約を実装する。
  */
 

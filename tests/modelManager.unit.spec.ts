@@ -1,7 +1,7 @@
 /**
- * modelManager の `importLoaderForUrl` 単体テスト (Issue #247 / #414)。
+ * modelManager の `importLoaderForUrl` 単体テスト。
  *
- * globe 単一バックエンド化（#414）後、`modelManager` は公開契約 interface と
+ * globe 単一バックエンド化後、`modelManager` は公開契約 interface と
  * 座標系非依存のローダー解決ユーティリティ `importLoaderForUrl` のみを提供する。
  * ここでは拡張子からの動的 import 振り分けと未対応拡張子の throw を検証する。
  *

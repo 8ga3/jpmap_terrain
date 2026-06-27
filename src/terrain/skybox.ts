@@ -9,7 +9,7 @@ const BASE_RAYLEIGH = 2;
 
 /**
  * 空が暗化し始める高度（メートル）。現実の大気では成層圏付近からレイリー散乱が
- * 急速に弱まり空が暗い青へ転じるため、約 12km を開始点とする（Issue #371）。
+ * 急速に弱まり空が暗い青へ転じるため、約 12km を開始点とする。
  */
 export const SPACE_FADE_START_M = 12000;
 /**
@@ -28,7 +28,7 @@ const smoothstep = (edge0: number, edge1: number, t: number): number => {
 /**
  * カメラ高度（メートル）から「宇宙度」を導く純関数。
  * 0=低高度の青空、1=高高度でほぼ黒。`SPACE_FADE_START_M`〜`SPACE_FADE_END_M` を
- * smoothstep で連続補間する（Issue #371）。
+ * smoothstep で連続補間する。
  */
 export function computeSpaceFactor(altitudeMeters: number): number {
     if (!Number.isFinite(altitudeMeters)) return 0;

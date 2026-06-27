@@ -11,16 +11,16 @@
 | 3D 地形ビューア | `/viewer.html` | `src/demos/viewer/index.ts` | 既存の 3D 地形可視化（`/@lat,lon` URL ・カメラ・地図種別連動） |
 | タイムラプス | `/timelapse.html` | `src/demos/timelapse/index.ts` | 24 時間を 1 分に圧縮した太陽位置・陰影アニメ＋アナログ時計オーバーレイ |
 | ポリゴン | `/polygon.html` | `src/demos/polygon/index.ts` | `JpmapTerrain` のポリゴン公開 API（terrain / absolute / closed の 3 種・点編集 API）の動作確認 |
-| サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 (#201 / #206) |
-| 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認デモ (#186) |
+| サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 |
+| 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` / `onPolygonPoint*` / `edgeLabels` の統合動作確認デモ |
 | Plan Viewer | `/plan.html` | `src/demos/plan/index.ts` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画 |
-| 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb/obj/stl）を配置・移動するデモ。方位変更・座標表示・カメラ移動・フォーマット切替。Model API (#243 / #247) の動作確認 |
-| アバターアニメーション #01 | `/avatar.html` | `src/demos/avatar/index.ts` | 3D アバター（`human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。地面クリックで軌道中心を変更、半径・速度スライダー、アニメーション開始/停止トグル。Model API + `playModelAnimation` (#250) の動作確認 |
-| アバターアニメーション #02（Game Controller） | `/avatar-controller.html` | `src/demos/avatar-controller/index.ts` | キーボード（矢印キー / WASD）・Game Controller・Virtual Joystick で 3D アバターを地形上で操作するデモ。地面クリックでスポーン位置変更、速度スライダー、カメラ方位に応じた入力補正。Model API + Gamepad API + DOM ベース Virtual Joystick (#270) の動作確認 |
-| Boids フロッキング | `/boids.html` | `src/demos/boids/index.ts` | Boids アルゴリズム（分離・整列・結合）による群衆シミュレーション。高尾山山頂付近の矩形リージョン内で複数のアバターが自律的に歩き回る。アバター数スライダー・一時停止・リスタート。Model API + Polygon API (#251) の動作確認 |
-| フライトデモ | `/flight.html` | `src/demos/flight/index.ts` | 飛行機（`plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ。外部カメラ frustum API による地形タイル更新。3D/2D/Follow のカメラモード切替。Model API + 外部カメラ連携 API (#245) の動作確認 |
-| Artillery Game | `/artillery.html` | `src/demos/artillery/index.ts` | ターン制対戦ゲーム（紅 vs 青）。仰角・方位・火力を設定して砲弾を発射し相手に命中させる。Havok 物理で砲弾の重力・地形バウンドを再現 (#259) |
-| Geospatial Globe（低レベル診断） | `/geospatial.html` | `src/demos/geospatial/index.ts` | グローブ地形コア `GlobeScene`（GeospatialCamera + ECEF + floating origin）を `JpmapTerrain` を介さず直接起動する開発者向け診断デモ。floatingOrigin/LOD/タイル数の表示・`?snap=off` 比較・`window.scene`/`window.camera` 露出で内部状態を実機確認する (#275 / #349 P4-5 / #411) |
+| 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb/obj/stl）を配置・移動するデモ。方位変更・座標表示・カメラ移動・フォーマット切替。Model API の動作確認 |
+| アバターアニメーション #01 | `/avatar.html` | `src/demos/avatar/index.ts` | 3D アバター（`human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。地面クリックで軌道中心を変更、半径・速度スライダー、アニメーション開始/停止トグル。Model API と `playModelAnimation` の動作確認 |
+| アバターアニメーション #02（Game Controller） | `/avatar-controller.html` | `src/demos/avatar-controller/index.ts` | キーボード（矢印キー / WASD）・Game Controller・Virtual Joystick で 3D アバターを地形上で操作するデモ。地面クリックでスポーン位置変更、速度スライダー、カメラ方位に応じた入力補正。Model API、Gamepad API、DOM ベース Virtual Joystick の動作確認 |
+| Boids フロッキング | `/boids.html` | `src/demos/boids/index.ts` | Boids アルゴリズム（分離・整列・結合）による群衆シミュレーション。高尾山山頂付近の矩形リージョン内で複数のアバターが自律的に歩き回る。アバター数スライダー・一時停止・リスタート。Model API と Polygon API の動作確認 |
+| フライトデモ | `/flight.html` | `src/demos/flight/index.ts` | 飛行機（`plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ。外部カメラ frustum API による地形タイル更新。3D/2D/Follow のカメラモード切替。Model API と外部カメラ連携 API の動作確認 |
+| Artillery Game | `/artillery.html` | `src/demos/artillery/index.ts` | ターン制対戦ゲーム（紅 vs 青）。仰角・方位・火力を設定して砲弾を発射し相手に命中させる。Havok 物理で砲弾の重力・地形バウンドを再現 |
+| Geospatial Globe（低レベル診断） | `/geospatial.html` | `src/demos/geospatial/index.ts` | グローブ地形コア `GlobeScene`（GeospatialCamera + ECEF + floating origin）を `JpmapTerrain` を介さず直接起動する開発者向け診断デモ。floatingOrigin/LOD/タイル数の表示・`?snap=off` 比較・`window.scene`/`window.camera` 露出で内部状態を実機確認する |
 
 ## 設計方針
 
@@ -56,7 +56,7 @@
 
 ### circle (`/circle.html`)
 
-`JpmapTerrain` のサークル公開 API（§3.3.9）の動作確認デモ（#201 / #206）。
+`JpmapTerrain` のサークル公開 API（§3.3.9）の動作確認デモ。
 
 **デモ構成（3 サークル）:**
 
@@ -72,7 +72,7 @@
 
 ### distance (`/distance.html`)
 
-クリック / ドラッグでポリラインを編集し、頂点ごとの `lat / lon / altitude` と各辺の水平距離・高低差を実時間で表示する距離計測デモ（#186）。`onTerrainClick` (#183) / `onPolygonPoint*` (#184) / `edgeLabels` (#185) の統合動作確認を兼ねる。
+クリック / ドラッグでポリラインを編集し、頂点ごとの `lat / lon / altitude` と各辺の水平距離・高低差を実時間で表示する距離計測デモ。`onTerrainClick` / `onPolygonPoint*` / `edgeLabels` の統合動作確認を兼ねる。
 
 **URL:** `engine` に加えて、viewer / timelapse と同様にカメラ初期位置の指定（`/@lat,lon[,...]` のパス形式、および `?lat=&lon=` 等のクエリ形式）と `?mapType=standard|photo` を受け付ける（実装上 `parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
@@ -89,16 +89,16 @@
 
 - 各頂点に `lat / lon / altitude(m)` をラベル表示（`labels`）。
 - 各辺の中点に `水平距離(m or km) / 高低差(m, 符号付き)` をラベル表示（`edgeLabels`）。1 km 未満は `m`、それ以上は小数 2 桁の `km` で整形する。
-- ポリライン本体・球体頂点・各点からの垂線・隣接垂線間の壁を全表示（壁・垂線は地表を貫通して Y=0 まで伸び、半透明壁は地形に対して深度オクルードされる #186）。
+- ポリライン本体・球体頂点・各点からの垂線・隣接垂線間の壁を全表示（壁・垂線は地表を貫通して Y=0 まで伸び、半透明壁は地形に対して深度オクルードされる）。
 
 **実装メモ:**
 
 - 水平距離は `haversineDistanceMeters`（WGS84 平均半径）で算出。浮動小数誤差で `h` が 1 を僅かに超えるケース（対蹠点付近）に備え、`h` を `[0, 1]` にクランプしてから `Math.atan2` に渡す。
-- 編集モードのドラッグ時は `pointermove` ごとに `removePolygon` → `addPolygon` を行うと負荷が高いため、`requestAnimationFrame` で 1 フレーム 1 回に集約する。`dragEnd` で保留中の rAF を即時 flush し、最終位置が確実に反映されるようにする (#191)。
+- 編集モードのドラッグ時は `pointermove` ごとに `removePolygon` → `addPolygon` を行うと負荷が高いため、`requestAnimationFrame` で 1 フレーム 1 回に集約する。`dragEnd` で保留中の rAF を即時 flush し、最終位置が確実に反映されるようにする。
 
 ### plan (`/plan.html`)
 
-QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ上に表示するビューア（#38）。編集機能は持たない。
+QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ上に表示するビューア。編集機能は持たない。
 
 **ファイル入力:** デスクトップからのドラッグ&ドロップ。再ドロップ時は前回表示をクリアし新しい Plan のみ表示する。
 
@@ -123,7 +123,7 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 ### model (`/model.html`)
 
-`JpmapTerrain` の 3D モデル公開 API（§3.3.x）の動作確認デモ（#243 / #244）。
+`JpmapTerrain` の 3D モデル公開 API（§3.3.x）の動作確認デモ。
 
 **初期状態:** 東京駅（lat: 35.681236, lon: 139.767125）に `assets/human.glb` を `altitudeMode: "terrain"` で配置。
 
@@ -163,7 +163,7 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 ### avatar (`/avatar.html`)
 
-3D アバター（`assets/human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ（#250）。`JpmapTerrain` の Model 公開 API と `playModelAnimation` を使用する。
+3D アバター（`assets/human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。`JpmapTerrain` の Model 公開 API と `playModelAnimation` を使用する。
 
 **仕様:**
 
@@ -187,7 +187,7 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 ### avatar-controller (`/avatar-controller.html`)
 
-3D アバター（`assets/human_walk.glb`）をキーボード / Game Controller / Virtual Joystick で地形上を操作するデモ（#270）。`JpmapTerrain` の Model 公開 API・`playModelAnimation` と Babylon の `GamepadManager` を組み合わせる。
+3D アバター（`assets/human_walk.glb`）をキーボード / Game Controller / Virtual Joystick で地形上を操作するデモ。`JpmapTerrain` の Model 公開 API・`playModelAnimation` と Babylon の `GamepadManager` を組み合わせる。
 
 **仕様:**
 
@@ -225,7 +225,7 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 
 ### boids (`/boids.html`)
 
-Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレーションデモ（#251）。高尾山山頂付近の矩形リージョン内で複数のアバター（`assets/human_walk.glb`）が分離・整列・結合の 3 ルールに従い自律的に歩き回る。
+Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレーションデモ。高尾山山頂付近の矩形リージョン内で複数のアバター（`assets/human_walk.glb`）が分離・整列・結合の 3 ルールに従い自律的に歩き回る。
 
 **仕様:**
 
@@ -256,7 +256,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 
 ### flight (`/flight.html`)
 
-飛行機（`assets/plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ（#245）。`JpmapTerrain` の外部カメラ連携 API（§3.3.14）と Model API（§3.3.13）を使用する。
+飛行機（`assets/plane.glb`）が上空を円軌道で旋回し、Follow カメラで追跡するデモ。`JpmapTerrain` の外部カメラ連携 API（§3.3.14）と Model API（§3.3.13）を使用する。
 
 **仕様:**
 
@@ -293,7 +293,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 
 ### artillery (`/artillery.html`)
 
-[Artillery Game](https://en.wikipedia.org/wiki/Artillery_game) に似たターン制対戦ゲームデモ（#259）。紅組 vs 青組で仰角・方位・火力を設定して砲弾を発射し、相手の大砲に命中させるゲーム。Havok 物理エンジンで砲弾の重力・地形バウンドを再現する（大きいスケールでも気持ちよく飛ぶようデフォルメ重力を採用）。
+[Artillery Game](https://en.wikipedia.org/wiki/Artillery_game) に似たターン制対戦ゲームデモ。紅組 vs 青組で仰角・方位・火力を設定して砲弾を発射し、相手の大砲に命中させるゲーム。Havok 物理エンジンで砲弾の重力・地形バウンドを再現する（大きいスケールでも気持ちよく飛ぶようデフォルメ重力を採用）。
 
 **仕様:**
 

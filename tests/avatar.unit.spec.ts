@@ -1,5 +1,5 @@
 /**
- * `src/demos/avatar/orbit.ts` の unit test (Issue #250)。
+ * `src/demos/avatar/orbit.ts` の unit test。
  *
  * 円軌道計算のロジック（純粋関数）をテストする。
  */

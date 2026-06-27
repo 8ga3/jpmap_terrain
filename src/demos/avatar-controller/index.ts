@@ -1,5 +1,5 @@
 /**
- * アバターアニメーション #02 — Game Controller 対応 (Issue #270)
+ * アバターアニメーション #02 — Game Controller 対応
  *
  * `JpmapTerrain` の Model 公開 API と `playModelAnimation` を使い、
  * キーボード / Game Controller / Virtual Joystick でユーザーがアバターを
@@ -432,7 +432,7 @@ const start = async (): Promise<void> => {
             }
         }
 
-        // --- 右スティックによるカメラ制御 (Issue #289) ---
+        // --- 右スティックによるカメラ制御 ---
         const rightStickInput = {
             vx: cameraReverseX ? -gamepadRightStick.x : gamepadRightStick.x,
             // Babylon のスティック Y は下方向正なので反転して前=+1 に揃える

@@ -42,7 +42,7 @@ export const computeNormalsForIndexedMesh = (
     // Babylon の VertexData.ComputeNormals と符号を合わせるため、
     // 中心頂点を indices[i+1] (= b) とし、エッジを (a-b) × (c-b) で計算する。
     // (b-a) × (c-a) と符号が逆になるため、Babylon ground の winding と組み合わせると
-    // 法線が下向きになり、ライティングで真っ黒に描画されてしまう (Issue #245)。
+    // 法線が下向きになり、ライティングで真っ黒に描画されてしまう。
     const triCount = indices.length;
     for (let i = 0; i < triCount; i += 3) {
         const a = indices[i] * 3;

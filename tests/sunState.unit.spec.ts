@@ -1,5 +1,5 @@
 /**
- * `deriveSunState` のユニットテスト (Issue #35)。
+ * `deriveSunState` のユニットテスト。
  *
  * 純粋関数だが Babylon.js の `Vector3` を返すため、`@babylonjs/core` を実 import する。
  * （他テストでは Babylon を mock するパターンもあるが、本テストではベクトル成分検証のため実体に依存する）。
@@ -123,7 +123,7 @@ describe("deriveSunState", () => {
     });
 });
 
-describe("deriveSkyColor (Issue #380)", () => {
+describe("deriveSkyColor", () => {
     it("真昼（高度 60°）は青空色（青 > 赤）", () => {
         const c = deriveSkyColor(60);
         expect(c.r).toBeCloseTo(0.75, 5);

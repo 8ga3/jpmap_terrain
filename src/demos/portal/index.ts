@@ -1,5 +1,5 @@
 /**
- * デモポータル (Issue #147)
+ * デモポータル
  *
  * `jpmap_terrain` の各デモへのリンクを表示する純粋な静的ポータル。
  * Babylon.js は読み込まないため、ライブラリ側 (`src/lib/**`) の依存は持たない。
@@ -118,7 +118,7 @@ const renderCard = (demo: DemoEntry): string =>
     )}</h2><p>${escapeHtml(demo.description)}</p></a></li>`;
 
 /**
- * 国土地理院タイル等の出典表記（Issue #417）。
+ * 国土地理院タイル等の出典表記。
  * 各項目はプレーンテキストとして `escapeHtml` を通して出力し、
  * URL は明示的にリンク化する。
  */

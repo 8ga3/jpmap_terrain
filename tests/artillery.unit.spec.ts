@@ -1,5 +1,5 @@
 /**
- * Artillery Game ユニットテスト (Issue #259)
+ * Artillery Game ユニットテスト
  *
  * 弾道計算 (ballistics.ts) とゲームロジック (gameLogic.ts) の純粋関数テスト。
  */
