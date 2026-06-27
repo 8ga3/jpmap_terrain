@@ -617,7 +617,7 @@ export class GlobeScene {
             } else {
                 // 離れている: 平行移動 ＋ 回転（ひねり）。
                 if (panEnabled) panByPixels(dCx, dCy);
-                if (dAng !== 0) camera.yaw = camera.yaw + dAng * TWO_FINGER_YAW_SENS;
+                if (dAng !== 0) camera.yaw = camera.yaw - dAng * TWO_FINGER_YAW_SENS;
             }
         };
 
