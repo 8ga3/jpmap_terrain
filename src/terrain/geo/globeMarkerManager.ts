@@ -1,5 +1,5 @@
 /**
- * グローブ用マーカーマネージャ (Issue #275 Phase 3, marker 先行スライス)。
+ * グローブ用マーカーマネージャ (marker 先行スライス)。
  *
  * 平面版（`markerManager` + `marker`）に対する **並行構築** のグローブ実装。緯度経度に
  * 地形標高で接地し、地心 up 方向へドロップ線（ポール）を立て、アイコン/ラベルは
@@ -72,7 +72,7 @@ interface GlobeMarkerNode {
     /**
      * 直近に取得できた地形標高[m]（未取得は null）。前景タイルが一時的に未ロードで
      * `terrainElevAt` が null を返したとき、これを保持してマーカーが楕円体表面（elev=0）へ
-     * 落ちるのを防ぐ（被覆の根本改善は #329）。
+     * 落ちるのを防ぐ（被覆の根本改善は）。
      */
     lastElev: number | null;
 }
@@ -85,7 +85,7 @@ export interface GlobeMarkerManager {
     /** 表示/非表示を切り替える。 */
     setEnabled(id: string, enabled: boolean): void;
     /**
-     * 2D（トップダウン正射）縮退の有効/無効を切り替える (#395)。`true` で全マーカーの
+     * 2D（トップダウン正射）縮退の有効/無効を切り替える。`true` で全マーカーの
      * ドロップ線（ポール）を無効化し、アイコン/ラベルを地表へアンカーする。`false` で復元する。
      */
     setFlatten(flat: boolean): void;
@@ -130,7 +130,7 @@ export const createGlobeMarkerManager = (
     let seq = 0;
     // dispose 後の use-after-dispose を防ぐフラグ（平面版 MarkerManager と同様）。
     let disposed = false;
-    // 2D（トップダウン正射）縮退フラグ (#395)。true の間はポールを無効化し、
+    // 2D（トップダウン正射）縮退フラグ。true の間はポールを無効化し、
     // アイコン/ラベルを地表へアンカーする。3D 復帰（false）で元の表示へ戻る。
     let flat = false;
 
@@ -147,7 +147,7 @@ export const createGlobeMarkerManager = (
      */
     const placeNode = (node: GlobeMarkerNode, camEcef?: Vector3): void => {
         // 取得できた標高は保持し、null（前景タイル未ロード等）は直前値へフォールバック
-        // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。被覆の根本改善は #329。
+        // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。被覆の根本改善は。
         const queried = terrainElevAt(node.lat, node.lon);
         if (queried !== null) node.lastElev = queried;
         const elev = node.lastElev ?? 0;
@@ -167,7 +167,7 @@ export const createGlobeMarkerManager = (
         );
 
         // ポール: 地心 up 沿い、地表から lineHeight。径は距離スケールでスクリーン定。
-        // 2D（flat）ではポールを描かず、アイコン/ラベルを地表へアンカーする (#395)。
+        // 2D（flat）ではポールを描かず、アイコン/ラベルを地表へアンカーする。
         if (flat) {
             if (node.iconText) {
                 node.iconText.mesh.scaling.set(distScale, distScale, distScale);
@@ -268,7 +268,7 @@ export const createGlobeMarkerManager = (
         };
         // 初期配置（camEcef なし）。update が走る前の原点 (0,0,0) 表示チラつきを防ぐ。
         placeNode(node);
-        // 2D（flat）中はポールを描かない (#395)。
+        // 2D（flat）中はポールを描かない。
         lineMesh.setEnabled(enabled && !flat);
         iconText?.mesh.setEnabled(enabled);
         nodes.set(id, node);

@@ -1,5 +1,5 @@
 /**
- * geo/ecef の単体テスト (Issue #275 Phase 0)。
+ * geo/ecef の単体テスト。
  *
  * - geodeticToEcef ⇄ ecefToGeodetic の往復精度（mm 級）を検証
  * - 既知の基準点（赤道・本初子午線・北極）で軸規約（X→経度0, Y→東経90°, Z→北極）を固定

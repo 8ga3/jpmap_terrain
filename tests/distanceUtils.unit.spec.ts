@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * 距離計測デモの純粋関数ユニットテスト (#186)。
+ * 距離計測デモの純粋関数ユニットテスト。
  *
  * - haversineDistanceMeters: 既知サンプル (東京駅↔皇居 等) と退化ケース
  * - formatHorizontalDistance: m/km 切替の境界

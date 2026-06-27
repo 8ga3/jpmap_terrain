@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 /**
- * `src/demos/timelapse/timelapseClock.ts` の純粋関数 unit test (Issue #147)。
+ * `src/demos/timelapse/timelapseClock.ts` の純粋関数 unit test。
  */
 import { describe, it, expect } from "@jest/globals";
 

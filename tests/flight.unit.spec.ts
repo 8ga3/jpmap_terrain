@@ -1,5 +1,5 @@
 /**
- * `src/demos/flight/index.ts` の unit test (Issue #245)。
+ * `src/demos/flight/index.ts` の unit test。
  *
  * 飛行機デモでは `src/demos/avatar/orbit.ts` の計算ユーティリティを再利用する。
  * orbit.ts 自体のテストは `tests/avatar.unit.spec.ts` で網羅済みのため、

@@ -1,5 +1,5 @@
 /**
- * geo/enu の単体テスト (Issue #404 P4-4)。
+ * geo/enu の単体テスト。
  *
  * - buildEnuFrame の基底ベクトルが正規直交（東京原点）であることを検証
  * - enuToEcef ⇄ ecefToEnu の往復精度を検証

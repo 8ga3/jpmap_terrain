@@ -1,5 +1,5 @@
 /**
- * Artillery Game デモ (Issue #259)
+ * Artillery Game デモ
  *
  * ターン制対戦ゲーム。紅組 vs 青組で大砲の角度・火力を設定し発射。
  * Havok 物理エンジンで砲弾の重力・地形バウンドを再現する。
@@ -96,7 +96,7 @@ interface CannonGroup {
     pivot: TransformNode;
     barrel: Mesh;
     base: Mesh;
-    /** 砲身・台座で共有するマテリアル（発光ブリンク制御用 #259）。 */
+    /** 砲身・台座で共有するマテリアル（発光ブリンク制御用）。 */
     material: StandardMaterial;
     /** 所属チーム（発光色の決定用）。 */
     team: Team;
@@ -156,10 +156,10 @@ const start = async (): Promise<void> => {
         azimuth: camera?.azimuth,
         tilt: camera?.tilt ?? 50,
         mapType: mapType ?? "photo",
-        // Issue #259: 戦場を常に中央へ固定するためマップのパン操作を無効化する。
+        // 戦場を常に中央へ固定するためマップのパン操作を無効化する。
         // （Ctrl/Cmd+ドラッグの回転・チルト、ホイールズームは有効のまま）
         enablePan: false,
-        // Issue #259: 2D/3D 切替ボタンは不要なので非表示にする。
+        // 2D/3D 切替ボタンは不要なので非表示にする。
         showViewModeButton: false,
     };
 
@@ -167,15 +167,15 @@ const start = async (): Promise<void> => {
     try {
         viewer = await JpmapTerrain.create(mount, opts);
     } catch (err) {
-        // globe 単一化（#414）後はフォールバック先が存在しないため、初期化失敗は
+        // globe 単一化後はフォールバック先が存在しないため、初期化失敗は
         // サイレントな白画面にせず明示的に送出する。
         console.error("[artillery] globe terrain init failed", err);
         throw err;
     }
-    // Issue #259: 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
+    // 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
     viewer.showLocateMe = false;
 
-    // Issue #259: FIRE/Restart ボタン押下後にフォーカスがボタンへ残ると、
+    // FIRE/Restart ボタン押下後にフォーカスがボタンへ残ると、
     // 以降のキーボード操作（カメラ操作等）がボタンに奪われる。
     // ボタンのフォーカスを外し、マップ canvas へフォーカスを移すためのヘルパー。
     const mapCanvas = mount.querySelector("canvas");
@@ -207,7 +207,7 @@ const start = async (): Promise<void> => {
 
     // --- ステージ座標フレーム（globe=ENU→ECEF stageRoot） ---
     // globe では物理・配置をローカル ENU で扱い、描画と Havok の
-    // floating-origin region 機能で ECEF を float32 安全に解く（#404）。
+    // floating-origin region 機能で ECEF を float32 安全に解く。
     const stage: StageFrame = createStageFrame(scene, {
         lat: STAGE_CENTER.lat,
         lon: STAGE_CENTER.lon,
@@ -360,14 +360,14 @@ const start = async (): Promise<void> => {
         // 地形メッシュのみを対象にする。globe は `tile-*` / `base-tile-*`
         // （globeTileManager の命名）。
         //
-        // 注意: globe タイルは globeTileManager で `isPickable=false`（#337 のパン
+        // 注意: globe タイルは globeTileManager で `isPickable=false`（パン
         // 干渉回避）だが、`pickWithRay` に predicate を渡すと Babylon は
         // isPickable/isVisible/isEnabled の既定フィルタを適用せず predicate のみで
         // 対象を選別する（@babylonjs/core ray.core.js InternalPick: predicate 指定時は
         // 当該チェックを skip。JSDoc も「predicate=null のときのみ isPickable=true が必要」
         // と明記）。そのため isPickable=false でも本レイは globe タイルにヒットする
         // （実 GPU で collider の Y が地形追従 724〜1428m）。
-        // タイルを pickable に戻すと #337 のパン干渉が再発するため、ここは predicate
+        // タイルを pickable に戻すとパン干渉が再発するため、ここは predicate
         // 方式を維持すること。
         return scene.pickWithRay(terrainRay, isTerrainMesh);
     };

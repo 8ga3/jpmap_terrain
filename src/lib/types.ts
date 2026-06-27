@@ -11,7 +11,7 @@ export type EngineType = "webgpu" | "webgl2";
 export type MapType = "standard" | "photo";
 
 /**
- * カメラ視点モード (Issue #193)。
+ * カメラ視点モード。
  *
  * - `"3d"`: 透視投影（既定）。`tilt` が有効で、地形の起伏が立体的に見える。
  * - `"2d"`: 平行投影。`tilt = 0`（真下視点）に固定され、tilt 操作は無効化される。
@@ -37,20 +37,20 @@ export interface JpmapTerrainOptions {
     /** カメラチルト角（度） */
     tilt?: number;
     /**
-     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 2D モード時の Google Maps 互換ズームレベル。
      * `viewMode: "2d"` と組み合わせて指定する。指定時は `altitude` より優先。
      */
     zoomLevel?: number;
     /** 地図種類 */
     mapType?: MapType;
     /**
-     * カメラ視点モード (Issue #193)。
+     * カメラ視点モード。
      * - `"3d"` (既定): 透視投影。`tilt` 有効。
      * - `"2d"`: 平行投影。`tilt = 0` 固定で tilt 操作は無効。
      */
     viewMode?: ViewMode;
     /**
-     * ライブラリ内蔵の 3D/2D 切替ボタンを表示するかどうか (Issue #193)。
+     * ライブラリ内蔵の 3D/2D 切替ボタンを表示するかどうか。
      * 既定 `true`。デモ側で独自の UI を用意する場合に `false` を指定する。
      */
     showViewModeButton?: boolean;
@@ -66,14 +66,14 @@ export interface JpmapTerrainOptions {
      */
     autoSunPosition?: boolean;
     /**
-     * 太陽 DirectionalLight による地形への影描画を有効にする (Issue #39)。
+     * 太陽 DirectionalLight による地形への影描画を有効にする。
      * 既定は `false`（OFF）。`true` のとき `ShadowGenerator` を生成し、
      * 既存タイルおよび以後追加されるタイルメッシュを caster / receiver として登録する。
      * GPU 負荷が大きいため、必要時のみ有効化することを推奨する。
      */
     showSunShadows?: boolean;
     /**
-     * ドラッグによるマップのパン（平行移動）操作を有効にするかどうか (Issue #259)。
+     * ドラッグによるマップのパン（平行移動）操作を有効にするかどうか。
      * 既定 `true`。`false` を指定すると単純ドラッグでのパンを無効化し、地図中心を
      * 固定したままにできる（Ctrl/Cmd+ドラッグの回転・チルト、ホイールズームは有効のまま）。
      * 砲撃ゲームのように戦場を常に中央へ固定したいデモで使用する。
@@ -153,12 +153,12 @@ export interface CameraChangeEvent {
     readonly azimuth: number;
     readonly tilt: number;
     /**
-     * 現在のカメラ視点モード (Issue #193)。
+     * 現在のカメラ視点モード。
      * `"2d"` のとき `tilt` は常に `0` を返す。
      */
     readonly viewMode: ViewMode;
     /**
-     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 2D モード時の Google Maps 互換ズームレベル。
      * `viewMode === "2d"` のとき `camera.radius` から算出した値。
      * 3D モードでは `undefined`。
      */
@@ -169,18 +169,18 @@ export interface CameraChangeEvent {
 export type CameraChangeListener = (event: CameraChangeEvent) => void;
 
 /**
- * `JpmapTerrain.onMapTypeChange` リスナー (Issue #149)。
+ * `JpmapTerrain.onMapTypeChange` リスナー。
  * `mapType` が実際に変化したタイミングのみ呼ばれる。
  */
 export type MapTypeChangeListener = (mapType: MapType) => void;
 
 /**
- * `JpmapTerrain.onViewModeChange` リスナー (Issue #193)。
+ * `JpmapTerrain.onViewModeChange` リスナー。
  * `viewMode` が実際に変化したタイミングのみ呼ばれる。
  */
 export type ViewModeChangeListener = (viewMode: ViewMode) => void;
 
-// ---- 地形クリック通知 (Issue #183) ----
+// ---- 地形クリック通知 ----
 
 /**
  * `JpmapTerrain.onTerrainClick` のリスナー引数。
@@ -210,7 +210,7 @@ export type TerrainClickListener = (event: TerrainClickEvent) => void;
  */
 export const TERRAIN_CLICK_DRAG_THRESHOLD_PX = 4;
 
-// ---- ポリゴン頂点インタラクション (Issue #184) ----
+// ---- ポリゴン頂点インタラクション ----
 
 /**
  * ポリゴン頂点上のポインタイベント共通ペイロード。
@@ -234,7 +234,7 @@ export interface PolygonPointPointerEvent {
  * - `lat` / `lon` / `groundAltitude` : カーソル位置の地形メッシュとの交点。
  *   地形にヒットしなかった場合は `null`。
  * - `planeLat` / `planeLon` : カーソルレイと「ドラッグ開始時の頂点高さ」
- *   を保つ水平面との交点 (#186)。交点が得られないときは `null`。
+ *   を保つ水平面との交点。交点が得られないときは `null`。
  *   `altitudeMode` によらず、頂点の現在の world Y を保ちながら
  *   カーソルと同じ画面位置に頂点を追従させたいときに使用する。
  */
@@ -259,7 +259,7 @@ export interface PolygonPointDragEvent extends PolygonPointPointerEvent {
      * ドラッグ開始時の頂点 (x, z) を通る垂直線とカーソルレイの
      * 最近接点の world Y。高度編集時にポイントをカーソル位置に
      * 追従させるために使用する。交点が得られない（カメラがほぼ
-     * 真上 / 真下を向いている）場合は `null` (#186)。
+     * 真上 / 真下を向いている）場合は `null`。
      */
     readonly pointerAltitude: number | null;
 }
@@ -283,7 +283,7 @@ export type PolygonPointDragListener = (event: PolygonPointDragEvent) => void;
  */
 export const POLYGON_POINT_DRAG_THRESHOLD_PX = 3;
 
-// ---- マーカー (Issue #167) ----
+// ---- マーカー ----
 
 export interface MarkerTextOptions {
     /** テキスト本体。"\n" で複数行。最大 512 chars（超過は console.warn のうえ truncate） */
@@ -366,7 +366,7 @@ export const MARKER_DEFAULTS = {
     textMaxLength: 512,
 } as const;
 
-// ---- ポリゴン (Issue #169 / #170) ----
+// ---- ポリゴン ----
 
 /**
  * ポリゴン頂点の Y 値解決方法。
@@ -394,9 +394,9 @@ export interface PolygonPointOptions {
 /**
  * ポリゴン全体のスタイル（spec/package.md §3.3.8.1）。
  *
- * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は #170 で適用。
- * - `dropLine*` / `label*` は #171 で適用。
- * - `wallColor` / `wallOpacity` は #172 で適用予定。
+ * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は  で適用。
+ * - `dropLine*` / `label*` は  で適用。
+ * - `wallColor` / `wallOpacity` は  で適用予定。
  */
 export interface PolygonStyleOptions {
     /** 線色 CSS。default `#ff0000` */
@@ -423,9 +423,9 @@ export interface PolygonStyleOptions {
     labelBackgroundColor?: string;
     /** ラベル文字サイズ (px)。default 14 */
     labelFontSize?: number;
-    /** 壁の色 CSS (#172)。default `#ff0000` */
+    /** 壁の色 CSS。default `#ff0000` */
     wallColor?: string;
-    /** 壁の不透明度 [0,1] (#172)。default 0.3 */
+    /** 壁の不透明度 [0,1]。default 0.3 */
     wallOpacity?: number;
 }
 
@@ -436,8 +436,8 @@ export interface PolygonOptions {
     /** 頂点列。最低 1 点。1 点のみのときは点・垂線・点ラベルのみ描画され、線・壁・辺ラベルは存在しない。 */
     points: readonly PolygonPointOptions[];
     /**
-     * `true` の場合、最後の頂点と最初の頂点を結ぶ線を 1 本追加する（#170）。
-     * 面塗りなどは #172 で実装する。default false
+     * `true` の場合、最後の頂点と最初の頂点を結ぶ線を 1 本追加する。
+     * 面塗りなどは  で実装する。default false
      */
     closed?: boolean;
     /** 高度モード。default `"terrain"` */
@@ -451,7 +451,7 @@ export interface PolygonOptions {
      * 辺ラベル（隣接頂点間ごと）。`edgeLabels[i]` は `points[i]` → `points[i+1]` の
      * 中点に表示される。`closed === true` のときの末尾要素 `edgeLabels[points.length-1]`
      * は `points[points.length-1]` → `points[0]` のラベルとして扱う。
-     * 値が `undefined` または `length` 範囲外の辺にはラベルを描画しない (#185)。
+     * 値が `undefined` または `length` 範囲外の辺にはラベルを描画しない。
      */
     edgeLabels?: ReadonlyArray<string | undefined>;
     /** スタイル */
@@ -462,12 +462,12 @@ export interface PolygonOptions {
     verticalsEnabled?: boolean;
     /** ポイント脇のラベルの表示 ON/OFF。default true */
     labelsEnabled?: boolean;
-    /** 隣接垂線間をつなぐ「壁」の表示 ON/OFF (#172)。default true */
+    /** 隣接垂線間をつなぐ「壁」の表示 ON/OFF。default true */
     wallsEnabled?: boolean;
 }
 
 /**
- * 点単位の部分更新型 (Issue #173)。
+ * 点単位の部分更新型。
  *
  * - `lat` / `lon` / `altitude` / `label` のいずれか（複数可）を指定可能。
  * - `label` に `null` を渡した場合、当該 index のラベル（メッシュ）を削除する。
@@ -481,8 +481,8 @@ export interface PolygonPointPartial {
 }
 
 /**
- * `JpmapTerrain.updatePolygon`（#173 で公開予定）の部分更新型。
- * `#170` では `PolygonManager` 内部実装でのみ使用する。
+ * `JpmapTerrain.updatePolygon`（で公開予定）の部分更新型。
+ * `` では `PolygonManager` 内部実装でのみ使用する。
  */
 export type PolygonUpdate = Partial<
     Pick<
@@ -510,7 +510,7 @@ export interface PolygonHandle {
     readonly altitudeMode: AltitudeMode;
     readonly labels: ReadonlyArray<string | undefined> | undefined;
     /**
-     * 辺ラベル（#185）。一度でも `edgeLabels` を指定された場合は
+     * 辺ラベル。一度でも `edgeLabels` を指定された場合は
      * `points` と整合する長さ（`closed ? N : N-1`）の配列を返し、
      * 未指定要素は `undefined`。一度も指定されていない場合は `undefined`。
      */
@@ -521,7 +521,7 @@ export interface PolygonHandle {
     readonly verticalsEnabled: boolean;
     /** ラベルの表示状態 */
     readonly labelsEnabled: boolean;
-    /** 壁の表示状態 (#172) */
+    /** 壁の表示状態 */
     readonly wallsEnabled: boolean;
     /**
      * `terrain` モード時、全頂点の標高が解決済みなら true。
@@ -534,7 +534,7 @@ export interface PolygonHandle {
  * ポリゴンの既定値（spec/package.md §3.3.8.1）。
  *
  * `style` は仕様書記載の既定値を採用する。
- * `wallColor` / `wallOpacity` は #172 で適用予定（型予約）。
+ * `wallColor` / `wallOpacity` は  で適用予定（型予約）。
  */
 export const POLYGON_DEFAULTS = {
     closed: false,
@@ -556,16 +556,16 @@ export const POLYGON_DEFAULTS = {
         labelColor: "#000000",
         labelBackgroundColor: "transparent",
         labelFontSize: 14,
-        // 以下は #172 用の予約値（描画未使用）。Required<> 充足のために保持。
+        // 以下は  用の予約値（描画未使用）。Required<> 充足のために保持。
         wallColor: "#ff0000",
         wallOpacity: 0.3,
     },
 } as const;
 
-// ---- 円 (Issue #201 / #202) ----
+// ---- 円 ----
 
 /**
- * 円の中心点（Issue #201 / #202）。
+ * 円の中心点。
  *
  * - `lat` / `lon` (度) は JAPAN_BOUNDS 内の値である必要がある。
  * - `altitude` (m) は `altitudeMode === "absolute"` のとき必須（海抜高度）。
@@ -581,7 +581,7 @@ export interface CircleCenterOptions {
 }
 
 /**
- * 円のスタイル（Issue #201 / #202）。
+ * 円のスタイル。
  *
  * 中心点・円周・壁・中心ラベルの色 / 太さ / 不透明度 / フォントを指定する。
  * すべて任意指定で、未指定時は {@link CIRCLE_DEFAULTS} の値が適用される。
@@ -612,7 +612,7 @@ export interface CircleStyleOptions {
 }
 
 /**
- * 円追加オプション（Issue #201 / #202）。
+ * 円追加オプション。
  *
  * - `radius` は world m。`> 0` かつ {@link CIRCLE_RADIUS_MAX_M} 以下である必要がある。
  * - `segments` は円周分割数。`[CIRCLE_SEGMENTS_MIN, CIRCLE_SEGMENTS_MAX]` の範囲内である必要がある。
@@ -650,7 +650,7 @@ export interface CircleOptions {
 }
 
 /**
- * `JpmapTerrain.updateCircle`（#205）の部分更新型。
+ * `JpmapTerrain.updateCircle`の部分更新型。
  *
  * partial 未指定フィールドは現状維持される。
  * `segments` 変更時のみ円周 Tube / 壁 Ribbon を dispose+再生成する。
@@ -710,7 +710,7 @@ export const CIRCLE_SEGMENTS_MAX = 512;
 export const CIRCLE_RADIUS_MAX_M = 100_000;
 
 /**
- * 円の既定値（Issue #201 / #202）。
+ * 円の既定値。
  *
  * `style` は Polygon の既定値と同一の配色を採用する。
  */
@@ -737,7 +737,7 @@ export const CIRCLE_DEFAULTS = {
     },
 } as const;
 
-// ---- 3Dモデル (Issue #243) ----
+// ---- 3Dモデル ----
 
 /**
  * 3Dモデルの3軸値（回転・スケール共通）。
@@ -753,7 +753,7 @@ export interface ModelVector3 {
 }
 
 /**
- * `JpmapTerrain.addModel` のオプション (Issue #243)。
+ * `JpmapTerrain.addModel` のオプション。
  *
  * Babylon.js がサポートする 3D モデルファイル (glb / gltf / obj / stl) を
  * 地形上にロードして配置する。ローダーは拡張子に応じて動的インポートされる。
@@ -793,7 +793,7 @@ export interface ModelOptions {
 }
 
 /**
- * `JpmapTerrain.updateModel` の部分更新型 (Issue #243)。
+ * `JpmapTerrain.updateModel` の部分更新型。
  *
  * 未指定フィールドは現状維持される。`url` は変更不可（モデル差替えは remove → add）。
  */
@@ -812,7 +812,7 @@ export type ModelUpdate = Partial<
 >;
 
 /**
- * `JpmapTerrain.addModel` / `getModel` / `updateModel` の戻り値 (Issue #243)。
+ * `JpmapTerrain.addModel` / `getModel` / `updateModel` の戻り値。
  * read-only スナップショット。
  */
 export interface ModelHandle {
@@ -841,7 +841,7 @@ export interface ModelHandle {
 }
 
 /**
- * 3Dモデルの既定値 (Issue #243)。
+ * 3Dモデルの既定値。
  */
 export const MODEL_DEFAULTS = {
     altitude: 0,

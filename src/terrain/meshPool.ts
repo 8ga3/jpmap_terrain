@@ -7,7 +7,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 /**
- * 太陽影描画 (Issue #39) のための caster / receiver 設定フック。
+ * 太陽影描画  のための caster / receiver 設定フック。
  *
  * `MeshPool.acquire` 直後と `release` 直前に呼ばれる。`ShadowGenerator` の
  * `addShadowCaster` / `removeShadowCaster` と `mesh.receiveShadows` の切替を集約する。
@@ -26,7 +26,7 @@ export interface MeshPool {
     readonly activeCount: number;
     readonly pooledCount: number;
     /**
-     * 影 caster / receiver 設定フックを差し替える (Issue #39)。
+     * 影 caster / receiver 設定フックを差し替える。
      * `null` を渡すとフック解除。設定済みフックは差し替え時には自動解除されないため、
      * 既存メッシュへの一括反映は呼び出し側で {@link MeshPool.forEachActive} を併用する。
      */

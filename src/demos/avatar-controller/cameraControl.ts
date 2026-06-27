@@ -1,5 +1,5 @@
 /**
- * 右ジョイスティックによるカメラ操作ロジック (Issue #289)
+ * 右ジョイスティックによるカメラ操作ロジック
  *
  * Game Controller の右スティック入力からカメラの方位角（azimuth）と
  * チルト角（tilt）の変化量を計算する純粋関数群。
@@ -21,7 +21,7 @@ export const TILT_SPEED_DPS = 60;
 /** チルト最小値（度）。camera.lowerBetaLimit ≈ 0.1 rad に対応。 */
 export const TILT_MIN_DEG = 6;
 
-/** チルト最大値（度）。camera.upperBetaLimit = π/2 - π/180 ≈ 89° に対応 (#377)。 */
+/** チルト最大値（度）。camera.upperBetaLimit = π/2 - π/180 ≈ 89° に対応。 */
 export const TILT_MAX_DEG = 89;
 
 /** カメラ制御の計算結果 */

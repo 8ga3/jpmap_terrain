@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * `src/demos/timelapse/index.ts` の純粋関数 export ユニットテスト (#231)。
+ * `src/demos/timelapse/index.ts` の純粋関数 export ユニットテスト。
  *
  * - `resolveCameraInit`: URL からカメラ初期値を解決し、タイムラプス固有デフォルトと合成する。
  *   - URL 未指定: 空オブジェクト（呼び出し側の TIMELAPSE_CAMERA_DEFAULTS が活きる）

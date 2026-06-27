@@ -1,5 +1,5 @@
 /**
- * geo/crossLevel の単体テスト (Issue #275 Phase 1)。
+ * geo/crossLevel の単体テスト。
  *
  * - selectCoarseEdges: 同 zoom 隣接が選択済みならスキップ / 粗親辺の検出 / 標高未ロードで pending
  * - snapEdgeElevation: 境界辺で粗メッシュ表面値を返し、辺以外は null

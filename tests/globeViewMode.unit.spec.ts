@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  *
- * globe バックエンドの 2D/3D 視点モード (#395 / #349) 統合テスト。
+ * globe バックエンドの 2D/3D 視点モード 統合テスト。
  *
  * NullEngine + jsdom で `GlobeScene.createSceneWithController` を実体構築し、
  * GeospatialCamera の ORTHOGRAPHIC 切替・pitch=0 トップダウン・ortho フラスタム・
@@ -167,7 +167,7 @@ describe("globe 視点モード 2D/3D (#395)", () => {
         );
         expect(gc.camera.radius).toBeCloseTo(expectedRadius, 3);
         // radius 更新後に ortho フラスタムが再同期され、新 radius と整合する（初期化直後の
-        // 1 フレーム不整合を防ぐ, PR #407）。
+        // 1 フレーム不整合を防ぐ）。
         const aspect = RENDER_W / RENDER_H;
         const halfH = expectedRadius * Math.tan(gc.camera.fov / 2);
         expect(gc.camera.orthoTop).toBeCloseTo(halfH, 3);

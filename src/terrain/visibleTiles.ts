@@ -76,7 +76,7 @@ export interface QuadtreeTilesOptions {
     sseThreshold?: number;
     /**
      * LOD バイアス。正の値で粗いタイルを採用しやすくする。
-     * 内部的には `sseThreshold *= 2^lodBias` として作用する (Issue #245)。
+     * 内部的には `sseThreshold *= 2^lodBias` として作用する。
      */
     lodBias?: number;
     /** AABB の maxY に使う値。省略時 DEFAULT_MAX_ELEVATION */

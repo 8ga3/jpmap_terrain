@@ -262,7 +262,7 @@ const createMapToggleButton = (): HTMLButtonElement => {
 };
 
 /**
- * 3D / 2D 視点モード切替ボタン (Issue #193)。
+ * 3D / 2D 視点モード切替ボタン。
  *
  * コンパスボタン（top:12px right:12px の 40×40 円形）の直下に同幅・同色系で配置する。
  * ラベルは「次に切り替える先」を表示する（3D 表示中は `2D`、2D 表示中は `3D`）。
@@ -397,7 +397,7 @@ export const createControlPanel = (): ControlPanelElements => {
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();
 
-    // 視点モード切替ボタン（コンパス直下に配置） (Issue #193)。
+    // 視点モード切替ボタン（コンパス直下に配置）。
     // Tab 順がコンパスの直後になるよう、DOM への追加順をコンパスの直後にする。
     const viewModeButton = createViewModeToggleButton();
 

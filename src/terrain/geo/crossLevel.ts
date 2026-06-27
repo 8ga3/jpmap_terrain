@@ -1,11 +1,11 @@
 /**
- * クロスレベル標高スナップ (Issue #275 Phase 1)。
+ * クロスレベル標高スナップ。
  *
  * LOD 境界（細タイルが粗タイルに隣接）で残る陰影シームを消すため、細タイルの境界辺
  * 頂点の標高を、隣接する粗タイルのメッシュ表面にスナップする。平面版の
  * `src/terrain/tileStitching.ts`（`selectCoarseEdgeNeighbors` / `stitchTileEdgesCrossLevel`）
  * と同じ考え方。標高スナップは ECEF 変換前の「標高値」に対する処理なので座標系非依存で、
- * グローブ版にもそのまま適用できる。PoC (#321) を本体共有モジュールへ昇格。
+ * グローブ版にもそのまま適用できる。PoC  を本体共有モジュールへ昇格。
  */
 import { TILE_SIZE } from "../gsiTile";
 import { sampleElevBilinear } from "./elevSample";

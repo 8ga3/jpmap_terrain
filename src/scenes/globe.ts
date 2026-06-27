@@ -1,15 +1,15 @@
 /**
- * グローブ地形シーン (Issue #275 Phase 1 + Phase 2)。
+ * グローブ地形シーン。
  *
  * ECEF 楕円体 + Large World Rendering の floating origin で構築したグローブ地形シーン。
  * `GeospatialCamera` を中核に、`geo/globeTileManager` で動的 LOD タイルを描画し、
  * 注視点を地形表面へ追従させる。
  *
- * Phase 1: 「座標系・メッシュ生成・カメラ基盤・配置・LOD」の地形エンジン（注視点ズーム・
+ * 「座標系・メッシュ生成・カメラ基盤・配置・LOD」の地形エンジン（注視点ズーム・
  * seat-on-terrain・地心距離 LOD）。
- * Phase 2: picking 非依存パン（左ドラッグ / WASD）・カメラ地形衝突・seat の対地クリアランス
+ * picking 非依存パン（左ドラッグ / WASD）・カメラ地形衝突・seat の対地クリアランス
  * フェードを追加。zoom-to-cursor（カーソル位置へ寄るズーム）は seat との鉛直結合で揺れていたため、
- * ズーム中は seat を一時停止し目標点を scene.pick 非依存で固定して実装（Issue #327）。
+ * ズーム中は seat を一時停止し目標点を scene.pick 非依存で固定して実装。
  * URL 等価性はデモ（`demos/geospatial/index.ts`）側で実装。
  */
 import { Scene } from "@babylonjs/core/scene";
@@ -70,7 +70,7 @@ export const GLOBE_SCENE_DEFAULTS = {
     /** SSE 採用しきい値 [px]。 */
     sseThreshold: 256 * 2.0,
     /**
-     * 同時保持タイル数の上限。#335 の視錐台フルカバー（前景〜地平線、横は水平 FOV 台形）を高 DPI
+     * 同時保持タイル数の上限。 の視錐台フルカバー（前景〜地平線、横は水平 FOV 台形）を高 DPI
      * （3x≒render 3240px）かつ高チルトでも欠けなく収めるため拡大（実測最悪 ~329 枚 < 384）。
      * 通常（1080p・中チルト）は ~40〜130 枚で、本値は安全上限として滅多に到達しない。
      */
@@ -82,7 +82,7 @@ export const GLOBE_SCENE_DEFAULTS = {
     /** 地平線カリングの内積しきい値。 */
     horizonDotThreshold: 0.1,
     /**
-     * root の最粗 zoom（高度/距離適応ルートレベルの下限, Issue #335）。高高度・遠景では SSE
+     * root の最粗 zoom（高度/距離適応ルートレベルの下限）。高高度・遠景では SSE
      * 最適 zoom がこの値まで下がり、少数の粗タイルで広域（地平線・全球）を被覆する。地理院タイルは
      * テクスチャ（std/seamlessphoto）が z0〜、標高（dem_png）が z1〜実データを供給するため、全球
      * 視点で z2〜z4 の少数タイル（例: 高度 12,000km で 8 枚）で地図をマッピングできる。z2 を下限とする
@@ -110,7 +110,7 @@ const SEAT_FULL_CLEARANCE = 3000;
 const SEAT_ZERO_CLEARANCE = 10000;
 
 /**
- * zoom-to-cursor のズーム中に seat-on-terrain を一時停止する判定パラメータ（Issue #327）。
+ * zoom-to-cursor のズーム中に seat-on-terrain を一時停止する判定パラメータ。
  * ネイティブのズーム（ホイール入力＋慣性減衰）と seat（center 高度の地形追従）が鉛直方向で
  * 引っ張り合い揺れるため、ズームが落ち着くまで seat を止める。
  * - `ZOOM_PAUSE_IDLE_MS`: 最後のホイール入力からこの時間が経過するまでは「ズーム中」とみなす。
@@ -131,22 +131,22 @@ const PAN_KEYS = new Set(["w", "a", "s", "d"]);
 
 /** 低高度（地表付近）の背景色（青空）。`scene.clearColor` の初期値と一致。 */
 const DAY_SKY_COLOR = new Color3(0.75, 0.86, 0.95);
-/** 高高度（宇宙空間）の背景色（黒）。Issue #371 の高度連動暗化の到達点。 */
+/** 高高度（宇宙空間）の背景色（黒）。 の高度連動暗化の到達点。 */
 const SPACE_SKY_COLOR = new Color3(0, 0, 0);
 
 /**
- * 最大チルト[deg]（pitch 上限, Issue #335 UX ガード）。完全水平（90°=地平線真正面）では
+ * 最大チルト[deg]（pitch 上限,  UX ガード）。完全水平（90°=地平線真正面）では
  * 可視域がほぼ全て遠距離になり、距離適応ルートレベルでも被覆が退化しやすい。実用上の上限で
  * クランプし、ほぼ水平までは許しつつ完全水平の退化を抑止する。
  */
 const MAX_TILT_DEG = 89;
 
 /**
- * 地球楕円体スフィア（背景＋地平線リファレンス, Issue #335）を海面より沈める量 [m]。
+ * 地球楕円体スフィア（背景＋地平線リファレンス）を海面より沈める量 [m]。
  * 地形（標高>=0）との z-fighting はスフィアの深度書き込み無効化（disableDepthWrite, 後述）で
  * 原理的に解消する。
  *
- * 沈め量は、常時表示ベースレイヤ（#341, z2 タイル）のメッシュが真球面から内側へたるむ量
+ * 沈め量は、常時表示ベースレイヤ（z2 タイル）のメッシュが真球面から内側へたるむ量
  * （96 分割で最大 ~430m）より十分深くする。さもないと高高度・水平チルトの地平線（limb）で、
  * ベースのテクスチャ面より外側に背景球が張り出して縁が青く透ける。1500m はそのたるみ量に対する
  * 安全マージンで、地平線をベース（テクスチャ）が覆い、背景球はその背面（極域・宇宙側の背景）に退く。
@@ -155,7 +155,7 @@ const MAX_TILT_DEG = 89;
 const EARTH_SPHERE_SINK_M = 1500;
 
 /**
- * 背景スフィアのレンダリンググループ（Issue #335）。地形・地物と同じ既定グループ(0)に置きつつ、
+ * 背景スフィアのレンダリンググループ。地形・地物と同じ既定グループ(0)に置きつつ、
  * スフィアのマテリアルを **深度書き込み無効（disableDepthWrite）** にすることで、地形/オーバーレイ
  * の深度セマンティクス（ポリゴン/サークルは地形と深度共有して交差、マーカーは group 1 で手前）を
  * 一切変えずに z-fighting を回避する。スフィアは深度を書かない純粋な背景として描画され、地形が
@@ -195,16 +195,16 @@ export interface GlobeSceneInitOptions {
     /** 同期統計のコールバック（情報表示・テスト用）。 */
     onSyncStats?: (stats: GlobeSceneSyncInfo) => void;
     /**
-     * 初期視点モード (#395 / #349)。`"2d"` で Web メルカトル相当のトップダウン正射表示
+     * 初期視点モード。`"2d"` で Web メルカトル相当のトップダウン正射表示
      * （高度なし・物理なし・skymap なし・日照なし・オーバーレイ縮退）。既定 `"3d"`。
      */
     viewMode?: ViewMode;
     /**
-     * 2D 時の初期ズームレベル（Google Maps 互換、#254）。指定時は `camera.radius` へ変換する。
+     * 2D 時の初期ズームレベル（Google Maps 互換）。指定時は `camera.radius` へ変換する。
      * 3D 時は無視する。
      */
     zoomLevel?: number;
-    /** `viewMode` が実際に変化した際に呼ばれるコールバック (#395 / #193)。 */
+    /** `viewMode` が実際に変化した際に呼ばれるコールバック。 */
     onViewModeChange?: (viewMode: ViewMode) => void;
 }
 
@@ -287,22 +287,22 @@ export interface GlobeSceneController {
     scene: Scene;
     camera: GeospatialCamera;
     tileManager: GlobeTileManager;
-    /** グローブ用マーカー（Phase 3）。接地・地心 up ポール・カメラ正対ラベル。 */
+    /** グローブ用マーカー。接地・地心 up ポール・カメラ正対ラベル。 */
     markerManager: GlobeMarkerManager;
-    /** グローブ用ポリゴン（Phase 3）。接地アウトライン・地心 up カーテン壁。 */
+    /** グローブ用ポリゴン。接地アウトライン・地心 up カーテン壁。 */
     polygonManager: GlobePolygonManager;
-    /** グローブ用サークル（Phase 3）。中心+半径の円を閉ポリゴンとして描画。 */
+    /** グローブ用サークル。中心+半径の円を閉ポリゴンとして描画。 */
     circleManager: GlobeCircleManager;
-    /** グローブ用モデル（Phase 3）。glb/gltf を接地し地心 up へ起立。 */
+    /** グローブ用モデル。glb/gltf を接地し地心 up へ起立。 */
     modelManager: GlobeModelManager;
-    /** 太陽光（指向性ライト）。時刻連動の太陽方向駆動（#368 / P4-1）に用いる。 */
+    /** 太陽光（指向性ライト）。時刻連動の太陽方向駆動に用いる。 */
     sunLight: DirectionalLight;
-    /** 環境光（半球ライト）。強度は時刻に依らず一定（昼夜の境界は指向性ライトの幾何で表現, #368 / P4-1）。 */
+    /** 環境光（半球ライト）。強度は時刻に依らず一定（昼夜の境界は指向性ライトの幾何で表現）。 */
     hemiLight: HemisphericLight;
-    /** 太陽メッシュ（発光球）。時刻連動で太陽方向に配置・表示する（#368 / P4-1）。 */
+    /** 太陽メッシュ（発光球）。時刻連動で太陽方向に配置・表示する。 */
     sunMesh: Mesh;
     /**
-     * 時刻連動の背景（skybox）基調色（Issue #380）。`scene.clearColor` は毎フレーム
+     * 時刻連動の背景（skybox）基調色。`scene.clearColor` は毎フレーム
      * この色から `SPACE_SKY_COLOR`（宇宙黒）へ高度連動で lerp して決まる。
      * 太陽位置に応じた更新は controller（globeSceneController）が `deriveSkyColor` で行う。
      */
@@ -332,12 +332,12 @@ export interface GlobeSceneController {
     subscribePolygonPointDragEnd: (
         listener: GlobePolygonPointDragListener,
     ) => () => void;
-    /** 現在の視点モード ("3d" | "2d") を返す (#395)。 */
+    /** 現在の視点モード ("3d" | "2d") を返す。 */
     getViewMode: () => ViewMode;
-    /** 視点モードを切り替える (#395)。実変化時のみ `onViewModeChange` を発火する。 */
+    /** 視点モードを切り替える。実変化時のみ `onViewModeChange` を発火する。 */
     setViewMode: (mode: ViewMode) => void;
     /**
-     * 2D 時のみ現在のズームレベル（Google Maps 互換, #254）を返す。3D 時は undefined。
+     * 2D 時のみ現在のズームレベル（Google Maps 互換）を返す。3D 時は undefined。
      */
     getZoomLevel: () => number | undefined;
     dispose: () => void;
@@ -400,7 +400,7 @@ export class GlobeScene {
         camera.center = centerEcef;
         camera.radius = radius;
         // 既存 UI の azimuth/tilt[deg] を yaw/pitch[rad] にマッピングして初期化。
-        // 完全水平の退化を避けるため pitch 上限を MAX_TILT_DEG にクランプする（#335 UX ガード）。
+        // 完全水平の退化を避けるため pitch 上限を MAX_TILT_DEG にクランプする（UX ガード）。
         // GeospatialCamera 組み込みの limits.pitchMax がドラッグ操作にも適用される。
         camera.limits.pitchMax = MAX_TILT_DEG * DEG2RAD;
         camera.yaw = azimuth * DEG2RAD;
@@ -410,7 +410,7 @@ export class GlobeScene {
         camera.addBehavior(new GeospatialClippingBehavior());
         camera.attachControl(true);
 
-        // zoom-to-cursor（カーソル下の地点へ寄るズーム）を有効化する（Issue #327）。ネイティブ実装は
+        // zoom-to-cursor（カーソル下の地点へ寄るズーム）を有効化する。ネイティブ実装は
         // ホイール毎に scene.pick でカーソル下の点を取り直すが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックが毎回ブレ、ズームが揺れる。
         // そこで後段で handleZoom を差し替え、目標点を scene.pick 非依存の「真の ECEF カメラ位置
@@ -418,7 +418,7 @@ export class GlobeScene {
         // （ホイール〜慣性減衰）は seat-on-terrain を一時停止し、鉛直方向の引っ張り合い（揺れの主因）を断つ。
         camera.movement.zoomToCursor = true;
 
-        // GeospatialCamera 内部の scene.pick を無効化しつつ、ズーム後の向き補正は温存する（Issue #327 揺れ修正）。
+        // GeospatialCamera 内部の scene.pick を無効化しつつ、ズーム後の向き補正は温存する（揺れ修正）。
         // ネイティブカメラは複数箇所で scene.pick / PickWithRay を使う:
         //   1) startDrag（左ドラッグの開始でドラッグ平面を作る）
         //   2) handleZoom（カーソル下の点を取り直しズーム目標にする）
@@ -438,7 +438,7 @@ export class GlobeScene {
         // ---- picking 非依存パン（左ドラッグ / WASD） ----
         // 既定の pan（左ドラッグ/キーボード）は scene.pick でグローブをヒットしてドラッグ平面を
         // 作るが、useFloatingOrigin 下ではレンダリング座標と真の ECEF メッシュ位置がずれて
-        // ピックが外れ機能しない。floating origin（#275 の精度要件）を維持するため、
+        // ピックが外れ機能しない。floating origin（の精度要件）を維持するため、
         // camera.center を地表接線方向へ動かす独自パンを実装する。
         const pressed = new Set<string>();
         const onKeyDown = (e: KeyboardEvent): void => {
@@ -471,7 +471,7 @@ export class GlobeScene {
         let dragging = false;
         let lastX = 0;
         let lastY = 0;
-        // ---- ポリゴン頂点インタラクション状態（#275 P4） ----
+        // ---- ポリゴン頂点インタラクション状態 ----
         // パン handler（onPointerDown/Move）から参照するため早期に宣言する。実体の購読 API・
         // 幾何ピック・ドラッグハンドラはカメラ/レイ補助関数（後述）の後で定義・遅延登録する。
         let polygonPointGesture: {
@@ -508,7 +508,7 @@ export class GlobeScene {
         const panned = new Vector3();
 
         const onPointerMove = (e: PointerEvent): void => {
-            // ポリゴン頂点ジェスチャ進行中はパンしない（#275 P4）。ドラッグ処理は専用 handler が行う。
+            // ポリゴン頂点ジェスチャ進行中はパンしない。ドラッグ処理は専用 handler が行う。
             if (
                 polygonPointGesture &&
                 polygonPointGesture.pointerId === e.pointerId
@@ -540,7 +540,7 @@ export class GlobeScene {
             // マップを掴んで引く挙動: 右ドラッグ→center 西（content 右へ）、下ドラッグ→center 北（前方）。
             tangent.copyFrom(dragRight).scaleInPlace(-dx * mpp);
             tangent.addInPlace(dragFwd.scaleInPlace(dy * mpp));
-            // 極付近の高速回転を抑える（#356）。極では東西の一定メートル移動が経度の巨大変化に対応する。
+            // 極付近の高速回転を抑える。極では東西の一定メートル移動が経度の巨大変化に対応する。
             tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
         };
@@ -582,7 +582,7 @@ export class GlobeScene {
             tangent.addInPlace(dragRight.scaleInPlace(side));
             if (tangent.lengthSquared() < 1e-12) return;
             tangent.normalize().scaleInPlace(step);
-            // 極付近の高速回転を抑える（#356）。左ドラッグパンと同一の減速を WASD にも適用する。
+            // 極付近の高速回転を抑える。左ドラッグパンと同一の減速を WASD にも適用する。
             tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
         };
@@ -598,7 +598,7 @@ export class GlobeScene {
         const sun = new DirectionalLight("globe-sun", sunDir, scene);
         sun.intensity = 0.7;
 
-        // ---- 地球楕円体スフィア（背景 / 地平線リファレンス, #335） ----
+        // ---- 地球楕円体スフィア（背景 / 地平線リファレンス） ----
         // DEM no-data（海上など）でタイルメッシュが生成されない領域や、距離適応 root の外側で
         // 視界が「宇宙へ抜ける穴」になるのを防ぎ、地平線を可視化する WGS84 楕円体のソリッド球。
         // floating origin 下でもタイルメッシュと同じ真の ECEF 系なので、地球中心（原点）に静止
@@ -621,11 +621,11 @@ export class GlobeScene {
         // 深度書き込みを無効化して純粋な背景にする（地形/オーバーレイの深度を一切汚さない）。
         // スフィアは深度テストはするが書かないため、地形が存在する画素では地形に負けて隠れ、
         // 地形が無い画素だけ塗られる。両者が深度を書き合わないので z-fighting が起きず、描画順に
-        // 依存しない（#335）。海面より僅かに沈めた earthSink は、深度等値での取り合いを避ける保険。
+        // 依存しない。海面より僅かに沈めた earthSink は、深度等値での取り合いを避ける保険。
         earthMat.disableDepthWrite = true;
         earth.material = earthMat;
 
-        // ---- 太陽メッシュ遮蔽用の深度オンリー楕円体（#368 / P4-1） ----
+        // ---- 太陽メッシュ遮蔽用の深度オンリー楕円体 ----
         // 背景球・ベースレイヤは深度を書かない（disableDepthWrite, 上記 / globeTileManager）ため、
         // 広域ズームでは地球が深度バッファへ寄与せず、太陽メッシュ（後段）が地球の裏側にあっても深度
         // テストで隠れない。そこで「色を書かず深度のみ書く」ソリッド楕円体を地球と同位置に重ね、太陽を
@@ -635,7 +635,7 @@ export class GlobeScene {
         // 太陽を遮蔽し、太陽が地面の手前へ突き抜けて見えるのを防ぐ。広域ズームでは地形タイルが深度を
         // 書かない（ベースレイヤ）ため、このオクルーダが地球シルエットを供給する。
         // オクルーダ深度が背景球・ベースレイヤ（同じ半径・深度非書き込み）と等深度で争い、広域ズームの
-        // 低い深度精度で z-fighting（背景の青球がチラつく / #335）するのを防ぐため、zOffset でオクルーダの
+        // 低い深度精度で z-fighting（背景の青球がチラつく）するのを防ぐため、zOffset でオクルーダの
         // 深度をわずかに奥へバイアスする。これにより背景球/ベースレイヤが常に手前に描かれて勝つ（チラつき
         // 解消）一方、はるか遠方（far クリップ手前）の太陽より十分手前に留まるため遮蔽は維持される。
         // RG_BACKGROUND 内では不透明メッシュはマテリアルの uniqueId 昇順で描画される（Babylon
@@ -658,7 +658,7 @@ export class GlobeScene {
         sunOccluderMat.zOffset = 8;
         sunOccluder.material = sunOccluderMat;
 
-        // 太陽メッシュ（#368 / P4-1）。発光する球を planar 同様に infiniteDistance で配置する。
+        // 太陽メッシュ。発光する球を planar 同様に infiniteDistance で配置する。
         // infiniteDistance 有効時、Babylon は毎フレーム mesh.position にカメラのワールド位置を
         // 加算してワールド位置を決める（transformNode: position + cameraWorldPosition）。
         // よって mesh.position に太陽方向ベクトル×距離を設定すれば、floating origin の
@@ -694,22 +694,22 @@ export class GlobeScene {
             snapEnabled,
         });
 
-        // ---- グローブマーカー（Phase 3） ----
+        // ---- グローブマーカー ----
         const markerManager = createGlobeMarkerManager({
             scene,
             terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
         });
-        // ---- グローブポリゴン（Phase 3） ----
+        // ---- グローブポリゴン ----
         const polygonManager = createGlobePolygonManager({
             scene,
             terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
         });
-        // ---- グローブサークル（Phase 3） ----
+        // ---- グローブサークル ----
         const circleManager = createGlobeCircleManager({
             scene,
             terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
         });
-        // ---- グローブモデル（Phase 3） ----
+        // ---- グローブモデル ----
         const modelManager = createGlobeModelManager({
             scene,
             terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
@@ -739,7 +739,7 @@ export class GlobeScene {
             return cameraEcef;
         };
 
-        // ---- zoom-to-cursor の目標点を scene.pick 非依存で求める差し替え（Issue #327） ----
+        // ---- zoom-to-cursor の目標点を scene.pick 非依存で求める差し替え ----
         // ネイティブ handleZoom は毎ホイールで scene.pick(pointerX,pointerY) して
         // computedPerFrameZoomPickPoint を更新するが、floating origin 下では点がブレてズームが
         // 揺れる。ここでは真の ECEF カメラ位置からカーソル方向のレイを飛ばし、地球楕円体（WGS84、
@@ -762,7 +762,7 @@ export class GlobeScene {
         const cursorOrigin = new Vector3();
         let lastWheelTimeMs = Number.NEGATIVE_INFINITY;
 
-        // カーソル下方向の単位レイを**二重精度**で構築する（Issue #327 揺れの精度要因）。
+        // カーソル下方向の単位レイを**二重精度**で構築する（揺れの精度要因）。
         // scene.createPickingRayToRef は near/far の 2 点を逆ビュー射影で復元し差分して方向を得るが、
         // floating origin 下でも getViewMatrix が返すのは真の ECEF（並進 ~6.4e6）の行列で、しかも
         // Babylon の Matrix は Float32Array。巨大並進を含む行列で復元した 2 つの近接点の差分は桁落ち
@@ -815,7 +815,7 @@ export class GlobeScene {
         // - perspective(3D): 原点 = カメラ ECEF、方向 = 画素ごとに発散（中心から放射）。
         // - orthographic(2D): 平行投影。方向 = forward（中心画素方向）固定で、原点をカメラ平面上で
         //   画素オフセット分ずらす。これを怠ると 2D で画面中心以外の頂点が正しくピックできない
-        //   （単一原点 + 発散方向の透視レイは ortho では中心以外の点を外す） (#395 2D 編集)。
+        //   （単一原点 + 発散方向の透視レイは ortho では中心以外の点を外す） (2D 編集)。
         const computePickRayToRef = (
             pxCss: number,
             pyCss: number,
@@ -859,7 +859,7 @@ export class GlobeScene {
         // ズーム（zoom-to-cursor）は現在のポインタ位置（scene.pointerX/Y）のレイを使う。
         // 2D(ORTHOGRAPHIC) では平行投影のため、原点を画素オフセット分ずらし方向を forward 固定に
         // する必要がある（透視レイ方向 + 単一原点では中心以外でズーム先がずれる）。click ピックと
-        // 同じ computePickRayToRef でモードに応じた origin+dir を構築する (#395 2D zoom-to-cursor)。
+        // 同じ computePickRayToRef でモードに応じた origin+dir を構築する (2D zoom-to-cursor)。
 
         movement.handleZoom = (zoomDelta: number): void => {
             if (zoomDelta === 0) return;
@@ -889,7 +889,7 @@ export class GlobeScene {
             }
         };
 
-        // ---- _recalculateCenter 用の center 再取得を scene.pick 非依存にする差し替え（Issue #327） ----
+        // ---- _recalculateCenter 用の center 再取得を scene.pick 非依存にする差し替え ----
         // ネイティブ _recalculateCenter はズーム/パン確定時に pickAlongVector(lookAt) で center を
         // 地表へ再スナップし、その新 center に対して lookAt（ワールド注視方向）から yaw/pitch を
         // 引き直す。これがズームのフレーム結合誤差（真下チルトでの南北東西の振れ）を打ち消す肝。
@@ -914,7 +914,7 @@ export class GlobeScene {
             return null;
         };
 
-        // ---- ズーム終了時のスナップ（急な移動）を防ぐ毎フレーム向き補正（Issue #327） ----
+        // ---- ズーム終了時のスナップ（急な移動）を防ぐ毎フレーム向き補正 ----
         // ネイティブはズーム中、毎フレーム _applyZoom→zoomToPoint で center を動かしつつ yaw/pitch を
         // 数値的に据え置く（center のローカル ENU フレームが回転＝フレーム結合誤差を蓄積）。向き補正を
         // 担う _recalculateCenter は「移動が止まったフレーム」に一度だけ発火するため、蓄積誤差がズーム
@@ -971,7 +971,7 @@ export class GlobeScene {
             recalculateCenterPublic();
         };
 
-        // ---- 地形クリック通知（pick 非依存・floating origin 対応, #275 P4） ----
+        // ---- 地形クリック通知（pick 非依存・floating origin 対応） ----
         // 平面版（撤去済み）は scene.pick で地形メッシュをヒットするが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックがブレる。そこでズーム/パンと同じく
         // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で 1 回反復）と交差させて
@@ -1115,7 +1115,7 @@ export class GlobeScene {
             };
         };
 
-        // ---- ポリゴン頂点インタラクション（pick 非依存・floating origin 対応, #275 P4） ----
+        // ---- ポリゴン頂点インタラクション（pick 非依存・floating origin 対応） ----
         // 平面版（撤去済み）は scene.pick で頂点メッシュをヒットするが、floating origin 下では
         // レンダリング座標がずれてピックがブレうる。そこで terrain-click と同じく、真の ECEF カメラ
         // 位置からカーソル方向のレイを作り、各頂点 ECEF（globePolygonManager.getPickablePoints）との
@@ -1400,7 +1400,7 @@ export class GlobeScene {
             canvas.setPointerCapture?.(e.pointerId);
             // パン handler はこの pointerdown で既に dragging=true / pointer capture を
             // 設定済み（登録順が先）。頂点ジェスチャ中はパンを完全に無効化する。これにより
-            // 万一ジェスチャが途中で解除されてもカメラがパンしない（#275 P4 ドラッグ競合対策）。
+            // 万一ジェスチャが途中で解除されてもカメラがパンしない（ドラッグ競合対策）。
             dragging = false;
             // terrain-click 抑制（登録順非依存）: 進行中の terrain クリック開始判定を破棄する。
             clickStart = null;
@@ -1592,7 +1592,7 @@ export class GlobeScene {
 
 
         // ズーム中（ホイール入力〜慣性減衰）か否かを判定する。ホイールが idle かつ radius が
-        // フレーム間で settle したら「ズーム終了」とみなし seat を復帰させる（Issue #327）。
+        // フレーム間で settle したら「ズーム終了」とみなし seat を復帰させる。
         let prevRadius = camera.radius;
         const isZoomActive = (): boolean => {
             const radiusDelta = Math.abs(camera.radius - prevRadius);
@@ -1632,7 +1632,7 @@ export class GlobeScene {
 
         // 注視点を地形表面へ追従させる（地表付近でカメラが地形下へ潜るのを防ぐ）。毎フレーム実行。
         // 追従強度はカメラの対地クリアランスでフェードし、十分高い位置では追従しない（高高度の
-        // パンで地形の起伏に沿ってカメラ高度がばたつくのを防ぐ）。zoom-to-cursor（Issue #327）は
+        // パンで地形の起伏に沿ってカメラ高度がばたつくのを防ぐ）。zoom-to-cursorは
         // center を毎フレーム動かすため、ズーム中（`zoomActive`）は seat を一時停止して鉛直方向の
         // 引っ張り合い（揺れの主因）を断つ。ズームが落ち着くと seat の lerp で滑らかに復帰する。
         // camAltMeters はカメラの楕円体高度（observer で 1 回だけ計算した値を共有）。
@@ -1684,7 +1684,7 @@ export class GlobeScene {
             if (newRadius !== camera.radius) camera.radius = newRadius;
         };
 
-        // ---- 視点モード 2D/3D (#395 / #349) ----
+        // ---- 視点モード 2D/3D ----
         // GeospatialCamera を ORTHOGRAPHIC + pitch=0（トップダウン）へ切替え、Web メルカトル相当の
         // 2D 正射表示にする。タイルは同一 tileManager 共有のため自動成立する（globeTileManager 無改変）。
         // 3D パスは不変（2D 限定の分岐を追加するのみ）。
@@ -1717,7 +1717,7 @@ export class GlobeScene {
         // viewMode 切替直後に 1 回だけオーバーレイを現在カメラで再アンカーする。これをしないと、
         // setOverlayFlatten で flat フラグだけが先に変わり、実際の位置・スケール再計算は次フレームの
         // 毎フレーム update まで遅延するため、切替直後の 1 フレームだけ「ポールは消えたのにアイコンは
-        // 先端位置のまま」等の不整合（チラつき）が出る (#395)。毎フレームループと同じ camEcef/flatScale
+        // 先端位置のまま」等の不整合（チラつき）が出る。毎フレームループと同じ camEcef/flatScale
         // を用いて同期する。
         const reanchorOverlaysForViewMode = (mode: ViewMode): void => {
             const camEcef = computeCameraEcef();
@@ -1742,7 +1742,7 @@ export class GlobeScene {
                 camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
                 applyOrthoFrustum();
                 setOverlayFlatten(true);
-                // 2D は skymap 無し（#395）。3D 分岐の宇宙黒への高度連動 lerp を行わないため、
+                // 2D は skymap 無し。3D 分岐の宇宙黒への高度連動 lerp を行わないため、
                 // 背景を一定の昼空色へ固定する（3D 復帰時は次フレームの clearColor ループが上書き）。
                 scene.clearColor.set(DAY_SKY_COLOR.r, DAY_SKY_COLOR.g, DAY_SKY_COLOR.b, 1);
             } else {
@@ -1751,7 +1751,7 @@ export class GlobeScene {
                 setOverlayFlatten(false);
             }
             currentViewMode = next;
-            // setOverlayFlatten 直後に 1 回だけ再アンカーし、切替フレームの不整合を防ぐ (#395)。
+            // setOverlayFlatten 直後に 1 回だけ再アンカーし、切替フレームの不整合を防ぐ。
             reanchorOverlaysForViewMode(next);
             if (!opts?.silent) options.onViewModeChange?.(next);
         };
@@ -1776,13 +1776,13 @@ export class GlobeScene {
         // 戻り値から代入される controller」をまだ初期化前に参照し TDZ エラーになるため。
         // frame=0 の最初のフレームで即同期し、以降は syncIntervalFrames ごとに再評価する。
         let frame = 0;
-        // 時刻連動の背景基調色（Issue #380）。controller が deriveSkyColor で更新する。
+        // 時刻連動の背景基調色。controller が deriveSkyColor で更新する。
         // 初期値は昼空色（dateTime 反映前のフォールバック）。
         const skyBaseColor = DAY_SKY_COLOR.clone();
         const observer = scene.onBeforeRenderObservable.add(() => {
             applyKeyboardPan();
             // 2D（トップダウン正射）: 毎フレーム pitch=0 を再代入してチルト操作を無効化し、
-            // radius/リサイズに追従して ortho フラスタムを更新する (#395)。
+            // radius/リサイズに追従して ortho フラスタムを更新する。
             if (currentViewMode === "2d") {
                 camera.pitch = 0;
                 applyOrthoFrustum();
@@ -1793,11 +1793,11 @@ export class GlobeScene {
             const camEcef = computeCameraEcef(); // lookAt バッファも更新される
             const camGeo = ecefToGeodetic(camEcef);
             if (currentViewMode === "3d") {
-                // 高度連動の背景暗化（高高度ほど宇宙の黒へ）。Issue #371。
+                // 高度連動の背景暗化（高高度ほど宇宙の黒へ）。。
                 // 真の測地高度 altMeters を用い、約 12km から暗化開始・75km でほぼ黒に収束させる。
                 const spaceFactor = computeSpaceFactor(camGeo.altMeters);
                 // 毎フレーム Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
-                // 基調色は時刻連動の skyBaseColor（昼=青/夜=紺/日の出入り=茜, Issue #380）。
+                // 基調色は時刻連動の skyBaseColor（昼=青/夜=紺/日の出入り=茜）。
                 scene.clearColor.set(
                     skyBaseColor.r + (SPACE_SKY_COLOR.r - skyBaseColor.r) * spaceFactor,
                     skyBaseColor.g + (SPACE_SKY_COLOR.g - skyBaseColor.g) * spaceFactor,
@@ -1833,11 +1833,11 @@ export class GlobeScene {
             frame++;
         });
 
-        // 初期視点モードを反映する (#395)。silent で初期 listener は発火させない。
+        // 初期視点モードを反映する。silent で初期 listener は発火させない。
         // "3d" は既定の perspective + pitch のままなので force 適用は 2d のみで足りる。
         if (initialViewMode === "2d") {
             applyViewModeInternal("2d", { silent: true, force: true });
-            // URL 等から zoomLevel 指定があれば radius へ変換する (#254)。
+            // URL 等から zoomLevel 指定があれば radius へ変換する。
             if (options.zoomLevel !== undefined) {
                 const h = engine.getRenderHeight();
                 if (h > 0) {

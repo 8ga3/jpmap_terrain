@@ -1,5 +1,5 @@
 /**
- * geo/globeLod の単体テスト (Issue #275 Phase 1)。
+ * geo/globeLod の単体テスト。
  *
  * - tileKey の形式
  * - maxZoom < minZoom で空配列

@@ -1,5 +1,5 @@
 /**
- * GlobeMarkerManager の振る舞い (Issue #275 Phase 3)。
+ * GlobeMarkerManager の振る舞い。
  *
  * Babylon の Mesh / Material 実体と marker.ts の描画部を軽量スタブに差し替え、
  * CRUD / enable / update / dispose 後ガード / validateIconUrl 投げ直し /

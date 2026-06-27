@@ -1,5 +1,5 @@
 /**
- * 3Dモデルデモ (Issue #244)
+ * 3Dモデルデモ
  *
  * `JpmapTerrain` の Model 公開 API（`addModel` / `updateModel` /
  * `removeModel` / `getModel` / `setModelEnabled`）を目視確認するためのデモ。

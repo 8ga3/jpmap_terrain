@@ -1,4 +1,4 @@
-/** URL に緯度・経度・カメラ姿勢を埋め込み / 復元するモジュール (Issue #64) */
+/** URL に緯度・経度・カメラ姿勢を埋め込み / 復元するモジュール */
 
 import { clamp } from "./gsiTile";
 import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
@@ -11,17 +11,17 @@ export interface LatLon {
 
 /**
  * 緯度経度クランプ範囲（全球）。
- * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する (#375 / #414)。
+ * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する。
  */
 export const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
 
-/** カメラ姿勢を含む URL 状態 (Issue #64) */
+/** カメラ姿勢を含む URL 状態 */
 export interface CameraUrlState extends LatLon {
     altitude: number;
     azimuth: number;
     tilt: number;
     /**
-     * 2D モード時の Google Maps 互換ズームレベル (#254)。
+     * 2D モード時の Google Maps 互換ズームレベル。
      * 定義されている場合、`toAtPath` は `@lat,lon,Xz` 形式で出力し
      * altitude / azimuth / tilt は URL に含めない。
      */
@@ -50,15 +50,15 @@ const GLOBE_MAX_RADIUS_SCALE = 4;
  * globe（GeospatialCamera）バックエンドはカメラの `radius` を altitude として URL に書き出す。
  * GeospatialCamera の既定 `radiusMax` は planetRadius × 4（= {@link WGS84_SEMI_MAJOR_AXIS_M} ×
  * {@link GLOBE_MAX_RADIUS_SCALE} = 25,512,548m）であり、高高度（全球視点）でもクランプで丸めない
- * よう上限をこの値に合わせる (#369)。
+ * よう上限をこの値に合わせる。
  */
 const ALTITUDE_MAX = WGS84_SEMI_MAJOR_AXIS_M * GLOBE_MAX_RADIUS_SCALE;
 
 /**
  * altitude / tilt のクランプ範囲。
- * - altitude: [50, {@link ALTITUDE_MAX}] (m)。上限は globe の最大 radius に合わせる (#369)。
+ * - altitude: [50, {@link ALTITUDE_MAX}] (m)。上限は globe の最大 radius に合わせる。
  * - tilt: [{@link TILT_MIN_DEG}, 89]（deg）。下限は {@link TILT_MIN_RAD} rad を度換算した値。
- *   上限はカメラの upperBetaLimit（≈ 89°）に合わせる (#377)。
+ *   上限はカメラの upperBetaLimit（≈ 89°）に合わせる。
  */
 export const CAMERA_URL_LIMITS = {
     altitude: { min: 50, max: ALTITUDE_MAX },
@@ -76,7 +76,7 @@ const ZOOM_LEVEL_PRECISION = 2;
 const EQUATOR_MPP = 156543.03392804097;
 
 /**
- * `camera.radius` → Google Maps 互換ズームレベルへ変換する (#254)。
+ * `camera.radius` → Google Maps 互換ズームレベルへ変換する。
  *
  * Web Mercator の定義に基づく:
  *   mpp = EQUATOR_MPP × cos(φ) / 2^z
@@ -97,7 +97,7 @@ export const radiusToZoomLevel = (
 };
 
 /**
- * Google Maps 互換ズームレベル → `camera.radius` へ変換する (#254)。
+ * Google Maps 互換ズームレベル → `camera.radius` へ変換する。
  * {@link radiusToZoomLevel} の逆関数。
  */
 export const zoomLevelToRadius = (
@@ -124,7 +124,7 @@ export const CAMERA_URL_DEFAULTS = {
 /**
  * @lat,lon[,altitude_or_zoomz,azimuth,tilt] パターン。
  * 2〜5 トークンに対応し、欠損トークンはパース後にデフォルト補完する。
- * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）はズームレベルとして解釈する (#254)。
+ * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）はズームレベルとして解釈する。
  */
 const AT_PATTERN =
     /@(-?\d+\.?\d*),(-?\d+\.?\d*)(?:,(-?\d+\.?\d*z?))?(?:,(-?\d+\.?\d*))?(?:,(-?\d+\.?\d*))?/;
@@ -162,9 +162,9 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  * いずれも無い場合は null を返す。
  *
  * 3 番目のトークンが `z` で終わる場合（例: `14.50z`）は Google Maps 互換の
- * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する (#254)。
+ * ズームレベルとして解釈し、`zoomLevel` フィールドに格納する。
  *
- * 緯度経度は {@link WORLD_BOUNDS}（全球）でクランプする (#375 / #413 / #414)。
+ * 緯度経度は {@link WORLD_BOUNDS}（全球）でクランプする。
  */
 export const parseCameraStateFromUrl = (
     url: string,
@@ -186,7 +186,7 @@ export const parseCameraStateFromUrl = (
 
                 const rawThird = atMatch[3];
                 if (rawThird !== undefined && rawThird.endsWith("z")) {
-                    // ズームレベル形式: @lat,lon,14.50z (#254)
+                    // ズームレベル形式: @lat,lon,14.50z
                     const z = Number(rawThird.slice(0, -1));
                     if (isFinite(z)) {
                         return {
@@ -252,7 +252,7 @@ export const parseLatLonFromUrl = (
 
 /**
  * 現在の pathname から `@lat,lon,...` セグメント以降を取り除き、
- * デモを識別するプレフィクス（例: `''`, `/viewer`, `/timelapse`）を返す (Issue #155)。
+ * デモを識別するプレフィクス（例: `''`, `/viewer`, `/timelapse`）を返す。
  *
  * - 末尾の `.html` は剥がして拡張子なしに正規化する。
  * - 末尾スラッシュは取り除く（`/` は `''` を返す）。
@@ -278,7 +278,7 @@ export const extractDemoPathPrefix = (pathname: string): string => {
  * - 状態オブジェクト: altitude/azimuth/tilt のいずれかが定義されていれば 5要素、
  *   全て未定義なら 2要素を返す。
  *
- * `prefix` を渡すと `${prefix}/@lat,lon,...` 形式になる (Issue #155)。
+ * `prefix` を渡すと `${prefix}/@lat,lon,...` 形式になる。
  * 例: `prefix="/viewer"` → `/viewer/@lat,lon,...`（Google Maps 互換のフォーマット）
  * `prefix=""` のときは `/@lat,lon,...`。
  */
@@ -310,7 +310,7 @@ export function toAtPath(
     if (!hasExtra) {
         return `${head}${latStr},${lonStr}`;
     }
-    // zoomLevel が定義されている場合は Google Maps 互換 `@lat,lon,Xz` 形式 (#254)。
+    // zoomLevel が定義されている場合は Google Maps 互換 `@lat,lon,Xz` 形式。
     if (state.zoomLevel !== undefined) {
         const z = clampZoomLevel(state.zoomLevel);
         return `${head}${latStr},${lonStr},${z.toFixed(ZOOM_LEVEL_PRECISION)}z`;
@@ -325,7 +325,7 @@ export function toAtPath(
  * history.replaceState で URL のパスを `${prefix}/@lat,lon[,altitude,azimuth,tilt]` 形式に更新する。
  * `prefix` が空のときは `/@lat,lon,...`、`/viewer` 等のときは `/viewer/@lat,lon,...`（Google Maps 互換）を出力する。
  * 現在の pathname からデモ識別子（例: `/viewer`, `/timelapse`）を抽出して保持し、
- * `.html` 拡張子は剥がして正規化する (Issue #155)。既存のクエリパラメータは保持する。
+ * `.html` 拡張子は剥がして正規化する。既存のクエリパラメータは保持する。
  * デバウンス付きファクトリを返す。
  */
 export const createUrlUpdater = (
@@ -347,7 +347,7 @@ export const createUrlUpdater = (
     };
 };
 
-// ---- mapType クエリ (Issue #149) ----
+// ---- mapType クエリ ----
 
 /** `?mapType=` のクエリキー名 */
 export const MAP_TYPE_QUERY_KEY = "mapType";
@@ -358,7 +358,7 @@ const isMapType = (value: string): value is MapType =>
     (MAP_TYPE_VALUES as ReadonlyArray<string>).includes(value);
 
 /**
- * URL から `?mapType=standard|photo` を読み取る (Issue #149)。
+ * URL から `?mapType=standard|photo` を読み取る。
  *
  * - 大小文字無視（`Standard`, `PHOTO` も可）。書き出しは小文字。
  * - 不正値・欠落・URL 解析失敗時は `null` を返す。
@@ -376,7 +376,7 @@ export const parseMapTypeFromUrl = (url: string): MapType | null => {
 };
 
 /**
- * 入力 URL のクエリ部に `mapType=<value>` をマージして返す純粋関数 (Issue #149)。
+ * 入力 URL のクエリ部に `mapType=<value>` をマージして返す純粋関数。
  *
  * - パス・他クエリ（例 `?engine=`）・ハッシュは保持する。
  * - 既存の `mapType` パラメータは上書きする。
@@ -389,7 +389,7 @@ export const withMapTypeInUrl = (url: string, mapType: MapType): string => {
 };
 
 /**
- * `history.replaceState` で現在の URL に `?mapType=<value>` を反映する (Issue #149)。
+ * `history.replaceState` で現在の URL に `?mapType=<value>` を反映する。
  * パス・他クエリ・ハッシュは保持する。`window` / `history` が未定義な環境
  *（Node.js / SSR など、ブラウザグローバルが存在しない実行環境）では何もしない。
  */
@@ -401,7 +401,7 @@ export const updateMapTypeInUrl = (mapType: MapType): void => {
     window.history.replaceState(null, "", next);
 };
 
-// ---- viewMode クエリ (Issue #193) ----
+// ---- viewMode クエリ ----
 
 /** `?viewMode=` のクエリキー名 */
 export const VIEW_MODE_QUERY_KEY = "viewMode";
@@ -412,7 +412,7 @@ const isViewMode = (value: string): value is ViewMode =>
     (VIEW_MODE_VALUES as ReadonlyArray<string>).includes(value);
 
 /**
- * URL から `?viewMode=3d|2d` を読み取る (Issue #193)。
+ * URL から `?viewMode=3d|2d` を読み取る。
  *
  * - 大小文字無視（`3D`, `2D` も可）。書き出しは小文字。
  * - 不正値・欠落・URL 解析失敗時は `null` を返す。
@@ -430,7 +430,7 @@ export const parseViewModeFromUrl = (url: string): ViewMode | null => {
 };
 
 /**
- * 入力 URL のクエリ部に `viewMode=<value>` をマージして返す純粋関数 (Issue #193)。
+ * 入力 URL のクエリ部に `viewMode=<value>` をマージして返す純粋関数。
  * パス・他クエリ・ハッシュは保持する。既存の `viewMode` パラメータは上書きする。
  */
 export const withViewModeInUrl = (url: string, viewMode: ViewMode): string => {
@@ -440,7 +440,7 @@ export const withViewModeInUrl = (url: string, viewMode: ViewMode): string => {
 };
 
 /**
- * `history.replaceState` で現在の URL に `?viewMode=<value>` を反映する (Issue #193)。
+ * `history.replaceState` で現在の URL に `?viewMode=<value>` を反映する。
  * `window` / `history` が未定義な環境では何もしない。
  */
 export const updateViewModeInUrl = (viewMode: ViewMode): void => {

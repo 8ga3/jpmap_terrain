@@ -1,5 +1,5 @@
 /**
- * 個別円ノード (Issue #201 / #203)。
+ * 個別円ノード。
  *
  * - 中心点の球（{@link CreateSphere}）
  * - 円周を結ぶチューブ（{@link CreateTube}、`updatable: true`、閉ループ）
@@ -13,7 +13,7 @@
  *
  * 描画グループ:
  * - 中心球 / 円周 Tube / 中心ラベル: `RENDERING_GROUP_ID = 1`（地表より手前）
- * - 壁 Ribbon: `SUBTERRAIN_RENDERING_GROUP_ID = 0`（地表深度でオクルード、#186 参照）
+ * - 壁 Ribbon: `SUBTERRAIN_RENDERING_GROUP_ID = 0`（地表深度でオクルード、 参照）
  */
 
 import type { Scene } from "@babylonjs/core/scene";

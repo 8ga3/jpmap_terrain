@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * UI visibility controller のユニットテスト (T6 / Issue #120)。
+ * UI visibility controller のユニットテスト (T6)。
  *
  * controlPanel の各要素が初期状態で `display: flex` 等のインライン style を持つ場合、
  * 単純に `style.display = ""` で復元すると元のレイアウトが失われる。

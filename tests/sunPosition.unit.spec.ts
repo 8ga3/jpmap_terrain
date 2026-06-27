@@ -1,5 +1,5 @@
 /**
- * `computeSunPosition` の代表ケース検証 (Issue #35 / Architect §4.1)。
+ * `computeSunPosition` の代表ケース検証 (Architect §4.1)。
  *
  * NOAA 簡易式の精度範囲 ±1° 程度を踏まえ、許容誤差は本テスト全体で ±2° に統一する
  * （Architect が示した ±1.5° 目安を、実装の実測値に対し若干上回る幅で許容）。

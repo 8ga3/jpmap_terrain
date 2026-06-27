@@ -1,7 +1,7 @@
 /**
- * Overlay 共通座標ユーティリティ (Issue #170 / #414)。
+ * Overlay 共通座標ユーティリティ。
  *
- * globe 単一バックエンド化（#414）後は、緯度経度の範囲検証のみを共通関数として提供する。
+ * globe 単一バックエンド化後は、緯度経度の範囲検証のみを共通関数として提供する。
  * `assertLatLonInBounds` は globe の overlay 実装（`globeSceneController` 等）から利用される。
  */
 

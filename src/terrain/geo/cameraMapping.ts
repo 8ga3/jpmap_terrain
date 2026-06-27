@@ -1,10 +1,10 @@
 /**
- * グローブカメラ（Issue #275 Phase 2）の UI/URL ⇄ `GeospatialCamera` マッピングと、
+ * グローブカメラの UI/URL ⇄ `GeospatialCamera` マッピングと、
  * floating origin 下で `scene.pick` に依存しないパン（地表接線移動）・カメラ地形衝突の純関数群。
  *
  * 既存（平面版）の UI / URL 共有は `azimuth`(方位) / `tilt`(チルト) / `altitude`(高度) を用いる。
  * これを `GeospatialCamera` の `yaw` / `pitch` / `radius` / `center`(ECEF) と相互変換する。
- * PoC（Issue #321 `geoMapping.ts`）の純関数を本体共有モジュールへ昇格したもの。
+ * PoC（`geoMapping.ts`）の純関数を本体共有モジュールへ昇格したもの。
  *
  * 対応関係:
  * - azimuth[deg] ⇄ yaw[rad]   （どちらも 0 = 北、+ = 東回り）
@@ -98,7 +98,7 @@ export const cameraTangentBasisToRef = (
 
 /**
  * 極付近のパン減速係数（[0,1]）を返す。極では東西の一定メートル移動が経度（極回りの方位角）の
- * 巨大な変化に対応し、地球が高速回転して見える（#356）。Babylon 組み込みパン
+ * 巨大な変化に対応し、地球が高速回転して見える。Babylon 組み込みパン
  * (`geospatialCameraMovement.computeCurrentFrameDeltas`) の緯度ダンピングと同等の式で、
  * 独自パン（`scenes/globe.ts`）にも極減速を与える。
  *

@@ -1,12 +1,12 @@
 /**
- * グローブ用モデルマネージャ (Issue #275 Phase 3 / Phase 4 P4-2)。
+ * グローブ用モデルマネージャ。
  *
  * 平面版（`modelManager`）に対する **並行構築** のグローブ実装。glb/gltf/obj/stl モデルを
  * lat/lon に接地し、**ローカル +Y を地心 up へ向けて「立たせる」**（`surfaceOrientationToRef`）。
  * 配置は ECEF（`geodeticToEcefToRef`）で `scene.pick` 非依存。平面版 `modelManager` は未改修で、
  * ローダー登録（`importLoaderForUrl`）のみ座標系非依存のため再利用する。
  *
- * P4-2 で公開 `ModelManager`（`addModel`/`updateModel`/`getModel`/...）相当へ拡張:
+ *  で公開 `ModelManager`（`addModel`/`updateModel`/`getModel`/...）相当へ拡張:
  * - in-place 更新（メッシュ再ロードなし）
  * - altitudeMode `terrain`/`absolute` と gravity（地表追従）
  * - per-axis scaling・フル Euler rotation（地心 up 起立に局所 pitch/roll を合成）

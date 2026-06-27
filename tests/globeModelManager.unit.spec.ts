@@ -1,5 +1,5 @@
 /**
- * GlobeModelManager の振る舞い (Issue #275 Phase 3)。
+ * GlobeModelManager の振る舞い。
  *
  * Babylon の TransformNode / ImportMeshAsync と marker.ts のローダー登録（importLoaderForUrl）を
  * スタブ化し、ロード完了→接地・起立、ロード前は配置しない、dispose 中のロード結果破棄、
@@ -118,7 +118,7 @@ describe("add / load", () => {
         resolveImport?.([mesh], [ag]);
         await new Promise((r) => setTimeout(r, 0));
         expect(ag.stop).toHaveBeenCalled();
-        // P4-2: play/stop 制御のため保持する（リーク防止は remove/dispose で行う）。
+        // play/stop 制御のため保持する（リーク防止は remove/dispose で行う）。
         expect(ag.dispose).not.toHaveBeenCalled();
     });
 });

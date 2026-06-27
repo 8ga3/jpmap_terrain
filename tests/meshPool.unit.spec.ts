@@ -110,7 +110,7 @@ describe("createMeshPool", () => {
         expect(mesh2.dispose).toHaveBeenCalled();
     });
 
-    it("setShadowHooks 設定後の acquire/release でフックが呼ばれる (Issue #39)", () => {
+    it("setShadowHooks 設定後の acquire/release でフックが呼ばれる", () => {
         const pool = createMeshPool({
             scene: mockScene,
             subdivisions: 128,
@@ -130,7 +130,7 @@ describe("createMeshPool", () => {
         expect(onRelease).toHaveBeenCalledWith(mesh);
     });
 
-    it("setShadowHooks(null) 後はフックが呼ばれない (Issue #39)", () => {
+    it("setShadowHooks(null) 後はフックが呼ばれない", () => {
         const pool = createMeshPool({
             scene: mockScene,
             subdivisions: 128,
@@ -147,7 +147,7 @@ describe("createMeshPool", () => {
         expect(onRelease).not.toHaveBeenCalled();
     });
 
-    it("forEachActive はアクティブなメッシュのみ列挙する (Issue #39)", () => {
+    it("forEachActive はアクティブなメッシュのみ列挙する", () => {
         const pool = createMeshPool({
             scene: mockScene,
             subdivisions: 128,

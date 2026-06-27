@@ -1,15 +1,15 @@
 /**
- * ポリゴンデモ (Issue #170 / #171)
+ * ポリゴンデモ
  *
  * `JpmapTerrain` の Polygon 公開 API（`addPolygon` / `setPolygonEnabled` /
  * `setVerticalsEnabled` / `setLabelsEnabled` / `removePolygon` / `listPolygons` /
  * `getPolygon`）を目視確認するためのデモ。
  *
- * 仕様 (#170 / #171 範囲):
+ * 仕様:
  * - `altitudeMode: "terrain"` で地形に沿って表示するポリライン
  * - `altitudeMode: "absolute"` で絶対標高 (m) のポリライン
  * - `closed: true` で末尾と先頭を結んだループ
- * - 各頂点から地表へ落とす垂線と頂点ラベル（#171）
+ * - 各頂点から地表へ落とす垂線と頂点ラベル
  *
  * 操作:
  * - 画面右上のボタンで各ポリゴンの enabled を ON/OFF
@@ -150,7 +150,7 @@ const buildControls = (
         refreshLabel();
     }
 
-    // 垂線/ラベルの全体トグル (Issue #171)
+    // 垂線/ラベルの全体トグル
     const buildToggle = (
         labelOn: string,
         labelOff: string,
@@ -185,7 +185,7 @@ const buildControls = (
             }
         }),
     );
-    // 壁 ON/OFF (Issue #172)
+    // 壁 ON/OFF
     container.appendChild(
         buildToggle("✔ 壁 ON", "✕ 壁 OFF", true, (next) => {
             for (const def of polygons) {
@@ -194,9 +194,9 @@ const buildControls = (
         }),
     );
 
-    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する (Issue #193)。
+    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する。
 
-    // 点編集 API デモ (Issue #173)。`yomiuri-closed` を編集対象とする。
+    // 点編集 API デモ。`yomiuri-closed` を編集対象とする。
     const editTargetId = "yomiuri-closed";
     let insertCounter = 0;
     let updateCounter = 0;
@@ -269,7 +269,7 @@ const buildControls = (
         buildEditButton("点 replace", () => {
             // 2 種類の頂点列を交互に切り替える。
             // 初期ポリゴンと同じ東側シフト (lon +0.006° ≒ +540m) 位置で描画されるようずらして表示し、
-            // replace を押しても他ポリゴンと重なる位置に戻らないようにする (#180)。
+            // replace を押しても他ポリゴンと重なる位置に戻らないようにする。
             replaceToggle = !replaceToggle;
             const altitude = 500;
             const next = replaceToggle

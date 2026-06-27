@@ -1664,9 +1664,9 @@ describe("同zoom タイル間ステッチの対称性", () => {
 });
 
 /* ================================================================
- * LOD 遷移時の遅延解放テスト (Issue #268)
+ * LOD 遷移時の遅延解放テスト
  * ================================================================ */
-describe("LOD遷移時の遅延解放 (Issue #268)", () => {
+describe("LOD遷移時の遅延解放", () => {
     it("再 setCenter 後も activeTileCount が維持される", async () => {
         const camera = createMockCamera();
         const tm = createTileManager({

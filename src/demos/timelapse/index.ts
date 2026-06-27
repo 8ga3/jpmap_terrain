@@ -1,5 +1,5 @@
 /**
- * タイムラプスデモ (Issue #147)
+ * タイムラプスデモ
  *
  * `JpmapTerrain` を起動し、24h を `?speed` 秒（既定 60s）に圧縮して
  * `viewer.dateTime` を毎フレーム更新する。アナログ時計 SVG オーバーレイが
@@ -168,8 +168,8 @@ const start = async (): Promise<void> => {
         refreshClock(timelapse.startUtc);
     }
 
-    // URL 同期: カメラ変化のたびに URL を更新する (Issue #155)。
-    // 2D モードでは `@lat,lon,Xz`、3D では `@lat,lon,altitude,azimuth,tilt` (#254)。
+    // URL 同期: カメラ変化のたびに URL を更新する。
+    // 2D モードでは `@lat,lon,Xz`、3D では `@lat,lon,altitude,azimuth,tilt`。
     // 既存クエリ（?engine=, ?start=, ?speed= など）は `createUrlUpdater` 内で保持される。
     // あわせて注視点経度を更新し、時計の地方時表示を追従させる（停止中のパンでも反映）。
     const urlUpdater = createUrlUpdater(200);

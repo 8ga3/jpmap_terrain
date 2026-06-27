@@ -1,5 +1,5 @@
 /**
- * artillery のステージ座標フレーム (Issue #404 P4-4 / #414)
+ * artillery のステージ座標フレーム
  *
  * globe（ECEF + floating origin）上でステージ物理を成立させるための薄い抽象。
  *

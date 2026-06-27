@@ -1,5 +1,5 @@
 /**
- * `src/demos/flight/waypoints.ts` の unit test (Issue #274)。
+ * `src/demos/flight/waypoints.ts` の unit test。
  *
  * ウェイポイント管理ロジック（arcDistance 等）をテストする。
  * Babylon.js の Scene/Mesh 依存部分はモック化。
@@ -201,7 +201,7 @@ describe("createWaypointManager", () => {
         ).not.toThrow();
     });
 
-    // Issue #274 PR #277 レビュー指摘: 通過 → フェード → 復活で state がリセットされることを検証
+    // 通過 → フェード → 復活で state がリセットされることを検証
     it("regenerates waypoint after pass: passed/fadeAlpha/visibility/scaling reset", () => {
         CreateDiscMock.mockClear();
         const scene = createMockScene();
@@ -261,7 +261,7 @@ describe("createWaypointManager", () => {
         expect(firstMesh.enabled).toBe(true);
     });
 
-    // Issue #269: onPass コールバックが通過時に呼ばれること
+    // onPass コールバックが通過時に呼ばれること
     it("calls onPass callback when waypoint is passed", () => {
         CreateDiscMock.mockClear();
         const scene = createMockScene();
@@ -292,7 +292,7 @@ describe("createWaypointManager", () => {
         expect(onPass).toHaveBeenCalledTimes(1);
     });
 
-    // Issue #349 P4-3 レビュー指摘: 真 ECEF 配置 + ENU 姿勢の回帰検知。
+    // 真 ECEF 配置 + ENU 姿勢の回帰検知。
     // geodeticToEcefToRef が呼ばれ、surfaceOrientationToRef の結果に応じて
     // rotationQuaternion が設定される/されないことを検証する。
     it("globe: geodeticToEcefToRef を呼び、姿勢成功時に rotationQuaternion を設定する", () => {

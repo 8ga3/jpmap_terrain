@@ -1,12 +1,12 @@
 /**
- * グローブシーンを `DefaultSceneController` 互換にするアダプタ (Issue #349 / #275 Phase 4 P4-0)。
+ * グローブシーンを `DefaultSceneController` 互換にするアダプタ。
  *
  * `JpmapTerrain`（公開ライブラリ）は `DefaultSceneController` インターフェース越しに
  * シーンを操作する。本アダプタは `scenes/globe.ts`（GeospatialCamera + ECEF + floating origin）の
  * `GlobeSceneController` を同インターフェースへ橋渡しし、`JpmapTerrain` が globe 描画を
  * 利用できるようにする。
  *
- * 本スライス（Slice 1）はカメラ get/set/flyTo・mapType（生成時固定）・dispose を実装する。
+ * 本スライスはカメラ get/set/flyTo・mapType（生成時固定）・dispose を実装する。
  * overlay マネージャ・UI コントロールパネル・2D(ortho)・太陽/影・external frustum・terrain click /
  * polygon point drag は globe 側の未整備機能を伴うため後続スライスで対応し、ここでは安全な
  * no-op もしくは明確な未対応エラーとする（design: files/p4-0_design.md）。
@@ -97,7 +97,7 @@ import {
     type GlobePolygonPointDragEvent,
 } from "./globe";
 
-/** globe のドラッグイベントを公開 {@link PolygonPointDragEvent} へ変換する（#275 P4）。 */
+/** globe のドラッグイベントを公開 {@link PolygonPointDragEvent} へ変換する。 */
 const toPublicDragEvent = (
     e: GlobePolygonPointDragEvent,
     polygonId: string,
@@ -148,7 +148,7 @@ interface AdapterEntry {
 /**
  * `GlobeMarkerManager`（採番 id / handle・partial-update 非対応）を公開
  * `MarkerManager`（明示 id / `MarkerHandle` 返却 / partial-update）へアダプトする
- * （#275 Phase 4 / P4-0 Slice 2a）。
+ * 。
  *
  * - 公開 id ↔ globe 内部 id の対応と、ハンドル再構築に必要な解決済みオプションを保持する。
  * - `GlobeMarkerManager` は in-place のプロパティ更新を持たないため、`update` は内部ノードを
@@ -390,7 +390,7 @@ const toGlobePolygonOptions = (entry: PolygonAdapterEntry): GlobePolygonOptions 
 
 /**
  * 公開 `PolygonManager` に globe 専用の逆引き（内部 globeId → 公開 id）を加えたアダプタ型。
- * polygon-point イベントの polygonId を公開 id へ翻訳するために使う（#275 P4）。
+ * polygon-point イベントの polygonId を公開 id へ翻訳するために使う。
  */
 export interface GlobePolygonManagerAdapter extends PolygonManager {
     /** 内部 globeId に対応する公開ポリゴン id を返す。未知なら null。 */
@@ -799,7 +799,7 @@ interface CircleAdapterEntry {
 
 /**
  * `GlobeCircleManager`（採番 id・閉ポリゴン委譲）を公開 `CircleManager`（明示 id・`CircleHandle`
- * 返却・partial-update・各種トグル）へアダプトする（#275 Phase 4 / Slice 2b-2）。
+ * 返却・partial-update・各種トグル）へアダプトする。
  *
  * - `GlobeCircleManager` は in-place 更新を持たないため、`update` および各トグルは内部ノードを
  *   作り直す（add-then-remove のトランザクション。Marker / Polygon アダプタと同契約）。
@@ -1070,7 +1070,7 @@ export const createGlobeCircleManagerAdapter = (
 
 /**
  * `DefaultSceneController` 互換の `createScene` を提供する globe シーンファクトリ。
- * `JpmapTerrain` は globe 単一化（#414）後、常に本クラスを使う。
+ * `JpmapTerrain` は globe 単一化後、常に本クラスを使う。
  */
 export class GlobeSceneAdapter {
     createScene = async (
@@ -1101,7 +1101,7 @@ export class GlobeSceneAdapter {
         options?.onReady?.(controller);
 
         // JpmapTerrain.initAsync は初期フラッシュ防止のため canvas を visibility:hidden で
-        // マウントし、planar(DefaultScene)は初回レンダ後に復帰させる(#225)。globe バックエンドでも
+        // マウントし、planar(DefaultScene)は初回レンダ後に復帰させる。globe バックエンドでも
         // 同様に初回レンダ後へ可視化を復帰しないと canvas が hidden のままで真っ白になる。
         gc.scene.onAfterRenderObservable.addOnce(() => {
             canvas.style.visibility = "";
@@ -1115,7 +1115,7 @@ const MODEL_UPDATE_ERROR_PREFIX = "JpmapTerrain.updateModel";
 
 /**
  * `GlobeModelManager`（採番 id・in-place 更新対応）を公開 `ModelManager`
- * （明示 id / `ModelHandle` 返却）へアダプトする (#275 Phase 4 / P4-2)。
+ * （明示 id / `ModelHandle` 返却）へアダプトする。
  *
  * - 公開 id ↔ globe 内部 id の対応を保持する。`GlobeModelManager` は in-place 更新・get・
  *   animation を備えるため、marker/polygon/circle アダプタと異なりノード再構築（remove+add）は
@@ -1319,7 +1319,7 @@ export const createGlobeSceneController = (
     const { camera } = gc;
     let currentMapType: MapType = initialMapType;
 
-    // 公開 overlay manager 互換アダプタ（P4-0 Slice 2a / 2b-1）。
+    // 公開 overlay manager 互換アダプタ（2b-1）。
     const markerManager = createGlobeMarkerManagerAdapter(
         gc.markerManager,
         (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
@@ -1338,7 +1338,7 @@ export const createGlobeSceneController = (
     );
 
     // polygon-point イベントが運ぶ内部 globeId を公開ポリゴン id へ翻訳する。
-    // デモ側は公開 id（例: distance の POLYGON_ID）で照合するため必須（#275 P4）。
+    // デモ側は公開 id（例: distance の POLYGON_ID）で照合するため必須。
     const resolvePolygonPublicId = (globeId: string): string =>
         polygonManager.resolvePublicPolygonId(globeId) ?? globeId;
 
@@ -1418,7 +1418,7 @@ export const createGlobeSceneController = (
     // （~2000m）から見たときに十分な詳細度になるよう設定し、lodBias で増減する。
     const FOLLOW_TILE_BASE_RADIUS_M = 2000;
 
-    // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
+    // ---- 太陽 / 影（globe ライティング統合） ----
     // timelapse デモは `dateTime` を毎フレーム駆動し setSunState を連打するため、
     // 現在の注視点(lat/lon)を基準に太陽方向(ECEF)を再計算して `globe-sun` ライトへ適用する。
     // 太陽方向は computeSunPosition（旧 planar シーンと同じ）で求める。明るさは globe では
@@ -1453,7 +1453,7 @@ export const createGlobeSceneController = (
     // 画面外・地球の裏側で昼の領域まで一律に暗くなり不自然なため、ライト強度は時刻に依らず一定にする。
     const GLOBE_SUN_LIGHT_INTENSITY = 1.2;
     const GLOBE_HEMI_LIGHT_INTENSITY = 0.35;
-    // 2D（#395）は「日時による日照表現は無し」。指向性ライト（太陽）を無効化し、環境光のみで
+    // 2Dは「日時による日照表現は無し」。指向性ライト（太陽）を無効化し、環境光のみで
     // 一様に照らすため、3D より強い環境光を採用する（一般的な Web メルカトル地図相当の見え方）。
     const HEMI_FLAT_2D_INTENSITY = 1.0;
     // 最後に算出した太陽方向(ECEF, 地表→太陽)と、太陽状態が有効か。距離 D / 見かけサイズは
@@ -1468,7 +1468,7 @@ export const createGlobeSceneController = (
     // 奥（地平線より奥・far クリップ手前）に置くことで、太陽は手前の地形や地球の縁から滑らかに欠け、地球の
     // 裏側では完全に隠れる。
     const placeSunMesh = (): void => {
-        // 2D（#395）は太陽メッシュ非表示（日照表現なし）。applyViewModeLighting が disable 済みなので
+        // 2Dは太陽メッシュ非表示（日照表現なし）。applyViewModeLighting が disable 済みなので
         // ここでは再有効化せず即 return する（毎フレームの setEnabled(true) で復活させない）。
         if (gc.getViewMode() === "2d") return;
         if (!sunStateValid) return;
@@ -1488,7 +1488,7 @@ export const createGlobeSceneController = (
     };
 
     const applyGlobeSunState = (): void => {
-        // 2D（#395）は日照表現なし。ライト強度/太陽方向/空色/太陽メッシュは applyViewModeLighting が
+        // 2Dは日照表現なし。ライト強度/太陽方向/空色/太陽メッシュは applyViewModeLighting が
         // 一様化するため、ここでの日時連動更新はスキップする（2D→3D 復帰時に改めて適用される）。
         if (gc.getViewMode() === "2d") return;
         // dateTime 未指定（null）のときは決定的フォールバック日時で計算する（planar と挙動を一致させる）。
@@ -1519,7 +1519,7 @@ export const createGlobeSceneController = (
         // 注視点の昼夜でシーン全体を減光しないことで、地球の裏側の昼領域が一律に暗くなる不自然さを避ける。
         gc.sunLight.intensity = GLOBE_SUN_LIGHT_INTENSITY;
         gc.hemiLight.intensity = GLOBE_HEMI_LIGHT_INTENSITY;
-        // 時刻連動の背景基調色（Issue #380）。注視点の太陽高度から昼=青/夜=紺/日の出入り=茜 を導き、
+        // 時刻連動の背景基調色。注視点の太陽高度から昼=青/夜=紺/日の出入り=茜 を導き、
         // globe.ts の clearColor ループが毎フレームこの色から宇宙黒へ高度連動で lerp する。
         gc.skyBaseColor.copyFrom(deriveSkyColor(altitudeDeg));
         // 太陽メッシュ（発光球）。infiniteDistance がカメラ位置を加算するため、position には
@@ -1530,7 +1530,7 @@ export const createGlobeSceneController = (
         placeSunMesh();
     };
 
-    // viewMode に応じたライティングを適用する（#395）。
+    // viewMode に応じたライティングを適用する。
     // - 2D: 指向性ライト（太陽）と発光する太陽メッシュを無効化し、環境光を強めて一様に照らす
     //   （skymap/日照表現なし）。
     // - 3D: 指向性ライトを再有効化し、環境光強度を 3D 既定へ戻す。2D→3D 復帰時のみ
@@ -1566,7 +1566,7 @@ export const createGlobeSceneController = (
     });
 
     // 注視点の移動（パン）でも背景色が昼夜境界（ターミネータ）を跨いで追従するよう、中心の
-    // 緯度経度が変化したら太陽状態を再計算する（planar が centerChanged で再計算するのと挙動を揃える, #380）。
+    // 緯度経度が変化したら太陽状態を再計算する（planar が centerChanged で再計算するのと挙動を揃える）。
     // 太陽の ECEF 方向は dateTime 固定なら中心移動に対して実質不変だが、注視点のローカル太陽高度は
     // 変わるため skyBaseColor の更新が必要。
     // per-frame コスト削減のため、変化検出は ECEF 座標差分（三角関数なし）で行い、しきい値を超えた
@@ -1600,7 +1600,7 @@ export const createGlobeSceneController = (
         applyGlobeSunState();
     });
 
-    // ---- UI コントロールパネル配線（#275 Phase 4 / P4-1） ----
+    // ---- UI コントロールパネル配線 ----
     // canvas が渡された実行時のみ DOM コントロールパネルを生成・配線する（単体テストの
     // 軽量スタブ呼び出しでは canvas 未指定で no-op）。
     let uiSetVisibility: (
@@ -1630,7 +1630,7 @@ export const createGlobeSceneController = (
         // UI 破棄後にアニメーション（requestAnimationFrame）が camera を更新し続けないための
         // ガードフラグ。uiDispose で true にし、各 rAF ループは次フレームをスケジュールしない。
         let uiDisposed = false;
-        // 視点切替ボタン: globe バックエンドでも 2D(ortho) を有効化 (#395 / #349)。
+        // 視点切替ボタン: globe バックエンドでも 2D(ortho) を有効化。
         // ラベルは「次に切り替える先」を示すアクションとして表示する（旧 planar と同パターン）。
         updateViewModeToggleLabel = (mode: ViewMode): void => {
             ui.viewModeButton.textContent = mode === "3d" ? "2D" : "3D";
@@ -1786,7 +1786,7 @@ export const createGlobeSceneController = (
             );
         });
 
-        // 地図切替ボタン: std ↔ photo を実行時に切り替える（#275 P4-1）。
+        // 地図切替ボタン: std ↔ photo を実行時に切り替える。
         ui.mapToggle.addEventListener("click", () => {
             applyMapType(currentMapType === "std" ? "photo" : "std", true);
         });
@@ -1832,7 +1832,7 @@ export const createGlobeSceneController = (
         getAltitude: () => camera.radius,
         getAzimuth: () => yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg,
         getTilt: () => yawPitchToUi(camera.yaw, camera.pitch).tiltDeg,
-        // 2D 時のみズームレベル（Google Maps 互換, #254）を返す。3D 時は undefined。
+        // 2D 時のみズームレベル（Google Maps 互換）を返す。3D 時は undefined。
         getZoomLevel: () => gc.getZoomLevel(),
 
         setLat: (value: number) => {
@@ -1872,11 +1872,11 @@ export const createGlobeSceneController = (
         // ---- mapType ----
         getMapType: () => fromGlobeMapType(currentMapType),
         setMapType: (value: "standard" | "photo") => {
-            // UI ボタンと同じ共通処理で実行時切替する（#275 P4-1）。onMapTypeChange も発火する。
+            // UI ボタンと同じ共通処理で実行時切替する。onMapTypeChange も発火する。
             applyMapType(toGlobeMapType(value), true);
         },
 
-        // ---- viewMode (#395 / #349) ----
+        // ---- viewMode ----
         // globe バックエンドでも 2D(ortho) を有効化。GlobeSceneController へ委譲する。
         getViewMode: () => gc.getViewMode(),
         setViewMode: (value) => {
@@ -1885,7 +1885,7 @@ export const createGlobeSceneController = (
             updateViewModeToggleLabel?.(gc.getViewMode());
         },
 
-        // ---- external frustum / tile camera（flight FollowCamera 用, #275 P4-3 / #402） ----
+        // ---- external frustum / tile camera（flight FollowCamera 用） ----
         // globe はタイル選択を GeospatialCamera の center/radius から行う（frustum 非対応）。
         // 外部追従カメラ（flight）では、機体 lat/lon を GeospatialCamera.center に据え、
         // radius で LOD を制御する。実タイルロードは onBeforeRender の syncTiles が次フレームで
@@ -1911,10 +1911,10 @@ export const createGlobeSceneController = (
             externalCompassDeg = degrees;
         },
 
-        // ---- UI コントロールパネル（#275 P4-1 で配線。canvas 未指定時は no-op） ----
+        // ---- UI コントロールパネル（で配線。canvas 未指定時は no-op） ----
         setUiVisibility: (target, visible) => uiSetVisibility(target, visible),
 
-        // ---- 太陽 / 影（globe ライティング統合, #368 / P4-1） ----
+        // ---- 太陽 / 影（globe ライティング統合） ----
         // setSunState: 適用すべき日時を保存し、現在の注視点基準で太陽方向・明るさを即時反映する。
         setSunState: (dateTime) => {
             currentSunDateTime = dateTime;
@@ -1948,7 +1948,7 @@ export const createGlobeSceneController = (
         getCircleManager: () => circleManager,
         getModelManager: () => modelManager,
 
-        // ---- 地形クリック購読（pick 非依存・floating origin 対応, #275 P4・実装済み） ----
+        // ---- 地形クリック購読（pick 非依存・floating origin 対応,） ----
         // globe シーン（globe.ts）が真の ECEF レイ × 地形楕円体で求めたクリック地点を、公開
         // TerrainClickEvent へ橋渡しする。GlobeTerrainClickEvent は構造互換だが、型を明示するため
         // ここで明示的にイベントを組み直す。
@@ -1962,7 +1962,7 @@ export const createGlobeSceneController = (
                     pointerEvent: e.pointerEvent,
                 }),
             ),
-        // ---- ポリゴン頂点インタラクション購読（pick 非依存・floating origin 対応, #275 P4・実装済み） ----
+        // ---- ポリゴン頂点インタラクション購読（pick 非依存・floating origin 対応,） ----
         // globe シーン（globe.ts）が真の ECEF レイ × 頂点 ECEF/楕円体/鉛直線で求めた hover/click/drag を、
         // 公開 PolygonPointPointerEvent / PolygonPointDragEvent へ橋渡しする（構造互換だが型を明示する）。
         subscribePolygonPointHover: (listener: PolygonPointHoverListener) =>

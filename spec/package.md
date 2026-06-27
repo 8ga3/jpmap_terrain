@@ -1,7 +1,5 @@
 # パッケージ仕様書
 
-> **Issue**: [#81 パッケージ仕様設計](https://github.com/8ga3/jpmap_terrain/issues/81)
-> **Parent Issue**: [#80 パッケージ化](https://github.com/8ga3/jpmap_terrain/issues/80)
 > **ステータス**: Draft
 
 ---
@@ -51,8 +49,8 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 | `azimuth` | `number` | `0` | 方位角（度、Babylon.js camera alpha に対応） |
 | `tilt` | `number` | `45` | チルト角（度、Babylon.js camera beta に対応） |
 | `mapType` | `"standard" \| "photo"` | `"standard"` | 地図種類（標準地図 / 航空写真） |
-| `viewMode` | `"3d" \| "2d"` | `"3d"` | カメラ視点モード（Issue #193）。`"2d"` は平行投影で `tilt = 0` 固定、tilt 操作無効 |
-| `showViewModeButton` | `boolean` | `true` | ライブラリ内蔵の 3D/2D 切替ボタンを表示するか（Issue #193） |
+| `viewMode` | `"3d" \| "2d"` | `"3d"` | カメラ視点モード。`"2d"` は平行投影で `tilt = 0` 固定、tilt 操作無効 |
+| `showViewModeButton` | `boolean` | `true` | ライブラリ内蔵の 3D/2D 切替ボタンを表示するか |
 | `dateTime` | `Date \| null` | `null` | 太陽位置計算に使う日時。`null` の場合は内部の決定的なフォールバック時刻（夏至日本時間正午）を使用 |
 | `autoSunPosition` | `boolean` | `false` | `true` で実時刻に追従して内部更新（60 秒周期）、`false` で `dateTime` を固定値として使用 |
 | `showSunShadows` | `boolean` | `false` | 太陽 DirectionalLight による地形への影描画を有効化する。GPU 負荷が大きいため既定 OFF |
@@ -87,7 +85,7 @@ interface JpmapTerrain {
   set tilt(value: number);
 
   /**
-   * カメラ視点モード（Issue #193）。
+   * カメラ視点モード。
    * - `"3d"`: 透視投影（既定）。`tilt` 有効。
    * - `"2d"`: 平行投影。`tilt = 0` 固定、tilt 操作（setter / `flyTo` / Ctrl+ドラッグ / コンパスボタン）は無効。
    *   3D へ復帰すると、2D 切替直前の `tilt` が復元される。
@@ -147,7 +145,7 @@ interface JpmapTerrain {
   get showMapToggle(): boolean;
   set showMapToggle(value: boolean);
 
-  /** 3D/2D 視点モード切替ボタンの表示・非表示（get / set, Issue #193） */
+  /** 3D/2D 視点モード切替ボタンの表示・非表示（get / set） */
   get showViewModeButton(): boolean;
   set showViewModeButton(value: boolean);
 
@@ -214,7 +212,7 @@ const unsubscribe = viewer.onCameraChange((e) => {
 unsubscribe();
 ```
 
-#### 3.3.5 mapType 変化イベント (Issue #149)
+#### 3.3.5 mapType 変化イベント
 
 地図種類（`mapType`）の変化を購読する。`onCameraChange` と対称な API。
 
@@ -248,7 +246,7 @@ const unsubscribe = viewer.onMapTypeChange((mapType) => {
 unsubscribe();
 ```
 
-#### 3.3.5.1 viewMode 変化イベント (Issue #193)
+#### 3.3.5.1 viewMode 変化イベント
 
 カメラ視点モード（`viewMode`）の変化を購読する。`onMapTypeChange` と対称な API。
 
@@ -318,7 +316,7 @@ interface JpmapTerrain {
 - `dispose()` 時に内部タイマーは確実に解放される。
 - ビジュアルテストの決定性が必要な場面（Playwright 等）では、URL クエリ `?dateTime=<ISO8601 with Z>&autoSunPosition=false` を付与し、太陽位置を完全に固定すること。
 
-**`showSunShadows` 仕様 (Issue #39):**
+**`showSunShadows` 仕様:**
 
 - 既定 `false`（OFF）。OFF 時は `ShadowGenerator` を生成せず、GPU 負荷を発生させない。
 - `true` を set すると `ShadowGenerator`（解像度 1024 / `usePercentageCloserFiltering=true` / `darkness=0.4`）を生成し、現時点でアクティブな地形タイルおよび以後追加されるタイルメッシュを caster / receiver として登録する。
@@ -327,7 +325,7 @@ interface JpmapTerrain {
 - `dispose()` 時に `ShadowGenerator` は確実に解放される。
 - URL クエリ `?showSunShadows=true|false` で初期値を制御できる（`true`/`false` 以外の値は無視）。
 
-#### 3.3.7 マーカー (Issue #167)
+#### 3.3.7 マーカー
 
 任意地点に、地表から垂直に伸びる線とその先のビルボード（アイコン＋改行テキスト）を表示する機能。
 
@@ -382,24 +380,24 @@ interface MarkerOptions {
 - `dispose()` で全マーカーリソース（Mesh / Material / Texture）を解放する。
 - マーカーは別機能（タイムラプス等）から内部的に利用可能。
 
-**`mapType` URL クエリ仕様 (Issue #149):**
+**`mapType` URL クエリ仕様:**
 
 - URL クエリ `?mapType=standard|photo` で初期値を上書きできる（デモ層）。
 - 値は大小文字無視で受理する（例: `?mapType=Photo` も `"photo"` として解釈）。書き戻し時は小文字に正規化する。
 - 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.mapType`（= `"standard"`）にフォールバックする（例外は投げない）。
 - `viewer.mapType` の変化（UI 切替ボタン / プログラム set）は `onMapTypeChange` 経由でデモ層が `history.replaceState` により URL の `?mapType=` を更新する。パス（`/@lat,lon[,...]`）と他クエリ（`engine`, `dateTime` 等）・ハッシュは保持される。
 
-**`viewMode` URL クエリ仕様 (Issue #193):**
+**`viewMode` URL クエリ仕様:**
 
 - URL クエリ `?viewMode=3d|2d` で初期値を上書きできる（デモ層）。
 - 値は大小文字無視で受理する。書き戻し時は小文字に正規化する。
 - 不正値・欠落・URL 解析失敗時は `JPMAP_TERRAIN_DEFAULTS.viewMode`（= `"3d"`）にフォールバックする。
 - `viewer.viewMode` の変化は `onViewModeChange` 経由でデモ層が `history.replaceState` により URL の `?viewMode=` を更新する。パス・他クエリ・ハッシュは保持される。
 
-**2D モードにおけるパス形式（Issue #254）:**
+**2D モードにおけるパス形式:**
 
 - 3D モードのパス形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
-  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。globe バックエンドの意味 (#369):
+  - `altitude` はカメラの高さ（m）。範囲 [50, 25,512,548]。globe バックエンドにおける意味:
     - **GeospatialCamera の `radius`**（注視点＝地表点からのカメラ距離）。上限は globe の最大 radius = planetRadius×4 に由来する。
 - 2D モードのパス形式: `/@<lat>,<lon>,<zoom>z`（Google Maps 互換）
   - `zoom` は Web Mercator ズームレベル（小数 2 桁）。範囲 [5, 23]
@@ -412,11 +410,11 @@ interface MarkerOptions {
   - 例: `/@35.3606,138.7274,14.50z?viewMode=2d`（富士山をズームレベル 14.5 で表示）
 - パーサーは `z` サフィックスの有無でズームレベルか海抜高度かを自動判別する（`CameraUrlState.zoomLevel` フィールドに格納）
 
-#### 3.3.8 ポリゴン (Issue #169)
+#### 3.3.8 ポリゴン
 
 任意の点列を受け取り、地表または絶対標高に沿って **ポイント球体** と **ポリライン** を表示する API（基盤）。
 
-##### 3.3.8.1 公開 API（基盤＋ポリライン＋垂線/ラベル＋壁: Issue #170 / #171 / #172）
+##### 3.3.8.1 公開 API（基盤＋ポリライン＋垂線/ラベル＋壁）
 
 ```typescript
 interface JpmapTerrain {
@@ -428,11 +426,11 @@ interface JpmapTerrain {
   removePolygon(id: string): void;
   /** enabled の薄いショートカット */
   setPolygonEnabled(id: string, enabled: boolean): void;
-  /** 各点からの垂線表示をポリゴン単位で ON/OFF (#171) */
+  /** 各点からの垂線表示をポリゴン単位で ON/OFF */
   setVerticalsEnabled(id: string, enabled: boolean): void;
-  /** ラベル表示をポリゴン単位で ON/OFF (#171) */
+  /** ラベル表示をポリゴン単位で ON/OFF */
   setLabelsEnabled(id: string, enabled: boolean): void;
-  /** 壁表示をポリゴン単位で ON/OFF (#172) */
+  /** 壁表示をポリゴン単位で ON/OFF */
   setWallsEnabled(id: string, enabled: boolean): void;
   /** 全 id を生成順で返す */
   listPolygons(): readonly string[];
@@ -448,21 +446,21 @@ interface PolygonPointOptions {
 }
 
 interface PolygonStyleOptions {
-  // #170 で実装
+  // 基本スタイル
   pointColor?: string;     // CSS color (default "#ff0000")
   pointOpacity?: number;   // 0..1 (default 1)
   pointDiameter?: number;  // m (default 20)
   lineColor?: string;      // CSS color (default "#ff0000")
   lineOpacity?: number;    // 0..1 (default 1)
   lineWidth?: number;      // m (Tube radius, default 2)
-  // #171 で実装
+  // 垂線・ラベルスタイル
   dropLineColor?: string;     // CSS color (default "#ff0000")
   dropLineWidth?: number;     // m (Tube radius, default 1)
   dropLineOpacity?: number;   // 0..1 (default 1)
   labelColor?: string;        // CSS color (default "#000000")
   labelBackgroundColor?: string; // CSS color (default "transparent")
   labelFontSize?: number;     // px (default 14)
-  // #172 で実装
+  // 壁スタイル
   wallColor?: string;         // CSS color (default "#ff0000")
   wallOpacity?: number;       // 0..1 (default 0.3)
 }
@@ -470,28 +468,28 @@ interface PolygonStyleOptions {
 interface PolygonOptions {
   points: ReadonlyArray<PolygonPointOptions>; // 1 点以上。1 点のときは点・垂線・点ラベルのみ。
   altitudeMode?: AltitudeMode;                // default "terrain"
-  /** `true` でポリラインの末尾と先頭を結んで閉じる。壁・垂線も同様に閉じられる (#172)。default false */
+  /** `true` でポリラインの末尾と先頭を結んで閉じる。壁・垂線も同様に閉じられる。default false */
   closed?: boolean;
-  /** ラベル（点ごと）。#171 で実装済み。`labels[i]` が文字列のときその点にラベルを描画する。 */
+  /** ラベル（点ごと）。`labels[i]` が文字列のときその点にラベルを描画する。 */
   labels?: ReadonlyArray<string>;
   /**
-   * 辺ラベル（隣接点間ごと、#185）。`edgeLabels[i]` は `points[i]` → `points[i+1]` の中点に表示する。
+   * 辺ラベル（隣接点間ごと）。`edgeLabels[i]` は `points[i]` → `points[i+1]` の中点に表示する。
    * `closed === true` のとき末尾要素 `edgeLabels[points.length-1]` は `points[points.length-1]` → `points[0]` のラベル。
    * `undefined` または範囲外の辺にはラベルを描画しない。
    */
   edgeLabels?: ReadonlyArray<string | undefined>;
   style?: PolygonStyleOptions;
   enabled?: boolean;                          // default true
-  /** 各点から Y=0 まで伸びる垂線の表示 (#171 / #186 実装済み)。default true */
+  /** 各点から Y=0 まで伸びる垂線の表示。default true */
   verticalsEnabled?: boolean;
-  /** ラベルの表示 (#171 実装済み)。default true */
+  /** ラベルの表示。default true */
   labelsEnabled?: boolean;
-  /** 隣接垂線間をつなぐ壁の表示 (#172 実装済み)。default true */
+  /** 隣接垂線間をつなぐ壁の表示。default true */
   wallsEnabled?: boolean;
 }
 ```
 
-**#170 範囲の仕様:**
+**ポリゴン基盤の仕様:**
 
 - `points` の各点に対し、`altitudeMode === "absolute"` なら `altitude` をそのまま Y に採用する。`"terrain"` ならタイル標高 (m) を Y に採用し、`altitude` が指定されている場合は地表からのオフセットとして加算する。
 - `terrain` モードで 1 点でも標高未解決の間は **ポリゴン全体を hide** し、`onTerrainUpdated` 後に自動表示する（例外は投げない）。
@@ -500,12 +498,12 @@ interface PolygonOptions {
 - JAPAN_BOUNDS 外の点・`points.length < 1`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。`points.length === 1` のときは辺（線 / 壁 / 辺ラベル）は存在せず、点・垂線・点ラベルのみ描画される。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
-- **#171 実装済み**: 各点から Y=0（グリッド原点面）まで伸びる垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画する。垂線は地表を貫通して下るため、高高度点の接地を常に可視化できる (#186)。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
-- **#172 実装済み**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる (#186)。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。壁と垂線は地表メッシュと同じ `renderingGroupId=0` で描画し、地表の深度バッファに対する深度テストで地中部分を自然にオクルードする（球・ポリライン・ラベルは引き続き `renderingGroupId=1` で地表より手前に描画される） (#186)。
-- **#185 実装済み（辺ラベル）**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
-- **#173 で実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
+- **垂線・ラベルの仕様**: 各点から Y=0（グリッド原点面）まで伸びる垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画する。垂線は地表を貫通して下るため、高高度点の接地を常に可視化できる。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
+- **壁表示の仕様**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。壁と垂線は地表メッシュと同じ `renderingGroupId=0` で描画し、地表の深度バッファに対する深度テストで地中部分を自然にオクルードする（球・ポリライン・ラベルは引き続き `renderingGroupId=1` で地表より手前に描画される）。
+- **辺ラベルの仕様**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
+- **点編集 API の後日実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
-##### 3.3.8.2 ポリゴン点編集 API（Issue #173）
+##### 3.3.8.2 ポリゴン点編集 API
 
 `addPolygon` 後のポリゴンに対し、頂点列を **動的に編集** する 4 API を提供する。`PolygonHandle` を都度返し、ハンドル経由で点列の現在値を確認できる。
 
@@ -552,11 +550,11 @@ interface JpmapTerrain {
 - `insertPolygonPoint` / `removePolygonPoint` は labels 配列の対応 index をシフトする（隣接ラベルとの整合を保つ）。
 - `replacePolygonPoints` は新しい点数に合わせ labels を全 undefined で再構成する（明示的にラベルを再付与するには `updatePolygonPoint` を呼び出す）。
 
-#### 3.3.9 サークル (Issue #201)
+#### 3.3.9 サークル
 
 中心点（緯度・経度）と半径 (m) を指定して円を地形上に描画する API。中心球 / 円周 Tube / 壁 Ribbon / 中心ラベルを組み合わせて描画する。
 
-##### 3.3.9.1 公開 API（Issue #202〜#205）
+##### 3.3.9.1 公開 API
 
 ```typescript
 interface JpmapTerrain {
@@ -698,9 +696,9 @@ viewer.updateCircle("range-ring", { radius: 1000 });
 viewer.setCircleWallEnabled("range-ring", false);
 ```
 
-#### 3.3.10 地形クリック通知 (Issue #183)
+#### 3.3.10 地形クリック通知
 
-地形タイル上でのマウス／タッチによるクリックを購読するイベント API。距離計測など「クリックで地点を確定する」系デモ（#44）の基盤。
+地形タイル上でのマウス／タッチによるクリックを購読するイベント API。距離計測など「クリックで地点を確定する」系デモの基盤。
 
 ```typescript
 interface TerrainClickEvent {
@@ -748,9 +746,9 @@ const unsubscribe = viewer.onTerrainClick((e) => {
 unsubscribe();
 ```
 
-#### 3.3.11 ポリゴン頂点インタラクション (Issue #184)
+#### 3.3.11 ポリゴン頂点インタラクション
 
-ポリゴンの頂点（球体メッシュ）に対する hover / click / drag を購読するイベント API。距離計測などのデモ（#44）で頂点の編集 UI を構築するための基盤。
+ポリゴンの頂点（球体メッシュ）に対する hover / click / drag を購読するイベント API。距離計測などのデモで頂点の編集 UI を構築するための基盤。
 
 ```typescript
 interface PolygonPointPointerEvent {
@@ -769,11 +767,11 @@ interface PolygonPointDragEvent extends PolygonPointPointerEvent {
   readonly lon: number | null;
   /** ドラッグ中カーソル直下の地形交点の標高 m（地形未ヒット時 `null`） */
   readonly groundAltitude: number | null;
-  /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の緯度（交点なしで `null`） (#186) */
+  /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の緯度（交点なしで `null`） */
   readonly planeLat: number | null;
-  /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の経度（交点なしで `null`） (#186) */
+  /** ドラッグ開始時の頂点高さを保つ水平面とカーソルレイの交点の経度（交点なしで `null`） */
   readonly planeLon: number | null;
-  /** ドラッグ開始時の頂点 (x, z) を通る垂直線とカーソルレイの最近接点の標高 m（交点なしで `null`） (#186) */
+  /** ドラッグ開始時の頂点 (x, z) を通る垂直線とカーソルレイの最近接点の標高 m（交点なしで `null`） */
   readonly pointerAltitude: number | null;
 }
 
@@ -798,7 +796,7 @@ interface JpmapTerrain {
 - **hover**: 頂点に入った瞬間および対象切替時に `PolygonPointPointerEvent` を、頂点から離れた瞬間に `null` を通知する。hover 中はキャンバスのカーソルを `pointer` に切り替え、hover 解除時に空文字へ戻す。リスナーが 1 件も無いときは hover 検出を行わずカーソル変更も発生しない。
 - **click**: `pointerdown` した頂点上で `pointerup` し、かつ `pointerdown` から `pointerup` までの移動量が **3 CSS px 未満** のとき発火する。`Ctrl` / `Cmd` 併用時は従来どおりカメラ操作扱いのため発火しない。
 - **dragStart / drag / dragEnd**: 頂点 `pointerdown` 後に 3 CSS px 以上移動した時点で `dragStart` を発火し、以降の `pointermove` ごとに `drag` を発火、`pointerup` または `pointercancel` / `lostpointercapture` で `dragEnd` を発火する。`drag` / `dragStart` / `dragEnd` の `lat` / `lon` / `groundAltitude` には現在のカーソル直下の地形交点を採用し、地形未ヒット時は `null`。
-- 頂点ジェスチャ中は通常の地形クリック (#183) およびカメラ操作は抑制される。
+- 頂点ジェスチャ中は通常の地形クリックおよびカメラ操作は抑制される。
 - リスナー未登録時は頂点メッシュの hit 判定 / カーソル変更コストも発生しない。
 - 各リスナーが throw しても他リスナーへ伝播せず `console.error` で握りつぶす。
 - `dispose()` 後の `onPolygonPoint*` は no-op。返される解除関数は二重呼び出ししても throw しない。
@@ -806,7 +804,7 @@ interface JpmapTerrain {
 **利用例:**
 
 ```typescript
-// 編集デモ: 頂点ドラッグで lat/lon、Shift+ドラッグで高度を更新する (#186)
+// 編集デモ: 頂点ドラッグで lat/lon、Shift+ドラッグで高度を更新する
 viewer.addPolygon("line", {
   points: [{ lat: 35.68, lon: 139.76, altitude: 100 }],
   altitudeMode: "absolute",
@@ -842,9 +840,9 @@ viewer.onPolygonPointDragEnd(() => {
 });
 ```
 
-#### 3.3.12 辺ラベル (Issue #185)
+#### 3.3.12 辺ラベル
 
-`PolygonOptions.edgeLabels` で各辺の中点に文字列ラベルを表示する。距離計測デモ（#186）のように動的に距離・高低差を反映する用途に使う。
+`PolygonOptions.edgeLabels` で各辺の中点に文字列ラベルを表示する。距離計測デモのように動的に距離・高低差を反映する用途に使う。
 
 **利用例:**
 
@@ -892,7 +890,7 @@ viewer.addPolygon("dist-line", {
 // `removePolygon` + `addPolygon` の rebuild が最も簡潔（distance デモも同方式）。
 ```
 
-#### 3.3.13 3Dモデル (Issue #243)
+#### 3.3.13 3Dモデル
 
 Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / stl）を地形上にロードして配置・操作する API。ローダーはファイル拡張子に応じて `@babylonjs/loaders` の glTF / OBJ / STL プラグインを動的ロードし、`addModel` 呼び出し時にインポートする。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
 
@@ -973,7 +971,7 @@ viewer.updateModel("human", { rotation: { y: 180 } });
 viewer.removeModel("human");
 ```
 
-#### 3.3.14 外部カメラ連携 (Issue #245)
+#### 3.3.14 外部カメラ連携
 
 Follow カメラなど Babylon.js の ArcRotateCamera 以外のカメラで地形タイルを更新するための API。
 
@@ -1041,20 +1039,20 @@ interface CameraChangeEvent {
   readonly altitude: number;
   readonly azimuth: number;
   readonly tilt: number;
-  /** 現在の視点モード（Issue #193）。`"2d"` のとき `tilt` は常に `0`。 */
+  /** 現在の視点モード。`"2d"` のとき `tilt` は常に `0`。 */
   readonly viewMode: ViewMode;
 }
 
 /** `JpmapTerrain.onCameraChange` リスナー */
 type CameraChangeListener = (event: CameraChangeEvent) => void;
 
-/** `JpmapTerrain.onMapTypeChange` リスナー (Issue #149) */
+/** `JpmapTerrain.onMapTypeChange` リスナー */
 type MapTypeChangeListener = (mapType: MapType) => void;
 
-/** カメラ視点モード (Issue #193) */
+/** カメラ視点モード */
 type ViewMode = "3d" | "2d";
 
-/** `JpmapTerrain.onViewModeChange` リスナー (Issue #193) */
+/** `JpmapTerrain.onViewModeChange` リスナー */
 type ViewModeChangeListener = (viewMode: ViewMode) => void;
 ```
 
@@ -1066,7 +1064,7 @@ import type {
   MapTypeChangeListener,
   ViewMode,
   ViewModeChangeListener,
-  // ポリゴン (Issue #170)
+  // ポリゴン
   AltitudeMode,
   PolygonPointOptions,
   PolygonPointPartial,
@@ -1074,10 +1072,10 @@ import type {
   PolygonOptions,
   PolygonUpdate,
   PolygonHandle,
-  // 地形クリック (Issue #183)
+  // 地形クリック
   TerrainClickEvent,
   TerrainClickListener,
-  // ポリゴン頂点インタラクション (Issue #184)
+  // ポリゴン頂点インタラクション
   PolygonPointPointerEvent,
   PolygonPointDragEvent,
   PolygonPointHoverListener,
@@ -1124,11 +1122,11 @@ import type {
 |---|---|---|
 | `fov` | `number` | 視野角（度） |
 
-> `projection` は §3.2 の `viewMode` (`"3d"` / `"2d"`) として実装済み (Issue #193)。
+> `projection` は §3.2 の `viewMode` (`"3d"` / `"2d"`) として実装済み。
 
 ### 4.2 追加 API
 
-§3.3.7 でマーカー基本機能（CRUD + enable/disable）が正式仕様化された (Issue #167)。
+§3.3.7 でマーカー基本機能（CRUD + enable/disable）が正式仕様化された。
 本節では、後日実装予定の **3D モデル配置** のみ残す。
 
 ```typescript
@@ -1149,7 +1147,7 @@ interface JpmapTerrain {
 }
 ```
 
-> マーカー（旧 `addImageMarker` / `addLabel`）は §3.3.7 の `addMarker` に統合された (Issue #167)。
+> マーカー（旧 `addImageMarker` / `addLabel`）は §3.3.7 の `addMarker` に統合された。
 > 日時 (`dateTime` / `autoSunPosition`) は §3.3.5 で正式仕様化済み。
 
 ## 5. パッケージ構成

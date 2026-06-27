@@ -1,5 +1,5 @@
 /**
- * geo/overlayPlacement の単体テスト (Issue #275 Phase 3)。
+ * geo/overlayPlacement の単体テスト。
  *
  * - groundPlacementToRef: 位置が球面上（地心距離≈標高+曲率半径）・up が地心方向の単位ベクトル
  * - computeOverlayDistanceScale: 距離比例・下限 0.1

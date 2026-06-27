@@ -19,7 +19,7 @@ const DEG2RAD = Math.PI / 180;
 const DAY_CLEAR_COLOR = new Color3(0.75, 0.86, 0.95);
 /** 夜の深い紺色。`Skybox` を非表示にした際に背景として見える */
 const NIGHT_CLEAR_COLOR = new Color3(0.02, 0.03, 0.08);
-/** 日の出・日の入りの茜色（暖色のオレンジ赤）。地平線付近でブレンドする（Issue #380） */
+/** 日の出・日の入りの茜色（暖色のオレンジ赤）。地平線付近でブレンドする */
 const DUSK_CLEAR_COLOR = new Color3(0.8, 0.4, 0.22);
 
 /**
@@ -119,7 +119,7 @@ export function deriveSunState(
 }
 
 /**
- * 太陽高度（度）から「時刻連動の背景（skybox）色」を導く純関数（Issue #380）。
+ * 太陽高度（度）から「時刻連動の背景（skybox）色」を導く純関数。
  *
  * SkyMaterial を使わない globe シーン向けに、太陽位置だけで空色を決める。
  * 紺→青の基調色は薄明帯（±6°）で連続補間し、さらに地平線付近（±`DUSK_BAND_DEG`=8°）で

@@ -1,5 +1,5 @@
 /**
- * GlobePolygonManager の振る舞い (Issue #275 Phase 3)。
+ * GlobePolygonManager の振る舞い。
  *
  * Babylon のメッシュビルダー（CreateLines / CreateRibbon）・StandardMaterial を軽量スタブに
  * 差し替え、CRUD / enabled / update（再ドレープ）/ dispose 後ガード / 2 点未満の検証 /

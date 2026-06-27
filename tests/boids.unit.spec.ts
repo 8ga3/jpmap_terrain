@@ -1,5 +1,5 @@
 /**
- * Boids アルゴリズム・リージョン定義の unit test (Issue #251)
+ * Boids アルゴリズム・リージョン定義の unit test
  */
 import { describe, it, expect } from "@jest/globals";
 

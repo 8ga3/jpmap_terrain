@@ -1,5 +1,5 @@
 /**
- * createPolygonNode の単体テスト (Issue #170)。
+ * createPolygonNode の単体テスト。
  *
  * Babylon 実体を立ち上げるとテストが重くなるため、Builders / TransformNode /
  * StandardMaterial を `jest.unstable_mockModule` で軽量スタブに差し替える。
@@ -346,7 +346,7 @@ describe("createPolygonNode 構築", () => {
         expect(planeCalls.length).toBe(0);
     });
 
-    // 辺ラベル (#185)
+    // 辺ラベル
     it("edgeLabels[i] が指定された辺にのみ辺ラベル平面を生成する (open)", () => {
         createPolygonNode(sceneStub, "pE1", {
             points: [
@@ -731,7 +731,7 @@ describe("createPolygonNode 壁 (#172)", () => {
         // top: y は worldPoints[i].y がそのまま入る
         expect(update[0][0].y).toBe(100);
         expect(update[0][3].y).toBe(100);
-        // ground: y は常に 0 (#186)
+        // ground: y は常に 0
         expect(update[1][0].y).toBe(0);
         expect(update[1][3].y).toBe(0);
     });

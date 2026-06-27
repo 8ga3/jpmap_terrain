@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * パッケージエントリ (`src/lib.ts`) の re-export 検証 (T8 / Issue #122)。
+ * パッケージエントリ (`src/lib.ts`) の re-export 検証 (T8)。
  *
  * 公開 API として spec/package.md §3 に記載した識別子が
  * パッケージのトップレベルから参照できることを保証する。
@@ -80,9 +80,9 @@ describe("package entry exports (T8)", () => {
         expect(received).toEqual(event);
     });
 
-    // #170: ポリゴン公開型 (AltitudeMode / PolygonPointOptions / PolygonStyleOptions /
+    // ポリゴン公開型 (AltitudeMode / PolygonPointOptions / PolygonStyleOptions /
     // PolygonOptions / PolygonUpdate / PolygonHandle) がパッケージエントリから import 可能であること。
-    it("ポリゴン公開型 (Issue #170) がパッケージエントリから import できる（typecheck）", () => {
+    it("ポリゴン公開型がパッケージエントリから import できる（typecheck）", () => {
         const altitudeMode: AltitudeMode = "terrain";
         const point: PolygonPointOptions = { lat: 35.0, lon: 139.0 };
         const style: PolygonStyleOptions = {
@@ -108,7 +108,7 @@ describe("package entry exports (T8)", () => {
         expect(style.pointColor).toBe("#ff0000");
     });
 
-    // #183 / #184: クリック・頂点インタラクションの公開型がエントリから import 可能。
+    // クリック・頂点インタラクションの公開型がエントリから import 可能。
     it("クリック・頂点インタラクション公開型 (#183/#184) がエントリから import できる（typecheck）", () => {
         const click: TerrainClickEvent = {
             lat: 0,
@@ -153,7 +153,7 @@ describe("package entry exports (T8)", () => {
         expect(drag.lat).toBeNull();
     });
 
-    // #243: 3Dモデル公開型がエントリから import 可能。
+    // 3Dモデル公開型がエントリから import 可能。
     it("3Dモデル公開型 (#243) がパッケージエントリから import できる（typecheck）", () => {
         const vec: ModelVector3 = { x: 1, y: 2, z: 3 };
         const opts: ModelOptions = {

@@ -1,5 +1,5 @@
 /**
- * `src/demos/avatar-controller/cameraControl.ts` の unit test (Issue #289)。
+ * `src/demos/avatar-controller/cameraControl.ts` の unit test。
  *
  * 右ジョイスティックによるカメラ制御（azimuth/tilt）の純粋関数をテストする。
  */

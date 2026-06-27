@@ -1,5 +1,5 @@
 /**
- * GlobeCircleManager の振る舞い (Issue #275 Phase 3 / Phase 4 Slice 2b-2)。
+ * GlobeCircleManager の振る舞い。
  *
  * 内部の GlobePolygonManager をスタブに差し替え、1 サークルが ring（閉ポリゴン・線＋壁）と
  * center（中心 1 点・点＋ラベル）の 2 ノードへ委譲されること、半径/分割数の検証、

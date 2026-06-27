@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * `src/demos/portal/index.ts` の純粋関数 unit test (Issue #147)。
+ * `src/demos/portal/index.ts` の純粋関数 unit test。
  */
 import { describe, it, expect } from "@jest/globals";
 
@@ -13,9 +13,9 @@ describe("buildPortalHtml", () => {
         const html = buildPortalHtml();
         expect(html).toContain('href="viewer"');
         expect(html).toContain('href="timelapse"');
-        // ポリゴンデモ (Issue #170) もポータル一覧に並ぶ。
+        // ポリゴンデモ もポータル一覧に並ぶ。
         expect(html).toContain('href="polygon"');
-        // 距離計測デモ (Issue #186) もポータル一覧に並ぶ。
+        // 距離計測デモ もポータル一覧に並ぶ。
         expect(html).toContain('href="distance"');
         expect(html).toContain("<h1>");
     });
@@ -43,7 +43,7 @@ describe("buildPortalHtml", () => {
         expect(html).toContain("ok.html?x=1&amp;y=2");
     });
 
-    // 出典表記 (Issue #417)
+    // 出典表記
     it("フッターに出典 3 項目を表示する", () => {
         const html = buildPortalHtml();
         expect(html).toContain('<section class="attribution"');

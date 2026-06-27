@@ -1,5 +1,5 @@
 /**
- * geo/cameraMapping の単体テスト (Issue #275 Phase 2)。
+ * geo/cameraMapping の単体テスト。
  *
  * - uiToYawPitch ⇄ yawPitchToUi の往復精度・azimuth 正規化（[0,360)）
  * - geographicTangentBasisToRef: 東/北接線の直交性・既知点での向き・極の特異点

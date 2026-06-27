@@ -1,5 +1,5 @@
 /**
- * サークルデモ (Issue #201 / #206)
+ * サークルデモ
  *
  * `JpmapTerrain` の Circle 公開 API（`addCircle` / `updateCircle` /
  * `removeCircle` / `setCircleEnabled` / `setCirclePointEnabled` /
@@ -174,7 +174,7 @@ const buildControls = (
         }),
     );
 
-    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する (Issue #193)。
+    // 3D / 2D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する。
 
     // updateCircle デモ: 半径を段階的に変更
     const editTargetId = "yomiuri-terrain";

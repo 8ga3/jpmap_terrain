@@ -1,5 +1,5 @@
 /**
- * geo/globeMesh の単体テスト (Issue #275 Phase 1)。
+ * geo/globeMesh の単体テスト。
  *
  * - sampleElevBilinear: 定数・線形補間・無効値フォールバック
  * - buildGlobeTileMeshData: 頂点/インデックス数、アンカー（真の ECEF 中心）、

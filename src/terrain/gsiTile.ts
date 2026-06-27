@@ -10,7 +10,7 @@ export const TILE_MAX_ZOOM = 18;
  *
  * これより高いズームは日本周辺（おおむね `JAPAN_BOUNDS`）のみ配信され、域外は 404 を返す。
  * 全球ビューで域外をズームインしてもタイルが欠けないよう、域外タイルの細分化上限に用いる
- * （Issue #347）。
+ * 。
  */
 export const WORLD_TEXTURE_MAX_ZOOM = 8;
 
@@ -23,12 +23,12 @@ const DEM_PNG_MAX_ZOOM = 14;
 
 /**
  * 同一ズーム合成後も穴（no-data）が `COMPOSITE_HOLE_RATIO` を超えて残るタイルで、粗ズーム dem_png
- * による穴埋めを何段まで遡って試すか（Issue #386）。全面 no-data・部分欠測のいずれも対象。
+ * による穴埋めを何段まで遡って試すか。全面 no-data・部分欠測のいずれも対象。
  */
 const COARSE_FILL_DEPTH = 5;
 
 /**
- * 同一ズームで下位 DEM レイヤーを合成して穴埋めする発動閾値（Issue #384/#386）。
+ * 同一ズームで下位 DEM レイヤーを合成して穴埋めする発動閾値。
  *
  * 穴（no-data）がタイル全体のこの割合を超えるときだけ dem5b/dem_png を取得して合成する。
  * 整備済みの DEM5 でも、堀・河川・タイル境界などで僅かに no-data が生じる（実測で中央東京の
@@ -42,7 +42,7 @@ const COMPOSITE_HOLE_RATIO = 0.1;
 /**
  * タイル取得失敗を表すエラー。`status` に HTTP ステータスを保持する（ネットワーク/タイムアウト等の
  * 非 HTTP 失敗では undefined）。404（決定的な未配信）と一時的な障害を呼び出し側で区別するために使う
- * （globe の粗ズームフォールバック判定など, Issue #386）。
+ * （globe の粗ズームフォールバック判定など）。
  */
 export class TileFetchError extends Error {
     constructor(
@@ -144,7 +144,7 @@ export const decodeGsiElevation = (
 
 /**
  * 粗ズーム dem_png（親タイル）の該当領域を最近傍で切り出し、`merged` の残存 no-data 穴だけを
- * その実標高で埋める（Issue #386）。全 DEM レイヤーは同一 256px タイルスキームで co-registered
+ * その実標高で埋める。全 DEM レイヤーは同一 256px タイルスキームで co-registered
  * なため、親タイル (cz, x>>d, y>>d) の対応サブ領域をピクセル対応で参照できる。
  *
  * @returns 穴埋め後に残った（親側も no-data だった）穴の数。
@@ -297,7 +297,7 @@ const loadImageData = async (url: string): Promise<ImageData> => {
  * 標高タイルを読み込み Float32Array で返す（dem5a → dem5b → dem のレイヤー合成）。
  *
  * DEM5（dem5a/dem5b）はカバレッジに穴があり、山岳地帯では HTTP 200 を返すのに
- * タイルの大半が no-data(128,0,0) になることがある（Issue #384）。最初に 200 を返した
+ * タイルの大半が no-data(128,0,0) になることがある。最初に 200 を返した
  * レイヤーをそのまま採用すると、わずかに残った有効ピクセルが後段の `fillInvalidPixels`
  * でタイル全体に塗り広げられ、地形がフラット化・数百 m ずれ・0m へ崩れる。
  *
@@ -312,7 +312,7 @@ const loadImageData = async (url: string): Promise<ImageData> => {
  *
  * 同一ズームの DEM をすべて合成しても穴が `COMPOSITE_HOLE_RATIO` を超えて残る場合（dem_png の配信上限
  * z14 を超えた z15 等で、同一ズームには穴を埋める実標高が存在しない大穴タイル）は、粗ズーム dem_png を
- * 取得してタイルを実標高で穴埋めする（Issue #386）。閾値以下の微小な欠測は後段の `fillInvalidPixels`
+ * 取得してタイルを実標高で穴埋めする。閾値以下の微小な欠測は後段の `fillInvalidPixels`
  * が局所補間するため、粗ズーム取得は行わない。
  *
  * 全 DEM レイヤーが同一の z/x/y/256px タイルスキームで co-registered なため、合成は
@@ -338,7 +338,7 @@ export const loadElevationTile = async (
         if (merged && holes <= total * COMPOSITE_HOLE_RATIO) break;
 
         // dem_png は z14 までしか配信されない。z15 以降の同一ズーム dem_png は必ず 404 になるため、
-        // 無駄なフェッチを避けてスキップし、後段の粗ズーム dem_png 穴埋めに委ねる（Issue #386）。
+        // 無駄なフェッチを避けてスキップし、後段の粗ズーム dem_png 穴埋めに委ねる。
         if (layer === "dem_png" && zoom > DEM_PNG_MAX_ZOOM) continue;
 
         const url = `https://cyberjapandata.gsi.go.jp/xyz/${layer}/${zoom}/${x}/${y}.png`;
@@ -394,7 +394,7 @@ export const loadElevationTile = async (
     }
 
     // 同一ズームの DEM をすべて合成しても穴（no-data）が閾値を超えて残る場合は、粗ズーム dem_png を
-    // 取得して実標高で穴埋めする（Issue #386）。dem_png の配信上限は z14 のため、z15 以降は同一ズームに
+    // 取得して実標高で穴埋めする。dem_png の配信上限は z14 のため、z15 以降は同一ズームに
     // 穴を埋める実標高が存在せず、DEM5 カバレッジ穴の大きいタイル（例: 山岳で dem5a が 7〜8 割 no-data）が
     // そのまま残ると、わずかな有効ピクセルが後段の `fillInvalidPixels` で塗り広げられ、地形が
     // 「ホールケーキの一切れ」状（フラット／0m／段差）に崩れる。これを防ぐため、穴が `COMPOSITE_HOLE_RATIO`
@@ -405,7 +405,7 @@ export const loadElevationTile = async (
         const floorCz = Math.max(0, startCz - (COARSE_FILL_DEPTH - 1));
         // 残り穴が閾値以下になったら打ち切る。微小な欠測（≤ COMPOSITE_HOLE_RATIO）まで粗ズームを
         // 遡って取得するのは無駄なフェッチになるため、後段の `fillInvalidPixels` の局所補間に委ねる
-        // （Issue #386）。
+        // 。
         for (let cz = startCz; cz >= floorCz && holes > total * COMPOSITE_HOLE_RATIO; cz--) {
             const d = zoom - cz;
             const url = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${cz}/${x >> d}/${y >> d}.png`;
@@ -424,7 +424,7 @@ export const loadElevationTile = async (
             } catch (e) {
                 // 404（未配信）のみ次の粗ズームへ。一時障害（タイムアウト/ネットワーク/5xx 等）は
                 // 握りつぶさず伝播し、穴埋め未完のまま誤った標高を返さない。呼び出し側のバックオフ
-                // 再取得に委ねる（Issue #386）。
+                // 再取得に委ねる。
                 if (e instanceof TileFetchError && e.status === 404) continue;
                 throw e;
             }

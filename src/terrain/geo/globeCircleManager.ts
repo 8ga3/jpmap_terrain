@@ -1,5 +1,5 @@
 /**
- * グローブ用サークルマネージャ (Issue #275 Phase 3 / Phase 4 Slice 2b-2)。
+ * グローブ用サークルマネージャ。
  *
  * 平面版（`circleManager` + `circle`）に対する **並行構築** のグローブ実装。中心 + 半径 + 分割数から
  * 円周上の lat/lon 点列を生成し、内部の `GlobePolygonManager` に委譲して描画する。
@@ -67,7 +67,7 @@ export interface GlobeCircleManager {
     /** 表示/非表示を切り替える（中心点・円周線・壁・ラベルをまとめて）。 */
     setEnabled(id: string, enabled: boolean): void;
     /**
-     * 2D（トップダウン正射）縮退の有効/無効を切り替える (#395)。内部ポリゴンへ委譲し、
+     * 2D（トップダウン正射）縮退の有効/無効を切り替える。内部ポリゴンへ委譲し、
      * `true` で壁（カーテン）を無効化して接地リングのみを残す。`false` で復元する。
      */
     setFlatten(flat: boolean): void;

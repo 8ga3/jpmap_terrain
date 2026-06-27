@@ -1,5 +1,5 @@
 /**
- * `attachResizeRefresh` のユニットテスト (Issue #150 / PR #153)
+ * `attachResizeRefresh` のユニットテスト
  *
  * - リサイズ通知が debounce されて 1 回だけ refresh を呼ぶ
  * - dispose / scene.dispose で Observer 解除と保留タイマーのクリアが行われる
