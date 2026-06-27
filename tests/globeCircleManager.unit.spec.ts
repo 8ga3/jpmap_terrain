@@ -10,7 +10,7 @@ import { jest } from "@jest/globals";
 interface AddCall {
     points: { lat: number; lon: number }[];
     closed?: boolean;
-    outlineColor?: string;
+    style?: { lineColor?: string; wallColor?: string; wallOpacity?: number };
     pointsEnabled?: boolean;
     lineEnabled?: boolean;
     wallsEnabled?: boolean;
@@ -88,10 +88,15 @@ describe("add", () => {
         expect(addCalls[1].labels?.[0]).toBe("中心");
     });
 
-    it("旧 API のスタイル（色）を ring へ委譲する", () => {
+    it("スタイル（色）を ring へ委譲する", () => {
         const mgr = makeManager();
-        mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, outlineColor: "#abcdef" });
-        expect(addCalls[0].outlineColor).toBe("#abcdef");
+        mgr.add({
+            centerLat: 35,
+            centerLon: 139,
+            radiusMeters: 5000,
+            style: { lineColor: "#abcdef" },
+        });
+        expect(addCalls[0].style?.lineColor).toBe("#abcdef");
     });
 
     it("radius <= 0 は throw", () => {

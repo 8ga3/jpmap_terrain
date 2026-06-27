@@ -43,12 +43,6 @@ export interface GlobeCircleOptions {
     label?: string | null;
     /** スタイル（polygon と共通のキー）。 */
     style?: PolygonStyleOptions;
-    /** `style.lineColor` の別名（ring のアウトライン色。`style.lineColor` より優先度は低い）。 */
-    outlineColor?: string;
-    /** `style.wallColor` の別名（`style.wallColor` より優先度は低い）。 */
-    wallColor?: string;
-    /** `style.wallOpacity` の別名（`style.wallOpacity` より優先度は低い）。 */
-    wallOpacity?: number;
     /** top を固定する楕円体高度[m]（未指定なら地形ドレープ）。 */
     topAltitudeMeters?: number;
     /** 円全体の表示。default true。 */
@@ -59,8 +53,6 @@ export interface GlobeCircleOptions {
     lineEnabled?: boolean;
     /** 壁（カーテン）の表示。default true。 */
     wallEnabled?: boolean;
-    /** `wallEnabled` の別名（同義、指定時は `wallEnabled` より優先）。 */
-    wallsEnabled?: boolean;
     /** 中心ラベルの表示。default true。 */
     labelEnabled?: boolean;
 }
@@ -130,7 +122,7 @@ export const createGlobeCircleManager = (
             );
         }
         const enabled = opts.enabled ?? true;
-        const wallEnabled = opts.wallsEnabled ?? opts.wallEnabled ?? true;
+        const wallEnabled = opts.wallEnabled ?? true;
         const ringPoints = generateGeodesicRing(
             opts.centerLat,
             opts.centerLon,
@@ -145,9 +137,6 @@ export const createGlobeCircleManager = (
             altitudeMode,
             topAltitudeMeters: opts.topAltitudeMeters,
             style: opts.style,
-            outlineColor: opts.outlineColor,
-            wallColor: opts.wallColor,
-            wallOpacity: opts.wallOpacity,
             pointsEnabled: false,
             verticalsEnabled: false,
             labelsEnabled: false,
@@ -164,7 +153,6 @@ export const createGlobeCircleManager = (
             altitudeMode,
             topAltitudeMeters: opts.topAltitudeMeters,
             style: opts.style,
-            outlineColor: opts.outlineColor,
             labels: hasLabel ? [opts.label as string] : undefined,
             pointsEnabled: opts.pointEnabled ?? true,
             verticalsEnabled: false,

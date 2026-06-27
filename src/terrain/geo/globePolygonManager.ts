@@ -116,12 +116,6 @@ export interface GlobePolygonOptions {
     labels?: ReadonlyArray<string | undefined>;
     edgeLabels?: ReadonlyArray<string | undefined>;
     style?: PolygonStyleOptions;
-    /** `style.lineColor` の別名（`style.lineColor` より優先度は低い）。 */
-    outlineColor?: string;
-    /** `style.wallColor` の別名（`style.wallColor` より優先度は低い）。 */
-    wallColor?: string;
-    /** `style.wallOpacity` の別名（`style.wallOpacity` より優先度は低い）。 */
-    wallOpacity?: number;
     verticalsEnabled?: boolean;
     labelsEnabled?: boolean;
     wallsEnabled?: boolean;
@@ -688,12 +682,7 @@ export const createGlobePolygonManager = (
             opts.topAltitudeMeters != null
                 ? "absolute"
                 : (opts.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode);
-        const style = resolveStyle({
-            ...opts.style,
-            lineColor: opts.style?.lineColor ?? opts.outlineColor,
-            wallColor: opts.style?.wallColor ?? opts.wallColor,
-            wallOpacity: opts.style?.wallOpacity ?? opts.wallOpacity,
-        });
+        const style = resolveStyle(opts.style);
         const pathLen = Math.max(2, drapedPolygonPathLength(opts.points.length, closed));
         const pointsEnabled = opts.pointsEnabled ?? true;
         const verticalsEnabled =
