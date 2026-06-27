@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * パッケージエントリ (`src/lib.ts`) の re-export 検証 (T8)。
+ * パッケージエントリ (`src/lib.ts`) の re-export 検証。
  *
  * 公開 API として spec/package.md §3 に記載した識別子が
  * パッケージのトップレベルから参照できることを保証する。
@@ -43,7 +43,7 @@ import type {
     ModelHandle,
 } from "../src/lib";
 
-describe("package entry exports (T8)", () => {
+describe("package entry exports", () => {
     it("JpmapTerrain クラスがトップレベルから export されている", () => {
         expect(typeof pkg.JpmapTerrain).toBe("function");
         // クラスとしての名称

@@ -2,14 +2,14 @@
  * @jest-environment jsdom
  */
 /**
- * `JpmapTerrain` クラス公開 API のユニットテスト (T3-T4)
+ * `JpmapTerrain` クラス公開 API のユニットテスト
  *
  * - デフォルト値の適用
  * - get/set による状態保持
  * - flyTo による状態更新
  * - mountElement 必須チェック
- * - mountElement 配下に canvas が追加されること (T4)
- * - dispose で canvas が除去されること (T4)
+ * - mountElement 配下に canvas が追加されること
+ * - dispose で canvas が除去されること
  *
  * Babylon.js Engine / Scene は jsdom で動かないためモックする。
  * Jest は ESM/VM Modules モードで起動しているため
@@ -47,7 +47,7 @@ import {
 // Engine / Scene 生成はテスト対象外（Babylon.js に委譲）。
 // jsdom では WebGPU/WebGL2 を提供できないため、最低限のスタブで差し替える。
 const engineDispose = jest.fn();
-// engine.resize 呼び出し回数を T7 テストで検証できるよう、最後に作った engine の resize を保持する。
+// engine.resize 呼び出し回数をテストで検証できるよう、最後に作った engine の resize を保持する。
 let lastEngineResize: jest.Mock = jest.fn();
 // 実際の `createBabylonEngine(canvas, preferred, options)` のシグネチャに合わせる。
 // 関数本体では未使用だが、`createEngineMock.mock.calls[i][1]`（engine 種別）や
@@ -68,7 +68,7 @@ jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
 }));
 
-// jsdom には ResizeObserver が無いため、テスト用に簡易実装を注入する (T7)。
+// jsdom には ResizeObserver が無いため、テスト用に簡易実装を注入する。
 // 観測対象 → 観測コールバックを覚えておき、テストから手動で trigger できる。
 type RoCallback = (entries: unknown[], observer: unknown) => void;
 const resizeObservers: Array<{
@@ -686,15 +686,15 @@ const createModelManagerStub = (): ModelManager => {
 
 jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
-    // テストから検証できるよう getter を export する（T5 のバッチ refresh 検証用）。
+    // テストから検証できるよう getter を export する（バッチ refresh 検証用）。
     let refreshCallCount = 0;
-    // T6: setMapType / setUiVisibility の記録もテストから検証できるよう保持する。
+    // setMapType / setUiVisibility の記録もテストから検証できるよう保持する。
     let lastMapType: "standard" | "photo" = "standard";
     const setMapTypeCalls: Array<"standard" | "photo"> = [];
     // viewMode の状態と setViewMode 呼び出し履歴。
     let lastViewMode: "3d" | "2d" = "3d";
     const setViewModeCalls: Array<"3d" | "2d"> = [];
-    // T7: controller.dispose の呼び出し回数も検証する。
+    // controller.dispose の呼び出し回数も検証する。
     let controllerDisposeCount = 0;
     // onCameraInteractionEnd コールバック参照（テストから __triggerCameraInteractionEnd で疑似発火）。
     let latestOnCameraInteractionEnd: (() => void) | null = null;
@@ -845,7 +845,7 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
             ) => {
                 // pointerup 後のスナップショット無効化テスト用
                 latestOnCameraInteractionEnd = opts?.onCameraInteractionEnd ?? null;
-                // T5: コントローラのインメモリ実装をテスト用に提供する。
+                // コントローラのインメモリ実装をテスト用に提供する。
                 let lat = opts?.lat ?? 0;
                 let lon = opts?.lon ?? 0;
                 let altitude = opts?.altitude ?? 0;
@@ -1331,7 +1331,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("mount canvas (T4)", () => {
+    describe("mount canvas", () => {
         it("create 時に mountElement 配下へ canvas が追加される", async () => {
             const mount = createMountElement();
             await create(mount);
@@ -1378,7 +1378,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("camera controller wiring (T5)", () => {
+    describe("camera controller wiring", () => {
         it("set した位置・カメラ系プロパティはコントローラ経由で取得しても同じ値になる", async () => {
             const viewer = await create(createMountElement(), {
                 lat: 1,
@@ -1518,7 +1518,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("UI visibility / mapType (T6)", () => {
+    describe("UI visibility / mapType", () => {
         beforeEach(() => {
             sceneMockModule.__resetUiVisibility();
             sceneMockModule.__resetSetMapTypeCalls();
@@ -1598,7 +1598,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("dispose / resize (T7)", () => {
+    describe("dispose / resize", () => {
         it("ResizeObserver の通知で engine.resize が呼ばれる", async () => {
             await create(createMountElement());
             const resize = lastEngineResize;
@@ -1669,7 +1669,7 @@ describe("JpmapTerrain (skeleton)", () => {
         });
     });
 
-    describe("public API surface (T8)", () => {
+    describe("public API surface", () => {
         it("JpmapTerrain.create は JpmapTerrain インスタンスを返す", async () => {
             const viewer = await create(createMountElement());
             expect(viewer).toBeInstanceOf(JpmapTerrain);

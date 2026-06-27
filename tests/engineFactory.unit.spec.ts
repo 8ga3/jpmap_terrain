@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * `createBabylonEngine` の WebGPU/WebGL2 フォールバック分岐テスト (T4)
+ * `createBabylonEngine` の WebGPU/WebGL2 フォールバック分岐テスト
  *
  * - preferred="webgpu" かつ WebGPU 対応 → WebGPUEngine + initAsync 呼び出し
  * - preferred="webgpu" かつ WebGPU 非対応 → WebGL2 (`Engine`) にフォールバック
