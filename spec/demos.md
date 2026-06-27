@@ -30,6 +30,14 @@
 - デモ間で共通する Babylon.js 部分は `manualChunks` の `babylonBundle` / `webgpu-shaders` / `webgl-shaders` 等に分割され、複数デモで共有される。
 - ポータルは Babylon.js を読み込まない軽量ページ。バンドルサイズ最小化のため `JpmapTerrain` を import しない。
 
+### レスポンシブ / タッチ操作対応（Issue #424）
+
+- 全デモの HTML（`public/*.html`）に `<meta name="viewport" content="width=device-width, ...">` を付与し、モバイルでの等倍表示を保証する（viewer は `viewport-fit=cover`、`maximum-scale=1`）。
+- 操作 UI（`src/terrain/controlPanel.ts`）は固定 px で生成するが、`@media (pointer: coarse)` のスタイルを注入し、**タッチ端末でのみ** タップ領域（最小 44px）・文字サイズ・配置余白を拡大する。マウス/トラックパッド（fine pointer）では従来の見た目を維持するため、ビジュアル回帰テスト（`tests/validation.spec.ts`）への影響はない。
+- タッチパネルのパン（`src/scenes/globe.ts` の独自シングルタッチパン）は、接地中のタッチポインタ集合（`activeTouchPointers`）で 2 本指以上を検出し、ピンチ中はパンを無効化する。これにより `GeospatialCamera` のピンチズームとシングルタッチパンの同時発火を防ぐ（マウス操作は従来どおり）。
+- 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。動作確認は iOS Safari / Android Chrome 実機で行う（Issue #424 の完了定義）。
+
+
 ## URL 規約
 
 ### 共通

@@ -471,6 +471,9 @@ export class GlobeScene {
         let dragging = false;
         let lastX = 0;
         let lastY = 0;
+        // アクティブなタッチポインタ集合（ピンチ等のマルチタッチ検出用）。2本指以上が接地している
+        // 間は独自のシングルタッチパンを無効化し、GeospatialCamera のピンチズームと競合させない。
+        const activeTouchPointers = new Set<number>();
         // ---- ポリゴン頂点インタラクション状態 ----
         // パン handler（onPointerDown/Move）から参照するため早期に宣言する。実体の購読 API・
         // 幾何ピック・ドラッグハンドラはカメラ/レイ補助関数（後述）の後で定義・遅延登録する。
@@ -488,6 +491,15 @@ export class GlobeScene {
         } | null = null;
         const onPointerDown = (e: PointerEvent): void => {
             canvas.focus(); // WASD のためにフォーカスを確保（右/左/中ボタンいずれでも）
+            if (e.pointerType === "touch") {
+                activeTouchPointers.add(e.pointerId);
+                // 2本指以上はピンチ等のマルチタッチジェスチャ。進行中の独自パンを打ち切り、
+                // 以降の pointermove ではパンしない（ピンチズームと同時発火させない）。
+                if (activeTouchPointers.size >= 2) {
+                    dragging = false;
+                    return;
+                }
+            }
             if (e.button !== 0) return;
             dragging = true;
             lastX = e.clientX;
@@ -498,7 +510,12 @@ export class GlobeScene {
             dragging = false;
         };
         const onPointerUp = (e: PointerEvent): void => {
+            if (e.pointerType === "touch") activeTouchPointers.delete(e.pointerId);
             if (e.button === 0) endDrag();
+        };
+        const onPointerCancel = (e: PointerEvent): void => {
+            if (e.pointerType === "touch") activeTouchPointers.delete(e.pointerId);
+            endDrag();
         };
         // パン用の再利用バッファ（毎フレーム/毎 move 呼び出しでの割当を避ける）。
         const dragRight = new Vector3();
@@ -517,6 +534,8 @@ export class GlobeScene {
             }
             if (!dragging) return;
             if (!panEnabled) return;
+            // 2本指以上のタッチ（ピンチ等）進行中はパンしない。GeospatialCamera のピンチズームに委ねる。
+            if (activeTouchPointers.size >= 2) return;
             const dx = e.clientX - lastX;
             const dy = e.clientY - lastY;
             lastX = e.clientX;
@@ -546,7 +565,7 @@ export class GlobeScene {
         };
         canvas.addEventListener("pointerdown", onPointerDown);
         canvas.addEventListener("pointerup", onPointerUp);
-        canvas.addEventListener("pointercancel", endDrag);
+        canvas.addEventListener("pointercancel", onPointerCancel);
         canvas.addEventListener("pointermove", onPointerMove);
 
         /**
