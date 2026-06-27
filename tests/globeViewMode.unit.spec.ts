@@ -59,7 +59,7 @@ afterEach(() => {
     for (const teardown of activeTeardowns.splice(0)) teardown();
 });
 
-describe("globe 視点モード 2D/3D (#395)", () => {
+describe("globe 視点モード 2D/3D", () => {
     it("既定は 3d（perspective）で getZoomLevel は undefined", () => {
         const { gc, teardown } = build();
         expect(gc.getViewMode()).toBe("3d");
@@ -197,7 +197,7 @@ describe("globe 視点モード 2D/3D (#395)", () => {
         teardown();
     });
 
-    it("setViewMode('2d') 直後（描画フレーム前）にオーバーレイを再アンカーして接地する (#395 / PR #407)", () => {
+    it("setViewMode('2d') 直後（描画フレーム前）にオーバーレイを再アンカーして接地する", () => {
         const { gc, teardown } = build({ lat: 35.36, lon: 138.73, radius: 60000 });
         const pts = [
             { lat: 35.36, lon: 138.73 },

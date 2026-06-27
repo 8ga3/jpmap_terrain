@@ -486,7 +486,7 @@ describe("createPolygonNode 構築", () => {
         expect(node.getHandle().edgeLabels).toBeUndefined();
     });
 
-    it("1 点ポリゴン: 球 1・垂線 1 のみで線・壁・辺ラベルは存在しない (#186 ライブラリ拡張)", () => {
+    it("1 点ポリゴン: 球 1・垂線 1 のみで線・壁・辺ラベルは存在しない", () => {
         const node = createPolygonNode(sceneStub, "p1pt", {
             points: [{ lat: 35.0, lon: 139.0, altitude: 100 }],
             altitudeMode: "absolute",
@@ -550,7 +550,7 @@ describe("createPolygonNode applyTransform", () => {
         expect(path[1].y).toBe(200);
     });
 
-    it("垂線の終端 Y は常に 0。地表を貫通してグリッド面まで伸びる (#186)", async () => {
+    it("垂線の終端 Y は常に 0。地表を貫通してグリッド面まで伸びる", async () => {
         const { Vector3 } = await import("@babylonjs/core/Maths/math.vector");
         const node = createPolygonNode(sceneStub, "pV", {
             points: [
@@ -683,7 +683,7 @@ describe("createPolygonNode enabled / dispose", () => {
     });
 });
 
-describe("createPolygonNode 壁 (#172)", () => {
+describe("createPolygonNode 壁", () => {
     it("構築時に壁 Ribbon が 1 本生成される (closed=false)", () => {
         createPolygonNode(sceneStub, "pW1", {
             points: [
@@ -876,7 +876,7 @@ describe("createPolygonNode 壁 (#172)", () => {
     });
 });
 
-describe("createPolygonNode 点編集 API (#173)", () => {
+describe("createPolygonNode 点編集 API", () => {
     const basePoints = [
         { lat: 35.0, lon: 139.0, altitude: 100 },
         { lat: 35.1, lon: 139.1, altitude: 200 },

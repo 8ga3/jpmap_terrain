@@ -1905,7 +1905,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(listener).not.toHaveBeenCalled();
         });
 
-        it("onCameraInteractionEnd 後、値が変化した次のフレームで発火する (#225)", async () => {
+        it("onCameraInteractionEnd 後、値が変化した次のフレームで発火する", async () => {
             const viewer = await create(createMountElement(), {
                 lat: 35,
                 lon: 139,
@@ -1933,7 +1933,7 @@ describe("JpmapTerrain (skeleton)", () => {
             expect(listener).toHaveBeenCalledTimes(2);
         });
 
-        it("onCameraInteractionEnd 後、値が不変なら発火しない (#225)", async () => {
+        it("onCameraInteractionEnd 後、値が不変なら発火しない", async () => {
             const viewer = await create(createMountElement(), {
                 lat: 35,
                 lon: 139,

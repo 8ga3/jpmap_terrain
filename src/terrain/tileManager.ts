@@ -91,7 +91,7 @@ export interface TileManager {
     queryElevationAtWorld(wx: number, wz: number): number | null;
     /** メッシュ頂点の標高が更新されたときに呼ばれるコールバック */
     onTerrainUpdated: (() => void) | null;
-    /** 太陽影  caster/receiver フックを設定する。`null` で解除 */
+    /** 太陽影 caster/receiver フックを設定する。`null` で解除 */
     setShadowHooks(hooks: ShadowHooks | null): void;
     /** 現在アクティブな全タイルメッシュを列挙する（ON/OFF 切替用） */
     forEachActiveMesh(cb: (mesh: Mesh) => void): void;
@@ -130,7 +130,7 @@ const DEFAULT_DEBOUNCE_MS = 200;
 /** Frustum 判定用の基準最大標高 (m) — 富士山 3776m + マージン */
 const MAX_BASE_ELEVATION = 4000;
 /*
- * 旧 NEAR_DISTANCE_TILES_FACTOR 定数は  対応で isTileNearCamera と共に撤廃。
+ * 旧 NEAR_DISTANCE_TILES_FACTOR 定数は isTileNearCamera と共に撤廃済み。
  */
 /** 旧タイルの強制解放までのタイムアウト (ms) */
 const PENDING_RELEASE_TIMEOUT_MS = 5000;
@@ -216,8 +216,8 @@ export const extractSubTileElevation = (
 const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
     // 2D (ortho) では camera.alpha 変更（画面回転）に伴って AABB-frustum 交差が
     // 拡大し、`computeQuadtreeTiles` の maxTiles / maxVisited に達して粗LODへの
-    // 強制フォールバックや遠方タイル切捨てが起き、回転中にタイルレベルが乱れる
-    // 。タイル選択は地理的中心と orthoサイズだけで決めれば十分なので、
+    // 強制フォールバックや遠方タイル切捨てが起き、回転中にタイルレベルが乱れる。
+    // タイル選択は地理的中心と orthoサイズだけで決めれば十分なので、
     // ortho 時は回転に依存しない axis-aligned な frustum 平面を構築する。
     if (camera.mode === Camera.ORTHOGRAPHIC_CAMERA) {
         return extractOrthoStableFrustumPlanes(camera);
@@ -1148,7 +1148,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /*
-     * 旧 isTileNearCamera ヘルパーは  対応により撤廃。
+     * 旧 isTileNearCamera ヘルパーは撤廃済み。
      * 高 zoom (例: 18) では tileSize が小さく、カメラ高度が少しでもあると
      * 近傍判定が常に false になり cross-level 縫い合わせが走らず、zoom 17/18
      * 混在境界で隙間が顕在化していた。現在は粗タイル隣接が存在する場合のみ

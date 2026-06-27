@@ -353,7 +353,7 @@ describe("selectGlobeTiles", () => {
         expect(hasForeground).toBe(true);
     });
 
-    describe("日本被覆域外のテクスチャ上限クランプ (#347)", () => {
+    describe("日本被覆域外のテクスチャ上限クランプ", () => {
         // 日本外（米ニューヨーク付近）。GSI テクスチャは z9 以上が存在しないため、
         // 近接カメラでも z8 までしか細分化されないこと。
         const NY_LAT = 40.7128;

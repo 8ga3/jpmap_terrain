@@ -261,7 +261,7 @@ describe("globe UI コントロールパネル配線", () => {
     });
 });
 
-describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
+describe("globe 視点切替ボタン 2D/3D", () => {
     it("ボタンは表示され、初期ラベルは現在モード（3d）に対し '2D' を示す", () => {
         const camera = makeCamera();
         const { gc } = makeGcWithScene(camera);
@@ -306,7 +306,7 @@ describe("globe 視点切替ボタン 2D/3D (#395 / #349)", () => {
         expect(c.getViewMode()).toBe("2d");
     });
 
-    it("2D 切替で太陽光・太陽メッシュを無効化し半球光をフラットにする (#395)", () => {
+    it("2D 切替で太陽光・太陽メッシュを無効化し半球光をフラットにする", () => {
         const camera = makeCamera();
         const { gc, onBeforeRender } = makeGcWithScene(camera);
         const sunLight = (gc as unknown as { sunLight: { setEnabled: jest.Mock } })

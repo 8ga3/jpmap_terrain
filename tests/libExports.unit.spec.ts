@@ -109,7 +109,7 @@ describe("package entry exports (T8)", () => {
     });
 
     // クリック・頂点インタラクションの公開型がエントリから import 可能。
-    it("クリック・頂点インタラクション公開型 (#183/#184) がエントリから import できる（typecheck）", () => {
+    it("クリック・頂点インタラクション公開型 がエントリから import できる（typecheck）", () => {
         const click: TerrainClickEvent = {
             lat: 0,
             lon: 0,
@@ -154,7 +154,7 @@ describe("package entry exports (T8)", () => {
     });
 
     // 3Dモデル公開型がエントリから import 可能。
-    it("3Dモデル公開型 (#243) がパッケージエントリから import できる（typecheck）", () => {
+    it("3Dモデル公開型 がパッケージエントリから import できる（typecheck）", () => {
         const vec: ModelVector3 = { x: 1, y: 2, z: 3 };
         const opts: ModelOptions = {
             url: "model.glb",

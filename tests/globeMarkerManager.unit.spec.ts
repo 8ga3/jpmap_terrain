@@ -226,7 +226,7 @@ describe("update", () => {
     });
 });
 
-describe("setFlatten (#395)", () => {
+describe("setFlatten", () => {
     it("setFlatten(true) でポールを無効化し、アイコンを地表へアンカーする", () => {
         const { mgr } = makeManager();
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } });

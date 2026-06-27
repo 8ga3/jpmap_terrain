@@ -214,7 +214,7 @@ beforeEach(() => {
 });
 
 describe("createGlobeTileManager", () => {
-    it("常時表示ベースレイヤを全球 z2=16 枚・深度書き込み無効で構築する (#341)", () => {
+    it("常時表示ベースレイヤを全球 z2=16 枚・深度書き込み無効で構築する", () => {
         // ベースレイヤ自体の検証は makeManager のクリアを通さず直接構築して数える。
         MeshMock.mockClear();
         MaterialMock.mockClear();
@@ -237,7 +237,7 @@ describe("createGlobeTileManager", () => {
         baseMats.forEach((m) => expect(m.disableDepthWrite).toBe(true));
     });
 
-    it("ベーステクスチャ onLoad で diffuseColor を白に戻しティントを解除する (#341)", () => {
+    it("ベーステクスチャ onLoad で diffuseColor を白に戻しティントを解除する", () => {
         MeshMock.mockClear();
         MaterialMock.mockClear();
         capturedTextures.length = 0;
@@ -262,7 +262,7 @@ describe("createGlobeTileManager", () => {
         expect(mat0.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
     });
 
-    it("dispose でベースレイヤ 16 枚もテクスチャごと破棄する (#341)", () => {
+    it("dispose でベースレイヤ 16 枚もテクスチャごと破棄する", () => {
         MeshMock.mockClear();
         const mgr = createGlobeTileManager({
             scene: {} as never,
@@ -499,7 +499,7 @@ describe("createGlobeTileManager", () => {
         expect(MeshMock).toHaveBeenCalledTimes(1);
     });
 
-    it("geom zoom が全 DEM 404 でも粗ズーム DEM を切り出して実標高で建築する (#384)", async () => {
+    it("geom zoom が全 DEM 404 でも粗ズーム DEM を切り出して実標高で建築する", async () => {
         // DEM5 非整備領域: z15 geom は全レイヤー 404(決定的未配信) だが、粗ズーム z14 dem_png には実標高がある。
         const PARENT_ELEV = 900;
         loadElevationTile.mockImplementation((...args: unknown[]) => {
@@ -527,7 +527,7 @@ describe("createGlobeTileManager", () => {
         expect(built?.geomElev[0]).toBeCloseTo(PARENT_ELEV);
     });
 
-    it("粗ズームフォールバック中の一時障害は握りつぶさずバックオフへ倒す (#386)", async () => {
+    it("粗ズームフォールバック中の一時障害は握りつぶさずバックオフへ倒す", async () => {
         // geom zoom(15) は 404 → 粗ズーム(14)へフォールバックするが、そこで一時障害(非404)が起きる。
         // 一時障害は握りつぶさず再 throw し、誤って粗ズーム平坦化へ倒さずバックオフ再取得に委ねる。
         loadElevationTile.mockImplementation((...args: unknown[]) => {
@@ -550,7 +550,7 @@ describe("createGlobeTileManager", () => {
         expect(built?.geomElev[0] ?? 0).not.toBeCloseTo(900);
     });
 
-    it("同一粗ズーム親を共有する子タイルのフォールバックは親フェッチを重複させない (#386)", async () => {
+    it("同一粗ズーム親を共有する子タイルのフォールバックは親フェッチを重複させない", async () => {
         // z15 の 4 枚（2x2）は同一の z14 親 (x>>1,y>>1)=(12000,6000) を共有する。全枚が 404 で
         // 粗ズームフォールバックしても、親 DEM の取得は in-flight 共有で 1 回に集約される。
         const PARENT_ELEV = 900;
@@ -627,7 +627,7 @@ describe("createGlobeTileManager", () => {
         expect(mesh.isEnabled()).toBe(true); // onError 後は表示（白でもホールより良い）
     });
 
-    it("zoom < minZoom の高高度タイルは標高ロード中でも即時建築する (#330)", async () => {
+    it("zoom < minZoom の高高度タイルは標高ロード中でも即時建築する", async () => {
         // minZoom=10 なので zoom=9 は「高高度・標高不要」扱い。
         selectedTiles = [tile(50, 50, 9)];
         const mgr = makeManager();
@@ -737,7 +737,7 @@ describe("createGlobeTileManager", () => {
         expect(parent.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    it("zoom-in: 子のテクスチャが onError でも非表示待機を維持し原子スワップする (#330 レビュー対応)", async () => {
+    it("zoom-in: 子のテクスチャが onError でも非表示待機を維持し原子スワップする", async () => {
         // 祖先 pending 中の hiddenChild が onError で即表示されると、親と子が同時に見えて
         // 原子スワップが壊れる。onError も onLoad 同様に hiddenChild は表示を抑止し、
         // readyMeshes 登録のみ行う → スワップ時に enableDescendants 経由で表示される。
@@ -776,7 +776,7 @@ describe("createGlobeTileManager", () => {
         expect(parent.dispose).toHaveBeenCalledWith(false, true);
     });
 
-    it("zoom-in: minZoom 未満の親(粗タイル)でも子が揃うまで保持し原子スワップする (#330 回帰)", async () => {
+    it("zoom-in: minZoom 未満の親(粗タイル)でも子が揃うまで保持し原子スワップする", async () => {
         // minZoom=10。親 z8・子 z9 はいずれも minZoom 未満。祖先探索の下限を minZoom に
         // すると hasZoomRelation/visibleAncestorKeys が空になり、親が即破棄されて背景球が
         // 露出した。SEAMLESS_FLOOR_ZOOM=0 で全 zoom を橋渡し。
@@ -834,7 +834,7 @@ describe("createGlobeTileManager", () => {
 
     // ===== 標高タイルの穴埋め（平面版相当） =====
 
-    it("部分欠測タイルの内部 NaN を周囲の有効標高で穴埋めする (#339)", async () => {
+    it("部分欠測タイルの内部 NaN を周囲の有効標高で穴埋めする", async () => {
         const mgr = makeManager();
         // 1 ピクセルだけ有効(70m)で残りは全て NaN のタイル。fillInvalidPixels の BFS で
         // タイル全体が 70m に伝播するため、どこをサンプルしても 70m になる（NaN→0 沈み無し）。
@@ -853,7 +853,7 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(70, 3);
     });
 
-    it("all-NaN タイルを同 zoom 隣接の補間結果をシードに穴埋めする (#339, #221)", async () => {
+    it("all-NaN タイルを同 zoom 隣接の補間結果をシードに穴埋めする", async () => {
         const mgr = makeManager();
         // 対象タイル(gx=100)は全面 no-data(all-NaN)、右隣(gx=101)は一様 60m。
         loadElevationTile.mockImplementation((...args: unknown[]) => {
@@ -873,7 +873,7 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(60, 3);
     });
 
-    it("粗ズーム祖先が no-data でも視界内に有効タイルがあれば代表標高でレスキューする (#339, #221)", async () => {
+    it("粗ズーム祖先が no-data でも視界内に有効タイルがあれば代表標高でレスキューする", async () => {
         const mgr = makeManager();
         // 対象タイル(gx=100)は全面 no-data(all-NaN)で、粗ズーム祖先(toTileXY モックで gx=100)も
         // no-data。別位置(gx=105)に有効標高 300m のタイルがあり、これが視界内代表標高の供給源になる。
@@ -895,7 +895,7 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(300, 3);
     });
 
-    it("視界が全面水面の all-NaN タイルを粗ズーム祖先 DEM の代表標高で平坦化する (#339)", async () => {
+    it("視界が全面水面の all-NaN タイルを粗ズーム祖先 DEM の代表標高で平坦化する", async () => {
         const mgr = makeManager();
         // geom zoom(=10) は全タイル全面 no-data（all-NaN: 湖面のみ）。
         // 粗ズーム祖先(<10)は湖岸（陸地）を含むため一様 900m を返す（湖面標高近似の供給源）。
@@ -925,7 +925,7 @@ describe("createGlobeTileManager", () => {
 
     // ===== 同一ズーム隣接辺スティッチング（平面版相当） =====
 
-    it("同一ズーム隣接の実標高タイル辺を平均化してタイル境界の段差を解消する (#387)", async () => {
+    it("同一ズーム隣接の実標高タイル辺を平均化してタイル境界の段差を解消する", async () => {
         const mgr = makeManager();
         // 左タイル(gx=100)は一様 100m、右隣(gx=101)は一様 200m の実標高。
         // 縫合無しでは境界で 100m→200m の段差（陰影シーム）になる。縫合後は両者の接辺が
@@ -957,7 +957,7 @@ describe("createGlobeTileManager", () => {
         expect((right as { geomElev: Float32Array }).geomElev[mid + 128]).toBeCloseTo(200, 3);
     });
 
-    it("同一ズーム隣接が無い実標高タイルは縫合せず原本標高で建築する (#387)", async () => {
+    it("同一ズーム隣接が無い実標高タイルは縫合せず原本標高で建築する", async () => {
         const mgr = makeManager();
         loadElevationTile.mockImplementation(() =>
             Promise.resolve(new Float32Array(256 * 256).fill(100)),
@@ -976,7 +976,7 @@ describe("createGlobeTileManager", () => {
         expect((built as { geomElev: Float32Array }).geomElev[mid + 0]).toBeCloseTo(100, 3);
     });
 
-    it("日付変更線をまたぐ x=0 と x=limit-1 の同一ズーム隣接を wrap して縫合する (#387)", async () => {
+    it("日付変更線をまたぐ x=0 と x=limit-1 の同一ズーム隣接を wrap して縫合する", async () => {
         const mgr = makeManager();
         // gz=10 の軸方向タイル数 limit=1024。x=0 と x=1023 は日付変更線で隣接する。
         // x=0 のタイルは一様 100m、x=1023 は一様 200m。wrap 探索が無いと x=0 の左隣
@@ -1006,7 +1006,7 @@ describe("createGlobeTileManager", () => {
         expect((east as { geomElev: Float32Array }).geomElev[mid + 255]).toBeCloseTo(150, 3);
     });
 
-    it("同一ズーム縫合は原本 elevCache を破壊しない (#387)", async () => {
+    it("同一ズーム縫合は原本 elevCache を破壊しない", async () => {
         const mgr = makeManager();
         loadElevationTile.mockImplementation((...args: unknown[]) => {
             const gx = args[1] as number;
@@ -1041,7 +1041,7 @@ describe("createGlobeTileManager", () => {
         expect(elev).toBeNull();
     });
 
-    it("取得失敗(404)の湖面タイルを 0m でなく隣接タイルの接線標高で平坦建築する (#339)", async () => {
+    it("取得失敗(404)の湖面タイルを 0m でなく隣接タイルの接線標高で平坦建築する", async () => {
         const mgr = makeManager();
         // 中央 geom タイル(gx=100,gy=100)は全レイヤ 404（決定的未配信）かつ粗ズーム祖先も 404＝本栖湖 z15
         // 湖面タイルの実挙動（湖面は dem_png でも未配信）。粗ズームフォールバックも尽きて failedRetryAt へ。

@@ -7,7 +7,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 /**
- * 太陽影描画  のための caster / receiver 設定フック。
+ * 太陽影描画のための caster / receiver 設定フック。
  *
  * `MeshPool.acquire` 直後と `release` 直前に呼ばれる。`ShadowGenerator` の
  * `addShadowCaster` / `removeShadowCaster` と `mesh.receiveShadows` の切替を集約する。

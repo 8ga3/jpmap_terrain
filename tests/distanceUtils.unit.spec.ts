@@ -52,7 +52,7 @@ describe("haversineDistanceMeters", () => {
         );
     });
 
-    it("ほぼ対蹠点でも NaN にならず有限な値を返す (#191 Copilot review)", () => {
+    it("ほぼ対蹠点でも NaN にならず有限な値を返す", () => {
         // 北極 (90, 0) と南極 (-90, 180) は h が 1 ぴったり〜浮動小数誤差で
         // 1 を僅かに超える領域。クランプで sqrt(1 - h) が NaN にならない。
         const north = { lat: 90, lon: 0 };

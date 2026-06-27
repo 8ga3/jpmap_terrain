@@ -1192,7 +1192,7 @@ describe("queryElevationAtWorld", () => {
         tm.dispose();
     });
 
-    it("zoom > maxElevationZoom でも activeTiles のデータから標高を返す (#260)", async () => {
+    it("zoom > maxElevationZoom でも activeTiles のデータから標高を返す", async () => {
         // zoom=18（表示最大）, maxElevationZoom=17（標高タイル最大）
         // zoom18 の標高データは zoom17 から extractSubTileElevation で抽出される。
         // 修正前: ループが maxElevationZoom(17) から始まるため activeTiles(zoom18) にヒットせず null。
@@ -1834,7 +1834,7 @@ describe("LOD遷移時の遅延解放", () => {
 });
 
 
-describe("extractOrthoStableFrustumPlanes (#286)", () => {
+describe("extractOrthoStableFrustumPlanes", () => {
     const makeCamera = (
         orthoHalfW: number,
         orthoHalfH: number,

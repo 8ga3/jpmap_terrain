@@ -336,7 +336,7 @@ describe("topAltitudeMeters（固定高度）", () => {
     });
 });
 
-describe("setFlatten (#395)", () => {
+describe("setFlatten", () => {
     it("setFlatten(true) で壁・垂線を無効化し、接地アウトライン/点は残す", () => {
         const { mgr } = makeManager();
         mgr.add({ points: pts3, wallsEnabled: true });
@@ -378,7 +378,7 @@ describe("setFlatten (#395)", () => {
         expect(() => mgr.setFlatten(true)).toThrow(/after dispose/);
     });
 
-    it("setFlatten(true) は flat 進入時に全頂点の terrainElevAt を引いて elevs を terrain 基準へ正規化する (#395 / PR #407)", () => {
+    it("setFlatten(true) は flat 進入時に全頂点の terrainElevAt を引いて elevs を terrain 基準へ正規化する", () => {
         // 3D で absolute 高度を使っていたポリゴンの elevs(=絶対高度) を 2D へ持ち越さないことを担保する。
         const terrainElevAt = jest.fn<(lat: number, lon: number) => number | null>(
             () => null,
@@ -534,7 +534,7 @@ describe("setContent（in-place 更新, ラベルチラつき対策）", () => {
         expect(createdPlanes.filter((p) => p.disposeCount > 0).length).toBe(1);
     });
 
-    it("labels に明示 undefined を渡すと点ラベルをクリア（dispose）し edgeLabels は維持する (#395 / PR #407)", () => {
+    it("labels に明示 undefined を渡すと点ラベルをクリア（dispose）し edgeLabels は維持する", () => {
         const { mgr } = makeManager();
         const id = mgr.add({
             points: pts3,

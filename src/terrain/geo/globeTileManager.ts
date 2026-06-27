@@ -99,7 +99,7 @@ const retryBackoffMs = (attempts: number): number =>
     Math.min(FAILED_RETRY_MAX_MS, FAILED_RETRY_BASE_MS * 2 ** (attempts - 1));
 
 /**
- * LOD 遷移中に残した旧タイルを強制解放するまでのタイムアウト [ms]（平面版  と同値）。
+ * LOD 遷移中に残した旧タイルを強制解放するまでのタイムアウト [ms]（平面版と同値）。
  * 新タイルのテクスチャ/標高が揃わずカバー判定が成立しない場合の安全網。短すぎると遷移途中で
  * 背景球が見え、長すぎると古い LOD のタイルが残ってちらつく。
  */
@@ -180,7 +180,7 @@ export interface GlobeTileSyncStats {
 }
 
 /**
- * LOD 遷移中に画面へ残す旧タイル（平面版  の PendingReleaseTile 相当）。
+ * LOD 遷移中に画面へ残す旧タイル（平面版の PendingReleaseTile 相当）。
  * 新タイルが描画可能になるまで表示を維持し、カバー完了 or タイムアウトで解放する。
  */
 interface PendingTile {
@@ -280,7 +280,7 @@ export const createGlobeTileManager = (
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
 
-    // --- LOD シームレス遷移（平面版  同等） ---
+    // --- LOD シームレス遷移（平面版同等） ---
     // LOD 切替で不要になった旧タイルを即破棄せず、新タイルが描画可能になるまで画面に残す。
     // これにより zoom-in/out の遷移中にタイルが欠けて背景球が見える/ちらつくのを防ぐ。
     const pendingRelease = new Map<string, PendingTile>();
@@ -747,7 +747,7 @@ export const createGlobeTileManager = (
     };
 
     /**
-     * 元データが all-NaN（全面 no-data）だった geom タイルを穴埋めする（平面版  相当）。
+     * 元データが all-NaN（全面 no-data）だった geom タイルを穴埋めする（平面版相当）。
      *
      * 大きな湖（本栖湖・諏訪湖など）では、対象タイルだけでなく同 zoom 隣接タイルも all-NaN になり、
      * さらに LOD により隣接が粗 zoom で描画されると同 zoom 隣接自体が存在せず、同 zoom 縫い合わせ
@@ -1236,7 +1236,7 @@ export const createGlobeTileManager = (
         };
 
         // 不要になったメッシュを処理: zoom 階層関係があれば pendingRelease で表示を維持し、
-        // なければ即破棄する（平面版  の applyVisibleTiles 同等）。
+        // なければ即破棄する（平面版の applyVisibleTiles 同等）。
         for (const [key, mesh] of loaded) {
             if (desiredKeys.has(key)) continue;
             const c = parseKey(key);
