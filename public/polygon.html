@@ -5,6 +5,7 @@
   <title>jpmap_terrain – ポリゴンデモ</title>
   <meta name="description" content="jpmap_terrain のポリゴン (PolygonManager) 公開 API 動作確認デモ (Issue #170)">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -85,6 +86,30 @@
 
     #polygon-controls button:hover {
       background: rgba(255, 255, 255, 0.18);
+    }
+
+    @media (max-width: 640px) {
+      #polygon-controls {
+        top: 56px;
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - 72px);
+        overflow-y: auto;
+        font-size: 14px;
+      }
+
+      #polygon-controls button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      #polygon-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>

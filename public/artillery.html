@@ -5,6 +5,7 @@
   <title>jpmap_terrain – Artillery Game</title>
   <meta name="description" content="ターン制対戦 Artillery Game デモ">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -315,6 +316,64 @@
     .input-blocker.active {
       display: block;
       pointer-events: auto;
+    }
+
+    @media (max-width: 640px) {
+      #artillery-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
+
+      .score-bar {
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
+        font-size: 12px;
+      }
+
+      .score-bar .team {
+        padding: 4px 6px;
+      }
+
+      .score-bar .separator {
+        margin: 0 2px;
+      }
+
+      .controls-bar {
+        bottom: 8px;
+        width: calc(100vw - 16px);
+        box-sizing: border-box;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      .controls-bar .ctrl-group {
+        flex: 1 1 130px;
+        min-width: 0;
+      }
+
+      .controls-bar input[type="range"] {
+        flex: 1;
+        min-width: 80px;
+        height: 28px;
+      }
+
+      .controls-bar .divider {
+        display: none;
+      }
+
+      .controls-bar button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      .controls-bar button.fire-btn {
+        padding: 8px 16px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>

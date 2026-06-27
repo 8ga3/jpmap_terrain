@@ -5,6 +5,7 @@
   <title>jpmap_terrain – タイムラプスデモ</title>
   <meta name="description" content="24時間を1分にタイムラプスして太陽の動きと陰影をアニメーション表示する jpmap_terrain デモ">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -78,6 +79,29 @@
       border-radius: 4px;
       letter-spacing: 0.02em;
       text-align: center;
+    }
+
+    @media (max-width: 640px) {
+      #timelapse-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
+
+      #timelapse-clock-area {
+        max-width: 90vw;
+        bottom: 12px;
+      }
+
+      #timelapse-clock {
+        width: clamp(96px, 34vw, 140px);
+        height: clamp(96px, 34vw, 140px);
+      }
+
+      #timelapse-clock-label {
+        max-width: 90vw;
+        box-sizing: border-box;
+        font-size: 11px;
+      }
     }
   </style>
 </head>

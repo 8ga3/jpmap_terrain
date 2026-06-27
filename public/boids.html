@@ -5,6 +5,7 @@
   <title>jpmap_terrain – Boids フロッキングデモ</title>
   <meta name="description" content="Boidsアルゴリズムによる群衆シミュレーションデモ">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -112,6 +113,34 @@
 
     .btn-row button {
       flex: 1;
+    }
+
+    @media (max-width: 640px) {
+      #boids-controls {
+        top: 56px;
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - 72px);
+        overflow-y: auto;
+        font-size: 14px;
+      }
+
+      #boids-controls button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      #boids-controls input[type="range"] {
+        height: 28px;
+      }
+
+      #boids-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>

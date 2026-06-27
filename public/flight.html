@@ -5,6 +5,7 @@
   <title>jpmap_terrain – フライトデモ</title>
   <meta name="description" content="飛行機が上空を旋回し、FollowCameraで追跡するデモ">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -243,6 +244,34 @@
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
       pointer-events: none;
       z-index: 2;
+    }
+
+    @media (max-width: 640px) {
+      #flight-controls {
+        top: 56px;
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - 72px);
+        overflow-y: auto;
+        font-size: 14px;
+      }
+
+      #flight-controls button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      #flight-controls input[type="range"] {
+        height: 28px;
+      }
+
+      #flight-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>
