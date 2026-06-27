@@ -156,7 +156,7 @@ const createPointSphere = (
     material.alpha = style.pointOpacity;
     mesh.material = material;
     mesh.renderingGroupId = RENDERING_GROUP_ID;
-    // 頂点インタラクション API  のため pickable にする。
+    // 頂点インタラクション API のため pickable にする。
     // 名前 `polygon-${id}-point-${index}` は DefaultScene 側の
     // `pickPolygonPoint` でパースされ、polygonId / index の解決に使われる。
     mesh.isPickable = true;
@@ -877,7 +877,7 @@ export const createPolygonNode = (
             );
         }
 
-        // 壁 Ribbon  の更新。非表示中はスキップしてフレーム負荷を下げるが、
+        // 壁 Ribbon の更新。非表示中はスキップしてフレーム負荷を下げるが、
         // 上で lastWorldPoints / lastGroundYs の参照を保持しておき、setWallsEnabled(true)
         // 時に同一データで Ribbon を再適用して stale 表示を避ける。
         lastWorldPoints = worldPoints;

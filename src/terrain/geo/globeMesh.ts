@@ -4,7 +4,7 @@
  * 1 タイルぶんの標高データから ECEF 曲面メッシュの頂点データ
  * （positions / normals / uvs / indices / anchor）を生成する。Babylon の `Mesh` /
  * `Texture` 生成からは分離し、座標計算を純関数として切り出すことで単体テスト可能にする
- * （`globeTileManager` が本データから実際の `Mesh` を組み立てる）。PoC  の
+ * （`globeTileManager` が本データから実際の `Mesh` を組み立てる）。PoC の
  * メッシュ生成から幾何部分を昇格したもの。
  *
  * floating origin 下での Float32 頂点バッファ精度を担保するため、頂点はタイル中心の

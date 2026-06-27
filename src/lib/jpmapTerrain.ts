@@ -1354,7 +1354,7 @@ export class JpmapTerrain {
         this._disposed = true;
         // 進行中の flyTo を中断
         this._flyToToken++;
-        // 太陽位置タイマー  を停止
+        // 太陽位置タイマーを停止
         this._stopSunTimer();
         this._autoLastAppliedDate = null;
         // カメラ変化通知を解除し、リスナー一覧もクリアする

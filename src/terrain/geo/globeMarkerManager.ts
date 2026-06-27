@@ -147,7 +147,7 @@ export const createGlobeMarkerManager = (
      */
     const placeNode = (node: GlobeMarkerNode, camEcef?: Vector3): void => {
         // 取得できた標高は保持し、null（前景タイル未ロード等）は直前値へフォールバック
-        // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。被覆の根本改善は。
+        // して楕円体表面へ落ちるのを防ぐ（初回ロード前のみ 0=楕円体面）。
         const queried = terrainElevAt(node.lat, node.lon);
         if (queried !== null) node.lastElev = queried;
         const elev = node.lastElev ?? 0;
