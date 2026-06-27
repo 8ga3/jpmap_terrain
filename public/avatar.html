@@ -106,16 +106,52 @@
       background: rgba(255, 255, 255, 0.18);
     }
 
+    /* モバイル用の操作パネル開閉トグル（PC では非表示・パネル常時表示）。 */
+    .panel-toggle-cb,
+    .panel-toggle-btn {
+      display: none;
+    }
+
     @media (max-width: 640px) {
-      #avatar-controls {
+      .panel-toggle-btn {
+        position: absolute;
         top: 56px;
         left: 8px;
-        right: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        pointer-events: auto;
+        color: #fff;
+        font-size: 18px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 8px;
+        cursor: pointer;
+        z-index: 11;
+      }
+
+      #avatar-panel-toggle:checked + .panel-toggle-btn {
+        background: rgba(96, 165, 250, 0.55);
+        border-color: rgba(191, 219, 254, 0.85);
+      }
+
+      #avatar-controls {
+        top: 104px;
+        left: 8px;
+        right: auto;
+        width: min(78vw, 280px);
         min-width: 0;
         max-width: none;
-        max-height: calc(100vh - 72px);
+        max-height: calc(100vh - 160px);
         overflow-y: auto;
-        font-size: 14px;
+        font-size: 13px;
+      }
+
+      /* 既定は折り畳み（閉じた状態）。トグルで開く。 */
+      #avatar-panel-toggle:not(:checked) ~ #avatar-controls {
+        display: none;
       }
 
       #avatar-controls button {
@@ -139,6 +175,8 @@
   <div id="root"></div>
   <div id="avatar-overlay">
     <a class="back-link" href="/">← デモ一覧へ</a>
+    <input type="checkbox" id="avatar-panel-toggle" class="panel-toggle-cb" hidden>
+    <label for="avatar-panel-toggle" class="panel-toggle-btn" aria-label="操作パネルの開閉" title="操作パネル">⚙</label>
     <div id="avatar-controls">
       <strong>アバターアニメーション #01</strong>
       <div class="info-row">

@@ -325,7 +325,8 @@
       }
 
       .score-bar {
-        max-width: calc(100vw - 16px);
+        /* 上端左右の back-link / コンパスを避けて中央に収める。 */
+        max-width: calc(100vw - 130px);
         box-sizing: border-box;
         font-size: 12px;
       }
@@ -339,7 +340,8 @@
       }
 
       .controls-bar {
-        bottom: 8px;
+        /* 下端隅のズーム/写真ボタンへ被らないよう、ボタン群の上へ持ち上げる。 */
+        bottom: 140px;
         width: calc(100vw - 16px);
         box-sizing: border-box;
         flex-wrap: wrap;
