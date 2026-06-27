@@ -7,6 +7,7 @@ import { snapScale, formatScale, SCALE_STEPS, createControlPanel, showToast } fr
 function cleanupDOM(): void {
     document.body.innerHTML = "";
     document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
+    document.head.querySelectorAll("#cp-responsive-style").forEach((el) => el.remove());
 }
 
 describe("createControlPanel locateMe ボタン", () => {
@@ -92,6 +93,46 @@ describe("createControlPanel pointerEvents 透過", () => {
     it("locateMe ボタンに pointerEvents: auto が設定されている", () => {
         const panel = createControlPanel();
         expect(panel.locateMe.style.pointerEvents).toBe("auto");
+    });
+});
+
+describe("createControlPanel レスポンシブ対応 (#424)", () => {
+    afterEach(cleanupDOM);
+
+    it("coarse pointer 用のレスポンシブスタイルが head に注入される", () => {
+        createControlPanel();
+        const style = document.getElementById("cp-responsive-style");
+        expect(style).not.toBeNull();
+        expect(style!.tagName).toBe("STYLE");
+        expect(style!.textContent).toContain("(pointer: coarse)");
+    });
+
+    it("レスポンシブスタイルは複数回呼んでも 1 つだけ注入される", () => {
+        createControlPanel();
+        cleanupDOM();
+        createControlPanel();
+        createControlPanel();
+        const styles = document.head.querySelectorAll("#cp-responsive-style");
+        expect(styles.length).toBe(1);
+    });
+
+    it("ズームボタンに cp-zoombtn クラスが付与される（タップ領域拡大対象）", () => {
+        const panel = createControlPanel();
+        expect(panel.zoomIn.classList.contains("cp-zoombtn")).toBe(true);
+        expect(panel.zoomOut.classList.contains("cp-zoombtn")).toBe(true);
+        expect(panel.locateMe.classList.contains("cp-zoombtn")).toBe(true);
+    });
+
+    it("地図切替/視点切替ボタンに識別クラスが付与される", () => {
+        const panel = createControlPanel();
+        expect(panel.mapToggle.classList.contains("cp-maptoggle")).toBe(true);
+        expect(panel.viewModeButton.classList.contains("cp-viewmode")).toBe(true);
+    });
+
+    it("スケールバーのテキスト要素に cp-scale-text クラスが付与される", () => {
+        const panel = createControlPanel();
+        expect(panel.scaleBar.label.classList.contains("cp-scale-text")).toBe(true);
+        expect(panel.scaleBar.attribution.classList.contains("cp-scale-text")).toBe(true);
     });
 });
 

@@ -21,6 +21,33 @@ const css = (el: HTMLElement, styles: Partial<CSSStyleDeclaration>): void => {
     Object.assign(el.style, styles);
 };
 
+/**
+ * タッチ端末（coarse pointer）向けのレスポンシブ補正スタイルを一度だけ注入する。
+ *
+ * 操作 UI は固定 px のインラインスタイルで生成されるため、ここでは `@media (pointer: coarse)`
+ * + `!important` でインライン値を上書きし、スマートフォン/タブレットでのみタップ領域・文字を
+ * 拡大する。マウス/トラックパッド（fine pointer）では何も変えないため、PC の見た目とビジュアル
+ * 回帰テストには影響しない。
+ */
+const injectResponsiveStyle = (): void => {
+    if (document.getElementById("cp-responsive-style")) return;
+    const style = document.createElement("style");
+    style.id = "cp-responsive-style";
+    style.textContent = [
+        "@media (pointer: coarse) {",
+        "  .cp-compass { width: 48px !important; height: 48px !important; top: 16px !important; right: 16px !important; }",
+        "  .cp-compass svg { width: 34px; height: 34px; }",
+        "  .cp-viewmode { width: 48px !important; height: 48px !important; top: 72px !important; right: 16px !important; font-size: 15px !important; }",
+        "  .cp-btn { min-width: 44px; min-height: 44px; }",
+        "  .cp-zoombtn { width: 44px !important; height: 44px !important; font-size: 22px !important; }",
+        "  .cp-zoombtn svg { width: 22px; height: 22px; }",
+        "  .cp-maptoggle { width: 56px !important; height: 44px !important; left: 16px !important; bottom: 16px !important; font-size: 13px !important; }",
+        "  .cp-scale-text { font-size: 12px !important; }",
+        "}",
+    ].join("\n");
+    document.head.appendChild(style);
+};
+
 const createCompass = (): HTMLDivElement => {
     const container = document.createElement("div");
     css(container, {
@@ -131,6 +158,7 @@ const createZoomButtons = (): {
             pointerEvents: "auto",
         });
         btn.classList.add("cp-btn");
+        btn.classList.add("cp-zoombtn");
         return btn;
     };
 
@@ -175,6 +203,7 @@ const createZoomButtons = (): {
             "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff",
     });
     scaleLabel.textContent = "";
+    scaleLabel.classList.add("cp-scale-text");
 
     const scaleBar = document.createElement("div");
     css(scaleBar, {
@@ -192,6 +221,7 @@ const createZoomButtons = (): {
     attribution.target = "_blank";
     attribution.rel = "noopener noreferrer";
     attribution.textContent = "地理院タイル";
+    attribution.classList.add("cp-scale-text");
     css(attribution, {
         color: "#222",
         fontSize: "10px",
@@ -257,6 +287,7 @@ const createMapToggleButton = (): HTMLButtonElement => {
         zIndex: "10",
     });
     btn.classList.add("cp-btn");
+    btn.classList.add("cp-maptoggle");
     document.body.appendChild(btn);
     return btn;
 };
@@ -296,6 +327,7 @@ const createViewModeToggleButton = (): HTMLButtonElement => {
         zIndex: "10",
     });
     btn.classList.add("cp-btn");
+    btn.classList.add("cp-viewmode");
     document.body.appendChild(btn);
     return btn;
 };
@@ -394,6 +426,9 @@ export const showToast = (message: string, durationMs = 3000): void => {
 };
 
 export const createControlPanel = (): ControlPanelElements => {
+    // タッチ端末向けのレスポンシブ補正スタイルを注入（fine pointer では無効）。
+    injectResponsiveStyle();
+
     // 方位磁針（画面右上に独立配置）
     const compass = createCompass();
 
