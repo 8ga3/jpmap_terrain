@@ -15,6 +15,8 @@
  * ポイント上 hover は API 既定動作でカーソル `pointer` に切り替わる。
  * 編集中はカメラ操作が API 側で抑制される。
  */
+// `scene.pick` は Ray の副作用モジュールに依存するため明示的に import する。
+import "@babylonjs/core/Culling/ray";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type {
     JpmapTerrainOptions,
