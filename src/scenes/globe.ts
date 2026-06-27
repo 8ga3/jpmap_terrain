@@ -1,9 +1,9 @@
 /**
  * グローブ地形シーン (Issue #275 Phase 1 + Phase 2)。
  *
- * かつての平面ワールド（撤去済み planar 実装）に対する **並行構築** として生まれたグローブ（ECEF 楕円体 +
- * Large World Rendering の floating origin）シーン。`GeospatialCamera` を中核に、
- * `geo/globeTileManager` で動的 LOD タイルを描画し、注視点を地形表面へ追従させる。
+ * ECEF 楕円体 + Large World Rendering の floating origin で構築したグローブ地形シーン。
+ * `GeospatialCamera` を中核に、`geo/globeTileManager` で動的 LOD タイルを描画し、
+ * 注視点を地形表面へ追従させる。
  *
  * Phase 1: 「座標系・メッシュ生成・カメラ基盤・配置・LOD」の地形エンジン（注視点ズーム・
  * seat-on-terrain・地心距離 LOD）。

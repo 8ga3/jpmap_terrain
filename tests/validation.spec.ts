@@ -306,7 +306,7 @@ for (const engine of engines) {
         page,
     }, testInfo) => {
         // 東京の夜明け（2025-04-25 JST 05:13）に東向きでカメラを構え、太陽メッシュが画面内に映ることを検証する。
-        // パス `/@lat,lon` ではなく `?lat=&lon=` クエリ形式を採用（dev-server の historyApiFallback 互換）。
+        // パス `/@lat,lon` ではなく `?lat=&lon=` クエリ形式を採用（dev サーバの SPA rewrite と両立させる）。
         const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
         sceneUrl.searchParams.set("engine", engine.param);
         sceneUrl.searchParams.set("lat", String(SUNRISE_LAT));

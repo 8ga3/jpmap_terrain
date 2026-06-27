@@ -3,12 +3,9 @@ import type { Connect, Plugin } from "vite";
 /**
  * SPA fallback ルーティング定義 (Issue #157 / #298)。
  *
- * webpack-dev-server の `historyApiFallback.rewrites`（旧 `webpack.rewrites.js`）を
- * Vite の `configureServer` ミドルウェアへ移植したもの。dev (`vite.config.ts`) と
- * E2E テスト (`vite.tests.config.ts`) で同一の定義を共有し、両者の乖離を防ぐ。
- *
- * デモ識別子付きパス（/viewer/@..., /timelapse/@...）と、`.html` 付きの
- * 旧形式 URL も許容する（パース側 `src/terrain/urlState.ts` の挙動に合わせる）。
+ * デモ識別子付きパス（/viewer/@..., /timelapse/@...）を該当 HTML へ書き換える
+ * dev サーバーミドルウェア。dev (`vite.config.ts`) と E2E テスト
+ * (`vite.tests.config.ts`) で同一の定義を共有し、両者の乖離を防ぐ。
  */
 export interface DemoRewrite {
     from: RegExp;
@@ -32,10 +29,10 @@ const DEMO_NAMES = [
     "geospatial",
 ];
 
-export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.flatMap((name) => [
-    { from: new RegExp(`^/${name}(?:/@.*)?/?$`), to: `/${name}.html` },
-    { from: new RegExp(`^/${name}\\.html(?:/?@.*)?/?$`), to: `/${name}.html` },
-]);
+export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.map((name) => ({
+    from: new RegExp(`^/${name}(?:/@.*)?/?$`),
+    to: `/${name}.html`,
+}));
 
 /**
  * `demoAtPathRewrites` を Vite dev サーバーのミドルウェアとして適用するプラグイン。

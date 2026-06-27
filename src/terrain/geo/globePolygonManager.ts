@@ -110,17 +110,17 @@ export interface GlobePolygonOptions {
     /** 高度モード。default terrain。 */
     altitudeMode?: AltitudeMode;
     /**
-     * 旧 Phase 3 API 互換。指定時は全頂点をこの楕円体高度に置く（absolute 相当）。
+     * 指定時は全頂点をこの楕円体高度に置く（absolute 相当）。
      */
     topAltitudeMeters?: number;
     labels?: ReadonlyArray<string | undefined>;
     edgeLabels?: ReadonlyArray<string | undefined>;
     style?: PolygonStyleOptions;
-    /** 旧 API 互換。style.lineColor より優先度は低い。 */
+    /** `style.lineColor` の別名（`style.lineColor` より優先度は低い）。 */
     outlineColor?: string;
-    /** 旧 API 互換。style.wallColor より優先度は低い。 */
+    /** `style.wallColor` の別名（`style.wallColor` より優先度は低い）。 */
     wallColor?: string;
-    /** 旧 API 互換。style.wallOpacity より優先度は低い。 */
+    /** `style.wallOpacity` の別名（`style.wallOpacity` より優先度は低い）。 */
     wallOpacity?: number;
     verticalsEnabled?: boolean;
     labelsEnabled?: boolean;

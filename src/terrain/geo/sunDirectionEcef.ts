@@ -1,8 +1,7 @@
 /**
  * 太陽の地理的見かけ位置（高度・方位角）を、グローブシーンの ECEF 太陽方向ベクトルへ変換する。
  *
- * かつての平面シーン（撤去済み planar 実装）は Babylon 左手系（X=東/Y=上/Z=北）で太陽方向を組んでいたが、
- * グローブシーン（`scenes/globe.ts`）は **右手系 ECEF**（X→経度0 / Y→東経90° / Z→北極、
+ * Babylon の左手系（X=東/Y=上/Z=北）ではなく、グローブシーン（`scenes/globe.ts`）は **右手系 ECEF**（X→経度0 / Y→東経90° / Z→北極、
  * `geo/ecef` と同一規約）で動く。観測点（lat/lon）でのローカル ENU（East-North-Up）基底を
  * ECEF で構成し、地平座標（azimuth/altitude）の太陽方向を ECEF へ写す。
  *

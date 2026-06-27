@@ -5,7 +5,7 @@
  * Babylon.js は読み込まないため、ライブラリ側 (`src/lib/**`) の依存は持たない。
  *
  * 追加デモは `DEMO_LIST` に項目を増やすことで一覧へ反映できる。
- * 並びは配列順。`href` は webpack の HtmlWebpackPlugin が出力する HTML ファイル名と一致させる。
+ * 並びは配列順。`href` は Vite が配信する HTML ファイル名（`<name>.html`）と一致させる。
  */
 
 interface DemoEntry {

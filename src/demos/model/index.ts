@@ -22,7 +22,7 @@ import {
 import humanGlbUrl from "../../../assets/human.glb";
 import humanObjUrl from "../../../assets/human.obj";
 // MTL は OBJ ローダーが rootUrl から自動取得するが、
-// webpack にバンドル対象として認識させるためインポートしておく。
+// Vite にバンドル対象として認識させるためインポートしておく。
 import "../../../assets/human.mtl";
 import humanStlUrl from "../../../assets/human.stl";
 
