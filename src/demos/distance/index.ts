@@ -62,6 +62,12 @@ interface DemoState {
     mode: DistanceDemoMode;
     points: PolygonPointOptions[];
     /**
+     * 高度編集モード（スティッキー）。スマホなど Shift キーが使えない環境向けに、
+     * 「高度」ボタンで ON にするとドラッグが lat/lon ではなく altitude を編集する。
+     * `edit` モードかつ非 2D のときのみ有効。
+     */
+    altitudeMode: boolean;
+    /**
      * Shift+ドラッグ開始時のスナップショット。`pointermove` ごとに altitude を再計算するため、
      * dragStart の `altitude` と `clientY` を保持する。
      */
@@ -151,7 +157,9 @@ const updateStatus = (
                   : `削除モード（点 ${n}）`
               : is2d
                 ? `編集モード（点 ${n}）。ドラッグで移動`
-                : `編集モード（点 ${n}）。ドラッグで移動 / Shift+ドラッグで高度`;
+                : state.altitudeMode
+                  ? `編集モード（点 ${n}）。ドラッグで高度を変更（高度ボタン ON）`
+                  : `編集モード（点 ${n}）。ドラッグで移動 / Shift+ドラッグまたは高度ボタンで高度`;
     statusEl.textContent = `モード: ${state.mode}（点 ${n}）／ ${guide}`;
 };
 
@@ -175,7 +183,28 @@ const buildToolbar = (
                 state.mode === mode ? "true" : "false",
             );
         }
+        // 高度トグルは編集モードのときのみ有効。
+        const altEnabled = state.mode === "edit";
+        altitudeBtn.disabled = !altEnabled;
+        altitudeBtn.dataset.active =
+            altEnabled && state.altitudeMode ? "true" : "false";
+        altitudeBtn.setAttribute(
+            "aria-pressed",
+            altEnabled && state.altitudeMode ? "true" : "false",
+        );
     };
+    // 高度編集トグル（スマホ向け。Shift キーの代替）。
+    const altitudeBtn = document.createElement("button");
+    altitudeBtn.type = "button";
+    altitudeBtn.textContent = "高度";
+    altitudeBtn.dataset.distanceAction = "altitude";
+    altitudeBtn.title = "ドラッグで高度を編集（編集モード時）";
+    altitudeBtn.addEventListener("click", () => {
+        if (state.mode !== "edit") return;
+        state.altitudeMode = !state.altitudeMode;
+        refresh();
+        onChange();
+    });
     for (const m of modes) {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -183,12 +212,17 @@ const buildToolbar = (
         btn.dataset.distanceMode = m.value;
         btn.addEventListener("click", () => {
             state.mode = m.value;
+            // 編集モード以外へ移ると高度トグルは無効化する。
+            if (m.value !== "edit") {
+                state.altitudeMode = false;
+            }
             refresh();
             onChange();
         });
         buttons.set(m.value, btn);
         container.appendChild(btn);
     }
+    container.appendChild(altitudeBtn);
     refresh();
 
     // クリア（全頂点削除）
@@ -263,6 +297,7 @@ const start = async (): Promise<void> => {
     const state: DemoState = {
         mode: DEFAULT_DISTANCE_DEMO_MODE,
         points: [],
+        altitudeMode: false,
         altitudeDragStart: null,
     };
 
@@ -364,7 +399,8 @@ const start = async (): Promise<void> => {
         }
         if (state.mode === "edit" && hovering) {
             // 2D ではドラッグの高度変更を無効化しているため ns-resize は出さない。
-            const altitudeEditable = shiftPressed && viewer.viewMode !== "2d";
+            const altitudeEditable =
+                (shiftPressed || state.altitudeMode) && viewer.viewMode !== "2d";
             renderCanvas.style.cursor = altitudeEditable ? "ns-resize" : "move";
         }
     };
@@ -423,15 +459,19 @@ const start = async (): Promise<void> => {
         if (e.polygonId !== POLYGON_ID) return;
         const current = state.points[e.index];
         if (!current) return;
-        if (e.pointerEvent.shiftKey && viewer.viewMode !== "2d") {
-            // 高度モード: 開始 altitude / clientY / 地表標高を保持。
-            // 2D（トップダウン）では高度変化が見えないため無効化し、通常の lat/lon 移動にする。
-            state.altitudeDragStart = {
-                index: e.index,
-                altitude: current.altitude ?? 0,
-                clientY: e.pointerEvent.clientY,
-                groundAltitude: e.groundAltitude ?? 0,
-            };
+        if (e.pointerEvent.shiftKey || state.altitudeMode) {
+            if (viewer.viewMode !== "2d") {
+                // 高度モード: 開始 altitude / clientY / 地表標高を保持。
+                // 2D（トップダウン）では高度変化が見えないため無効化し、通常の lat/lon 移動にする。
+                state.altitudeDragStart = {
+                    index: e.index,
+                    altitude: current.altitude ?? 0,
+                    clientY: e.pointerEvent.clientY,
+                    groundAltitude: e.groundAltitude ?? 0,
+                };
+            } else {
+                state.altitudeDragStart = null;
+            }
         } else {
             state.altitudeDragStart = null;
         }
