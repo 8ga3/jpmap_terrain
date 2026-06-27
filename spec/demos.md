@@ -39,6 +39,7 @@
   - ピンチイン/アウト（間隔変化）→ ズーム（GeospatialCamera 側で処理）。
   - 間隔が広い（`>= TWO_FINGER_TILT_SPREAD_PX`）→ 平行移動で pan、指のひねり（twist）で方位回転（yaw）。
   - 間隔が狭い（`< TWO_FINGER_TILT_SPREAD_PX`）→ 縦移動で tilt（pitch、`limits` でクランプ）。
+  - モードは最初の 2 本指 move 時に間隔で確定し、指を離す（2 本未満になる）まで維持する。途中で間隔がしきい値を跨いでもモードを切り替えない（誤切替防止）。
   - 感度・しきい値は `TWO_FINGER_TILT_SPREAD_PX` / `TWO_FINGER_TILT_SENS` / `TWO_FINGER_YAW_SENS` で調整可能。動作確認は iOS Safari / Android Chrome 実機で行う（Issue #424 の完了定義）。
 - 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。
 
