@@ -5,6 +5,7 @@
   <title>jpmap_terrain – 3Dモデルデモ</title>
   <meta name="description" content="jpmap_terrain の 3Dモデル (ModelManager) 公開 API 動作確認デモ">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -103,6 +104,34 @@
 
     #model-controls button:hover {
       background: rgba(255, 255, 255, 0.18);
+    }
+
+    @media (max-width: 640px) {
+      #model-controls {
+        top: 56px;
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - 72px);
+        overflow-y: auto;
+        font-size: 14px;
+      }
+
+      #model-controls button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      #model-controls input[type="range"] {
+        height: 28px;
+      }
+
+      #model-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>

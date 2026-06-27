@@ -5,6 +5,7 @@
   <title>jpmap_terrain – Plan Viewer</title>
   <meta name="description" content="QGroundControl Plan ファイルをドラッグ&ドロップでマップ上に表示するデモ">
   <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <style>
     html, body {
       overflow: hidden;
@@ -141,6 +142,37 @@
       border: 3px dashed rgba(255, 255, 255, 0.6);
       border-radius: 16px;
       text-align: center;
+    }
+
+    @media (max-width: 640px) {
+      #plan-controls {
+        top: 56px;
+        left: 8px;
+        right: 8px;
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - 72px);
+        overflow-y: auto;
+        font-size: 14px;
+      }
+
+      #plan-controls button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      #plan-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
+
+      #plan-drop-zone .drop-label {
+        max-width: calc(100vw - 32px);
+        box-sizing: border-box;
+        padding: 24px 28px;
+        font-size: 16px;
+      }
     }
   </style>
 </head>
