@@ -15,6 +15,10 @@
         height: 100%;
         margin: 0;
         padding: 0;
+        /* モバイルでの2本指スクロール/オーバースクロール（自動スクロール）やダブルタップ
+           ズーム等のブラウザ既定ジェスチャを抑止する（Issue #424）。 */
+        touch-action: none;
+        overscroll-behavior: none;
       }
 
       #root {
