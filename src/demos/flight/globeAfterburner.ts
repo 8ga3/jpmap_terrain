@@ -263,9 +263,13 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
             history.push(new Vector3());
         }
         const pathArray = [left, right];
+        // sideOrientation は既定 (FRONTSIDE)。両面表示は material.backFaceCulling = false で
+        // 実現する。DOUBLESIDE は頂点を複製して総頂点数を 2 倍にするため、固定長の頂点カラー
+        // バッファ (SAMPLE_COUNT * 2 頂点ぶん) と齟齬が生じ、複製側が未着色（白）のまま
+        // additive 合成され、炎が白飛びして正しく表示されない。
         const mesh = CreateRibbon(
             name,
-            { pathArray, updatable: true, sideOrientation: Mesh.DOUBLESIDE },
+            { pathArray, updatable: true },
             scene,
         );
         mesh.material = material;
