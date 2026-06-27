@@ -347,6 +347,38 @@ export const snapScale = (meters: number): number => {
     return SCALE_STEPS[SCALE_STEPS.length - 1];
 };
 
+/**
+ * スケールバーの「きれいな数値」を、表示幅の上限（maxBarPx）を超えない範囲で選ぶ。
+ *
+ * `snapScale` は常に切り上げるため、バー幅は基準（basePx）の最大 2.5 倍程度まで
+ * 広がりうる。狭い画面ではバーが横に伸びて左下の地図切替ボタン等に被るため、
+ * `maxBarPx` を超える場合は 1 段階ずつ小さいスケールへ下げてバー幅を収める。
+ *
+ * @param metersPerPx 画面 1px あたりのメートル数（>0）
+ * @param basePx スケールバーの目標幅（px）。この近傍のきれいな値を選ぶ起点。
+ * @param maxBarPx 許容する最大バー幅（px）。これを超えないスケールを選ぶ。
+ * @returns 選んだスケール（meters）と対応するバー幅（barPx）
+ */
+export const pickScaleWithin = (
+    metersPerPx: number,
+    basePx: number,
+    maxBarPx: number,
+): { meters: number; barPx: number } => {
+    if (!(metersPerPx > 0) || !Number.isFinite(metersPerPx)) {
+        return { meters: SCALE_STEPS[0], barPx: 0 };
+    }
+    const rawMeters = metersPerPx * basePx;
+    let idx = SCALE_STEPS.findIndex((s) => s >= rawMeters);
+    if (idx === -1) idx = SCALE_STEPS.length - 1;
+    // maxBarPx を超える間は 1 段階ずつ小さいスケールへ下げる（最小ステップまで）。
+    while (idx > 0 && SCALE_STEPS[idx] / metersPerPx > maxBarPx) {
+        idx--;
+    }
+    const meters = SCALE_STEPS[idx];
+    const barPx = Math.round(meters / metersPerPx);
+    return { meters, barPx };
+};
+
 export const formatScale = (meters: number): string => {
     if (meters >= 1000) return `${meters / 1000} km`;
     return `${meters} m`;
