@@ -145,7 +145,7 @@ export const createArtilleryShadows = (
     // フィルタ選定: PCF (`usePercentageCloserFiltering`) は WebGPU で comparison 付き
     // depth-stencil サンプラ（`shadowTexture2` / `shadowTexture2Sampler`）を要求するが、
     // 影マップのテクスチャがバインドされず `createBindGroup` がクラッシュし、シーン全体
-    // （地形・砲台）が一切描画されず白画面になる（同根。旧 planar シーンの
+    // （地形・砲台）が一切描画されず白画面になる（旧 planar シーンの
     // 太陽影と同じ対処）。Poisson sampling は通常テクスチャとしてバインドされ PostProcess も
     // 伴わないため、WebGL2 / WebGPU 双方で安定して動作する。
     generator.usePoissonSampling = true;

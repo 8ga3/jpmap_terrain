@@ -13,7 +13,7 @@
  *
  * 描画グループ:
  * - 中心球 / 円周 Tube / 中心ラベル: `RENDERING_GROUP_ID = 1`（地表より手前）
- * - 壁 Ribbon: `SUBTERRAIN_RENDERING_GROUP_ID = 0`（地表深度でオクルード、 参照）
+ * - 壁 Ribbon: `SUBTERRAIN_RENDERING_GROUP_ID = 0`（地表深度でオクルード）
  */
 
 import type { Scene } from "@babylonjs/core/scene";
