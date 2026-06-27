@@ -1124,9 +1124,10 @@ const start = async (): Promise<void> => {
             afterburner.dispose();
         }
         // メイン Viewer を PIP（第2エンジン）より先に dispose してレンダーループを止める。
-        // メインエンジンの描画と PIP の dispose が競合すると Babylon 内部の
-        // UniformBuffer override が壊れ、`_updateMatrixForUniformOverride is not a
-        // function` が発生するため、この順序を守る。
+        // メインエンジンの描画と PIP の dispose が競合すると Babylon 内部の UniformBuffer
+        // override が壊れる。
+        // 例: `TypeError: this._updateMatrixForUniformOverride is not a function`
+        // これを避けるため、この順序を守る。
         viewer.dispose();
         pipCleanups.forEach((fn) => fn());
         if (pipViewer) {
