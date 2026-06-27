@@ -150,6 +150,40 @@ describe("globe タッチ 2本指ジェスチャ (#424)", () => {
         teardown();
     });
 
+    it("移動+回転で開始したら、間隔がしきい値未満になってもモードを維持する", () => {
+        const { gc, canvas, teardown } = build();
+        // 広い間隔（spread=300 > 160）で開始 → panRotate モードに確定。
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 100, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 400, clientY: 200 });
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 120, clientY: 210 });
+        // 指を近づけて間隔をしきい値未満（spread≈40 < 160）にする。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 360, clientY: 200 });
+        const pitchBefore = gc.camera.pitch;
+        const before = centerOf(gc);
+        // この状態で縦移動してもチルトせず、移動（center 変化）が続く。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 360, clientY: 240 });
+        expect(gc.camera.pitch).toBe(pitchBefore);
+        expect(Vector3.Distance(before, gc.camera.center)).toBeGreaterThan(0);
+        teardown();
+    });
+
+    it("チルトで開始したら、間隔がしきい値以上になってもモードを維持する", () => {
+        const { gc, canvas, teardown } = build();
+        // 狭い間隔（spread=60 < 160）で開始 → tilt モードに確定。
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 200, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 260, clientY: 200 });
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: 200, clientY: 190 });
+        // 指を広げて間隔をしきい値以上（spread≈300 > 160）にする。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: -40, clientY: 190 });
+        const before = centerOf(gc);
+        const pitchBefore = gc.camera.pitch;
+        // この状態で縦移動しても移動せず、チルト（pitch 変化）が続く。
+        dispatchPointer(canvas, "pointermove", { pointerId: 1, clientX: -40, clientY: 150 });
+        expect(Vector3.Distance(before, gc.camera.center)).toBe(0);
+        expect(gc.camera.pitch).not.toBe(pitchBefore);
+        teardown();
+    });
+
     it("ピンチ後に全指を離すと次の1本指で再びパンできる", () => {
         const { gc, canvas, teardown } = build();
         dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 100, clientY: 100 });

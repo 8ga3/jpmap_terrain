@@ -488,6 +488,9 @@ export class GlobeScene {
         // アクティブなタッチポインタの現在位置（clientX/Y）。2本指ジェスチャ（ピンチ/ひねり/平行移動）
         // と、2本指以上の間のシングルタッチパン抑止に使う。キー = pointerId。
         const touchPoints = new Map<number, { x: number; y: number }>();
+        // 2本指ジェスチャのモード。最初の2本指 move 時に指の間隔で確定し、指を離す（2本未満に
+        // なる）まで維持する。途中で間隔がしきい値を跨いでもモードを切り替えない（誤切替防止）。
+        let twoFingerMode: "tilt" | "panRotate" | null = null;
         // ---- ポリゴン頂点インタラクション状態 ----
         // パン handler（onPointerDown/Move）から参照するため早期に宣言する。実体の購読 API・
         // 幾何ピック・ドラッグハンドラはカメラ/レイ補助関数（後述）の後で定義・遅延登録する。
@@ -524,11 +527,17 @@ export class GlobeScene {
             dragging = false;
         };
         const onPointerUp = (e: PointerEvent): void => {
-            if (e.pointerType === "touch") touchPoints.delete(e.pointerId);
+            if (e.pointerType === "touch") {
+                touchPoints.delete(e.pointerId);
+                if (touchPoints.size < 2) twoFingerMode = null;
+            }
             if (e.button === 0) endDrag();
         };
         const onPointerCancel = (e: PointerEvent): void => {
-            if (e.pointerType === "touch") touchPoints.delete(e.pointerId);
+            if (e.pointerType === "touch") {
+                touchPoints.delete(e.pointerId);
+                if (touchPoints.size < 2) twoFingerMode = null;
+            }
             endDrag();
         };
         // パン用の再利用バッファ（毎フレーム/毎 move 呼び出しでの割当を避ける）。
@@ -606,16 +615,21 @@ export class GlobeScene {
             // 現在の指の間隔。
             const spread = Math.hypot(now.x - other.x, now.y - other.y);
 
+            // モードは最初の2本指 move 時に確定し、指を離すまで維持（しきい値の跨ぎで切替えない）。
+            if (twoFingerMode === null) {
+                twoFingerMode = spread < TWO_FINGER_TILT_SPREAD_PX ? "tilt" : "panRotate";
+            }
+
             // 2本指の重心移動（前フレーム→現フレーム）。動いたのは movedId の指のみ。
             const dCx = (now.x - prev.x) / 2;
             const dCy = (now.y - prev.y) / 2;
 
-            if (spread < TWO_FINGER_TILT_SPREAD_PX) {
-                // 近い: チルト。上方向ドラッグ（dCy<0）でチルトアップ（pitch 増）。limits 範囲にクランプ。
+            if (twoFingerMode === "tilt") {
+                // チルト。上方向ドラッグ（dCy<0）でチルトアップ（pitch 増）。limits 範囲にクランプ。
                 const next = camera.pitch - dCy * TWO_FINGER_TILT_SENS;
                 camera.pitch = Math.min(MAX_PITCH_RAD, Math.max(MIN_PITCH_RAD, next));
             } else {
-                // 離れている: 平行移動 ＋ 回転（ひねり）。
+                // 平行移動 ＋ 回転（ひねり）。
                 if (panEnabled) panByPixels(dCx, dCy);
                 if (dAng !== 0) camera.yaw = camera.yaw - dAng * TWO_FINGER_YAW_SENS;
             }
