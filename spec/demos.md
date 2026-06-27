@@ -34,8 +34,13 @@
 
 - 全デモの HTML（`public/*.html`）に `<meta name="viewport" content="width=device-width, ...">` を付与し、モバイルでの等倍表示を保証する（viewer は `viewport-fit=cover`、`maximum-scale=1`）。
 - 操作 UI（`src/terrain/controlPanel.ts`）は固定 px で生成するが、`@media (pointer: coarse)` のスタイルを注入し、**タッチ端末でのみ** タップ領域（最小 44px）・文字サイズ・配置余白を拡大する。マウス/トラックパッド（fine pointer）では従来の見た目を維持するため、ビジュアル回帰テスト（`tests/validation.spec.ts`）への影響はない。
-- タッチパネルのパン（`src/scenes/globe.ts` の独自シングルタッチパン）は、接地中のタッチポインタ集合（`activeTouchPointers`）で 2 本指以上を検出し、ピンチ中はパンを無効化する。これにより `GeospatialCamera` のピンチズームとシングルタッチパンの同時発火を防ぐ（マウス操作は従来どおり）。
-- 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。動作確認は iOS Safari / Android Chrome 実機で行う（Issue #424 の完了定義）。
+- タッチパネルのパン（`src/scenes/globe.ts` の独自シングルタッチパン）は、接地中のタッチポインタ位置（`touchPoints`）で 2 本指以上を検出し、ピンチ中はシングルタッチパンを無効化する。これにより `GeospatialCamera` のピンチズームとシングルタッチパンの同時発火を防ぐ（マウス操作は従来どおり）。
+- **2 本指ジェスチャ（`src/scenes/globe.ts`）**: GeospatialCamera 組み込みの multi-touch パン（= 2 本指ドラッグでの tilt 回転）を無効化（`multiTouchPanning=false`／`multiTouchPanAndZoom=false`、`pinchZoom` は温存）し、独自のジェスチャ処理に置き換える。割り当ては指の間隔（spread）で切り替える:
+  - ピンチイン/アウト（間隔変化）→ ズーム（GeospatialCamera 側で処理）。
+  - 間隔が広い（`>= TWO_FINGER_TILT_SPREAD_PX`）→ 平行移動で pan、指のひねり（twist）で方位回転（yaw）。
+  - 間隔が狭い（`< TWO_FINGER_TILT_SPREAD_PX`）→ 縦移動で tilt（pitch、`limits` でクランプ）。
+  - 感度・しきい値は `TWO_FINGER_TILT_SPREAD_PX` / `TWO_FINGER_TILT_SENS` / `TWO_FINGER_YAW_SENS` で調整可能。動作確認は iOS Safari / Android Chrome 実機で行う（Issue #424 の完了定義）。
+- 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。
 
 
 ## URL 規約
