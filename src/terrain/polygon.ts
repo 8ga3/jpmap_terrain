@@ -503,7 +503,7 @@ export const createPolygonNode = (
     lineMesh.isPickable = false;
     lineMesh.parent = root;
 
-    // 壁 Ribbon : 上 row = 各頂点 world、下 row = 地表 Y。
+    // 壁 Ribbon: 上 row = 各頂点 world、下 row = 地表 Y。
     // 構築時は groundY を 0 とした placeholder を渡し、applyTransform で実値で更新する。
     // N<2 のときも path>=2 が必要なため placeholder 長さをそろえる。
     const initialGroundYs: (number | null)[] = Array.from(
@@ -815,7 +815,7 @@ export const createPolygonNode = (
                 label.mesh.scaling.setAll(pointScale);
             }
         }
-        // 辺ラベル : edgeLabels[i] は worldPoints[i] と worldPoints[(i+1) % N]
+        // 辺ラベル: edgeLabels[i] は worldPoints[i] と worldPoints[(i+1) % N]
         // の中点に配置する。closed=false の末尾辺は対象外（edgeLabelEntries の長さで吸収）。
         // 中点そのままだと線と重なるため、線より上（画面上方向）にオフセットして
         // 線を覆い隠さないようにする。点ラベルと同じく billboard と組み合わせて
@@ -1017,7 +1017,7 @@ export const createPolygonNode = (
             dropEntries.splice(index, 0, drop);
             labels.splice(index, 0, undefined);
             labelEntries.splice(index, 0, null);
-            // 辺ラベル : 点ラベルと同じ規則で同 index にシフト。
+            // 辺ラベル: 点ラベルと同じ規則で同 index にシフト。
             // expectedEdgeCount は points 増加で 1 増えるので 1 件挿入する。
             edgeLabels.splice(index, 0, undefined);
             edgeLabelEntries.splice(index, 0, null);
@@ -1050,7 +1050,7 @@ export const createPolygonNode = (
                 lbl.material.dispose();
                 lbl.mesh.dispose();
             }
-            // 辺ラベル : 点ラベルと同じ規則で同 index を 1 件削除する。
+            // 辺ラベル: 点ラベルと同じ規則で同 index を 1 件削除する。
             // 開ポリゴンで末尾頂点を削除する場合、edgeLabels.length === points.length-1
             // なので index を `length-1` にクランプして末尾の辺ラベルを削除する。
             if (edgeLabels.length > 0) {
@@ -1137,7 +1137,7 @@ export const createPolygonNode = (
             labelEntries.length = 0;
             labels.length = 0;
             hasLabels = false;
-            // 辺ラベル : replacePolygonPoints 後は全 undefined で再構成する。
+            // 辺ラベル: replacePolygonPoints 後は全 undefined で再構成する。
             for (const entry of edgeLabelEntries) {
                 if (!entry) continue;
                 entry.texture.dispose();
