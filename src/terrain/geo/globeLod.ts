@@ -2,8 +2,8 @@
  * グローブ（ECEF）向け LOD/SSE タイル選択。
  *
  * 平面ワールド前提の `src/terrain/visibleTiles.ts`（Quadtree+SSE）を、グローブ
- * （地心 ECEF）向けに再定義したもの。PoC  を本体共有モジュールへ昇格し、
- * ECEF 変換を  の `geo/ecef` に委譲する。
+ * （地心 ECEF）向けに再定義したもの。本体共有モジュールへ昇格し、
+ * ECEF 変換を `geo/ecef` に委譲する。
  *
  * 平面版との差分:
  * - タイル距離は AABB との XZ 最短距離＋カメラ高度の合成ではなく、タイル中心 ECEF と
@@ -176,7 +176,7 @@ const effectiveSseThreshold = (
     sseThreshold *
     (1 + (SSE_FALLOFF_RATE * Math.max(0, distance)) / Math.max(1, altMeters));
 /**
- * 可視地表を覆う root タイル集合を選定する（の帯 ＋  の高度/距離適応）。
+ * 可視地表を覆う root タイル集合を選定する（ground-track の帯＋高度/距離適応）。
  *
  * **帯の張り方**: カメラ直下点（nadir, 前景）から注視点（center）を通り視線方向へ伸びる
  * ground-track の帯（swath）に root を張る。along-track は nadir 手前のマージンから center を越え
@@ -548,8 +548,8 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         // 受容条件: SSE（距離累進）を満たし、かつ「タイル 1 辺 ≤ カメラ距離」（巨大タイルが
         // 近景を内包して整形で誤除去されるのを防ぐ粗さ上限）。maxZoom 到達時はそれ以上分割不可。
         // 日本テクスチャ被覆域外のタイルは z>WORLD_TEXTURE_MAX_ZOOM のテクスチャが存在せず 404 で
-        // 欠けるため、実効 maxZoom を WORLD_TEXTURE_MAX_ZOOM にクランプして低レベル表示を維持する
-        // 。交差判定は z>=WORLD_TEXTURE_MAX_ZOOM のノードに限定してコストを抑える。
+        // 欠けるため、実効 maxZoom を WORLD_TEXTURE_MAX_ZOOM にクランプして低レベル表示を維持する。
+        // 交差判定は z>=WORLD_TEXTURE_MAX_ZOOM のノードに限定してコストを抑える。
         const effMaxZoom =
             zoom >= WORLD_TEXTURE_MAX_ZOOM &&
             maxZoom > WORLD_TEXTURE_MAX_ZOOM &&

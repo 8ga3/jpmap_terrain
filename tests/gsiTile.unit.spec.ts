@@ -478,7 +478,7 @@ describe("loadElevationTile", () => {
         expect(elev[0]).toBeCloseTo(256.0);
     });
 
-    it("no-data の穴を下位レイヤーの有効値で合成補填する (#384)", async () => {
+    it("no-data の穴を下位レイヤーの有効値で合成補填する", async () => {
         // dem5a: 2×2 のうち 3px が no-data → dem5b: 404 → dem_png: 全有効(256.0)
         // 穴がある限り同一ズームの下位レイヤーを取得し、dem_png の有効値で埋める。
         // dem_png が同一ズームで配信される z14 で検証する（z15 以降は dem_png 同一ズームをスキップし
@@ -509,7 +509,7 @@ describe("loadElevationTile", () => {
         for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
     });
 
-    it("全面 no-data（同一ズームに実標高なし）は粗ズーム dem_png で穴埋めする (#386)", async () => {
+    it("全面 no-data（同一ズームに実標高なし）は粗ズーム dem_png で穴埋めする", async () => {
         // z15: dem5a 全面 no-data(HTTP 200・全画素 128,0,0) → dem5b(z15) 404 → dem_png(z15) は配信上限
         // (z14)超のためスキップ。同一ズームに実標高が無く全面 no-data のため、粗ズーム dem_png(z14) を
         // 取得して穴埋めする。
@@ -562,7 +562,7 @@ describe("loadElevationTile", () => {
         expect(Number.isNaN(elev[1])).toBe(false);
     });
 
-    it("閾値超の部分欠測は、同一ズームで埋まらなければ粗ズーム dem_png で穴埋めする (#386)", async () => {
+    it("閾値超の部分欠測は、同一ズームで埋まらなければ粗ズーム dem_png で穴埋めする", async () => {
         // dem5a 4×4 のうち 4px no-data = 25% > COMPOSITE_HOLE_RATIO(0.1) → 下位レイヤー合成。
         // dem5b(同一ズーム z15) は 404、dem_png(z15) は配信上限超でスキップ。穴が閾値超のため
         // 粗ズーム dem_png(z14) で穴埋め。

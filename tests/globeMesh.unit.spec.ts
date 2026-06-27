@@ -49,7 +49,7 @@ describe("sampleElevBilinear", () => {
         expect(sampleElevBilinear(elev, 0.5, 0)).toBeCloseTo(150, 6);
     });
 
-    it("番兵値 NO_DATA_SENTINEL(-100) を無効として除外する (#339)", () => {
+    it("番兵値 NO_DATA_SENTINEL(-100) を無効として除外する", () => {
         // 穴埋め残しの番兵値が有効標高として混入すると、メッシュ/terrainElevAt が
         // -100m へ引っ張られて沈む。NaN と同様に重み計算から除外する。
         const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);

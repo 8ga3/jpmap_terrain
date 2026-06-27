@@ -135,7 +135,7 @@ describe("委譲（remove/setEnabled/update/dispose）", () => {
         expect(disposeCount).toBe(1);
     });
 
-    it("setFlatten は内部ポリゴンマネージャへ委譲する (#395)", () => {
+    it("setFlatten は内部ポリゴンマネージャへ委譲する", () => {
         const mgr = makeManager();
         mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000 });
         mgr.setFlatten(true);

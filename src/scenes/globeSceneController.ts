@@ -147,8 +147,7 @@ interface AdapterEntry {
 
 /**
  * `GlobeMarkerManager`（採番 id / handle・partial-update 非対応）を公開
- * `MarkerManager`（明示 id / `MarkerHandle` 返却 / partial-update）へアダプトする
- * 。
+ * `MarkerManager`（明示 id / `MarkerHandle` 返却 / partial-update）へアダプトする。
  *
  * - 公開 id ↔ globe 内部 id の対応と、ハンドル再構築に必要な解決済みオプションを保持する。
  * - `GlobeMarkerManager` は in-place のプロパティ更新を持たないため、`update` は内部ノードを

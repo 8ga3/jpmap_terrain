@@ -11,7 +11,7 @@
  * (不要解放＋新規ロード) のため、既存タイルは保持されちらつかない。
  *
  * Scene の dispose 時には Observer 解除と保留中タイマーのクリアを行い、
- * 破棄済みリソースへの参照やタイマーリークを防ぐ (PR  レビュー指摘対応)。
+ * 破棄済みリソースへの参照やタイマーリークを防ぐ。
  */
 
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";

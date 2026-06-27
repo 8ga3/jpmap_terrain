@@ -6,7 +6,7 @@
  * 配置は ECEF（`geodeticToEcefToRef`）で `scene.pick` 非依存。平面版 `modelManager` は未改修で、
  * ローダー登録（`importLoaderForUrl`）のみ座標系非依存のため再利用する。
  *
- *  で公開 `ModelManager`（`addModel`/`updateModel`/`getModel`/...）相当へ拡張:
+ * 公開 `ModelManager`（`addModel`/`updateModel`/`getModel`/...）相当へ拡張:
  * - in-place 更新（メッシュ再ロードなし）
  * - altitudeMode `terrain`/`absolute` と gravity（地表追従）
  * - per-axis scaling・フル Euler rotation（地心 up 起立に局所 pitch/roll を合成）

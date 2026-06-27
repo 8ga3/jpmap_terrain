@@ -874,7 +874,7 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
                 expect(h.labels?.[0]).toBe("a2");
             });
 
-            it("update に labels:undefined を渡すと既存ラベルをクリアし setContent へ undefined を渡す (#395 / PR #407)", () => {
+            it("update に labels:undefined を渡すと既存ラベルをクリアし setContent へ undefined を渡す", () => {
                 const stub = makeGlobePolygonStub();
                 stub.setContentResult.value = true; // in-place 成功を模擬
                 const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);

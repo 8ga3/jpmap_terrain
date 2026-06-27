@@ -556,7 +556,7 @@ export const createPolygonNode = (
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
         }
-        // 辺ラベル  も labelsEnabled を共用する。
+        // 辺ラベルも labelsEnabled を共用する。
         for (const entry of edgeLabelEntries) {
             if (!entry) continue;
             entry.mesh.setEnabled(visible && labelsEnabled);
@@ -668,7 +668,7 @@ export const createPolygonNode = (
             e.material.name = `polygon-${id}-label-mat-${i}`;
             e.texture.name = `polygon-${id}-label-${i}`;
         }
-        // 辺ラベル  も同様に index に合わせて再採番する。
+        // 辺ラベルも同様に index に合わせて再採番する。
         for (let i = 0; i < edgeLabelEntries.length; i++) {
             const e = edgeLabelEntries[i];
             if (!e) continue;
@@ -929,7 +929,7 @@ export const createPolygonNode = (
             entry.mesh.dispose();
         }
         labelEntries.length = 0;
-        // 辺ラベル  も dispose する。
+        // 辺ラベルも dispose する。
         for (const entry of edgeLabelEntries) {
             if (!entry) continue;
             entry.texture.dispose();

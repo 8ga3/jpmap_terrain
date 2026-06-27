@@ -394,9 +394,9 @@ export interface PolygonPointOptions {
 /**
  * ポリゴン全体のスタイル（spec/package.md §3.3.8.1）。
  *
- * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は  で適用。
- * - `dropLine*` / `label*` は  で適用。
- * - `wallColor` / `wallOpacity` は  で適用予定。
+ * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は適用される。
+ * - `dropLine*` / `label*` は適用される。
+ * - `wallColor` / `wallOpacity` は適用予定。
  */
 export interface PolygonStyleOptions {
     /** 線色 CSS。default `#ff0000` */
@@ -437,7 +437,7 @@ export interface PolygonOptions {
     points: readonly PolygonPointOptions[];
     /**
      * `true` の場合、最後の頂点と最初の頂点を結ぶ線を 1 本追加する。
-     * 面塗りなどは  で実装する。default false
+     * 面塗りなどは今後実装予定。default false
      */
     closed?: boolean;
     /** 高度モード。default `"terrain"` */
@@ -534,7 +534,7 @@ export interface PolygonHandle {
  * ポリゴンの既定値（spec/package.md §3.3.8.1）。
  *
  * `style` は仕様書記載の既定値を採用する。
- * `wallColor` / `wallOpacity` は  で適用予定（型予約）。
+ * `wallColor` / `wallOpacity` は適用予定（型予約）。
  */
 export const POLYGON_DEFAULTS = {
     closed: false,
@@ -556,7 +556,7 @@ export const POLYGON_DEFAULTS = {
         labelColor: "#000000",
         labelBackgroundColor: "transparent",
         labelFontSize: 14,
-        // 以下は  用の予約値（描画未使用）。Required<> 充足のために保持。
+        // 以下は予約値（描画未使用）。Required<> 充足のために保持。
         wallColor: "#ff0000",
         wallOpacity: 0.3,
     },

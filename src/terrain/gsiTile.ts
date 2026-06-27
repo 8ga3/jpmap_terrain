@@ -9,8 +9,7 @@ export const TILE_MAX_ZOOM = 18;
  * 地理院テクスチャ（std/seamlessphoto）が世界全域を被覆する最大ズームレベル。
  *
  * これより高いズームは日本周辺（おおむね `JAPAN_BOUNDS`）のみ配信され、域外は 404 を返す。
- * 全球ビューで域外をズームインしてもタイルが欠けないよう、域外タイルの細分化上限に用いる
- * 。
+ * 全球ビューで域外をズームインしてもタイルが欠けないよう、域外タイルの細分化上限に用いる。
  */
 export const WORLD_TEXTURE_MAX_ZOOM = 8;
 
@@ -404,8 +403,7 @@ export const loadElevationTile = async (
         const startCz = Math.min(zoom - 1, DEM_PNG_MAX_ZOOM);
         const floorCz = Math.max(0, startCz - (COARSE_FILL_DEPTH - 1));
         // 残り穴が閾値以下になったら打ち切る。微小な欠測（≤ COMPOSITE_HOLE_RATIO）まで粗ズームを
-        // 遡って取得するのは無駄なフェッチになるため、後段の `fillInvalidPixels` の局所補間に委ねる
-        // 。
+        // 遡って取得するのは無駄なフェッチになるため、後段の `fillInvalidPixels` の局所補間に委ねる。
         for (let cz = startCz; cz >= floorCz && holes > total * COMPOSITE_HOLE_RATIO; cz--) {
             const d = zoom - cz;
             const url = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${cz}/${x >> d}/${y >> d}.png`;

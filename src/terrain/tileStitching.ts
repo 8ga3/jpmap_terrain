@@ -149,7 +149,7 @@ export interface CoarseTileSource {
  * クロスレベル縫い合わせ候補（粗タイル隣接）を選定する純関数。
  *
  * tileManager の active/pendingRelease/hidden 状態を抽象化したコールバックで受け取り、
- * pure に判定する。 の対応として:
+ * pure に判定する。判定方針は次のとおり:
  *  - 同 zoom 隣接が「描画中（active かつ hidden でない）」場合のみクロスレベルを抑止する
  *  - 粗 zoom 候補は active だけでなく `pendingRelease` 中の旧タイルも参照する
  *

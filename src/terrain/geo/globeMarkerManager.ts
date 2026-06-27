@@ -72,7 +72,7 @@ interface GlobeMarkerNode {
     /**
      * 直近に取得できた地形標高[m]（未取得は null）。前景タイルが一時的に未ロードで
      * `terrainElevAt` が null を返したとき、これを保持してマーカーが楕円体表面（elev=0）へ
-     * 落ちるのを防ぐ（被覆の根本改善は）。
+     * 落ちるのを防ぐ。
      */
     lastElev: number | null;
 }
