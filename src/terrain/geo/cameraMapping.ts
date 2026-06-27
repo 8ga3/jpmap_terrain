@@ -4,7 +4,7 @@
  *
  * 既存（平面版）の UI / URL 共有は `azimuth`(方位) / `tilt`(チルト) / `altitude`(高度) を用いる。
  * これを `GeospatialCamera` の `yaw` / `pitch` / `radius` / `center`(ECEF) と相互変換する。
- * PoC（`geoMapping.ts`）の純関数を本体共有モジュールへ昇格したもの。
+ * PoC の純関数を本体共有モジュールへ昇格したもの。
  *
  * 対応関係:
  * - azimuth[deg] ⇄ yaw[rad]   （どちらも 0 = 北、+ = 東回り）
