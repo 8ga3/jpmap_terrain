@@ -132,9 +132,12 @@ export const createRouteLine = (scene: Scene): RouteLine => {
 
     const pathArray = initPath();
 
+    // sideOrientation は既定 (FRONTSIDE)。両面表示は material.backFaceCulling = false で
+    // 実現する。DOUBLESIDE は頂点を複製して総頂点数を 2 倍にするため、固定長の頂点カラー
+    // バッファ (SAMPLE_COUNT * 2 頂点ぶん) と齟齬が生じ、複製側が未着色のまま白く描画されてしまう。
     const ribbon: Mesh = CreateRibbon(
         "flightRouteRibbon",
-        { pathArray, updatable: true, sideOrientation: Mesh.DOUBLESIDE },
+        { pathArray, updatable: true },
         scene,
     );
     ribbon.material = material;
