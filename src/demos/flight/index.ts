@@ -1132,7 +1132,7 @@ const start = async (): Promise<void> => {
         if (pipViewer) {
             pipViewer.dispose();
         }
-    });
+    }, { once: true });
 };
 
 start().catch((err) => {
