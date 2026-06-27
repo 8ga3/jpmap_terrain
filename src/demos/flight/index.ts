@@ -243,15 +243,27 @@ const start = async (): Promise<void> => {
         const pixelWidth = pipWidthFraction * canvas.clientWidth;
         pipFrame.style.width = `${pixelWidth}px`;
         // 高さは CSS の aspect-ratio: 4/3 に任せる
-        // 地図切替ボタン (lib 製) は既定で `bottom:12px; left:12px` に配置されるため
-        // PIP と重なる。PIP の右隣 (= 12 + PIP 幅 + 8px) に移動させる。
+        // 地図切替ボタン (lib 製) は既定で `bottom:12px; left:12px` に配置されるため PIP と重なる。
+        // - デスクトップ: PIP の右隣 (= 12 + PIP 幅 + 8px) へ移す。
+        // - モバイル(<=640px): 横並びだと窮屈なため PIP の真上 (= 12 + PIP 高 + 8px) へ移す。
+        // coarse-pointer 端末ではライブラリの `.cp-maptoggle{left:16px!important;bottom:16px!important}`
+        // が inline style を上書きするため、移動させる軸は !important で指定する。
         const mapToggleBtn = document.querySelector<HTMLButtonElement>(
             'button[aria-label^="地図切替"]',
         );
         if (mapToggleBtn) {
-            // coarse-pointer 端末ではライブラリの `.cp-maptoggle { left:16px !important }`
-            // が inline style を上書きして PIP と重なるため、!important で確実に右隣へ移す。
-            mapToggleBtn.style.setProperty("left", `${12 + pixelWidth + 8}px`, "important");
+            const isMobile = window.matchMedia("(max-width: 640px)").matches;
+            if (isMobile) {
+                const pipHeight =
+                    pipFrame.getBoundingClientRect().height || (pixelWidth * 3) / 4;
+                // 既定の left に戻し、bottom で PIP の真上へ持ち上げる。
+                mapToggleBtn.style.setProperty("left", "12px");
+                mapToggleBtn.style.setProperty("bottom", `${12 + pipHeight + 8}px`, "important");
+            } else {
+                // PIP の右隣へ。bottom はライブラリ既定 (12px) に戻す。
+                mapToggleBtn.style.setProperty("left", `${12 + pixelWidth + 8}px`, "important");
+                mapToggleBtn.style.setProperty("bottom", "12px");
+            }
         }
     };
 
