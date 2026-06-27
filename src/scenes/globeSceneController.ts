@@ -30,7 +30,7 @@ import { assertLatLonInBounds } from "../terrain/overlayCoords";
 import { resolveIcon, resolveText } from "../terrain/marker";
 import {
     createControlPanel,
-    snapScale,
+    pickScaleWithin,
     formatScale,
     showToast,
 } from "../terrain/controlPanel";
@@ -1657,9 +1657,37 @@ export const createGlobeSceneController = (
 
         // コンパス回転 + スケールバーをフレーム毎に更新する（変化時のみ DOM を書く）。
         const SCALE_BAR_BASE_PX = 100;
+        const SCALE_BAR_MIN_PX = 20;
+        // 地図切替ボタンとスケール行の間に確保する安全マージン（px）。
+        const SCALE_BAR_SAFETY_PX = 8;
         let prevCompassDeg = Number.NaN;
         let prevScaleText = "";
         let prevBarPx = Number.NaN;
+        // スケールバーの最大許容幅（px）を画面幅から求める。スケール行は右下に
+        // 右寄せ配置され、左へ伸びるほど左下の地図切替ボタンへ近づく。バー以外の
+        // 固定要素（地理院タイル / ラベル / gap）と、ボタン右端＋マージンを差し引いた
+        // 残り幅をバーに割り当てる。レイアウト未確定時は基準幅にフォールバックする。
+        const computeMaxScaleBarPx = (): number => {
+            const viewportWidth =
+                (typeof window !== "undefined" ? window.innerWidth : 0) ||
+                canvas.clientWidth;
+            if (!(viewportWidth > 0)) return SCALE_BAR_BASE_PX;
+            const toggleRect = ui.mapToggle.getBoundingClientRect();
+            const containerRect = ui.scaleBar.container.getBoundingClientRect();
+            // 行の右端（= 右下基準位置）。未測定時は右インセット 12px 相当で代替。
+            const rowRight =
+                containerRect.width > 0 ? containerRect.right : viewportWidth - 12;
+            // 地図切替ボタンの右端。未測定時は left:12 + width:48 で代替。
+            const toggleRight = toggleRect.width > 0 ? toggleRect.right : 60;
+            // バー以外（地理院タイル + ラベル + gap 2 つ）の現在幅。
+            const fixedPart =
+                ui.scaleBar.attribution.offsetWidth +
+                ui.scaleBar.label.offsetWidth +
+                8;
+            const available =
+                rowRight - toggleRight - SCALE_BAR_SAFETY_PX - fixedPart;
+            return Math.max(SCALE_BAR_MIN_PX, available);
+        };
         const updateOverlayUi = (): void => {
             // コンパス: 外部指定があればその値を優先し、なければ北矢印が実際の北を
             // 指すよう azimuth の逆回転を適用する。
@@ -1679,10 +1707,15 @@ export const createGlobeSceneController = (
             if (h > 0) {
                 const metersPerPx =
                     (2 * camera.radius * Math.tan(camera.fov / 2)) / h;
-                const rawMeters = metersPerPx * SCALE_BAR_BASE_PX;
-                if (Number.isFinite(rawMeters) && rawMeters > 0) {
-                    const snapped = snapScale(rawMeters);
-                    const barPx = Math.round(snapped / metersPerPx);
+                if (Number.isFinite(metersPerPx) && metersPerPx > 0) {
+                    // 画面幅に対するバーの最大許容幅を求め、行（地理院タイル + ラベル
+                    // + バー）が左下の地図切替ボタンへ被らないようにする。
+                    const maxBarPx = computeMaxScaleBarPx();
+                    const { meters: snapped, barPx } = pickScaleWithin(
+                        metersPerPx,
+                        SCALE_BAR_BASE_PX,
+                        maxBarPx,
+                    );
                     const text = formatScale(snapped);
                     if (text !== prevScaleText) {
                         ui.scaleBar.label.textContent = text;

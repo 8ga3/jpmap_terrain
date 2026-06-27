@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 import { jest } from "@jest/globals";
-import { snapScale, formatScale, SCALE_STEPS, createControlPanel, showToast } from "../src/terrain/controlPanel";
+import { snapScale, pickScaleWithin, formatScale, SCALE_STEPS, createControlPanel, showToast } from "../src/terrain/controlPanel";
 
 function cleanupDOM(): void {
     document.body.innerHTML = "";
@@ -170,6 +170,47 @@ describe("snapScale", () => {
     it("全ステップが昇順である", () => {
         for (let i = 1; i < SCALE_STEPS.length; i++) {
             expect(SCALE_STEPS[i]).toBeGreaterThan(SCALE_STEPS[i - 1]);
+        }
+    });
+});
+
+describe("pickScaleWithin", () => {
+    it("maxBarPx が十分大きいときは snapScale と同じきれいな値を選ぶ", () => {
+        // metersPerPx=2, basePx=100 → rawMeters=200 → snapped=200, barPx=100
+        const r = pickScaleWithin(2, 100, 10_000);
+        expect(r.meters).toBe(200);
+        expect(r.barPx).toBe(100);
+    });
+
+    it("切り上げでバーが広がるケースでも上限内に収める（段階を下げる）", () => {
+        // metersPerPx=2.01, basePx=100 → rawMeters≈201 → snapped=500 → barPx≈249
+        const wide = pickScaleWithin(2.01, 100, 10_000);
+        expect(wide.meters).toBe(500);
+        expect(wide.barPx).toBeGreaterThan(200);
+        // 上限 120px を与えると 1 段階下げて 200m（barPx≈100）に収まる
+        const capped = pickScaleWithin(2.01, 100, 120);
+        expect(capped.meters).toBe(200);
+        expect(capped.barPx).toBeLessThanOrEqual(120);
+    });
+
+    it("最小ステップでも上限を超える場合は最小ステップを返す", () => {
+        // metersPerPx=1, smallest step=1 → barPx=1。maxBarPx=0.5 でも 1m を返す
+        const r = pickScaleWithin(1, 100, 0.5);
+        expect(r.meters).toBe(SCALE_STEPS[0]);
+    });
+
+    it("metersPerPx が不正（0/NaN）なら barPx 0 を返す", () => {
+        expect(pickScaleWithin(0, 100, 100).barPx).toBe(0);
+        expect(pickScaleWithin(Number.NaN, 100, 100).barPx).toBe(0);
+    });
+
+    it("選んだバー幅は可能な限り maxBarPx 以下に収まる", () => {
+        for (const mpp of [0.3, 1, 3.7, 50, 1234]) {
+            const r = pickScaleWithin(mpp, 100, 90);
+            // 最小ステップで超過する場合を除き上限以下
+            if (r.meters !== SCALE_STEPS[0]) {
+                expect(r.barPx).toBeLessThanOrEqual(90);
+            }
         }
     });
 });

@@ -44,6 +44,8 @@
 - 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。
 - **ブラウザ既定ジェスチャの抑止**: 操作ボタン（`.cp-btn` / `.cp-compass`）に `touch-action: manipulation` を付与し、iOS Safari のダブルタップズームを抑止する（タップは従来どおり機能）。viewer ページ（`public/viewer.html`）の `html, body` に `touch-action: none; overscroll-behavior: none;` を付与する。さらに、`touch-action` だけでは Android Chrome 等のオーバースクロール（2 本指スワイプによる自動スクロール）や画面端スワイプの戻る/進むナビゲーションが残るため、地図キャンバスの `touchmove` を `{ passive: false }` で捕捉し `preventDefault()` する（`src/lib/jpmapTerrain.ts`。Babylon はポインタイベントで操作を処理するためジェスチャ実装には影響しない）。
 - **現在地（Geolocation）**: `navigator.geolocation.getCurrentPosition` はセキュアコンテキスト（HTTPS、または `localhost`）でのみ動作する。LAN の IP に対する `http://` の dev サーバではブラウザがブロックするため、スマホ実機では取得できない（本番/`localhost` では動作）。仕様であり実装上の不具合ではない。
+- **スケールバー幅の上限制御**: スケールバーは右下に右寄せ配置され、`snapScale` が常に切り上げるためバー幅が基準（100px）の最大 2.5 倍程度まで広がりうる。狭い画面ではバーが左へ伸びて左下の地図切替ボタン（写真/標準）へ被るため、`pickScaleWithin(metersPerPx, basePx, maxBarPx)`（`src/terrain/controlPanel.ts`）で画面幅から求めた `maxBarPx` を超えない範囲のきれいな値を選ぶ（超える場合は 1 段階小さいスケールへ下げる）。`maxBarPx` は「行の右端 − 地図切替ボタンの右端 − 安全マージン − バー以外の固定要素幅（地理院タイル＋ラベル＋gap）」として `src/scenes/globeSceneController.ts` で算出する。広い画面では従来の `snapScale` と同一値となり、デスクトップ表示は不変。
+- **言語宣言**: 各デモの `<html lang="ja">` を宣言し、Chrome の自動翻訳プロンプトを抑止する（中身が日本語のため）。将来的な多言語切り替え（UI テキストの i18n / `locale` オプション）は別課題。
 
 
 ## URL 規約
