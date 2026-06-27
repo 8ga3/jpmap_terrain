@@ -192,7 +192,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * mountElement に canvas を配置し Babylon.js Engine / Scene を初期化する (T4)。
+     * mountElement に canvas を配置し Babylon.js Engine / Scene を初期化する。
      * UI を mountElement 配下に完全に閉じ込める作業を行う。
      *
      * 初期化途中で例外が発生した場合は append した canvas / 確保済み Engine をクリーンアップして再 throw する。
@@ -248,7 +248,7 @@ export class JpmapTerrain {
                 },
                 onReady: (controller) => {
                     this._controller = controller;
-                    // T6: 初期表示状態を controller に反映する
+                    // 初期表示状態を controller に反映する
                     controller.setUiVisibility(
                         "compass",
                         this._showCompass,
@@ -438,7 +438,7 @@ export class JpmapTerrain {
     }
 
     /**
-     * 指定座標へカメラをアニメーション付きで移動する (T5)。
+     * 指定座標へカメラをアニメーション付きで移動する。
      *
      * 指定された長さ（`duration`, デフォルト 800ms）の間、`requestAnimationFrame` で状態を連続補間しコントローラへ順次反映する。
      * 連続で `flyTo` が呼ばれた場合は後勝ちとし、前の遷移は途中で中断し Promise を resolve する。

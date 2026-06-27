@@ -60,7 +60,7 @@ export interface DefaultSceneController {
     setTilt(value: number): void;
 
     /**
-     * 複数のカメラ/位置パラメータをまとめて適用する (T5)。
+     * 複数のカメラ/位置パラメータをまとめて適用する。
      *
      * `options.refreshTerrain` はタイル中心更新（fetch）の即時反映を抑制するための
      * ヒントで、既定は `true`。ただし**実装依存**であり、globe バックエンド
@@ -265,7 +265,7 @@ export interface DefaultSceneInitOptions {
      * 定義時は `altitude` より優先して `camera.radius` を設定する。
      */
     zoomLevel?: number;
-    /** 地図種類（T6 で配線） */
+    /** 地図種類 */
     mapType?: "standard" | "photo";
     /**
      * `mapType` が実際に変化した際に呼ばれるコールバック。
@@ -304,7 +304,7 @@ export interface DefaultSceneInitOptions {
      */
     enableKeyboardPan?: boolean;
     /**
-     * シーン構築完了時に外部操作用コントローラを受け取るコールバック (T5)。
+     * シーン構築完了時に外部操作用コントローラを受け取るコールバック。
      * `JpmapTerrain` の get/set/flyTo はこのコントローラ経由でカメラ・位置を更新する。
      */
     onReady?: (controller: DefaultSceneController) => void;

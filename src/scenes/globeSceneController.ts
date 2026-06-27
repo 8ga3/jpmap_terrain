@@ -6,10 +6,10 @@
  * `GlobeSceneController` を同インターフェースへ橋渡しし、`JpmapTerrain` が globe 描画を
  * 利用できるようにする。
  *
- * 本スライスはカメラ get/set/flyTo・mapType（生成時固定）・dispose を実装する。
+ * 本アダプタはカメラ get/set/flyTo・mapType（生成時固定）・dispose を実装する。
  * overlay マネージャ・UI コントロールパネル・2D(ortho)・太陽/影・external frustum・terrain click /
- * polygon point drag は globe 側の未整備機能を伴うため後続スライスで対応し、ここでは安全な
- * no-op もしくは明確な未対応エラーとする（design: files/p4-0_design.md）。
+ * polygon point drag は globe 側の未整備機能を伴うため別途対応とし、ここでは安全な
+ * no-op もしくは明確な未対応エラーとする。
  */
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import type { Scene } from "@babylonjs/core/scene";

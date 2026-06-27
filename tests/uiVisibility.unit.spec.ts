@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 /**
- * UI visibility controller のユニットテスト (T6)。
+ * UI visibility controller のユニットテスト。
  *
  * controlPanel の各要素が初期状態で `display: flex` 等のインライン style を持つ場合、
  * 単純に `style.display = ""` で復元すると元のレイアウトが失われる。
@@ -16,7 +16,7 @@ import {
     UiVisibilityElements,
 } from "../src/terrain/uiVisibility";
 
-describe("createUiVisibilityController (T6)", () => {
+describe("createUiVisibilityController", () => {
     const setupElements = (): UiVisibilityElements => {
         const make = (display: string): HTMLDivElement => {
             const el = document.createElement("div");
