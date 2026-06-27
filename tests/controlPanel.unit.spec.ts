@@ -129,6 +129,13 @@ describe("createControlPanel レスポンシブ対応 (#424)", () => {
         expect(panel.viewModeButton.classList.contains("cp-viewmode")).toBe(true);
     });
 
+    it("ボタンに touch-action: manipulation が適用される（ダブルタップズーム抑止）", () => {
+        createControlPanel();
+        const style = document.getElementById("cp-focus-style");
+        expect(style).not.toBeNull();
+        expect(style!.textContent).toContain("touch-action: manipulation");
+    });
+
     it("スケールバーのテキスト要素に cp-scale-text クラスが付与される", () => {
         const panel = createControlPanel();
         expect(panel.scaleBar.label.classList.contains("cp-scale-text")).toBe(true);
