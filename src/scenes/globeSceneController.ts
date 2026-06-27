@@ -1688,6 +1688,25 @@ export const createGlobeSceneController = (
                 rowRight - toggleRight - SCALE_BAR_SAFETY_PX - fixedPart;
             return Math.max(SCALE_BAR_MIN_PX, available);
         };
+        // computeMaxScaleBarPx は getBoundingClientRect / offsetWidth を読むため
+        // レイアウト再計算（reflow）を伴う。毎フレーム実行すると重いので結果を
+        // キャッシュし、(1) ビューポート/キャンバスのリサイズ時 (2) スケールラベル
+        // 文字列が変化して固定部の幅が変わったとき のみ再計算する。
+        let cachedMaxBarPx = SCALE_BAR_BASE_PX;
+        let maxBarPxDirty = true;
+        const getMaxScaleBarPx = (): number => {
+            if (maxBarPxDirty) {
+                cachedMaxBarPx = computeMaxScaleBarPx();
+                maxBarPxDirty = false;
+            }
+            return cachedMaxBarPx;
+        };
+        const markMaxBarPxDirty = (): void => {
+            maxBarPxDirty = true;
+        };
+        if (typeof window !== "undefined") {
+            window.addEventListener("resize", markMaxBarPxDirty);
+        }
         const updateOverlayUi = (): void => {
             // コンパス: 外部指定があればその値を優先し、なければ北矢印が実際の北を
             // 指すよう azimuth の逆回転を適用する。
@@ -1710,7 +1729,7 @@ export const createGlobeSceneController = (
                 if (Number.isFinite(metersPerPx) && metersPerPx > 0) {
                     // 画面幅に対するバーの最大許容幅を求め、行（地理院タイル + ラベル
                     // + バー）が左下の地図切替ボタンへ被らないようにする。
-                    const maxBarPx = computeMaxScaleBarPx();
+                    const maxBarPx = getMaxScaleBarPx();
                     const { meters: snapped, barPx } = pickScaleWithin(
                         metersPerPx,
                         SCALE_BAR_BASE_PX,
@@ -1720,6 +1739,9 @@ export const createGlobeSceneController = (
                     if (text !== prevScaleText) {
                         ui.scaleBar.label.textContent = text;
                         prevScaleText = text;
+                        // ラベル幅が変わると固定部の幅も変わるため、次フレームで
+                        // 最大バー幅を再計算する。
+                        markMaxBarPxDirty();
                     }
                     // ラベル同様、幅も変化時のみ更新して不要なレイアウトを避ける。
                     if (barPx !== prevBarPx) {
@@ -1842,6 +1864,9 @@ export const createGlobeSceneController = (
         uiDispose = (): void => {
             uiDisposed = true;
             gc.scene.onBeforeRenderObservable.remove(overlayObserver);
+            if (typeof window !== "undefined") {
+                window.removeEventListener("resize", markMaxBarPxDirty);
+            }
             removeFromParent(ui.compass);
             removeFromParent(ui.mapToggle);
             removeFromParent(ui.viewModeButton);
