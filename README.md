@@ -76,8 +76,8 @@ npm start
 
 | デモ | URL | 説明 |
 |---|---|---|
-| 3D 地形ビューア | `/viewer.html` | 既存の地理院タイル 3D ビューア。緯度経度・カメラ向き・地図種別を URL で指定可能。 |
-| タイムラプス | `/timelapse.html` | 24 時間を 1 分に圧縮し、太陽位置・陰影をアニメーション表示（アナログ時計オーバーレイ付き）。 |
+| 3D 地形ビューア | `/viewer` | 既存の地理院タイル 3D ビューア。緯度経度・カメラ向き・地図種別を URL で指定可能。 |
+| タイムラプス | `/timelapse` | 24 時間を 1 分に圧縮し、太陽位置・陰影をアニメーション表示（アナログ時計オーバーレイ付き）。 |
 
 デモ追加方針は [spec/demos.md](spec/demos.md) を参照してください。
 
@@ -85,8 +85,8 @@ npm start
 
 `engine` クエリパラメータでエンジンを切り替えられます。
 
-- WebGPU: `http://localhost:8080/viewer.html?scene=default&engine=webgpu`
-- WebGL2: `http://localhost:8080/viewer.html?scene=default&engine=webgl2`
+- WebGPU: `http://localhost:8080/viewer?scene=default&engine=webgpu`
+- WebGL2: `http://localhost:8080/viewer?scene=default&engine=webgl2`
 
 `webgpu` 指定時に未対応ブラウザの場合は WebGL2 にフォールバックします。
 
@@ -127,10 +127,10 @@ npm start
 
 **例:**
 
-- `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu`（東京駅・3D・WebGPU）
-- `http://localhost:8080/viewer.html/@35.3606,138.7274?engine=webgl2`（富士山・3D・WebGL2）
-- `http://localhost:8080/viewer.html/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・3D・航空写真）
-- `http://localhost:8080/viewer.html/@35.3606,138.7274,14.50z?viewMode=2d`（富士山・2D・ズームレベル 14.5）
+- `http://localhost:8080/viewer/@35.681236,139.767125?engine=webgpu`（東京駅・3D・WebGPU）
+- `http://localhost:8080/viewer/@35.3606,138.7274?engine=webgl2`（富士山・3D・WebGL2）
+- `http://localhost:8080/viewer/@35.681236,139.767125?engine=webgpu&mapType=photo`（東京駅・3D・航空写真）
+- `http://localhost:8080/viewer/@35.3606,138.7274,14.50z?viewMode=2d`（富士山・2D・ズームレベル 14.5）
 
 ### `engine` パラメータ
 
@@ -163,7 +163,7 @@ npm start
 - パス形式 `/@<lat>,<lon>` の代わりに、`?lat=<lat>&lon=<lon>` クエリでも初期カメラ位置を指定できます
 - パス形式（`/@...`）が存在する場合はそちらが優先されます
 - altitude / azimuth / tilt は既定値で補完されます（クエリでは指定不可）
-- 例: `http://localhost:8080/viewer.html?lat=35.681236&lon=139.767125`
+- 例: `http://localhost:8080/viewer?lat=35.681236&lon=139.767125`
 
 実装の詳細は `src/demos/viewer/index.ts` および `src/terrain/urlState.ts` を参照してください。
 

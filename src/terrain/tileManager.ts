@@ -143,8 +143,8 @@ const PENDING_RELEASE_TIMEOUT_MS = 5000;
  */
 const EMPTY_NAN_ELEVATION = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
 
-// 旧 applyElevation はインラインで使われていたが、Web Worker への移行に伴い
-// `elevationCompute.ts` の `applyElevationToPositions` に集約された。
+// 標高反映は Web Worker 化に伴い `elevationCompute.ts` の
+// `applyElevationToPositions` に集約されている。
 
 /**
  * 低zoomテクスチャ使用時のUVパラメータを算出する。

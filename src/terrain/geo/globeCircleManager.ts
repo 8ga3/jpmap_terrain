@@ -43,13 +43,13 @@ export interface GlobeCircleOptions {
     label?: string | null;
     /** スタイル（polygon と共通のキー）。 */
     style?: PolygonStyleOptions;
-    /** 旧 API 互換。style.lineColor より優先度は低い（ring のアウトライン色）。 */
+    /** `style.lineColor` の別名（ring のアウトライン色。`style.lineColor` より優先度は低い）。 */
     outlineColor?: string;
-    /** 旧 API 互換。style.wallColor より優先度は低い。 */
+    /** `style.wallColor` の別名（`style.wallColor` より優先度は低い）。 */
     wallColor?: string;
-    /** 旧 API 互換。style.wallOpacity より優先度は低い。 */
+    /** `style.wallOpacity` の別名（`style.wallOpacity` より優先度は低い）。 */
     wallOpacity?: number;
-    /** 旧 API 互換。top を固定する楕円体高度[m]（未指定なら地形ドレープ）。 */
+    /** top を固定する楕円体高度[m]（未指定なら地形ドレープ）。 */
     topAltitudeMeters?: number;
     /** 円全体の表示。default true。 */
     enabled?: boolean;
@@ -59,7 +59,7 @@ export interface GlobeCircleOptions {
     lineEnabled?: boolean;
     /** 壁（カーテン）の表示。default true。 */
     wallEnabled?: boolean;
-    /** 旧 API 互換の壁表示フラグ（wallEnabled と同義、指定時は wallEnabled より優先）。 */
+    /** `wallEnabled` の別名（同義、指定時は `wallEnabled` より優先）。 */
     wallsEnabled?: boolean;
     /** 中心ラベルの表示。default true。 */
     labelEnabled?: boolean;

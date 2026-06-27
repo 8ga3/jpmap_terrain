@@ -2,7 +2,7 @@ import { test, expect } from "./tileCache.fixture";
 
 /**
  * Issue #157: `/viewer/@...` および `/timelapse/@...` のデモ識別子付きパスで
- * 直接アクセス（リロード相当）した際に、HtmlWebpackPlugin が inject する script 等が
+ * 直接アクセス（リロード相当）した際に、HTML が inject する script 等が
  * 相対パスで解決されて 404 になる回帰を防止する E2E テスト。
  *
  * - `/js/` 配下のリクエストが全て成功（response.ok() かつ requestfailed なし）であること

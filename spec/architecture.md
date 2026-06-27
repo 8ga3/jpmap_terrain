@@ -33,7 +33,7 @@ C4Context
 
 jpmap_terrain 内部の主要コンテナ（デプロイ・ビルド単位）を示します。
 
-> デモ 11 本は `splitChunks` でコードを共有するため、独立コンテナではなく  
+> デモ 13 本は `manualChunks`（Vite）でコードを共有するため、独立コンテナではなく  
 > **Demo Apps グループ** としてまとめます。
 
 ```mermaid

@@ -159,7 +159,7 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 ## 互換性メモ
 
 - 既存の VR スナップショット（`tests/validation.spec.ts-snapshots/`）は viewer の URL 変更（`/?scene=default` → `/viewer.html?scene=default`）後も同一の描画結果のため流用可能。
-- `manualChunks`（`vite.config.ts`）のバンドル分割方針は webpack 時代の `splitChunks.cacheGroups` を踏襲している。
+- `manualChunks`（`vite.config.ts`）で共有依存（Babylon.js / シェーダー）を分割している。
 
 ### avatar (`/avatar.html`)
 

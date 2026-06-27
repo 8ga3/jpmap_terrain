@@ -3,12 +3,12 @@ import { defineConfig } from "vite";
 import { demoRewritePlugin } from "./vite.rewrites";
 
 /**
- * Vite 設定（Webpack からの移行 / Issue #298）。
+ * Vite 設定（Issue #298）。
  */
 
 /**
  * エントリ HTML を格納するディレクトリ（Vite の `root`）。
- * webpack 時代と同様にリポジトリルートを HTML で散らかさないため `public/` に集約する。
+ * リポジトリルートを HTML で散らかさないため `public/` に集約する。
  * `root` を `public/` にすることで、配信 URL はルート基準（`/`, `/viewer.html` ...）を維持する。
  */
 const PAGES_DIR = "public";
@@ -44,7 +44,7 @@ const input = Object.fromEntries(
     ]),
 );
 
-/** url-loader の inline 閾値（8192B）を踏襲する。 */
+/** アセットを data URI 化する inline 閾値（8192B）。 */
 const ASSET_INLINE_LIMIT = 8192;
 
 export default defineConfig({
@@ -67,7 +67,7 @@ export default defineConfig({
     optimizeDeps: {
         entries: ["*.html"],
     },
-    // webpack-dev-server のデフォルトポート（8080）を踏襲する。
+    // 開発サーバーのポート（8080）。
     server: {
         port: 8080,
         strictPort: true,
@@ -93,7 +93,7 @@ export default defineConfig({
         // outDir が root 外のため明示的に許可する。
         emptyOutDir: true,
         sourcemap: true,
-        // url-loader 互換: 8192B 以下はインライン化（Base64 data URI）する。
+        // 8192B 以下のアセットはインライン化（Base64 data URI）する。
         // ただし OBJ/MTL/STL は OBJ ローダーが mtllib を rootUrl 相対で取得するため、
         // data URI 化すると解決できない。常にファイルとして出力する。
         assetsInlineLimit: (filePath, content) => {
@@ -112,7 +112,7 @@ export default defineConfig({
                     }
                     return "assets/[name]-[hash][extname]";
                 },
-                // webpack splitChunks.cacheGroups を踏襲したチャンク分割 (#298 / #317)。
+                // 共有依存（Babylon.js やシェーダー）を分離するチャンク分割 (#298 / #317)。
                 manualChunks(id) {
                     if (/\/ShadersWGSL\//.test(id)) return "webgpu-shaders";
                     if (/\/Shaders\//.test(id)) return "webgl-shaders";
