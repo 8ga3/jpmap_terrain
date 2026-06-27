@@ -1107,9 +1107,13 @@ const start = async (): Promise<void> => {
     };
     rafId = requestAnimationFrame(tick);
 
-    // ページ離脱時にアニメーションフレームをキャンセル + PIP クリーンアップ
+    // ページ離脱時にアニメーションフレームをキャンセル + Viewer/PIP クリーンアップ
     window.addEventListener("beforeunload", () => {
         cancelAnimationFrame(rafId);
+        // メインエンジンのレンダーループを先に停止する。PIP（第2エンジン）の dispose と
+        // メインエンジンの描画が競合すると Babylon 内部の UniformBuffer override が壊れ、
+        // `_updateMatrixForUniformOverride is not a function` が発生するため。
+        viewer.__debugScene?.getEngine().stopRenderLoop();
         if (routeLine) {
             routeLine.dispose();
         }
@@ -1126,6 +1130,8 @@ const start = async (): Promise<void> => {
         if (pipViewer) {
             pipViewer.dispose();
         }
+        // メイン Viewer（Scene/Engine）も解放する。
+        viewer.dispose();
     });
 };
 
