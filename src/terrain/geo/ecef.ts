@@ -3,7 +3,7 @@
  *
  * グローブ地形の座標基盤。Babylon.js の `EcefFromLatLonAltToRef`
  * （測地→ECEF）に対し、本モジュールは度数入力のラッパと、ECEF→測地の逆変換
- * （Bowring 閉形式）を提供する。PoCの純関数を本体共有モジュールへ
+ * （Bowring 閉形式）を提供する。PoC の純関数を本体共有モジュールへ
  * 昇格したもの。
  *
  * 軸の規約は Babylon の `EcefFromLatLonAltToRef` と同一:
