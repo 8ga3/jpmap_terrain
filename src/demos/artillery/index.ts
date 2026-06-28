@@ -373,7 +373,10 @@ const start = async (): Promise<void> => {
     const CANNON_DISTANCE = 750; // 中心からの距離 (m)
 
     /** レイキャストで地形表面の Y 座標（ステージローカル）を取得する。ヒットなしは NaN */
-    // 高頻度（buildCollider で ~1万回）に呼ばれる経路のための再利用バッファ。
+    // buildCollider のサンプリングは標高ダイレクト参照（#436）が主経路で、本レイキャストは
+    // 標高未ロード等で直参照が null を返した頂点のフォールバック専用。とはいえ最悪ケース
+    // （全頂点 null）では subdivisions² オーダー（最大 40,401 回）呼ばれうるため、再利用
+    // バッファでアロケーション・GC を避ける。
     const scratchPickLocal = new Vector3();
     const scratchRayOrigin = new Vector3();
     const terrainRay = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 20000);
@@ -409,8 +412,9 @@ const start = async (): Promise<void> => {
         // ステージローカル (x, +高所, z) からローカル下方向へレイを飛ばす。
         // globe は ENU→ECEF へ写像した ECEF レイ（解析レイのため floating origin 下でも
         // 実用精度: スパイク G4）。
-        // buildCollider() からは subdivisions^2 オーダー（~1万回）で呼ばれるため、
-        // 一時ベクトル / Ray は使い回してアロケーション・GC を避ける。
+        // buildCollider のフォールバック経路として、最悪ケースで subdivisions² オーダー
+        // （最大 40,401 回）呼ばれうるため、一時ベクトル / Ray は使い回してアロケーション・
+        // GC を避ける。
         scratchRayOrigin.copyFromFloats(x, 10000, z);
         stage.localToWorld(scratchRayOrigin, scratchRayOrigin);
         terrainRay.origin.copyFrom(scratchRayOrigin);
