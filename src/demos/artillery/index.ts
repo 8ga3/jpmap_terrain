@@ -415,7 +415,9 @@ const start = async (): Promise<void> => {
         // (terrainPickCandidates) に対して ray.intersectsMesh で最近接ヒットを取る。
         // scene.pickWithRay は全メッシュ（~177 タイル）を走査するため、候補絞り込みで
         // ピックコストを大幅に削減する（コリジョン構築の総 CPU 時間を短縮）。
-        if (terrainPickCandidates) {
+        // 候補が 0 件（近傍タイル未ロード等）の場合は全走査フォールバックへ回す
+        // （空配列のまま高速経路に入ると常にミスヒットし、コリジョンが平坦化するため）。
+        if (terrainPickCandidates && terrainPickCandidates.length > 0) {
             return pickNearestTerrain(terrainRay, terrainPickCandidates);
         }
         // フォールバック（候補未収集時）。
@@ -532,6 +534,9 @@ const start = async (): Promise<void> => {
      * @returns 構築完了したら true。中断された場合は false。
      */
     const buildCollider = async (): Promise<boolean> => {
+        // 既に離脱が確定していれば、重い前処理（候補収集 = scene.meshes 全走査）に
+        // 入る前に早期 return して戻る操作の即応性を保つ。
+        if (cancel.isAborted()) return false;
         // レイキャスト対象をプレイエリア近傍タイルに絞り、ピックコストを削減する。
         terrainPickCandidates = collectTerrainPickCandidates();
         try {

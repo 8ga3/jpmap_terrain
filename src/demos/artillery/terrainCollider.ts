@@ -79,7 +79,12 @@ export const createTerrainCollider = (
         sampleY: (x: number, z: number) => number | null,
         opts: { shouldAbort?: () => boolean; frameBudgetMs?: number } = {},
     ): Promise<number | null> => {
-        const { shouldAbort, frameBudgetMs = 8 } = opts;
+        const { shouldAbort } = opts;
+        // frameBudgetMs に 0 / 負数 / NaN が渡ると区切り条件が常に真になり、頂点ごとに
+        // yield して極端に遅くなる。有限かつ最低 1ms にクランプして事故を防ぐ。
+        const frameBudgetMs = Number.isFinite(opts.frameBudgetMs)
+            ? Math.max(1, opts.frameBudgetMs as number)
+            : 8;
         const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
         if (!positions) return 0;
 
