@@ -17,6 +17,7 @@ import {
     geodeticToEcef,
     geodeticToEcefToRef,
     ecefToGeodetic,
+    ecefToGeodeticToRef,
 } from "../src/terrain/geo/ecef";
 
 describe("定数", () => {
@@ -70,6 +71,29 @@ describe("往復精度 geodetic → ecef → geodetic", () => {
             expect(g.altMeters).toBeCloseTo(s.alt, 3);
         });
     }
+});
+
+describe("ecefToGeodeticToRef（in-place 版）", () => {
+    it("ecefToGeodetic と同一結果を out に書き込み、out 自身を返す", () => {
+        const ecef = geodeticToEcef(35.681236, 139.767125, 40);
+        const expected = ecefToGeodetic(ecef);
+        const out = { latDeg: 0, lonDeg: 0, altMeters: 0 };
+        const ret = ecefToGeodeticToRef(ecef, out);
+        expect(ret).toBe(out); // 新規生成せず同一参照を返す
+        expect(out.latDeg).toBeCloseTo(expected.latDeg, 9);
+        expect(out.lonDeg).toBeCloseTo(expected.lonDeg, 9);
+        expect(out.altMeters).toBeCloseTo(expected.altMeters, 6);
+    });
+
+    it("同一バッファを使い回しても呼び出しごとに正しく上書きされる", () => {
+        const out = { latDeg: 0, lonDeg: 0, altMeters: 0 };
+        ecefToGeodeticToRef(geodeticToEcef(0, 0, 0), out);
+        expect(out.latDeg).toBeCloseTo(0, 8);
+        ecefToGeodeticToRef(geodeticToEcef(80, -170, 500), out);
+        expect(out.latDeg).toBeCloseTo(80, 8);
+        expect(out.lonDeg).toBeCloseTo(-170, 8);
+        expect(out.altMeters).toBeCloseTo(500, 3);
+    });
 });
 
 describe("極の特異点", () => {

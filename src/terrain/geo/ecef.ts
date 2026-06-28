@@ -60,11 +60,16 @@ export const geodeticToEcef = (
 
 /**
  * ECEF[m] → 測地座標（WGS84）の逆変換。Bowring の閉形式（1 反復で mm 級精度）。
+ * 結果を `out` に書き込んで返す（アロケーション回避）。高頻度呼び出し
+ * （地形コリジョンのサンプリング等）で GC 揺れを避けたい経路向け。
  *
  * 軸の規約は `geodeticToEcef` / Babylon の `EcefFromLatLonAltToRef` と同じ
  * （X→経度0, Y→東経90°, Z→北極）。
  */
-export const ecefToGeodetic = (ecef: Vector3): Geodetic => {
+export const ecefToGeodeticToRef = (
+    ecef: Vector3,
+    out: Geodetic,
+): Geodetic => {
     const a = Wgs84Ellipsoid.semiMajorAxis;
     const b = Wgs84Ellipsoid.semiMinorAxis;
     const e2 = Wgs84Ellipsoid.firstEccentricitySquared;
@@ -78,8 +83,10 @@ export const ecefToGeodetic = (ecef: Vector3): Geodetic => {
     const p = Math.hypot(x, y);
     // 極（p≈0）の特異点を回避。
     if (p < 1e-6) {
-        const latDeg = z >= 0 ? 90 : -90;
-        return { latDeg, lonDeg: lon * RAD2DEG, altMeters: Math.abs(z) - b };
+        out.latDeg = z >= 0 ? 90 : -90;
+        out.lonDeg = lon * RAD2DEG;
+        out.altMeters = Math.abs(z) - b;
+        return out;
     }
     const theta = Math.atan2(z * a, p * b);
     const sinT = Math.sin(theta);
@@ -90,7 +97,15 @@ export const ecefToGeodetic = (ecef: Vector3): Geodetic => {
     );
     const sinLat = Math.sin(lat);
     const N = a / Math.sqrt(1 - e2 * sinLat * sinLat); // 卯酉線曲率半径
-    const alt = p / Math.cos(lat) - N;
-
-    return { latDeg: lat * RAD2DEG, lonDeg: lon * RAD2DEG, altMeters: alt };
+    out.latDeg = lat * RAD2DEG;
+    out.lonDeg = lon * RAD2DEG;
+    out.altMeters = p / Math.cos(lat) - N;
+    return out;
 };
+
+/**
+ * ECEF[m] → 測地座標（WGS84）の逆変換。新規 `Geodetic` を返す簡易版。
+ * 高頻度経路では {@link ecefToGeodeticToRef} を用いてアロケーションを避けること。
+ */
+export const ecefToGeodetic = (ecef: Vector3): Geodetic =>
+    ecefToGeodeticToRef(ecef, { latDeg: 0, lonDeg: 0, altMeters: 0 });
