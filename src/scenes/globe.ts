@@ -526,10 +526,27 @@ export class GlobeScene {
         const endDrag = (): void => {
             dragging = false;
         };
+        // touchPoints の先頭要素（残り1本指の現在位置）を返す。
+        const firstTouchPoint = (): { x: number; y: number } | undefined => {
+            const it = touchPoints.values().next();
+            return it.done ? undefined : it.value;
+        };
         const onPointerUp = (e: PointerEvent): void => {
             if (e.pointerType === "touch") {
                 touchPoints.delete(e.pointerId);
                 if (touchPoints.size < 2) twoFingerMode = null;
+                // 2本→1本: 残った指は接地済みで pointerdown が来ないため、ここで
+                // シングルタッチパンを残指の現在位置から継続できるよう再初期化する
+                // （しないと全指を離すまでパン不可になる）。
+                if (touchPoints.size === 1) {
+                    const remaining = firstTouchPoint();
+                    if (remaining) {
+                        dragging = true;
+                        lastX = remaining.x;
+                        lastY = remaining.y;
+                    }
+                    return;
+                }
             }
             if (e.button === 0) endDrag();
         };
@@ -537,6 +554,16 @@ export class GlobeScene {
             if (e.pointerType === "touch") {
                 touchPoints.delete(e.pointerId);
                 if (touchPoints.size < 2) twoFingerMode = null;
+                // onPointerUp と同契約: 2本→1本になったら残指でパンを継続する。
+                if (touchPoints.size === 1) {
+                    const remaining = firstTouchPoint();
+                    if (remaining) {
+                        dragging = true;
+                        lastX = remaining.x;
+                        lastY = remaining.y;
+                    }
+                    return;
+                }
             }
             endDrag();
         };
