@@ -270,6 +270,13 @@ const start = async (): Promise<void> => {
     // --- ゲーム状態 ---
     let gameState: GameState = createInitialState(RED_CANNON_POS, BLUE_CANNON_POS);
     let firing = false;
+    /**
+     * 地形コリジョンが構築済みか。構築完了まで fire/restart を無効化する
+     * （未完成のコライダーに砲弾を当てると挙動が破綻するため）。
+     */
+    let colliderReady = false;
+    /** コリジョン構築の多重起動防止フラグ（PhysicsAggregate の競合回避）。 */
+    let colliderBuilding = false;
     /** ターン切替タイマー（命中時にキャンセルするため保持） */
     let turnTimer: ReturnType<typeof setTimeout> | null = null;
     /** 命中時にHIT!表示後へ遅延させる交代告知タイマー（リスタート等でキャンセルするため保持） */
@@ -299,6 +306,16 @@ const start = async (): Promise<void> => {
     const scoreBlueEl = document.getElementById("score-blue")!;
     const turnRedEl = document.getElementById("turn-indicator-red")!;
     const turnBlueEl = document.getElementById("turn-indicator-blue")!;
+    /**
+     * コリジョン構築状態を UI（fire/restart ボタンの有効・無効）へ反映する。
+     * 構築完了まで操作を無効化し、未完成コライダーへの発射や多重再構築を防ぐ。
+     */
+    const setColliderReady = (ready: boolean): void => {
+        colliderReady = ready;
+        (fireBtn as HTMLButtonElement).disabled = !ready;
+        (restartBtn as HTMLButtonElement).disabled = !ready;
+    };
+    setColliderReady(false);
 
     // --- 中央ターン告知（HAKONE / 攻撃ターン表示） ---
     const announce = createAnnounce({
@@ -528,12 +545,31 @@ const start = async (): Promise<void> => {
             if (rate === null) return false; // 離脱により中断
             if (isDebug()) {
                 console.debug(
-                    `[artillery] 地形コリジョン構築: サンプリング成功率 ${(rate * 100).toFixed(0)}%`,
+                    `[artillery] terrain collider build: sampling success rate ${(rate * 100).toFixed(0)}%`,
                 );
             }
             return true;
         } finally {
             terrainPickCandidates = null;
+        }
+    };
+
+    /**
+     * コリジョンを（再）構築する。構築中は fire/restart を無効化し、
+     * 構築完了まで操作をガードする。多重起動（PhysicsAggregate の dispose/
+     * 再生成競合）を防ぐため、実行中の再呼び出しはスキップする。
+     * @returns 構築完了で true。中断・多重起動スキップ時は false。
+     */
+    const rebuildColliderGuarded = async (): Promise<boolean> => {
+        if (colliderBuilding) return false; // 多重起動防止
+        colliderBuilding = true;
+        setColliderReady(false);
+        try {
+            const completed = await buildCollider();
+            if (completed) setColliderReady(true);
+            return completed;
+        } finally {
+            colliderBuilding = false;
         }
     };
 
@@ -567,8 +603,9 @@ const start = async (): Promise<void> => {
         placeCannons();
         setCannonsEnabled(true);
         announce.dismiss();
-        // コリジョンを背景で構築。完了するまで離脱監視（cancel）は解除しない。
-        void buildCollider()
+        // コリジョンを背景で構築。構築中は fire/restart を無効化する。
+        // 完了するまで離脱監視（cancel）は解除しない。
+        void rebuildColliderGuarded()
             .then((completed) => {
                 if (completed) {
                     // 初期化が無事完了したので離脱監視を解除する。
@@ -667,6 +704,7 @@ const start = async (): Promise<void> => {
 
     // --- 発射ロジック ---
     const fire = (): void => {
+        if (!colliderReady) return; // コライダー未構築時は発射しない
         if (firing) return;
         firing = true;
 
@@ -714,6 +752,9 @@ const start = async (): Promise<void> => {
     });
 
     restartBtn.addEventListener("click", () => {
+        // コリジョン構築中は無視する（ボタンも disabled だが二重防御）。
+        // 構築中の再構築は PhysicsAggregate の競合を招くため許可しない。
+        if (!colliderReady || colliderBuilding) return;
         if (turnTimer !== null) {
             clearTimeout(turnTimer);
             turnTimer = null;
@@ -731,7 +772,8 @@ const start = async (): Promise<void> => {
         settings.blue = { angle: 45, heading: 0, power: 50 };
         loadSettingsToUI(gameState.turn);
         placeCannons();
-        void buildCollider().catch((err: unknown) => {
+        // 再構築中は fire/restart を無効化（rebuildColliderGuarded が制御）。
+        void rebuildColliderGuarded().catch((err: unknown) => {
             console.error("[artillery] terrain collider rebuild failed", err);
         });
         updateUI();

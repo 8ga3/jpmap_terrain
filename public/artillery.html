@@ -151,6 +151,15 @@
       background: rgba(255, 255, 255, 0.18);
     }
 
+    .controls-bar button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .controls-bar button:disabled:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
     .controls-bar button.fire-btn {
       background: rgba(220, 50, 50, 0.6);
       border-color: rgba(255, 100, 100, 0.5);
@@ -161,6 +170,10 @@
 
     .controls-bar button.fire-btn:hover {
       background: rgba(220, 50, 50, 0.8);
+    }
+
+    .controls-bar button.fire-btn:disabled:hover {
+      background: rgba(220, 50, 50, 0.6);
     }
 
     .controls-bar .divider {
