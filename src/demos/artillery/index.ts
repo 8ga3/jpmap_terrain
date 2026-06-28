@@ -596,18 +596,21 @@ const start = async (): Promise<void> => {
         setTimeout(tryRun, 500);
     };
 
-    // 地形ロード後に大砲を配置し、中央告知（HAKONE / RED）を消してゲームを表示する。
-    // 地形コリジョン構築は重いため、タイトルを消した後にフレーム分割で背景構築する
-    // （構築中もページ遷移＝戻る操作を妨げない）。
+    // 地形ロード後に大砲を配置し、コリジョン構築（=Fire 可能）まではタイトルを
+    // 表示したまま背景で構築する。構築完了時にタイトルを消してゲームを開始する。
+    // 地形コリジョン構築は重いためフレーム分割で実行し、構築中もページ遷移
+    // （戻る操作）を妨げない。
     waitTerrainIdleThen(() => {
         placeCannons();
         setCannonsEnabled(true);
-        announce.dismiss();
-        // コリジョンを背景で構築。構築中は fire/restart を無効化する。
+        // コリジョンを背景で構築。構築中は fire/restart を無効化し、タイトルは
+        // 表示したままにする（Fire 可能になるまで状態を分かりやすくするため）。
         // 完了するまで離脱監視（cancel）は解除しない。
         void rebuildColliderGuarded()
             .then((completed) => {
                 if (completed) {
+                    // 構築完了 = Fire 可能。タイトルを消してゲームを開始する。
+                    announce.dismiss();
                     // 初期化が無事完了したので離脱監視を解除する。
                     cancel.dispose();
                 }
