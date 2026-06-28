@@ -6,7 +6,7 @@
  *
  * 手順:
  *   1. ステージローカル `(x=East, 0, z=North)` → ECEF（`stage.localToWorld`）
- *   2. ECEF → 測地 `(lat, lon)`（`ecefToGeodetic`）
+ *   2. ECEF → 測地 `(lat, lon)`（`ecefToGeodeticToRef`）
  *   3. `elevAt(lat, lon)` で地表標高[m]（楕円体面基準）を引く
  *   4. 地表点 `(lat, lon, elev)` を ECEF へ戻す（`geodeticToEcefToRef`）
  *   5. ECEF → ステージローカル Y（`stage.worldToLocal`）
@@ -18,7 +18,11 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { ecefToGeodetic, geodeticToEcefToRef } from "../../terrain/geo/ecef";
+import {
+    ecefToGeodeticToRef,
+    geodeticToEcefToRef,
+    type Geodetic,
+} from "../../terrain/geo/ecef";
 
 /** サンプラが必要とするステージ座標変換の最小インターフェース。 */
 export interface StageTransform {
@@ -45,10 +49,12 @@ export const createDirectTerrainSampler = (
     elevAt: (latDeg: number, lonDeg: number) => number | null,
 ): ((x: number, z: number) => number | null) => {
     const scratch = new Vector3();
+    // 測地座標も使い回してアロケーション（サンプリング回数ぶんのオブジェクト生成）を避ける。
+    const scratchGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
     return (x: number, z: number): number | null => {
         scratch.copyFromFloats(x, 0, z);
         stage.localToWorld(scratch, scratch);
-        const geo = ecefToGeodetic(scratch);
+        const geo = ecefToGeodeticToRef(scratch, scratchGeo);
         const elev = elevAt(geo.latDeg, geo.lonDeg);
         if (elev === null) return null;
         geodeticToEcefToRef(geo.latDeg, geo.lonDeg, elev, scratch);
