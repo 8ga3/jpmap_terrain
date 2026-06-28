@@ -371,7 +371,9 @@ export const pickScaleWithin = (
     let idx = SCALE_STEPS.findIndex((s) => s >= rawMeters);
     if (idx === -1) idx = SCALE_STEPS.length - 1;
     // maxBarPx を超える間は 1 段階ずつ小さいスケールへ下げる（最小ステップまで）。
-    while (idx > 0 && SCALE_STEPS[idx] / metersPerPx > maxBarPx) {
+    // 判定は実際の描画幅と一致させるため round 後の barPx で行う（小数では max 以下
+    // でも round で +1px されて上限を超えるケースを防ぐ）。
+    while (idx > 0 && Math.round(SCALE_STEPS[idx] / metersPerPx) > maxBarPx) {
         idx--;
     }
     const meters = SCALE_STEPS[idx];
