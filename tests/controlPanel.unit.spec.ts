@@ -199,6 +199,16 @@ describe("pickScaleWithin", () => {
         expect(r.meters).toBe(SCALE_STEPS[0]);
     });
 
+    it("round 後のバー幅が maxBarPx を超えないよう段階を下げる", () => {
+        // 100m / mpp ≈ 100.55px。Math.round で 101px となり、上限 100.6px を
+        // 超えてしまう（小数判定だけでは見逃すケース）。round 後の幅で判定し、
+        // 1 段下げて上限以下に収まることを検証する。
+        const mpp = 100 / 100.55;
+        const max = 100.6;
+        const r = pickScaleWithin(mpp, 100, max);
+        expect(r.barPx).toBeLessThanOrEqual(max);
+    });
+
     it("metersPerPx が不正（0/NaN）なら barPx 0 を返す", () => {
         expect(pickScaleWithin(0, 100, 100).barPx).toBe(0);
         expect(pickScaleWithin(Number.NaN, 100, 100).barPx).toBe(0);
