@@ -86,6 +86,15 @@ const FOLLOW_CAMERA_HEIGHT_OFFSET = 15;
 const FOLLOW_CAMERA_ROTATION_OFFSET = 180;
 /** heightOffset の最大値 = radius × この倍率 */
 const FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG = 3;
+/** FollowCamera の far clip (m) */
+const FOLLOW_CAMERA_MAX_Z = 400000;
+/**
+ * radius の上限 (m)。カメラ→機体距離は最大で
+ * `radius × hypot(1, HEIGHT_OFFSET_MAX_MAG)`（heightOffset 上限時）まで広がるため、
+ * これが maxZ を超えると機体/地形が far clip で消える。0.9 の安全係数で余裕を持たせる。
+ */
+const FOLLOW_CAMERA_RADIUS_MAX =
+    (FOLLOW_CAMERA_MAX_Z * 0.9) / Math.hypot(1, FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG);
 
 /** マウス操作感度 */
 const DRAG_ROT_DEG_PER_PX = 0.5;
@@ -382,7 +391,7 @@ const start = async (): Promise<void> => {
             scene,
         );
         fc.minZ = 1;
-        fc.maxZ = 400000;
+        fc.maxZ = FOLLOW_CAMERA_MAX_Z;
         // 組み込み入力を無効化（カスタム操作で制御）
         fc.inputs.clear();
 
@@ -455,6 +464,10 @@ const start = async (): Promise<void> => {
         followPinchPrevCy = (a.y + b.y) / 2;
     };
 
+    /** radius を [1, FOLLOW_CAMERA_RADIUS_MAX] にクランプ（far clip 超過で機体が消えるのを防ぐ）。 */
+    const clampFollowCamRadius = (r: number): number =>
+        Math.max(1, Math.min(FOLLOW_CAMERA_RADIUS_MAX, r));
+
     /** 2本指ジェスチャ1ステップ: ピンチ→radius、重心左右→回転、重心上下→高度。 */
     const handleFollowPinch = (): void => {
         const it = followTouches.values();
@@ -468,7 +481,7 @@ const start = async (): Promise<void> => {
         // ピンチ: 指を広げる（間隔増）= ズームイン = radius 減。
         const dDist = dist - followPinchPrevDist;
         if (dDist !== 0) {
-            followCamRadius = Math.max(1, followCamRadius - dDist * PINCH_RADIUS_M_PER_PX);
+            followCamRadius = clampFollowCamRadius(followCamRadius - dDist * PINCH_RADIUS_M_PER_PX);
         }
         // 重心の左右移動 → 水平回転、上下移動 → 高度オフセット。
         const dCx = cx - followPinchPrevCx;
@@ -552,7 +565,7 @@ const start = async (): Promise<void> => {
     };
     const onFollowWheel = (e: WheelEvent): void => {
         if (!followCamera) return;
-        followCamRadius = Math.max(1, followCamRadius + e.deltaY * WHEEL_RADIUS_M_PER_DELTA);
+        followCamRadius = clampFollowCamRadius(followCamRadius + e.deltaY * WHEEL_RADIUS_M_PER_DELTA);
         // radius 変更時に heightOffset が上限を超えないようクランプ
         const maxOffset = followCamRadius * FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG;
         followCamHeightOffset = Math.min(followCamHeightOffset, maxOffset);
