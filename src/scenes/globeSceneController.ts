@@ -1691,7 +1691,8 @@ export const createGlobeSceneController = (
         // computeMaxScaleBarPx は getBoundingClientRect / offsetWidth を読むため
         // レイアウト再計算（reflow）を伴う。毎フレーム実行すると重いので結果を
         // キャッシュし、(1) ビューポート/キャンバスのリサイズ時 (2) スケールラベル
-        // 文字列が変化して固定部の幅が変わったとき のみ再計算する。
+        // 文字列が変化して固定部の幅が変わったとき (3) 地図切替ボタンの位置
+        // (style/class) が外部 JS で変更されたとき のみ再計算する。
         let cachedMaxBarPx = SCALE_BAR_BASE_PX;
         let maxBarPxDirty = true;
         const getMaxScaleBarPx = (): number => {
@@ -1706,6 +1707,17 @@ export const createGlobeSceneController = (
         };
         if (typeof window !== "undefined") {
             window.addEventListener("resize", markMaxBarPxDirty);
+        }
+        // 地図切替ボタンはデモ側 JS で後から移動されうる（例: flight の PIP レイアウト
+        // 調整で left/bottom を書き換える）。その場合も上限幅を再計算するため、
+        // ボタンの属性変更を監視して dirty 化する。
+        let mapToggleObserver: MutationObserver | null = null;
+        if (typeof MutationObserver !== "undefined") {
+            mapToggleObserver = new MutationObserver(markMaxBarPxDirty);
+            mapToggleObserver.observe(ui.mapToggle, {
+                attributes: true,
+                attributeFilter: ["style", "class"],
+            });
         }
         const updateOverlayUi = (): void => {
             // コンパス: 外部指定があればその値を優先し、なければ北矢印が実際の北を
@@ -1867,6 +1879,7 @@ export const createGlobeSceneController = (
             if (typeof window !== "undefined") {
                 window.removeEventListener("resize", markMaxBarPxDirty);
             }
+            mapToggleObserver?.disconnect();
             removeFromParent(ui.compass);
             removeFromParent(ui.mapToggle);
             removeFromParent(ui.viewModeButton);
