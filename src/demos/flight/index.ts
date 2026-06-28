@@ -256,7 +256,12 @@ const start = async (): Promise<void> => {
             if (isMobile) {
                 const pipHeight =
                     pipFrame.getBoundingClientRect().height || (pixelWidth * 3) / 4;
-                // 既定の left に戻し、bottom で PIP の真上へ持ち上げる。
+                // モバイルでは PIP の真上へ持ち上げる（縦位置 = bottom を !important で確定）。
+                // 横位置(left)は PIP 左端に揃える意図だが、ここでは !important を付けず
+                // 既定値(12px)を再設定するに留める。coarse-pointer 端末では
+                // `.cp-maptoggle{left:16px!important}` が優先され実効 16px となるが、
+                // PIP も左端付近にあるため 12/16px いずれでも「PIP の真上」を満たす。
+                // ＝横位置は coarse 補正へ委ね、縦位置のみ明示制御する方針。
                 mapToggleBtn.style.setProperty("left", "12px");
                 mapToggleBtn.style.setProperty("bottom", `${12 + pipHeight + 8}px`, "important");
             } else {

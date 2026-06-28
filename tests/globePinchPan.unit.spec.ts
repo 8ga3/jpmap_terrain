@@ -198,6 +198,21 @@ describe("globe タッチ 2本指ジェスチャ (#424)", () => {
         teardown();
     });
 
+    it("2本指から1本離した直後、残った指でそのままパンを継続できる", () => {
+        const { gc, canvas, teardown } = build();
+        // 2本指接地（広い間隔）。
+        dispatchPointer(canvas, "pointerdown", { pointerId: 1, clientX: 100, clientY: 200 });
+        dispatchPointer(canvas, "pointerdown", { pointerId: 2, clientX: 400, clientY: 200 });
+        // 1本目を離す → 残る pointerId:2 でパン継続できる状態になるはず。
+        dispatchPointer(canvas, "pointerup", { pointerId: 1, clientX: 100, clientY: 200 });
+        const before = centerOf(gc);
+        // 残った指（pointerId:2）を動かすと center が動く（pointerdown を挟まずに）。
+        dispatchPointer(canvas, "pointermove", { pointerId: 2, clientX: 480, clientY: 260 });
+        const moved = Vector3.Distance(before, gc.camera.center);
+        expect(moved).toBeGreaterThan(0);
+        teardown();
+    });
+
     it("マウス（fine pointer）のドラッグは従来どおりパンする", () => {
         const { gc, canvas, teardown } = build();
         const before = centerOf(gc);
