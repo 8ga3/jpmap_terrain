@@ -64,7 +64,9 @@ interface DemoState {
     /**
      * 高度編集モード（スティッキー）。スマホなど Shift キーが使えない環境向けに、
      * 「高度」ボタンで ON にするとドラッグが lat/lon ではなく altitude を編集する。
-     * `edit` モードかつ非 2D のときのみ有効。
+     * トグル自体は `edit` モードのときに操作できる。実際の altitude 編集が反映されるのは
+     * 3D（非 2D）表示のときのみで、2D 表示中はドラッグ/カーソル判定側
+     * （`viewer.viewMode !== "2d"`）で無効化される。
      */
     altitudeMode: boolean;
     /**
