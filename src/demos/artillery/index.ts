@@ -18,6 +18,8 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";
@@ -34,6 +36,7 @@ import {
 import { powderToSpeed } from "./ballistics";
 import { initPhysics } from "./physics";
 import { createTerrainCollider, type TerrainCollider } from "./terrainCollider";
+import { createInitCancellation } from "./initCancellation";
 import {
     createInitialState,
     nextTurn,
@@ -145,6 +148,24 @@ const start = async (): Promise<void> => {
     const mount = document.getElementById(DEMO_MOUNT_ID);
     if (!mount) return;
 
+    // 初期化（地形ロード・物理エンジン初期化など重い処理）中に「戻る」操作で
+    // ページ離脱した場合、その瞬間にレンダーループ停止・リソース破棄を行って
+    // メインスレッドを即座に解放し、ページ遷移を速やかに進める。
+    // viewer は create 完了後に viewerRef へ格納されるため、abort 時点で未生成なら
+    // 破棄はスキップし、create 完了直後の中断チェック（下記）でフォールバック破棄する。
+    const viewerRef: {
+        current: Awaited<ReturnType<typeof JpmapTerrain.create>> | null;
+    } = { current: null };
+    let viewerDisposed = false;
+    const disposeViewerOnce = (): void => {
+        if (viewerRef.current && !viewerDisposed) {
+            viewerDisposed = true;
+            viewerRef.current.dispose();
+        }
+    };
+    const cancel = createInitCancellation(disposeViewerOnce);
+
+
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
 
@@ -171,6 +192,13 @@ const start = async (): Promise<void> => {
         // サイレントな白画面にせず明示的に送出する。
         console.error("[artillery] globe terrain init failed", err);
         throw err;
+    }
+    // 以降の abort で同期破棄できるよう viewer を共有参照へ格納する。
+    viewerRef.current = viewer;
+    // create 完了前に離脱（戻る操作）していたら、生成済みリソースを破棄して中断する。
+    if (cancel.isAborted()) {
+        disposeViewerOnce();
+        return;
     }
     // 現在地ボタン（GPS）は砲撃ゲームには不要なので非表示にする。
     viewer.showLocateMe = false;
@@ -216,6 +244,12 @@ const start = async (): Promise<void> => {
 
     // --- Havok 物理エンジン初期化（砲弾の生成より前に必須） ---
     await initPhysics(scene, stage.gravity);
+
+    // 物理エンジン初期化中にページ離脱（戻る操作）していたら中断する。
+    if (cancel.isAborted()) {
+        disposeViewerOnce();
+        return;
+    }
 
     // --- 影（砲台・砲弾 → 地形）: 真上からの平行光源 ---
     const shadows = createArtilleryShadows(scene, stage);
@@ -360,6 +394,15 @@ const start = async (): Promise<void> => {
         // 地形メッシュのみを対象にする。globe は `tile-*` / `base-tile-*`
         // （globeTileManager の命名）。
         //
+        // 高速経路: buildCollider 中はプレイエリア近傍タイルだけに絞った候補配列
+        // (terrainPickCandidates) に対して ray.intersectsMesh で最近接ヒットを取る。
+        // scene.pickWithRay は全メッシュ（~177 タイル）を走査するため、候補絞り込みで
+        // ピックコストを大幅に削減する（コリジョン構築の総 CPU 時間を短縮）。
+        if (terrainPickCandidates) {
+            return pickNearestTerrain(terrainRay, terrainPickCandidates);
+        }
+        // フォールバック（候補未収集時）。
+        //
         // 注意: globe タイルは globeTileManager で `isPickable=false`（パン
         // 干渉回避）だが、`pickWithRay` に predicate を渡すと Babylon は
         // isPickable/isVisible/isEnabled の既定フィルタを適用せず predicate のみで
@@ -370,6 +413,54 @@ const start = async (): Promise<void> => {
         // タイルを pickable に戻すとパン干渉が再発するため、ここは predicate
         // 方式を維持すること。
         return scene.pickWithRay(terrainRay, isTerrainMesh);
+    };
+
+    /**
+     * buildCollider 中のレイキャスト高速化用の候補メッシュ。
+     * null の間は scene.pickWithRay（全走査）にフォールバックする。
+     */
+    let terrainPickCandidates: AbstractMesh[] | null = null;
+    const scratchStageCenter = new Vector3();
+
+    /**
+     * 候補配列に対してレイの最近接ヒットを返す。ray.intersectsMesh は
+     * mesh の三角形まで判定する（fastCheck=false）ため精度は pickWithRay と同等。
+     */
+    const pickNearestTerrain = (
+        ray: Ray,
+        candidates: AbstractMesh[],
+    ): PickingInfo | null => {
+        let best: PickingInfo | null = null;
+        for (const mesh of candidates) {
+            const info = ray.intersectsMesh(mesh);
+            if (info.hit && (best === null || info.distance < best.distance)) {
+                best = info;
+            }
+        }
+        return best;
+    };
+
+    /**
+     * プレイエリア近傍の地形タイルメッシュを収集する（buildCollider 前に 1 回）。
+     * ステージ原点ワールド座標から一定半径内（+ メッシュ境界球半径）に中心がある
+     * 地形タイルのみを候補にすることで、レイキャスト対象を ~177 → 数十枚に絞る。
+     */
+    const collectTerrainPickCandidates = (): AbstractMesh[] => {
+        scratchStageCenter.copyFromFloats(0, 0, 0);
+        stage.localToWorld(scratchStageCenter, scratchStageCenter);
+        // 大砲は ±750m、サンプリングは ±~1500m 範囲。余裕を持たせる。
+        const PLAY_AREA_RADIUS = 4000; // m
+        const out: AbstractMesh[] = [];
+        for (const mesh of scene.meshes) {
+            if (!isTerrainMesh(mesh)) continue;
+            mesh.computeWorldMatrix(false);
+            const sphere = mesh.getBoundingInfo().boundingSphere;
+            const dist = Vector3.Distance(sphere.centerWorld, scratchStageCenter);
+            if (dist <= PLAY_AREA_RADIUS + sphere.radiusWorld) {
+                out.push(mesh);
+            }
+        }
+        return out;
     };
 
     /** 地形タイルメッシュ判定（globe の命名規約）。 */
@@ -418,16 +509,31 @@ const start = async (): Promise<void> => {
         typeof window !== "undefined" &&
         (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true;
 
-    /** 地形コリジョンメッシュを現在の地形からサンプリングして構築する */
-    const buildCollider = (): void => {
-        const rate = collider.rebuild((x, z) => {
-            const y = getTerrainY(x, z);
-            return Number.isNaN(y) ? null : y;
-        });
-        if (isDebug()) {
-            console.debug(
-                `[artillery] 地形コリジョン構築: サンプリング成功率 ${(rate * 100).toFixed(0)}%`,
+    /**
+     * 地形コリジョンメッシュを現在の地形からサンプリングして構築する。
+     * サンプリングは重いためフレーム分割で実行し、離脱（戻る操作）時は中断する。
+     * @returns 構築完了したら true。中断された場合は false。
+     */
+    const buildCollider = async (): Promise<boolean> => {
+        // レイキャスト対象をプレイエリア近傍タイルに絞り、ピックコストを削減する。
+        terrainPickCandidates = collectTerrainPickCandidates();
+        try {
+            const rate = await collider.rebuild(
+                (x, z) => {
+                    const y = getTerrainY(x, z);
+                    return Number.isNaN(y) ? null : y;
+                },
+                { shouldAbort: () => cancel.isAborted() },
             );
+            if (rate === null) return false; // 離脱により中断
+            if (isDebug()) {
+                console.debug(
+                    `[artillery] 地形コリジョン構築: サンプリング成功率 ${(rate * 100).toFixed(0)}%`,
+                );
+            }
+            return true;
+        } finally {
+            terrainPickCandidates = null;
         }
     };
 
@@ -437,6 +543,11 @@ const start = async (): Promise<void> => {
         const TIMEOUT_MS = 30_000;
         const startTime = performance.now();
         const tryRun = (): void => {
+            // 地形ロード待機中にページ離脱（戻る操作）していたら、ポーリングを止めて中断する。
+            if (cancel.isAborted()) {
+                disposeViewerOnce();
+                return;
+            }
             if (viewer.isTerrainIdle) {
                 fn();
             } else if (performance.now() - startTime >= TIMEOUT_MS) {
@@ -449,13 +560,25 @@ const start = async (): Promise<void> => {
         setTimeout(tryRun, 500);
     };
 
-    // 地形ロード後に大砲を配置し、地形コリジョンを構築。
-    // 準備完了で中央告知（HAKONE / RED）を爆散させて消す。
+    // 地形ロード後に大砲を配置し、中央告知（HAKONE / RED）を消してゲームを表示する。
+    // 地形コリジョン構築は重いため、タイトルを消した後にフレーム分割で背景構築する
+    // （構築中もページ遷移＝戻る操作を妨げない）。
     waitTerrainIdleThen(() => {
         placeCannons();
-        buildCollider();
         setCannonsEnabled(true);
         announce.dismiss();
+        // コリジョンを背景で構築。完了するまで離脱監視（cancel）は解除しない。
+        void buildCollider()
+            .then((completed) => {
+                if (completed) {
+                    // 初期化が無事完了したので離脱監視を解除する。
+                    cancel.dispose();
+                }
+                // 中断時は onAbort（disposeViewerOnce）で破棄済みのため、ここでは何もしない。
+            })
+            .catch((err: unknown) => {
+                console.error("[artillery] terrain collider build failed", err);
+            });
     });
 
     const updateUI = (): void => {
@@ -608,7 +731,9 @@ const start = async (): Promise<void> => {
         settings.blue = { angle: 45, heading: 0, power: 50 };
         loadSettingsToUI(gameState.turn);
         placeCannons();
-        buildCollider();
+        void buildCollider().catch((err: unknown) => {
+            console.error("[artillery] terrain collider rebuild failed", err);
+        });
         updateUI();
         // リスタート時も先攻（RED）を中央に告知する。
         announce.show({ stage: STAGE_NAME, team: gameState.turn, hold: 1000 });
