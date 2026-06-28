@@ -32,8 +32,8 @@
 
 ### レスポンシブ / タッチ操作対応
 
-- 全デモの HTML（`public/*.html`）に `<meta name="viewport" content="width=device-width, ...">` を付与し、モバイルでの等倍表示を保証する（viewer は `viewport-fit=cover`、`maximum-scale=1`）。
-  - **注意（アクセシビリティ）**: `maximum-scale=1` はユーザーのページズーム（ピンチズーム）を無効化するため、低視力ユーザー等のアクセシビリティに影響する。viewer は地図キャンバス自体のピンチズーム（地形の拡大縮小）とブラウザのページズームが競合するのを避けるための意図的な指定だが、将来 UI 文字サイズの調整等で見直す際は、この制約（ページズーム不可）を踏まえて判断すること。
+- 全デモの HTML（`public/*.html`）に `<meta name="viewport" content="width=device-width, ...">` を付与し、モバイルでの等倍表示を保証する。Babylon.js を読み込むデモ（viewer を含むポータル `index.html` 以外のすべて）には `viewport-fit=cover`・`maximum-scale=1` を付与する（ポータル `index.html` は軽量ページのため `initial-scale=1` のみ）。
+  - **注意（アクセシビリティ）**: `maximum-scale=1` はユーザーのページズーム（ピンチズーム）を無効化するため、低視力ユーザー等のアクセシビリティに影響する。地図/3D キャンバス自体のピンチズーム（地形・モデルの拡大縮小）とブラウザのページズームが競合するのを避けるための意図的な指定だが、将来 UI 文字サイズの調整等で見直す際は、この制約（ページズーム不可）を踏まえて判断すること。
 - 操作 UI（`src/terrain/controlPanel.ts`）は固定 px で生成するが、`@media (pointer: coarse)` のスタイルを注入し、**タッチ端末でのみ** タップ領域（最小 44px）・文字サイズ・配置余白を拡大する。マウス/トラックパッド（fine pointer）では従来の見た目を維持するため、ビジュアル回帰テスト（`tests/validation.spec.ts`）への影響はない。
 - タッチパネルのパン（`src/scenes/globe.ts` の独自シングルタッチパン）は、接地中のタッチポインタ位置（`touchPoints`）で 2 本指以上を検出し、ピンチ中はシングルタッチパンを無効化する。これにより `GeospatialCamera` のピンチズームとシングルタッチパンの同時発火を防ぐ（マウス操作は従来どおり）。
 - **2 本指ジェスチャ（`src/scenes/globe.ts`）**: GeospatialCamera 組み込みの multi-touch パン（= 2 本指ドラッグでの tilt 回転）を無効化（`multiTouchPanning=false`／`multiTouchPanAndZoom=false`、`pinchZoom` は温存）し、独自のジェスチャ処理に置き換える。割り当ては指の間隔（spread）で切り替える:
