@@ -180,7 +180,10 @@ export interface DefaultSceneController {
      * 地形コリジョン構築（Artillery）など、頂点ごとのレイキャストを避けたい
      * 高頻度サンプリング用途を想定する。
      *
-     * 対象座標の標高タイルが未ロードの場合は `null` を返す。
+     * 次のいずれかの場合は `null` を返す:
+     * - 対象座標の標高タイルが未ロード。
+     * - 標高ダイレクト参照に対応しないバックエンド（例: planar）。本機能は globe
+     *   バックエンド専用であり、未対応バックエンドの実装は常に `null` を返してよい。
      */
     terrainElevAt(latDeg: number, lonDeg: number): number | null;
 

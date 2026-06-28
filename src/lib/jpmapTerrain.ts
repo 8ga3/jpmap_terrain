@@ -450,9 +450,14 @@ export class JpmapTerrain {
      * 指定の測地座標 (lat, lon) における地表標高[m]（楕円体面基準）を O(1) で返す。
      *
      * ロード済み標高ラスタからのバイリニア補間による高速ルックアップ。
-     * 当該座標の標高タイルが未ロード、またはコントローラ未初期化の場合は `null` を返す。
      * Artillery のコリジョン構築など、頂点ごとのレイキャストを避けたい
      * 高頻度サンプリング用途に用いる。
+     *
+     * 次のいずれかの場合は `null` を返す:
+     * - 当該座標の標高タイルが未ロード。
+     * - コントローラ未初期化（シーン構築前）。
+     * - 標高ダイレクト参照に対応しないバックエンド（例: planar）。本機能は globe
+     *   バックエンド専用であり、未対応バックエンドでは常に `null` となる。
      */
     public terrainElevAt(latDeg: number, lonDeg: number): number | null {
         return this._controller?.terrainElevAt(latDeg, lonDeg) ?? null;
