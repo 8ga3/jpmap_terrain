@@ -342,11 +342,11 @@
         <input type="range" id="altitude-slider" min="100" max="10000" value="500" step="50">
       </div>
       <div class="btn-row">
-        <button id="toggle-animation">⏸停止</button>
-        <button id="fly-to-center">移動</button>
-        <button id="camera-3d" class="active">3D</button>
-        <button id="camera-2d">2D</button>
-        <button id="camera-follow">Follow</button>
+        <button type="button" id="toggle-animation">⏸停止</button>
+        <button type="button" id="fly-to-center">移動</button>
+        <button type="button" id="camera-3d" class="active">3D</button>
+        <button type="button" id="camera-2d">2D</button>
+        <button type="button" id="camera-follow">Follow</button>
       </div>
       <div id="follow-cam-info" style="display:none; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 6px; margin-top: 2px;">
         <div class="inline-row" style="margin-bottom: 4px;">
@@ -366,9 +366,9 @@
       <div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 6px; margin-top: 2px; display: flex; flex-direction: column; gap: 4px;">
         <strong style="font-size: 11px;">表示切替</strong>
         <div class="btn-row">
-          <button id="waypoint-toggle" class="active" title="ウェイポイント">WP</button>
-          <button id="ribbon-toggle" class="active" title="リボン (飛行経路)">経路</button>
-          <button id="afterburner-toggle" class="active" title="アフターバーナー">噴射</button>
+          <button type="button" id="waypoint-toggle" class="active" title="ウェイポイント" aria-label="ウェイポイント表示切替">WP</button>
+          <button type="button" id="ribbon-toggle" class="active" title="リボン (飛行経路)" aria-label="リボン (飛行経路) 表示切替">経路</button>
+          <button type="button" id="afterburner-toggle" class="active" title="アフターバーナー" aria-label="アフターバーナー表示切替">噴射</button>
         </div>
       </div>
     </div>
