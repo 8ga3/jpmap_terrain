@@ -587,7 +587,7 @@ const start = async (): Promise<void> => {
             if (viewer.isTerrainIdle) {
                 fn();
             } else if (performance.now() - startTime >= TIMEOUT_MS) {
-                console.warn("[artillery] 地形ロードのタイムアウト: ベストエフォートで続行します");
+                console.warn("[artillery] terrain load timed out; continuing best-effort");
                 fn();
             } else {
                 setTimeout(tryRun, POLL_INTERVAL_MS);
