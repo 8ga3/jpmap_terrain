@@ -2006,6 +2006,10 @@ export const createGlobeSceneController = (
         //  希望タイル desiredKeys がすべて loaded かつテクスチャ適用済み readyMeshes）を返す。
         isTerrainIdle: () => gc.tileManager.isIdle(),
 
+        // 標高ダイレクト参照（O(1) バイリニア）。Artillery のコリジョン構築など
+        // 高頻度サンプリングがレイキャストを避けて地表 Y を取得するために露出する。
+        terrainElevAt: (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
+
         dispose: () => {
             gc.scene.onBeforeRenderObservable.remove(sunMeshObserver);
             gc.scene.onBeforeRenderObservable.remove(skyColorObserver);

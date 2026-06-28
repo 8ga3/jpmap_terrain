@@ -174,6 +174,17 @@ export interface DefaultSceneController {
     isTerrainIdle(): boolean;
 
     /**
+     * 指定の測地座標 (lat, lon) における地表標高[m]（楕円体面基準）を O(1) で返す。
+     *
+     * ロード済み標高ラスタからのバイリニア補間で求める高速ルックアップ。
+     * 地形コリジョン構築（Artillery）など、頂点ごとのレイキャストを避けたい
+     * 高頻度サンプリング用途を想定する。
+     *
+     * 対象座標の標高タイルが未ロードの場合は `null` を返す。
+     */
+    terrainElevAt(latDeg: number, lonDeg: number): number | null;
+
+    /**
      * `JpmapTerrain.dispose` から呼ばれる UI クリーンアップ。
      *
      * `controlPanel` が `document.body` に追加した UI 要素 (コンパス / ズームボタンコンテナ / 地図切替) を
