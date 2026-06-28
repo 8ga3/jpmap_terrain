@@ -1984,7 +1984,7 @@ export class GlobeScene {
             document.removeEventListener("visibilitychange", onVisibilityChange);
             canvas.removeEventListener("pointerdown", onPointerDown);
             canvas.removeEventListener("pointerup", onPointerUp);
-            canvas.removeEventListener("pointercancel", endDrag);
+            canvas.removeEventListener("pointercancel", onPointerCancel);
             canvas.removeEventListener("pointermove", onPointerMove);
             detachClickHandlers();
             terrainClickListeners.length = 0;

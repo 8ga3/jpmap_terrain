@@ -207,4 +207,49 @@ describe("globe タッチ 2本指ジェスチャ (#424)", () => {
         expect(moved).toBeGreaterThan(0);
         teardown();
     });
+
+    it("dispose で canvas に登録した全リスナが解除される（pointercancel 等の解除漏れ防止）", () => {
+        const engine = makeEngine();
+        const canvas = document.createElement("canvas");
+        document.body.appendChild(canvas);
+        // (type, handler) ペアの追加/解除を記録し、対称性を検証する。
+        const added = new Set<string>();
+        const removed = new Set<string>();
+        const key = (type: string, h: EventListenerOrEventListenerObject): string =>
+            `${type}::${(h as { name?: string }).name ?? String(h)}`;
+        const origAdd = canvas.addEventListener.bind(canvas);
+        const origRemove = canvas.removeEventListener.bind(canvas);
+        canvas.addEventListener = ((
+            type: string,
+            h: EventListenerOrEventListenerObject,
+            opts?: boolean | AddEventListenerOptions,
+        ): void => {
+            added.add(key(type, h));
+            origAdd(type, h, opts);
+        }) as typeof canvas.addEventListener;
+        canvas.removeEventListener = ((
+            type: string,
+            h: EventListenerOrEventListenerObject,
+            opts?: boolean | EventListenerOptions,
+        ): void => {
+            removed.add(key(type, h));
+            origRemove(type, h, opts);
+        }) as typeof canvas.removeEventListener;
+
+        const gc = new GlobeScene().createSceneWithController(engine, canvas, {
+            lat: 35.36,
+            lon: 138.73,
+            radius: 60000,
+            tilt: 60,
+        });
+        expect(added.has("pointercancel::onPointerCancel")).toBe(true);
+        gc.dispose();
+
+        // 追加された全ペアが解除されていること。
+        const notRemoved = [...added].filter((k) => !removed.has(k));
+        expect(notRemoved).toEqual([]);
+
+        engine.dispose();
+        canvas.remove();
+    });
 });

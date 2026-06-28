@@ -757,11 +757,16 @@ const start = async (): Promise<void> => {
     // ウェイポイント / リボン 表示切替ボタン
     const waypointToggle = document.getElementById("waypoint-toggle") as HTMLButtonElement | null;
     const ribbonToggle = document.getElementById("ribbon-toggle") as HTMLButtonElement | null;
+    // トグルボタンの ON/OFF を視覚（active クラス）と支援技術（aria-pressed）の両方へ反映する。
+    const setTogglePressed = (btn: HTMLButtonElement, on: boolean): void => {
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+    };
     if (waypointToggle) {
-        waypointToggle.classList.toggle("active", showWaypoints);
+        setTogglePressed(waypointToggle, showWaypoints);
         waypointToggle.addEventListener("click", () => {
             showWaypoints = !showWaypoints;
-            waypointToggle.classList.toggle("active", showWaypoints);
+            setTogglePressed(waypointToggle, showWaypoints);
             if (!showWaypoints && waypointManager) {
                 waypointManager.dispose();
                 waypointManager = null;
@@ -769,10 +774,10 @@ const start = async (): Promise<void> => {
         });
     }
     if (ribbonToggle) {
-        ribbonToggle.classList.toggle("active", showRibbon);
+        setTogglePressed(ribbonToggle, showRibbon);
         ribbonToggle.addEventListener("click", () => {
             showRibbon = !showRibbon;
-            ribbonToggle.classList.toggle("active", showRibbon);
+            setTogglePressed(ribbonToggle, showRibbon);
             if (routeLine) {
                 routeLine.setVisible(showRibbon);
             }
@@ -782,10 +787,10 @@ const start = async (): Promise<void> => {
     // アフターバーナー表示切替ボタン
     const afterburnerToggle = document.getElementById("afterburner-toggle") as HTMLButtonElement | null;
     if (afterburnerToggle) {
-        afterburnerToggle.classList.toggle("active", showAfterburner);
+        setTogglePressed(afterburnerToggle, showAfterburner);
         afterburnerToggle.addEventListener("click", () => {
             showAfterburner = !showAfterburner;
-            afterburnerToggle.classList.toggle("active", showAfterburner);
+            setTogglePressed(afterburnerToggle, showAfterburner);
             if (afterburner) {
                 afterburner.setVisible(showAfterburner);
             }
