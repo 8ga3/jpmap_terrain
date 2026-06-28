@@ -27,9 +27,22 @@ export interface TerrainColliderOptions {
     friction: number;
 }
 
+/**
+ * 既定のコライダー設定。
+ *
+ * `areaSize` はコライダーグリッドの一辺（中心 = ステージ原点）。砲弾の最大水平射程は
+ * 45° / 初速 600 m/s / 重力 180 m/s² で約 2000m（`v²·sin(2θ)/g`）。砲台はステージ
+ * 原点から ±750m に置かれるため、最遠方位（東西へ真っ直ぐ）では着弾点が原点から
+ * 約 2750m に達する。コライダーがこれを覆わないと最遠弾が地形を貫通してバウンド
+ * しないため、半幅 3000m（`areaSize=6000`, 余裕 250m）でプレイエリア全域を覆う。
+ *
+ * `subdivisions=200` でセル ≈ 30m を維持（近接弾のバウンド精度を保つ）。標高ダイレクト
+ * 参照（#436）によりサンプリングは安価なため、頂点数増（40,401）でも数十ms以下で構築
+ * できる。
+ */
 export const DEFAULT_COLLIDER_OPTIONS: TerrainColliderOptions = {
-    areaSize: 3000,
-    subdivisions: 100,
+    areaSize: 6000,
+    subdivisions: 200,
     restitution: 0.5,
     friction: 0.6,
 };

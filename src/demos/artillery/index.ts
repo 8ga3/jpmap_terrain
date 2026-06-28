@@ -28,6 +28,7 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import { createStageFrame, type StageFrame } from "./stageFrame";
+import { createDirectTerrainSampler } from "./terrainSampler";
 import {
     createProjectilePool,
     PROJECTILE_LIFETIME_SEC,
@@ -397,6 +398,13 @@ const start = async (): Promise<void> => {
     const pickToLocalY = (point: Vector3): number =>
         stage.worldToLocal(point, scratchPickLocal).y;
 
+    // 標高ダイレクト参照サンプラ（#435 案A）。レイキャストを使わず terrainElevAt で
+    // 地表 Y を引く。標高未ロード等で取得不可な座標では null を返し、呼び出し側で
+    // レイキャストへフォールバックする。
+    const sampleTerrainYDirect = createDirectTerrainSampler(stage, (lat, lon) =>
+        viewer.terrainElevAt(lat, lon),
+    );
+
     const castTerrainRay = (x: number, z: number) => {
         // ステージローカル (x, +高所, z) からローカル下方向へレイを飛ばす。
         // globe は ENU→ECEF へ写像した ECEF レイ（解析レイのため floating origin 下でも
@@ -467,8 +475,9 @@ const start = async (): Promise<void> => {
     const collectTerrainPickCandidates = (): AbstractMesh[] => {
         scratchStageCenter.copyFromFloats(0, 0, 0);
         stage.localToWorld(scratchStageCenter, scratchStageCenter);
-        // 大砲は ±750m、サンプリングは ±~1500m 範囲。余裕を持たせる。
-        const PLAY_AREA_RADIUS = 4000; // m
+        // 大砲は ±750m、コライダー（サンプリング）は ±3000m 範囲。フォールバック
+        // レイキャスト候補もプレイエリア全域（対角 ≈ 4243m）を覆えるよう余裕を持たせる。
+        const PLAY_AREA_RADIUS = 5000; // m
         const out: AbstractMesh[] = [];
         for (const mesh of scene.meshes) {
             if (!isTerrainMesh(mesh)) continue;
@@ -542,6 +551,10 @@ const start = async (): Promise<void> => {
         try {
             const rate = await collider.rebuild(
                 (x, z) => {
+                    // 案A: まず標高ダイレクト参照（レイキャスト不要・高速）。
+                    const direct = sampleTerrainYDirect(x, z);
+                    if (direct !== null) return direct;
+                    // フォールバック: 標高未ロード等で取得不可な点のみレイキャスト。
                     const y = getTerrainY(x, z);
                     return Number.isNaN(y) ? null : y;
                 },
