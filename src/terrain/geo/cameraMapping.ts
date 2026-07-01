@@ -220,22 +220,31 @@ export const rayEllipsoidNearHitToRef = (
     return true;
 };
 
+/** `rayEllipsoidHitsToRef` の出力用構造体。 */
+interface EllipsoidHitsT {
+    t0: number;
+    t1: number;
+}
+
 /**
- * レイと楕円体の交点を `origin + t·dir` の t で両方（手前 t0 <= 奥 t1）求める。
+ * レイと楕円体の交点を `origin + t·dir` の t で両方（手前 t0 <= 奥 t1）求め、`outT` に書き込む。
  * `origin` が楕円体の内側にあれば t0<0<t1（後方に1つ、前方に1つ）になり得る。
  * `rayEllipsoidNearHitToRef` は手前かつ t>=0 の交点のみを返すため、球殻状の探索区間
  * （`resolveTerrainClickElevationToRef` が地表の存在し得る範囲を決める用途）には使えない。
  *
  * @param dir レイ方向。正規化不要。
- * @returns 交点がある場合 `{ t0, t1 }`（t0<=t1）。交わらない/半径・入力が不正なら null。
+ * @param outT 交点の書き込み先。
+ * @returns 交点があれば true（`outT` に t0<=t1 を書き込む）、交わらない/半径・入力が不正なら false
+ *          （この場合 `outT` は変更しない）。
  */
-const rayEllipsoidHitsT = (
+const rayEllipsoidHitsToRef = (
     origin: Vector3,
     dir: Vector3,
     radiusX: number,
     radiusY: number,
     radiusZ: number,
-): { t0: number; t1: number } | null => {
+    outT: EllipsoidHitsT,
+): boolean => {
     if (
         !(radiusX > 0) ||
         !(radiusY > 0) ||
@@ -250,7 +259,7 @@ const rayEllipsoidHitsT = (
         !Number.isFinite(dir.y) ||
         !Number.isFinite(dir.z)
     ) {
-        return null;
+        return false;
     }
     const ox = origin.x / radiusX;
     const oy = origin.y / radiusY;
@@ -259,16 +268,33 @@ const rayEllipsoidHitsT = (
     const dy = dir.y / radiusY;
     const dz = dir.z / radiusZ;
     const a = dx * dx + dy * dy + dz * dz;
-    if (a <= 0) return null;
+    if (a <= 0) return false;
     const b = 2 * (ox * dx + oy * dy + oz * dz);
     const c = ox * ox + oy * oy + oz * oz - 1;
     const disc = b * b - 4 * a * c;
-    if (disc < 0) return null; // レイが楕円体と交わらない
+    if (disc < 0) return false; // レイが楕円体と交わらない
     const sq = Math.sqrt(disc);
     const ta = (-b - sq) / (2 * a);
     const tb = (-b + sq) / (2 * a);
-    return ta <= tb ? { t0: ta, t1: tb } : { t0: tb, t1: ta };
+    if (ta <= tb) {
+        outT.t0 = ta;
+        outT.t1 = tb;
+    } else {
+        outT.t0 = tb;
+        outT.t1 = ta;
+    }
+    return true;
 };
+
+// resolveTerrainClickElevationToRef 専用の作業用バッファ。同関数はズーム/パン中に毎フレーム
+// 呼ばれ得るため、内部の一時ベクトル・オブジェクトをモジュールスコープで再利用しアロケーション
+// を避ける（JS はシングルスレッドで本関数は再入しないため安全）。
+const rtcUnitDir = new Vector3();
+const rtcPoint = new Vector3();
+const rtcOuterHits: EllipsoidHitsT = { t0: 0, t1: 0 };
+const rtcInnerHits: EllipsoidHitsT = { t0: 0, t1: 0 };
+// 探索中の各サンプル点の測地座標（呼び出し元の outGeo は採用確定時のみ書き込む）。
+const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
 
 /**
  * レイと地形表面（実標高データに基づく面）の交点を、レイに沿ったマーチング（粗い等分探索 +
@@ -299,8 +325,9 @@ const rayEllipsoidHitsT = (
  * @param maxCoarseSteps 粗い探索ステップ数の上限（探索区間が長大でも計算量を頭打ちにする）。
  * @param refineIterations 符号反転区間を絞り込む二分探索の反復数。
  * @param outHit 採用した交点（ECEF）の書き込み先。
- * @returns 採用した交点の測地座標。レイが地球を完全に外す（空を指す）場合は null
- *          （この場合 `outHit` は変更しない）。
+ * @param outGeo 採用した交点の測地座標の書き込み先。
+ * @returns 交点を採用できたら true。レイが地球を完全に外す（空を指す）、または地表（山）を
+ *          検出できなかった場合は false（この場合 `outHit`/`outGeo` は変更しない）。
  */
 export const resolveTerrainClickElevationToRef = (
     origin: Vector3,
@@ -314,56 +341,62 @@ export const resolveTerrainClickElevationToRef = (
     maxCoarseSteps: number,
     refineIterations: number,
     outHit: Vector3,
-): Geodetic | null => {
+    outGeo: Geodetic,
+): boolean => {
     const dirLen = dir.length();
-    if (dirLen < 1e-12) return null;
-    const unitDir = dir.scale(1 / dirLen);
+    if (dirLen < 1e-12) return false;
+    rtcUnitDir.copyFrom(dir).scaleInPlace(1 / dirLen);
 
     // 地表が存在し得る球殻（標高 0 〜 maxTerrainElevM）とレイの交差区間を求める。
-    const outerHits = rayEllipsoidHitsT(
-        origin,
-        unitDir,
-        ellipsoidSemiMajor + maxTerrainElevM,
-        ellipsoidSemiMajor + maxTerrainElevM,
-        ellipsoidSemiMinor + maxTerrainElevM,
-    );
-    if (!outerHits || outerHits.t1 < 0) {
-        return null; // 空（地球外、想定最大標高でも当たらない）を指している
+    if (
+        !rayEllipsoidHitsToRef(
+            origin,
+            rtcUnitDir,
+            ellipsoidSemiMajor + maxTerrainElevM,
+            ellipsoidSemiMajor + maxTerrainElevM,
+            ellipsoidSemiMinor + maxTerrainElevM,
+            rtcOuterHits,
+        ) ||
+        rtcOuterHits.t1 < 0
+    ) {
+        return false; // 空（地球外、想定最大標高でも当たらない）を指している
     }
     // origin が外殻の内側（カメラ高度 < maxTerrainElevM、通常のデモ視点）なら t=0（origin）から、
     // 外側なら外殻の手前交点から探索する。
-    const tNear = Math.max(0, outerHits.t0);
+    const tNear = Math.max(0, rtcOuterHits.t0);
 
     // 標高 0（海面）面の手前交点が tNear より奥にあればそれを奥端に使う（通常ケース）。
     // 無ければ（水平線よりわずかに上に高い山の頂上だけが見えている等、レイが海面には
     // 当たらず外殻だけをかすめるケース）、外殻の奥側交点を奥端に使う。
-    const innerHits = rayEllipsoidHitsT(
+    const hasInnerHits = rayEllipsoidHitsToRef(
         origin,
-        unitDir,
+        rtcUnitDir,
         ellipsoidSemiMajor,
         ellipsoidSemiMajor,
         ellipsoidSemiMinor,
+        rtcInnerHits,
     );
-    const hasSeaLevelFar = innerHits !== null && innerHits.t0 >= tNear;
-    const tFar = hasSeaLevelFar ? innerHits.t0 : outerHits.t1;
+    const hasSeaLevelFar = hasInnerHits && rtcInnerHits.t0 >= tNear;
+    const tFar = hasSeaLevelFar ? rtcInnerHits.t0 : rtcOuterHits.t1;
 
-    const point = new Vector3();
-    const heightAboveTerrainToRef = (t: number, outGeo: Geodetic): number => {
-        point.copyFrom(unitDir).scaleInPlace(t).addInPlace(origin);
-        ecefToGeodeticToRef(point, outGeo);
-        const elev = terrainElevAt(outGeo.latDeg, outGeo.lonDeg);
-        return outGeo.altMeters - (elev ?? 0);
+    const heightAboveTerrainToRef = (t: number): number => {
+        // 探索中の一時計算は rtcGeo（内部スクラッチ）に書く。呼び出し元の outGeo は採用が
+        // 確定した adopt() でのみ書き込む（失敗時に outGeo を変更しない契約を守るため）。
+        rtcPoint.copyFrom(rtcUnitDir).scaleInPlace(t).addInPlace(origin);
+        ecefToGeodeticToRef(rtcPoint, rtcGeo);
+        const elev = terrainElevAt(rtcGeo.latDeg, rtcGeo.lonDeg);
+        return rtcGeo.altMeters - (elev ?? 0);
     };
-    const adopt = (t: number, outGeo: Geodetic): Geodetic => {
-        point.copyFrom(unitDir).scaleInPlace(t).addInPlace(origin);
-        outHit.copyFrom(point);
-        return ecefToGeodeticToRef(point, outGeo);
+    const adopt = (t: number): true => {
+        rtcPoint.copyFrom(rtcUnitDir).scaleInPlace(t).addInPlace(origin);
+        outHit.copyFrom(rtcPoint);
+        ecefToGeodeticToRef(rtcPoint, outGeo);
+        return true;
     };
 
-    const geo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
-    if (heightAboveTerrainToRef(tNear, geo) <= 0) {
+    if (heightAboveTerrainToRef(tNear) <= 0) {
         // 想定最大標高面（手前）がすでに地表以下 → その点を交点として採用する。
-        return adopt(tNear, geo);
+        return adopt(tNear);
     }
 
     // ステップ幅を stepDistanceM 相当に保つよう、探索距離に応じてステップ数を動的に決める。
@@ -376,7 +409,7 @@ export const resolveTerrainClickElevationToRef = (
     let crossed = false;
     for (let i = 1; i <= steps; i++) {
         const t = tNear + ((tFar - tNear) * i) / steps;
-        if (heightAboveTerrainToRef(t, geo) <= 0) {
+        if (heightAboveTerrainToRef(t) <= 0) {
             hiT = t;
             crossed = true;
             break;
@@ -387,25 +420,25 @@ export const resolveTerrainClickElevationToRef = (
         if (hasSeaLevelFar) {
             // 通常ケース（標高0面が奥端）: 地表が見つからないのは理論上ほぼ起きないはずだが、
             // 保険として従来通り標高0交点にフォールバックする。
-            return adopt(tFar, geo);
+            return adopt(tFar);
         }
         // 水平線よりわずかに上を見ている（標高0面には当たらない）ケースで地表（山）を検出
         // できなかった。外殻の奥交点は実際の地形と無関係などこか遠方の仮想点になり得るため、
-        // 採用せず null を返す（採用するとズームやセンター再計算が遠方点へ暴走する）。
-        return null;
+        // 採用せず false を返す（採用するとズームやセンター再計算が遠方点へ暴走する）。
+        return false;
     }
 
     let lo = loT;
     let hi = hiT;
     for (let i = 0; i < refineIterations; i++) {
         const mid = (lo + hi) / 2;
-        if (heightAboveTerrainToRef(mid, geo) <= 0) {
+        if (heightAboveTerrainToRef(mid) <= 0) {
             hi = mid;
         } else {
             lo = mid;
         }
     }
-    return adopt(hi, geo);
+    return adopt(hi);
 };
 
 /**
