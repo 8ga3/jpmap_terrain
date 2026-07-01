@@ -316,19 +316,21 @@ const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
  * @param terrainElevAt 緯度経度[deg]→地形標高[m]。取得不可時は null（未ロード等。その点は
  *        標高 0 として扱う）。
  * @param maxTerrainElevM 想定する地形標高の上限 [m]（探索範囲の手前側を決める。実際の地表が
- *        これを超える場合、超えた部分より奥の交点を採用してしまう）。
+ *        これを超える場合、超えた部分より奥の交点を採用してしまう）。0 以上の有限数。
  * @param stepDistanceM 粗い探索の目標ステップ間隔 [m]（地形データの水平解像度目安。これより
  *        粗いと、幅の狭い稜線をステップが飛び越えて検出漏れし、山を貫通し得る）。探索区間の
  *        距離に応じてステップ数 `= 距離 / stepDistanceM` を算出し、`[minCoarseSteps,
- *        maxCoarseSteps]` にクランプする。
- * @param minCoarseSteps 粗い探索ステップ数の下限。
+ *        maxCoarseSteps]` にクランプする。正の有限数。
+ * @param minCoarseSteps 粗い探索ステップ数の下限。1 以上の整数。
  * @param maxCoarseSteps 粗い探索ステップ数の上限（探索区間が長大でも計算量を頭打ちにする）。
- * @param refineIterations 符号反転区間を絞り込む二分探索の反復数。0 以上。
+ *        `minCoarseSteps` 以上の整数。
+ * @param refineIterations 符号反転区間を絞り込む二分探索の反復数。0 以上の整数。
  * @param outHit 採用した交点（ECEF）の書き込み先。
  * @param outGeo 採用した交点の測地座標の書き込み先。
  * @returns 交点を採用できたら true。レイが地球を完全に外す（空を指す）、地表（山）を
  *          検出できなかった、または探索パラメータ（`maxTerrainElevM`/`stepDistanceM`/
- *          `minCoarseSteps`/`maxCoarseSteps`/`refineIterations`）が非有限・範囲外なら false
+ *          `minCoarseSteps`/`maxCoarseSteps`/`refineIterations`）が上記の範囲・型を満たさなければ
+ *          false
  *          （この場合 `outHit`/`outGeo` は変更しない）。
  */
 export const resolveTerrainClickElevationToRef = (
@@ -345,19 +347,23 @@ export const resolveTerrainClickElevationToRef = (
     outHit: Vector3,
     outGeo: Geodetic,
 ): boolean => {
-    // 探索パラメータが不正（NaN/非有限、範囲外）だと steps 計算が NaN になり粗探索ループが
-    // スキップされて意図しないフォールバックに落ちる。rayEllipsoidNearHitToRef と同様に
-    // exported API として早期にガードする（呼び出し側は通常正の妥当な値を渡す）。
+    // 探索パラメータが不正（NaN/非有限、負値、非整数、範囲外）だと steps 計算が NaN になり
+    // 粗探索ループがスキップされて意図しないフォールバックに落ちる、あるいは for ループの
+    // 回数が意図せず丸められる。rayEllipsoidNearHitToRef と同様に exported API として早期に
+    // ガードする（呼び出し側は通常正の妥当な値を渡す）。ステップ数系（min/maxCoarseSteps・
+    // refineIterations）は for ループの反復回数として使うため整数を要求する
+    // （`Number.isInteger` は NaN/Infinity にも false を返すため有限性チェックを兼ねる）。
     if (
         !Number.isFinite(maxTerrainElevM) ||
+        maxTerrainElevM < 0 ||
         !(stepDistanceM > 0) ||
         !Number.isFinite(stepDistanceM) ||
-        !(minCoarseSteps >= 1) ||
-        !Number.isFinite(minCoarseSteps) ||
-        !(maxCoarseSteps >= minCoarseSteps) ||
-        !Number.isFinite(maxCoarseSteps) ||
-        !(refineIterations >= 0) ||
-        !Number.isFinite(refineIterations)
+        !Number.isInteger(minCoarseSteps) ||
+        minCoarseSteps < 1 ||
+        !Number.isInteger(maxCoarseSteps) ||
+        maxCoarseSteps < minCoarseSteps ||
+        !Number.isInteger(refineIterations) ||
+        refineIterations < 0
     ) {
         return false;
     }
