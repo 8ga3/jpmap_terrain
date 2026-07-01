@@ -436,6 +436,32 @@ describe("resolveTerrainClickElevationToRef", () => {
         expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
         expect(geo).toEqual({ latDeg: 111, lonDeg: 222, altMeters: 333 });
     });
+
+    it("探索パラメータが非有限・範囲外なら false を返し outHit/geo を変更しない（NaN 混入で steps が壊れる防止）", () => {
+        // [maxTerrainElevM, stepDistanceM, minCoarseSteps, maxCoarseSteps, refineIterations]
+        const invalidParamSets: Array<[number, number, number, number, number]> = [
+            [NaN, 20, 20, 20, 16],
+            [5000, NaN, 20, 20, 16],
+            [5000, 0, 20, 20, 16],
+            [5000, -20, 20, 20, 16],
+            [5000, 20, NaN, 20, 16],
+            [5000, 20, 0, 20, 16],
+            [5000, 20, 20, NaN, 16],
+            [5000, 20, 20, 10, 16], // maxCoarseSteps < minCoarseSteps
+            [5000, 20, 20, 20, NaN],
+            [5000, 20, 20, 20, -1],
+        ];
+        for (const [maxElev, stepDist, minSteps, maxSteps, refine] of invalidParamSets) {
+            const outHit = new Vector3(123, 456, 789);
+            const geo: Geodetic = { latDeg: 111, lonDeg: 222, altMeters: 333 };
+            const hit = resolveTerrainClickElevationToRef(
+                origin, dirDown, R, R, () => 500, maxElev, stepDist, minSteps, maxSteps, refine, outHit, geo,
+            );
+            expect(hit).toBe(false);
+            expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
+            expect(geo).toEqual({ latDeg: 111, lonDeg: 222, altMeters: 333 });
+        }
+    });
 });
 
 describe("polePanSpeedMultiplier", () => {

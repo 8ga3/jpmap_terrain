@@ -323,11 +323,13 @@ const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
  *        maxCoarseSteps]` にクランプする。
  * @param minCoarseSteps 粗い探索ステップ数の下限。
  * @param maxCoarseSteps 粗い探索ステップ数の上限（探索区間が長大でも計算量を頭打ちにする）。
- * @param refineIterations 符号反転区間を絞り込む二分探索の反復数。
+ * @param refineIterations 符号反転区間を絞り込む二分探索の反復数。0 以上。
  * @param outHit 採用した交点（ECEF）の書き込み先。
  * @param outGeo 採用した交点の測地座標の書き込み先。
- * @returns 交点を採用できたら true。レイが地球を完全に外す（空を指す）、または地表（山）を
- *          検出できなかった場合は false（この場合 `outHit`/`outGeo` は変更しない）。
+ * @returns 交点を採用できたら true。レイが地球を完全に外す（空を指す）、地表（山）を
+ *          検出できなかった、または探索パラメータ（`maxTerrainElevM`/`stepDistanceM`/
+ *          `minCoarseSteps`/`maxCoarseSteps`/`refineIterations`）が非有限・範囲外なら false
+ *          （この場合 `outHit`/`outGeo` は変更しない）。
  */
 export const resolveTerrainClickElevationToRef = (
     origin: Vector3,
@@ -343,6 +345,22 @@ export const resolveTerrainClickElevationToRef = (
     outHit: Vector3,
     outGeo: Geodetic,
 ): boolean => {
+    // 探索パラメータが不正（NaN/非有限、範囲外）だと steps 計算が NaN になり粗探索ループが
+    // スキップされて意図しないフォールバックに落ちる。rayEllipsoidNearHitToRef と同様に
+    // exported API として早期にガードする（呼び出し側は通常正の妥当な値を渡す）。
+    if (
+        !Number.isFinite(maxTerrainElevM) ||
+        !(stepDistanceM > 0) ||
+        !Number.isFinite(stepDistanceM) ||
+        !(minCoarseSteps >= 1) ||
+        !Number.isFinite(minCoarseSteps) ||
+        !(maxCoarseSteps >= minCoarseSteps) ||
+        !Number.isFinite(maxCoarseSteps) ||
+        !(refineIterations >= 0) ||
+        !Number.isFinite(refineIterations)
+    ) {
+        return false;
+    }
     const dirLen = dir.length();
     if (dirLen < 1e-12) return false;
     rtcUnitDir.copyFrom(dir).scaleInPlace(1 / dirLen);
