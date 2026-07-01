@@ -300,6 +300,26 @@ describe("resolveTerrainClickElevationToRef", () => {
         expect(outHit.length()).toBeCloseTo(R, 0);
     });
 
+    it("originが標高0楕円体の内側(異常値: 地下/海面下)にある場合、tNear以降で最初の海面交点をtFarに使う", () => {
+        // origin半径 R-1000（海面下1000m相当。通常起こらない異常値だが境界ケース確認用）。
+        // innerHits(標高0面)は t0<0<t1 になる（origin が内側にいるため）。
+        const insideOrigin = new Vector3(R - 1000, 0, 0);
+        const dir = new Vector3(1, 0, 0); // 外向き（海面から出る方向）
+        // 地形標高を常に-2000m（海面よりさらに深い）にして、tNear〜tFarの間ずっとレイが
+        // 地形より上（height>0、地表未検出）になるようにする。
+        const terrainElevAt = (): number => -2000;
+        const outHit = new Vector3();
+        const geo = emptyGeo();
+        const hit = resolveTerrainClickElevationToRef(
+            insideOrigin, dir, R, R, terrainElevAt, 5000, 20, 20, 20, 16, outHit, geo,
+        );
+        expect(hit).toBe(true);
+        // 海面交点（半径R、標高0）にフォールバックするはず。外殻（標高5000）の遠方点に
+        // ならない（tFarの選択にt0<0のみを見ていた旧実装だとここが壊れていた）。
+        expect(outHit.length()).toBeCloseTo(R, 0);
+        expect(geo.altMeters).toBeCloseTo(0, 1);
+    });
+
     it("レイが地球を完全に外す(空を指す)場合は false を返し outHit/geo を変更しない", () => {
         const spaceOrigin = new Vector3(R + 10000, 0, 0);
         const spaceDir = new Vector3(1, 0, 0); // 地球から離れる向き

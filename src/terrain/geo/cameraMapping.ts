@@ -395,9 +395,12 @@ export const resolveTerrainClickElevationToRef = (
     // 外側なら外殻の手前交点から探索する。
     const tNear = Math.max(0, rtcOuterHits.t0);
 
-    // 標高 0（海面）面の手前交点が tNear より奥にあればそれを奥端に使う（通常ケース）。
-    // 無ければ（水平線よりわずかに上に高い山の頂上だけが見えている等、レイが海面には
-    // 当たらず外殻だけをかすめるケース）、外殻の奥側交点を奥端に使う。
+    // tNear 以降で最初に現れる標高 0（海面）面の交点を奥端に使う（通常ケース）。通常は t0
+    // （手前交点）だが、origin が海面の内側にある異常ケース（カメラが地下・海面下に潜っている
+    // 場合等）では t0<0<t1 になり t0 が tNear より手前になるため、その場合は t1（海面から
+    // 抜け出す前方交点）を使う。tNear 以降のどちらの交点も無ければ（水平線よりわずかに上に
+    // 高い山の頂上だけが見えている等、レイが海面には当たらず外殻だけをかすめるケース）、
+    // 外殻の奥側交点を奥端に使う。
     const hasInnerHits = rayEllipsoidHitsToRef(
         origin,
         rtcUnitDir,
@@ -406,8 +409,18 @@ export const resolveTerrainClickElevationToRef = (
         ellipsoidSemiMinor,
         rtcInnerHits,
     );
-    const hasSeaLevelFar = hasInnerHits && rtcInnerHits.t0 >= tNear;
-    const tFar = hasSeaLevelFar ? rtcInnerHits.t0 : rtcOuterHits.t1;
+    let hasSeaLevelFar = false;
+    let seaLevelFarT = 0;
+    if (hasInnerHits) {
+        if (rtcInnerHits.t0 >= tNear) {
+            hasSeaLevelFar = true;
+            seaLevelFarT = rtcInnerHits.t0;
+        } else if (rtcInnerHits.t1 >= tNear) {
+            hasSeaLevelFar = true;
+            seaLevelFarT = rtcInnerHits.t1;
+        }
+    }
+    const tFar = hasSeaLevelFar ? seaLevelFarT : rtcOuterHits.t1;
 
     const heightAboveTerrainToRef = (t: number): number => {
         // 探索中の一時計算は rtcGeo（内部スクラッチ）に書く。呼び出し元の outGeo は採用が
