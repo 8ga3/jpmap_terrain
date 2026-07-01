@@ -1055,7 +1055,8 @@ export class GlobeScene {
                 zoomTarget,
                 zoomGeo,
             );
-            // 空を指している → 注視点方向（lookAt）ズームにフォールバック。
+            // 空を指している、または地表（山）を検出できない → 注視点方向（lookAt）ズームに
+            // フォールバック。
             movement.computedPerFrameZoomPickPoint = hit ? zoomTarget : undefined;
         };
 
@@ -1198,7 +1199,7 @@ export class GlobeScene {
                 clickHitElev,
                 clickGeo,
             );
-            if (!hit) return null; // 空（地球外）を指している
+            if (!hit) return null; // 空（地球外）を指している、または地表（山）を検出できない
             return {
                 lat: clickGeo.latDeg,
                 lon: clickGeo.lonDeg,
