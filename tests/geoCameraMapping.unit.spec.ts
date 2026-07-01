@@ -22,6 +22,7 @@ import {
     polePanSpeedMultiplier,
     clampRadiusForGroundClearance,
     rayEllipsoidNearHitToRef,
+    resolveTerrainClickElevationToRef,
 } from "../src/terrain/geo/cameraMapping";
 
 describe("uiToYawPitch / yawPitchToUi", () => {
@@ -258,6 +259,168 @@ describe("rayEllipsoidNearHitToRef", () => {
             expect(ref.x).toBe(123);
             expect(Number.isNaN(ref.x)).toBe(false);
         }
+    });
+});
+
+describe("resolveTerrainClickElevationToRef", () => {
+    const R = 6378137; // 球近似（半径同一。マーチングロジックの検証が目的で楕円率は不要）
+    // 赤道直下視（緯度0）。ecefToGeodeticToRef は WGS84 楕円体基準のため、球近似(R=R=R)でも
+    // 赤道なら赤道半径 a=R と一致し altMeters に極半径との差が混入しない。
+    const origin = new Vector3(R + 10000, 0, 0);
+    const dirDown = new Vector3(-1, 0, 0);
+
+    it("標高一定な平地では、その標高分持ち上がった交点に収束する", () => {
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            origin, dirDown, R, R, () => 500, 5000, 20, 20, 20, 16, outHit,
+        );
+        expect(geo).not.toBeNull();
+        expect(geo?.altMeters).toBeCloseTo(500, 1);
+        expect(outHit.length()).toBeCloseTo(R + 500, 0);
+    });
+
+    it("地形標高が常にnull(未ロード等)なら標高0(海面)の交点にフォールバックする", () => {
+        const outHit = new Vector3();
+        let calls = 0;
+        const geo = resolveTerrainClickElevationToRef(
+            origin, dirDown, R, R,
+            () => {
+                calls++;
+                return null;
+            },
+            5000, 20, 20, 20, 16, outHit,
+        );
+        expect(calls).toBeGreaterThan(0);
+        expect(geo).not.toBeNull();
+        expect(geo?.altMeters).toBeCloseTo(0, 1);
+        expect(outHit.length()).toBeCloseTo(R, 0);
+    });
+
+    it("レイが地球を完全に外す(空を指す)場合は null を返し outHit を変更しない", () => {
+        const spaceOrigin = new Vector3(R + 10000, 0, 0);
+        const spaceDir = new Vector3(1, 0, 0); // 地球から離れる向き
+        const outHit = new Vector3(123, 456, 789);
+        const geo = resolveTerrainClickElevationToRef(
+            spaceOrigin, spaceDir, R, R, () => 0, 5000, 20, 20, 20, 16, outHit,
+        );
+        expect(geo).toBeNull();
+        expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
+    });
+
+    it("急斜面（緯度依存の標高）でも交点を検出し、探索点の緯度が反復ごとに動く", () => {
+        // 赤道付近から少し北向きに傾けたレイ（Z成分を混ぜる）で緯度が探索点ごとに動くようにする。
+        const dir = new Vector3(-1, 0, 0.3).normalize();
+        const seenLat: number[] = [];
+        // 緯度依存で標高が大きく変わる急斜面を模擬。
+        const terrainElevAt = (latDeg: number): number => {
+            seenLat.push(latDeg);
+            return 500 + latDeg * 100000;
+        };
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            origin, dir, R, R, terrainElevAt, 5000, 20, 20, 20, 16, outHit,
+        );
+        expect(geo).not.toBeNull();
+        const distinctLat = new Set(seenLat.map((l) => l.toFixed(8)));
+        expect(distinctLat.size).toBeGreaterThan(1); // 交点が探索中に動いている
+    });
+
+    it("カメラ高度がmaxTerrainElevM未満（低空視点）でも平地クリックが機能する", () => {
+        // カメラ高度100m。maxTerrainElevM(5000)より低い位置からの直下視 — 実際のデモ視点に近い。
+        // 想定最大標高面(半径R+5000)は origin(半径R+100)の外側にあり、前方交点は存在しない
+        // （地球裏側の遠方点になり得る）ため、tNear は origin(t=0)にフォールバックする必要がある。
+        const lowOrigin = new Vector3(R + 100, 0, 0);
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            lowOrigin, dirDown, R, R, () => 50, 5000, 20, 20, 20, 16, outHit,
+        );
+        expect(geo).not.toBeNull();
+        expect(geo?.altMeters).toBeCloseTo(50, 1);
+        expect(outHit.length()).toBeCloseTo(R + 50, 0);
+    });
+
+    it("手前に山（帯状の障害）があると、山を貫通せず手前側の斜面で交点を検出する", () => {
+        // 緯度 [0.02, 0.04) 度の帯だけ標高3000mの山、それ以外は平地(標高0)。
+        // レイは緯度が単調増加する方向へ進むため、山の手前側(緯度0.02付近)から先に地表を割る。
+        const dir = new Vector3(-1, 0, 0.3).normalize();
+        const terrainElevAt = (latDeg: number): number =>
+            latDeg >= 0.02 && latDeg < 0.04 ? 3000 : 0;
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            origin, dir, R, R, terrainElevAt, 5000, 20, 200, 200, 16, outHit,
+        );
+        expect(geo).not.toBeNull();
+        // 山の手前斜面で止まるはず（山を貫通して奥の平地[緯度0.04以降]まで進んでいない）。
+        expect(geo?.latDeg).toBeLessThan(0.04);
+        expect(geo?.altMeters).toBeGreaterThan(100); // 平地(0m)ではなく山の斜面上
+    });
+
+    it("stepDistanceMベースの動的ステップ数により、幅の狭い尾根も貫通せず検出する", () => {
+        // 緯度 [0.02, 0.021) 度（地上距離 約111m）という狭い帯だけ標高3000mの尾根、他は平地。
+        // 稜線のような幅の狭い障害は、ステップ幅が粗いと粗い探索がまたいでしまい見逃す
+        // （後続の「見逃す」テスト参照）。ステップ間隔を距離ベースで細かくすれば検出できる。
+        const dir = new Vector3(-1, 0, 0.3).normalize();
+        const terrainElevAt = (latDeg: number): number =>
+            latDeg >= 0.02 && latDeg < 0.021 ? 3000 : 0;
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            origin, dir, R, R, terrainElevAt, 5000, 20, 20, 2000, 16, outHit,
+        );
+        expect(geo).not.toBeNull();
+        expect(geo?.latDeg).toBeLessThan(0.021);
+        expect(geo?.altMeters).toBeGreaterThan(100); // 尾根上で止まっている（平地には着地していない）
+    });
+
+    it("ステップ数を1に固定する（動的分割を無効化）と、幅の狭い尾根を見逃して貫通する", () => {
+        // 上と同じ狭い尾根だが、min=max=1 でステップ数を1に固定した比較用ケース。
+        const dir = new Vector3(-1, 0, 0.3).normalize();
+        const terrainElevAt = (latDeg: number): number =>
+            latDeg >= 0.02 && latDeg < 0.021 ? 3000 : 0;
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            origin, dir, R, R, terrainElevAt, 5000, 1_000_000, 1, 1, 16, outHit,
+        );
+        expect(geo).not.toBeNull();
+        // 尾根を検出できず、平地（標高0付近）に着地してしまう。
+        expect(geo?.altMeters).toBeLessThan(100);
+    });
+
+    it("水平線よりわずかに上に高い山の頂上だけが見えるレイでも交点を検出する（貫通せずnullも返さない）", () => {
+        // カメラ高度50km。視線は「標高0楕円体の地平線角度」と「想定最大標高(5000m)楕円体の
+        // 地平線角度」のちょうど中間を向く（Pythonで検算した角度）。この視線は標高0面には
+        // 当たらないが、想定最大標高面には当たる＝水平線よりわずかに上に高い山の頂上だけが
+        // 見えている状況（例: 富士山）。従来はここで「空を指している」と誤判定して null を
+        // 返していた。
+        const highOrigin = new Vector3(R + 50000, 0, 0);
+        const thetaDeg = 83.03278031823208;
+        const theta = thetaDeg * (Math.PI / 180);
+        const dir = new Vector3(-Math.cos(theta), 0, Math.sin(theta));
+        // 緯度 [6.5, 7.5) 度の帯に標高3776m（富士山相当）の山、他は平地。
+        const terrainElevAt = (latDeg: number): number =>
+            latDeg >= 6.5 && latDeg < 7.5 ? 3776 : 0;
+        const outHit = new Vector3();
+        const geo = resolveTerrainClickElevationToRef(
+            highOrigin, dir, R, R, terrainElevAt, 5000, 500, 50, 2000, 20, outHit,
+        );
+        expect(geo).not.toBeNull();
+        expect(geo?.altMeters).toBeGreaterThan(1000); // 山の斜面上（平地=0mではない）
+        expect(geo?.altMeters).toBeLessThanOrEqual(3777);
+    });
+
+    it("水平線より上を見ていて地表(山)が検出できない場合は null を返し、遠方の仮想点を採用しない", () => {
+        // 上と同じ「標高0面には当たらない」視線だが、探索範囲内に山が存在しない（平地のみ）。
+        // 外殻の奥交点（実際の地形と無関係などこか遠方の点）をそのまま採用すると、ズームや
+        // center再計算がその遠方点へ暴走する（実機で center が超遠方になる不具合の原因だった）。
+        const highOrigin = new Vector3(R + 50000, 0, 0);
+        const thetaDeg = 83.03278031823208;
+        const theta = thetaDeg * (Math.PI / 180);
+        const dir = new Vector3(-Math.cos(theta), 0, Math.sin(theta));
+        const outHit = new Vector3(123, 456, 789);
+        const geo = resolveTerrainClickElevationToRef(
+            highOrigin, dir, R, R, () => 0, 5000, 500, 50, 2000, 20, outHit,
+        );
+        expect(geo).toBeNull();
+        expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
     });
 });
 
