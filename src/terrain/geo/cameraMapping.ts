@@ -220,7 +220,7 @@ export const rayEllipsoidNearHitToRef = (
     return true;
 };
 
-/** `rayEllipsoidHitsoRef` の出力用構造体。 */
+/** `rayEllipsoidHitsToRef` の出力用構造体。 */
 interface EllipsoidHits {
     t0: number;
     t1: number;
@@ -237,7 +237,7 @@ interface EllipsoidHits {
  * @returns 交点があれば true（`outT` に t0<=t1 を書き込む）、交わらない/半径・入力が不正なら false
  *          （この場合 `outT` は変更しない）。
  */
-const rayEllipsoidHitsoRef = (
+const rayEllipsoidHitsToRef = (
     origin: Vector3,
     dir: Vector3,
     radiusX: number,
@@ -379,7 +379,7 @@ export const resolveTerrainClickElevationToRef = (
 
     // 地表が存在し得る球殻（標高 0 〜 maxTerrainElevM）とレイの交差区間を求める。
     if (
-        !rayEllipsoidHitsoRef(
+        !rayEllipsoidHitsToRef(
             origin,
             rtcUnitDir,
             ellipsoidSemiMajor + maxTerrainElevM,
@@ -398,7 +398,7 @@ export const resolveTerrainClickElevationToRef = (
     // 標高 0（海面）面の手前交点が tNear より奥にあればそれを奥端に使う（通常ケース）。
     // 無ければ（水平線よりわずかに上に高い山の頂上だけが見えている等、レイが海面には
     // 当たらず外殻だけをかすめるケース）、外殻の奥側交点を奥端に使う。
-    const hasInnerHits = rayEllipsoidHitsoRef(
+    const hasInnerHits = rayEllipsoidHitsToRef(
         origin,
         rtcUnitDir,
         ellipsoidSemiMajor,
