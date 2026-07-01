@@ -441,15 +441,19 @@ describe("resolveTerrainClickElevationToRef", () => {
         // [maxTerrainElevM, stepDistanceM, minCoarseSteps, maxCoarseSteps, refineIterations]
         const invalidParamSets: Array<[number, number, number, number, number]> = [
             [NaN, 20, 20, 20, 16],
+            [-100, 20, 20, 20, 16], // maxTerrainElevM < 0
             [5000, NaN, 20, 20, 16],
             [5000, 0, 20, 20, 16],
             [5000, -20, 20, 20, 16],
             [5000, 20, NaN, 20, 16],
             [5000, 20, 0, 20, 16],
+            [5000, 20, 2.5, 20, 16], // minCoarseSteps が非整数
             [5000, 20, 20, NaN, 16],
             [5000, 20, 20, 10, 16], // maxCoarseSteps < minCoarseSteps
+            [5000, 20, 20, 20.5, 16], // maxCoarseSteps が非整数
             [5000, 20, 20, 20, NaN],
             [5000, 20, 20, 20, -1],
+            [5000, 20, 20, 20, 1.5], // refineIterations が非整数
         ];
         for (const [maxElev, stepDist, minSteps, maxSteps, refine] of invalidParamSets) {
             const outHit = new Vector3(123, 456, 789);
