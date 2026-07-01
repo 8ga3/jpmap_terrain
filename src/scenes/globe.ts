@@ -920,6 +920,7 @@ export class GlobeScene {
         // 併せて最後のホイール入力時刻を記録し、observer 側の seat 一時停止判定に使う。
         const movement = camera.movement;
         const zoomTarget = new Vector3();
+        const zoomGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
         const ellipsoidSemiMajor = Wgs84Ellipsoid.semiMajorAxis;
         const ellipsoidSemiMinor = Wgs84Ellipsoid.semiMinorAxis;
         // 二重精度カーソルレイ用バッファ。
@@ -1040,7 +1041,7 @@ export class GlobeScene {
             // 注視点付近の代表標高（centerElevation）1点の楕円体面だけでは、カーソルが山の
             // 斜面を指していてもその山を無視してズーム先が山の奥に貫通する。レイマーチングで
             // カーソル方向の実際の地表交点を求める（computeTerrainClick と同じロジック）。
-            const geo = resolveTerrainClickElevationToRef(
+            const hit = resolveTerrainClickElevationToRef(
                 cursorOrigin,
                 cursorDir,
                 ellipsoidSemiMajor,
@@ -1052,9 +1053,10 @@ export class GlobeScene {
                 TERRAIN_CLICK_MAX_COARSE_STEPS,
                 TERRAIN_CLICK_REFINE_ITERATIONS,
                 zoomTarget,
+                zoomGeo,
             );
             // 空を指している → 注視点方向（lookAt）ズームにフォールバック。
-            movement.computedPerFrameZoomPickPoint = geo ? zoomTarget : undefined;
+            movement.computedPerFrameZoomPickPoint = hit ? zoomTarget : undefined;
         };
 
         // ---- _recalculateCenter 用の center 再取得を scene.pick 非依存にする差し替え ----
@@ -1071,11 +1073,12 @@ export class GlobeScene {
         // ため、PickingInfo / pickedPoint は事前確保して使い回し、フレーム毎の割り当て・GC ジッタを
         // 避ける。
         const recalcPickedPoint = new Vector3();
+        const recalcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
         const recalcPickInfo = new PickingInfo();
         recalcPickInfo.pickedPoint = recalcPickedPoint;
         movement.pickAlongVector = (vector: Vector3): PickingInfo | null => {
             const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
-            const geo = resolveTerrainClickElevationToRef(
+            const hit = resolveTerrainClickElevationToRef(
                 camEcef,
                 vector,
                 ellipsoidSemiMajor,
@@ -1087,8 +1090,9 @@ export class GlobeScene {
                 TERRAIN_CLICK_MAX_COARSE_STEPS,
                 TERRAIN_CLICK_REFINE_ITERATIONS,
                 recalcPickedPoint,
+                recalcGeo,
             );
-            if (!geo) return null;
+            if (!hit) return null;
             recalcPickInfo.hit = true;
             recalcPickInfo.pickedPoint = recalcPickedPoint;
             return recalcPickInfo;
@@ -1154,8 +1158,9 @@ export class GlobeScene {
         // ---- 地形クリック通知（pick 非依存・floating origin 対応） ----
         // 平面版（撤去済み）は scene.pick で地形メッシュをヒットするが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックがブレる。そこでズーム/パンと同じく
-        // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で収束するまで反復）と
-        // 交差させて緯度経度・標高を求める。ドラッグ（パン/回転）はしきい値で除外する。
+        // 真の ECEF カメラ位置からカーソル方向のレイに沿って、実際の地形標高データに基づく地表交点を
+        // レイマーチングで求める（resolveTerrainClickElevationToRef）。ドラッグ（パン/回転）は
+        // しきい値で除外する。
         const terrainClickListeners: GlobeTerrainClickListener[] = [];
         let clickStart: {
             pointerId: number;
@@ -1166,6 +1171,7 @@ export class GlobeScene {
         const clickRayDir = new Vector3();
         const clickOrigin = new Vector3();
         const clickHitElev = new Vector3();
+        const clickGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
 
         /**
          * カーソル方向のレイ × 地形表面の交点から緯度経度・標高を求める。空（ミス）は null。
@@ -1178,7 +1184,7 @@ export class GlobeScene {
             const pyCss = e.clientY - rect.top;
             // 2D ortho では平行レイ（原点を画素オフセット）でないと中心以外で交点がずれる。
             computePickRayToRef(pxCss, pyCss, clickOrigin, clickRayDir);
-            const geo = resolveTerrainClickElevationToRef(
+            const hit = resolveTerrainClickElevationToRef(
                 clickOrigin,
                 clickRayDir,
                 ellipsoidSemiMajor,
@@ -1190,12 +1196,13 @@ export class GlobeScene {
                 TERRAIN_CLICK_MAX_COARSE_STEPS,
                 TERRAIN_CLICK_REFINE_ITERATIONS,
                 clickHitElev,
+                clickGeo,
             );
-            if (!geo) return null; // 空（地球外）を指している
+            if (!hit) return null; // 空（地球外）を指している
             return {
-                lat: geo.latDeg,
-                lon: geo.lonDeg,
-                altitude: geo.altMeters,
+                lat: clickGeo.latDeg,
+                lon: clickGeo.lonDeg,
+                altitude: clickGeo.altMeters,
                 // world は採用した真の ECEF 交点（floating origin のレンダリング座標ではない）。
                 world: { x: clickHitElev.x, y: clickHitElev.y, z: clickHitElev.z },
                 pointerEvent: e,
