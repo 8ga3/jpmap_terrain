@@ -220,8 +220,8 @@ export const rayEllipsoidNearHitToRef = (
     return true;
 };
 
-/** `rayEllipsoidHitsToRef` の出力用構造体。 */
-interface EllipsoidHitsT {
+/** `rayEllipsoidHitsoRef` の出力用構造体。 */
+interface EllipsoidHits {
     t0: number;
     t1: number;
 }
@@ -237,13 +237,13 @@ interface EllipsoidHitsT {
  * @returns 交点があれば true（`outT` に t0<=t1 を書き込む）、交わらない/半径・入力が不正なら false
  *          （この場合 `outT` は変更しない）。
  */
-const rayEllipsoidHitsToRef = (
+const rayEllipsoidHitsoRef = (
     origin: Vector3,
     dir: Vector3,
     radiusX: number,
     radiusY: number,
     radiusZ: number,
-    outT: EllipsoidHitsT,
+    outT: EllipsoidHits,
 ): boolean => {
     if (
         !(radiusX > 0) ||
@@ -288,11 +288,17 @@ const rayEllipsoidHitsToRef = (
 
 // resolveTerrainClickElevationToRef 専用の作業用バッファ。同関数はズーム/パン中に毎フレーム
 // 呼ばれ得るため、内部の一時ベクトル・オブジェクトをモジュールスコープで再利用しアロケーション
-// を避ける（JS はシングルスレッドで本関数は再入しないため安全）。
+// を避ける。
+// 安全性の前提（呼び出し側が守るべき契約）: JS はシングルスレッドだが、それだけでは
+// 「関数実行中に同じバッファへ別の書き込みが割り込まない」ことは保証されない。もし
+// terrainElevAt が同期的に resolveTerrainClickElevationToRef 自身（または本バッファを
+// 使う他の呼び出し）を呼び返す（同期再入する）と、このバッファが呼び出し中に書き換わり
+// 結果が壊れる。terrainElevAt は同期的な純粋関数（キャッシュ参照＋補間程度）であり、
+// 本関数を再入させないことを前提とする。
 const rtcUnitDir = new Vector3();
 const rtcPoint = new Vector3();
-const rtcOuterHits: EllipsoidHitsT = { t0: 0, t1: 0 };
-const rtcInnerHits: EllipsoidHitsT = { t0: 0, t1: 0 };
+const rtcOuterHits: EllipsoidHits = { t0: 0, t1: 0 };
+const rtcInnerHits: EllipsoidHits = { t0: 0, t1: 0 };
 // 探索中の各サンプル点の測地座標（呼び出し元の outGeo は採用確定時のみ書き込む）。
 const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
 
@@ -373,7 +379,7 @@ export const resolveTerrainClickElevationToRef = (
 
     // 地表が存在し得る球殻（標高 0 〜 maxTerrainElevM）とレイの交差区間を求める。
     if (
-        !rayEllipsoidHitsToRef(
+        !rayEllipsoidHitsoRef(
             origin,
             rtcUnitDir,
             ellipsoidSemiMajor + maxTerrainElevM,
@@ -392,7 +398,7 @@ export const resolveTerrainClickElevationToRef = (
     // 標高 0（海面）面の手前交点が tNear より奥にあればそれを奥端に使う（通常ケース）。
     // 無ければ（水平線よりわずかに上に高い山の頂上だけが見えている等、レイが海面には
     // 当たらず外殻だけをかすめるケース）、外殻の奥側交点を奥端に使う。
-    const hasInnerHits = rayEllipsoidHitsToRef(
+    const hasInnerHits = rayEllipsoidHitsoRef(
         origin,
         rtcUnitDir,
         ellipsoidSemiMajor,

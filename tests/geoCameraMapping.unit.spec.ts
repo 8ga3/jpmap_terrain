@@ -263,8 +263,8 @@ describe("rayEllipsoidNearHitToRef", () => {
 });
 
 describe("resolveTerrainClickElevationToRef", () => {
-    const R = 6378137; // 球近似（半径同一。マーチングロジックの検証が目的で楕円率は不要）
-    // 赤道直下視（緯度0）。ecefToGeodeticToRef は WGS84 楕円体基準のため、球近似(R=R=R)でも
+    const R = 6378137; // 球近似（赤道半径a・極半径b とも R。マーチングロジックの検証が目的で楕円率は不要）
+    // 赤道直下視（緯度0）。ecefToGeodeticToRef は WGS84 楕円体基準のため、球近似(a=b=R)でも
     // 赤道なら赤道半径 a=R と一致し altMeters に極半径との差が混入しない。
     const origin = new Vector3(R + 10000, 0, 0);
     const dirDown = new Vector3(-1, 0, 0);
