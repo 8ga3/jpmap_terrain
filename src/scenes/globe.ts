@@ -42,6 +42,7 @@ import {
     polePanSpeedMultiplier,
     clampRadiusForGroundClearance,
     rayEllipsoidNearHitToRef,
+    resolveTerrainClickElevationToRef,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
@@ -140,6 +141,29 @@ const SPACE_SKY_COLOR = new Color3(0, 0, 0);
  * クランプし、ほぼ水平までは許しつつ完全水平の退化を抑止する。
  */
 const MAX_TILT_DEG = 89;
+
+/**
+ * 地形クリックピック・ズームターゲット計算（resolveTerrainClickElevationToRef）で想定する
+ * 地形標高の上限 [m]。国内最高峰（富士山 3776m）に安全マージンを加えた値。レイマーチングの
+ * 手前側（探索開始点）を決めるため、実際の地表がこれを超えると貫通検出できない側に倒れる。
+ */
+const TERRAIN_CLICK_MAX_ELEV_M = 5000;
+
+/**
+ * 同上。粗い探索の目標ステップ間隔 [m]。地形標高データの水平解像度（geomMaxZoom=z15、
+ * 256px タイルで日本付近は 1px あたり約4〜5m）に対する安全マージン。これより粗いと、
+ * 幅の狭い稜線をステップが飛び越えて検出漏れし、山を貫通し得る。
+ */
+const TERRAIN_CLICK_STEP_DISTANCE_M = 5;
+
+/** 同上。探索区間が短い場合でも確保する最低ステップ数。 */
+const TERRAIN_CLICK_MIN_COARSE_STEPS = 20;
+
+/** 同上。探索区間が長大でも計算量を頭打ちにするステップ数上限。 */
+const TERRAIN_CLICK_MAX_COARSE_STEPS = 300;
+
+/** 同上。粗い探索で見つけた区間を絞り込む二分探索の反復数。 */
+const TERRAIN_CLICK_REFINE_ITERATIONS = 6;
 
 /**
  * 地球楕円体スフィア（背景＋地平線リファレンス）を海面より沈める量 [m]。
@@ -1013,24 +1037,24 @@ export class GlobeScene {
             // カーソル位置のレイ（原点 + 単位方向）。createPickingRay の Float32 桁落ちを避け、
             // ortho では平行投影として正しい原点オフセットを得るため computePickRayToRef を使う。
             computePickRayToRef(scene.pointerX, scene.pointerY, cursorOrigin, cursorDir);
-            // 注視点付近の地形標高（海面=0）を高さに採用した WGS84 楕円体面と交差させる。
-            const equatorial = ellipsoidSemiMajor + centerElevation;
-            const polar = ellipsoidSemiMinor + centerElevation;
-            if (
-                rayEllipsoidNearHitToRef(
-                    cursorOrigin,
-                    cursorDir,
-                    equatorial,
-                    equatorial,
-                    polar,
-                    zoomTarget,
-                )
-            ) {
-                movement.computedPerFrameZoomPickPoint = zoomTarget;
-            } else {
-                // 空を指している → 注視点方向（lookAt）ズームにフォールバック。
-                movement.computedPerFrameZoomPickPoint = undefined;
-            }
+            // 注視点付近の代表標高（centerElevation）1点の楕円体面だけでは、カーソルが山の
+            // 斜面を指していてもその山を無視してズーム先が山の奥に貫通する。レイマーチングで
+            // カーソル方向の実際の地表交点を求める（computeTerrainClick と同じロジック）。
+            const geo = resolveTerrainClickElevationToRef(
+                cursorOrigin,
+                cursorDir,
+                ellipsoidSemiMajor,
+                ellipsoidSemiMinor,
+                (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+                TERRAIN_CLICK_MAX_ELEV_M,
+                TERRAIN_CLICK_STEP_DISTANCE_M,
+                TERRAIN_CLICK_MIN_COARSE_STEPS,
+                TERRAIN_CLICK_MAX_COARSE_STEPS,
+                TERRAIN_CLICK_REFINE_ITERATIONS,
+                zoomTarget,
+            );
+            // 空を指している → 注視点方向（lookAt）ズームにフォールバック。
+            movement.computedPerFrameZoomPickPoint = geo ? zoomTarget : undefined;
         };
 
         // ---- _recalculateCenter 用の center 再取得を scene.pick 非依存にする差し替え ----
@@ -1039,23 +1063,35 @@ export class GlobeScene {
         // 引き直す。これがズームのフレーム結合誤差（真下チルトでの南北東西の振れ）を打ち消す肝。
         // しかし pickAlongVector は scene.pick（PickWithRay）に依存し、floating origin 下や海面上で
         // ヒットせず null を返すと補正が止まり揺れが残る。そこで真の ECEF カメラ位置から lookAt 方向へ
-        // WGS84 楕円体（注視点標高 centerElevation を採用）と交差させた幾何交点を返すよう差し替える。
-        // 返り値は _recalculateCenter が参照する pickedPoint のみを持つ PickingInfo 互換オブジェクト。
-        // ズーム中は zoomToPoint ラップ経由で毎フレーム呼ばれるため、PickingInfo / pickedPoint は
-        // 事前確保して使い回し、フレーム毎の割り当て・GC ジッタを避ける。
+        // レイマーチングで実地表交点を求める（computeTerrainClick と同じ resolveTerrainClickElevationToRef）。
+        // 単一の代表標高（centerElevation）面との解析的交差では、水平に近いチルトで山を貫通した
+        // 結果カメラが地球の反対側の遠方点を center に採用してしまい、パン/チルトで center が
+        // 超遠方へ暴走する不具合があった。返り値は _recalculateCenter が参照する pickedPoint のみを
+        // 持つ PickingInfo 互換オブジェクト。ズーム中は zoomToPoint ラップ経由で毎フレーム呼ばれる
+        // ため、PickingInfo / pickedPoint は事前確保して使い回し、フレーム毎の割り当て・GC ジッタを
+        // 避ける。
         const recalcPickedPoint = new Vector3();
         const recalcPickInfo = new PickingInfo();
         recalcPickInfo.pickedPoint = recalcPickedPoint;
         movement.pickAlongVector = (vector: Vector3): PickingInfo | null => {
             const camEcef = computeCameraEcef(); // 真の ECEF カメラ位置
-            const equatorial = ellipsoidSemiMajor + centerElevation;
-            const polar = ellipsoidSemiMinor + centerElevation;
-            if (rayEllipsoidNearHitToRef(camEcef, vector, equatorial, equatorial, polar, recalcPickedPoint)) {
-                recalcPickInfo.hit = true;
-                recalcPickInfo.pickedPoint = recalcPickedPoint;
-                return recalcPickInfo;
-            }
-            return null;
+            const geo = resolveTerrainClickElevationToRef(
+                camEcef,
+                vector,
+                ellipsoidSemiMajor,
+                ellipsoidSemiMinor,
+                (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+                TERRAIN_CLICK_MAX_ELEV_M,
+                TERRAIN_CLICK_STEP_DISTANCE_M,
+                TERRAIN_CLICK_MIN_COARSE_STEPS,
+                TERRAIN_CLICK_MAX_COARSE_STEPS,
+                TERRAIN_CLICK_REFINE_ITERATIONS,
+                recalcPickedPoint,
+            );
+            if (!geo) return null;
+            recalcPickInfo.hit = true;
+            recalcPickInfo.pickedPoint = recalcPickedPoint;
+            return recalcPickInfo;
         };
 
         // ---- ズーム終了時のスナップ（急な移動）を防ぐ毎フレーム向き補正 ----
@@ -1118,8 +1154,8 @@ export class GlobeScene {
         // ---- 地形クリック通知（pick 非依存・floating origin 対応） ----
         // 平面版（撤去済み）は scene.pick で地形メッシュをヒットするが、floating origin 下では
         // レンダリング座標と真の ECEF メッシュ位置がずれてピックがブレる。そこでズーム/パンと同じく
-        // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で 1 回反復）と交差させて
-        // 緯度経度・標高を求める。ドラッグ（パン/回転）はしきい値で除外する。
+        // 真の ECEF カメラ位置からカーソル方向のレイを WGS84 楕円体（地形標高で収束するまで反復）と
+        // 交差させて緯度経度・標高を求める。ドラッグ（パン/回転）はしきい値で除外する。
         const terrainClickListeners: GlobeTerrainClickListener[] = [];
         let clickStart: {
             pointerId: number;
@@ -1129,60 +1165,39 @@ export class GlobeScene {
         } | null = null;
         const clickRayDir = new Vector3();
         const clickOrigin = new Vector3();
-        const clickHit = new Vector3();
         const clickHitElev = new Vector3();
 
-        /** カーソル方向のレイ × 地形楕円体の交点から緯度経度・標高を求める。空（ミス）は null。 */
+        /**
+         * カーソル方向のレイ × 地形表面の交点から緯度経度・標高を求める。空（ミス）は null。
+         * レイマーチングで手前の山を検出するため（resolveTerrainClickElevationToRef 参照）、
+         * 山岳地帯でクリックしても山を貫通して奥に着地しない。
+         */
         const computeTerrainClick = (e: PointerEvent): GlobeTerrainClickEvent | null => {
             const rect = canvas.getBoundingClientRect();
             const pxCss = e.clientX - rect.left;
             const pyCss = e.clientY - rect.top;
             // 2D ortho では平行レイ（原点を画素オフセット）でないと中心以外で交点がずれる。
             computePickRayToRef(pxCss, pyCss, clickOrigin, clickRayDir);
-            // 1) 海面（h=0）の楕円体と交差させて概略の緯度経度を得る。
-            if (
-                !rayEllipsoidNearHitToRef(
-                    clickOrigin,
-                    clickRayDir,
-                    ellipsoidSemiMajor,
-                    ellipsoidSemiMajor,
-                    ellipsoidSemiMinor,
-                    clickHit,
-                )
-            ) {
-                return null; // 空（地球外）を指している
-            }
-            let geo = ecefToGeodetic(clickHit);
-            // 採用する交点（既定は海面交点）と標高を、最終的に整合した1組として決める。
-            let adopted = clickHit;
-            let altitude = geo.altMeters;
-            // 2) その地点の地形標高で楕円体面を持ち上げ、1 回だけ交点を補正する（斜面での誤差低減）。
-            //    再交差は別の一時ベクトルへ出力し、成功時のみ adopted/geo/altitude を差し替える
-            //    （失敗時に海面交点が破壊されず altitude/world/geo の整合が保たれる）。
-            const elev = tileManager.terrainElevAt(geo.latDeg, geo.lonDeg);
-            const hasElev = elev !== null && Number.isFinite(elev);
-            if (hasElev) {
-                if (
-                    rayEllipsoidNearHitToRef(
-                        clickOrigin,
-                        clickRayDir,
-                        ellipsoidSemiMajor + elev,
-                        ellipsoidSemiMajor + elev,
-                        ellipsoidSemiMinor + elev,
-                        clickHitElev,
-                    )
-                ) {
-                    adopted = clickHitElev;
-                    geo = ecefToGeodetic(clickHitElev);
-                    altitude = elev;
-                }
-            }
+            const geo = resolveTerrainClickElevationToRef(
+                clickOrigin,
+                clickRayDir,
+                ellipsoidSemiMajor,
+                ellipsoidSemiMinor,
+                (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+                TERRAIN_CLICK_MAX_ELEV_M,
+                TERRAIN_CLICK_STEP_DISTANCE_M,
+                TERRAIN_CLICK_MIN_COARSE_STEPS,
+                TERRAIN_CLICK_MAX_COARSE_STEPS,
+                TERRAIN_CLICK_REFINE_ITERATIONS,
+                clickHitElev,
+            );
+            if (!geo) return null; // 空（地球外）を指している
             return {
                 lat: geo.latDeg,
                 lon: geo.lonDeg,
-                altitude,
+                altitude: geo.altMeters,
                 // world は採用した真の ECEF 交点（floating origin のレンダリング座標ではない）。
-                world: { x: adopted.x, y: adopted.y, z: adopted.z },
+                world: { x: clickHitElev.x, y: clickHitElev.y, z: clickHitElev.z },
                 pointerEvent: e,
             };
         };
