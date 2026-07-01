@@ -315,10 +315,17 @@ const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
  * （maxTerrainElevM 面）の奥側交点」を使う。その場合に地表を検出できなければ、実際の地形と
  * 無関係な遠方の仮想点を返さないよう false を返す（詳細は本体コメント参照）。
  *
+ * 内部の ECEF↔測地変換（`ecefToGeodeticToRef`）は WGS84 の離心率で固定されているため、
+ * `ellipsoidSemiMajor`/`ellipsoidSemiMinor` には WGS84 の値（`Wgs84Ellipsoid.semiMajorAxis`/
+ * `semiMinorAxis`）を渡すこと。異なる楕円体を渡すと、半径ベースの交差判定と測地座標変換の
+ * 基準がズレて緯度経度・標高が破綻し得る。
+ *
  * @param origin レイ原点（ECEF）。
  * @param dir レイ方向（非ゼロなら正規化不要）。
- * @param ellipsoidSemiMajor 標高 0 の赤道半径 [m]。
- * @param ellipsoidSemiMinor 標高 0 の極半径 [m]。
+ * @param ellipsoidSemiMajor 標高 0 の赤道半径 [m]。WGS84 の値（`Wgs84Ellipsoid.semiMajorAxis`）
+ *        を渡すこと。
+ * @param ellipsoidSemiMinor 標高 0 の極半径 [m]。WGS84 の値（`Wgs84Ellipsoid.semiMinorAxis`）
+ *        を渡すこと。
  * @param terrainElevAt 緯度経度[deg]→地形標高[m]。取得不可時は null（未ロード等。その点は
  *        標高 0 として扱う）。
  * @param maxTerrainElevM 想定する地形標高の上限 [m]（探索範囲の手前側を決める。実際の地表が
