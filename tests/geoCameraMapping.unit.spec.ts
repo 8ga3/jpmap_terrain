@@ -423,8 +423,8 @@ describe("resolveTerrainClickElevationToRef", () => {
         expect(geo.altMeters).toBeLessThan(100);
     });
 
-    it("近水平視線・長距離探索で第1段の粗格子間隙に隠れた狭い尾根を貫通しない（#443 実測条件）", () => {
-        // #443 実測再現: カメラ高度500m、下向き角0.02rad相当のほぼ水平視線。標高0面到達まで
+    it("近水平視線・長距離探索で第1段の粗格子間隙に隠れた狭い尾根を貫通しない（実測条件）", () => {
+        // 実測再現: カメラ高度500m、下向き角0.02rad相当のほぼ水平視線。標高0面到達まで
         // 約28km（探索区間が長大）。実運用定数（stepDistanceM=5, minCoarseSteps=20,
         // maxCoarseSteps=300）では第1段が300ステップで頭打ちし、実効ステップ幅が約93.6mまで
         // 劣化する。幅28m・高さ300mの尾根を探索区間中央付近の「隣り合う粗サンプルの間隙」に
@@ -439,7 +439,8 @@ describe("resolveTerrainClickElevationToRef", () => {
         // 正に残留し(このケースで緯度約-0.25°地点で約+0.4m)、粗探索の最終サンプルが
         // heightAboveTerrain<=0を満たさなくなる。これにより「反転なし→全域再細分」分岐に
         // 常に入ってしまい、「粗探索の最終サンプルがtFarそのものであるために反転扱いされる」
-        // という実運用WGS84での本来の不具合（#443の回帰条件そのもの）を再現できない。
+        // という実運用WGS84での本来の不具合（このテストが検証したい回帰条件そのもの）を
+        // 再現できない。
         const A = Wgs84Ellipsoid.semiMajorAxis;
         const B = Wgs84Ellipsoid.semiMinorAxis;
         const camAlt = 500;
