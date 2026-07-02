@@ -338,12 +338,13 @@ let farSubdivideCapWarned = false;
  * （`steps === idealSteps`）は、第1段がすでに設計解像度で走査済みであり反転も見つからなかった＝
  * 本当に地表が無いと判断できるため、全域再細分せず直接標高 0 交点にフォールバックする。
  *
- * 注意: 奥端が標高 0 面（`hasSeaLevelFar`）のとき、第1段の最終サンプル（t=tFar）は定義上つねに
- * 「標高 0 面との交点」そのものであり、地形標高が 0（平地）ならレイ高度はそこで必ず 0 に収束する
- * （隠れた尾根の有無と無関係に成立するトートロジー）。これを通常の「反転検出」として採用すると、
- * 途中で尾根を見逃していても最終サンプルで必ず crossed 扱いになってしまい、全域細分（本来の対策）
- * が発火しなくなる。そのため第1段では、hasSeaLevelFar かつ最終サンプルの場合に限り反転判定から
- * 除外する（詳細は実装のコメント参照）。
+ * 注意: 奥端が標高 0 面（`hasSeaLevelFar`）のとき、第1段の最終サンプル（t=tFar）でその地点の
+ * 地形標高が実際に 0（海面・未ロードのフォールバック含む）であれば、レイ高度は定義上つねにそこで
+ * 0 に収束する（隠れた尾根の有無と無関係に成立するトートロジー）。これを通常の「反転検出」として
+ * 採用すると、途中で尾根を見逃していても最終サンプルで必ず crossed 扱いになってしまい、全域細分
+ * （本来の対策）が発火しなくなる。そのため第1段では、hasSeaLevelFar かつ最終サンプルかつ地形標高が
+ * 実際に 0 の場合に限り反転判定から除外する（tFar 近傍の地形標高が 0 でない沿岸・低地等では、その
+ * 反転は本物の地表検出なので除外しない。詳細は実装のコメント参照）。
  *
  * 内部の ECEF↔測地変換（`ecefToGeodeticToRef`）は WGS84 の離心率で固定されているため、
  * `ellipsoidSemiMajor`/`ellipsoidSemiMinor` には WGS84 の値（`Wgs84Ellipsoid.semiMajorAxis`/
@@ -459,13 +460,17 @@ export const resolveTerrainClickElevationToRef = (
     }
     const tFar = hasSeaLevelFar ? seaLevelFarT : rtcOuterHits.t1;
 
+    // heightAboveTerrainToRef が直近に評価した地形標高（呼び出し元が「地形自体が海抜0か」を
+    // 判定するために参照する。地表以下判定そのものには使わない）。
+    let lastTerrainElevM = 0;
     const heightAboveTerrainToRef = (t: number): number => {
         // 探索中の一時計算は rtcGeo（内部スクラッチ）に書く。呼び出し元の outGeo は採用が
         // 確定した adopt() でのみ書き込む（失敗時に outGeo を変更しない契約を守るため）。
         rtcPoint.copyFrom(rtcUnitDir).scaleInPlace(t).addInPlace(origin);
         ecefToGeodeticToRef(rtcPoint, rtcGeo);
-        const elev = terrainElevAt(rtcGeo.latDeg, rtcGeo.lonDeg);
-        return rtcGeo.altMeters - (elev ?? 0);
+        const elev = terrainElevAt(rtcGeo.latDeg, rtcGeo.lonDeg) ?? 0;
+        lastTerrainElevM = elev;
+        return rtcGeo.altMeters - elev;
     };
     const adopt = (t: number): true => {
         rtcPoint.copyFrom(rtcUnitDir).scaleInPlace(t).addInPlace(origin);
@@ -525,14 +530,18 @@ export const resolveTerrainClickElevationToRef = (
     let prevT = tNear;
     for (let i = 1; i <= steps; i++) {
         const t = tNear + ((tFar - tNear) * i) / steps;
+        const h = heightAboveTerrainToRef(t);
         // hasSeaLevelFar のとき、最終サンプル（t=tFar）は「標高0面との交点」そのものであり、
-        // 地形標高0（平地）なら定義上つねに heightAboveTerrain(tFar)≈0 になる（実測: WGS84の
-        // 実楕円体を渡すと厳密に 0）。これは隠れた尾根の有無と無関係なので「反転」として採用
-        // すると、途中で尾根を見逃していてもここで crossed=true になってしまい、後段の全域細分
-        // （下の else if 分岐）が発火しない＝隠れた尾根を貫通する。そこで最終サンプルかつ
-        // hasSeaLevelFar の場合だけは「反転」として採用せず、ループを反転なしのまま終える。
-        const isTautologicalSeaLevelEnd = i === steps && hasSeaLevelFar;
-        if (!isTautologicalSeaLevelEnd && heightAboveTerrainToRef(t) <= 0) {
+        // その地点の地形標高が実際に0（海面・未ロードのフォールバック含む）なら定義上つねに
+        // heightAboveTerrain(tFar)≈0 になる（実測: WGS84の実楕円体を渡すと厳密に 0）。これは
+        // 隠れた尾根の有無と無関係なので「反転」として採用すると、途中で尾根を見逃していても
+        // ここで crossed=true になってしまい、後段の全域細分（下の else if 分岐）が発火しない
+        // ＝隠れた尾根を貫通する。そこで最終サンプルかつ hasSeaLevelFar かつ地形標高が実際に0の
+        // 場合だけは「反転」として採用せず、ループを反転なしのまま終える。tFar 近傍の地形標高が
+        // 0 でない（沿岸・低地等）場合は、そこでの反転は本物の地表検出なので通常どおり採用する。
+        const isTautologicalSeaLevelEnd =
+            i === steps && hasSeaLevelFar && Math.abs(lastTerrainElevM) < 1e-6;
+        if (!isTautologicalSeaLevelEnd && h <= 0) {
             coarseLoT = prevT;
             coarseHiT = t;
             crossed = true;
