@@ -40,7 +40,7 @@ import {
  * 「常に地表より手前」にしていたが、山などに正しく隠れてほしいという要望（Issue #451）により
  * 撤回し、地形と同じ深度で扱う方式に統一した。
  */
-const SUBTERRAIN_RENDERING_GROUP_ID = 0;
+const TERRAIN_RENDERING_GROUP_ID = 0;
 const LABEL_MAX_DT_SIZE = 1024;
 const LABEL_MIN_DT_SIZE = 32;
 
@@ -382,7 +382,7 @@ const createLabelMesh = (
         scene,
     );
     mesh.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
-    mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
+    mesh.renderingGroupId = TERRAIN_RENDERING_GROUP_ID;
     mesh.isPickable = false;
     const material = new StandardMaterial(
         `${id}-${prefix}-mat-${index}`,
@@ -696,7 +696,7 @@ export const createGlobePolygonManager = (
                 { diameter: 1, segments: 16 },
                 scene,
             );
-            mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
+            mesh.renderingGroupId = TERRAIN_RENDERING_GROUP_ID;
             mesh.isPickable = true;
             const material = createMaterial(
                 scene,
@@ -720,7 +720,7 @@ export const createGlobePolygonManager = (
                 },
                 scene,
             );
-            mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
+            mesh.renderingGroupId = TERRAIN_RENDERING_GROUP_ID;
             mesh.isPickable = false;
             const material = createMaterial(
                 scene,
@@ -754,7 +754,7 @@ export const createGlobePolygonManager = (
             },
             scene,
         );
-        lineMesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
+        lineMesh.renderingGroupId = TERRAIN_RENDERING_GROUP_ID;
         lineMesh.isPickable = false;
         const lineMat = createMaterial(
             scene,
@@ -774,7 +774,7 @@ export const createGlobePolygonManager = (
             },
             scene,
         );
-        wallMesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
+        wallMesh.renderingGroupId = TERRAIN_RENDERING_GROUP_ID;
         wallMesh.isPickable = false;
         const wallMat = createMaterial(
             scene,
