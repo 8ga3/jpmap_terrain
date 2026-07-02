@@ -124,6 +124,146 @@ describe("selectGlobeTiles", () => {
         for (const t of tiles) expect(t.tileSizeMeters).toBeGreaterThan(0);
     });
 
+    describe("高チルト（水平気味）でも可視地表を欠けなく被覆する（#446 地平線カリング）", () => {
+        const EARTH_R = 6_371_000;
+        const DEG = Math.PI / 180;
+        const V_FOV = 0.8;
+        const ASPECT = 1920 / 1080;
+
+        /**
+         * 注視点(center)を地表に固定し、方位 az・チルト tilt・視距離 radius から
+         * `globe.ts` と同じ手順（`ComputeLookAtFromYawPitchToRef`）でカメラ ECEF を組む。
+         * tilt は 0=直下、90=水平。
+         */
+        const cameraFor = (
+            tiltDeg: number,
+            radius: number,
+            azDeg = 0,
+        ): Vector3 => {
+            const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, 0);
+            const lookAt = new Vector3();
+            ComputeLookAtFromYawPitchToRef(
+                azDeg * DEG,
+                tiltDeg * DEG,
+                centerEcef,
+                true,
+                lookAt,
+            );
+            return centerEcef.clone().subtract(lookAt.scale(radius));
+        };
+
+        /** 原点 O から単位方向 Dn のレイと地心半径 R の球の最近交点。無交差なら null（＝空を向く）。 */
+        const raySphereHit = (O: Vector3, Dn: Vector3): Vector3 | null => {
+            const b = 2 * Vector3.Dot(O, Dn);
+            const c = Vector3.Dot(O, O) - EARTH_R * EARTH_R;
+            const disc = b * b - 4 * c;
+            if (disc < 0) return null;
+            const t = (-b - Math.sqrt(disc)) / 2;
+            if (t < 0) return null;
+            return O.add(Dn.scale(t));
+        };
+
+        /**
+         * 視錐台がとらえる地表領域を N×N グリッドでレイキャストし、地表に当たる各サンプルが
+         * いずれかの選択タイルに含まれる割合を返す。地平線カリングが可視タイルを取りこぼすと
+         * 100% を下回り、地球ベースレイヤ（フォールバック背景）が露出することを検知できる。
+         */
+        const groundCoverageRatio = (
+            cameraEcef: Vector3,
+            tiles: ReturnType<typeof selectGlobeTiles>,
+        ): number => {
+            const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, 0);
+            const forward = centerEcef.subtract(cameraEcef).normalize();
+            const upApprox = cameraEcef.clone().normalize();
+            const right = Vector3.Cross(forward, upApprox).normalize();
+            const up = Vector3.Cross(right, forward).normalize();
+            const tanY = Math.tan(V_FOV / 2);
+            const tanX = tanY * ASPECT;
+            const isCovered = (lat: number, lon: number): boolean =>
+                tiles.some((t) => {
+                    const c = toTileXY(lat, lon, t.zoom);
+                    return c.x === t.x && c.y === t.y;
+                });
+            let ground = 0;
+            let covered = 0;
+            const N = 12;
+            for (let iy = 0; iy <= N; iy++) {
+                for (let ix = 0; ix <= N; ix++) {
+                    const ny = ((iy / N) * 2 - 1) * tanY;
+                    const nx = ((ix / N) * 2 - 1) * tanX;
+                    const dir = forward
+                        .add(right.scale(nx))
+                        .add(up.scale(ny))
+                        .normalize();
+                    const hit = raySphereHit(cameraEcef, dir);
+                    if (!hit) continue; // 空（地平線より上）を向くサンプルは対象外。
+                    ground++;
+                    const g = ecefToGeodetic(hit);
+                    if (isCovered(g.latDeg, g.lonDeg)) covered++;
+                }
+            }
+            return ground === 0 ? 1 : covered / ground;
+        };
+
+        const highTiltOpts = (
+            tiltDeg: number,
+            radius: number,
+            overrides: Partial<GlobeLodOptions> = {},
+        ): GlobeLodOptions => {
+            const cameraEcef = cameraFor(tiltDeg, radius);
+            const alt = ecefToGeodetic(cameraEcef).altMeters;
+            return baseOpts(alt, {
+                cameraEcef,
+                centerLat: CENTER_LAT,
+                centerLon: CENTER_LON,
+                maxZoom: GLOBE_SCENE_DEFAULTS.maxZoom,
+                sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
+                maxTiles: GLOBE_SCENE_DEFAULTS.maxTiles,
+                rootSearchRadius: GLOBE_SCENE_DEFAULTS.rootSearchRadius,
+                maxRootTiles: GLOBE_SCENE_DEFAULTS.maxRootTiles,
+                horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
+                rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
+                ...overrides,
+            });
+        };
+
+        // tilt 80〜89°・複数の視距離で視錐台の地表被覆が 100%（ベースレイヤ露出なし）であること。
+        for (const [tilt, radius] of [
+            [80, 60000],
+            [85, 60000],
+            [88, 120000],
+            [89, 60000],
+            [89, 300000],
+        ] as const) {
+            it(`tilt=${tilt}° radius=${radius}m で視錐台の地表を全面被覆する`, () => {
+                const opts = highTiltOpts(tilt, radius);
+                const tiles = selectGlobeTiles(opts);
+                expect(tiles.length).toBeGreaterThan(0);
+                // 地平線付近まで含め、視錐台がとらえる地表がすべてタイルで覆われる。
+                expect(groundCoverageRatio(opts.cameraEcef, tiles)).toBe(1);
+            });
+        }
+
+        it("高標高の注視点（富士山頂相当）でも高チルトで地表を全面被覆する", () => {
+            // 注視点標高を上げると遠景タイルの評価位置がずれるが、被覆は維持されること。
+            const opts = highTiltOpts(89, 60000, { referenceAltitude: 3776 });
+            const tiles = selectGlobeTiles(opts);
+            expect(groundCoverageRatio(opts.cameraEcef, tiles)).toBe(1);
+        });
+
+        it("高チルトでもタイル数が maxTiles 予算を超えない（リクエスト暴発なし）", () => {
+            for (const [tilt, radius] of [
+                [85, 60000],
+                [89, 60000],
+                [89, 300000],
+            ] as const) {
+                const opts = highTiltOpts(tilt, radius);
+                const tiles = selectGlobeTiles(opts);
+                expect(tiles.length).toBeLessThanOrEqual(GLOBE_SCENE_DEFAULTS.maxTiles);
+            }
+        });
+    });
+
     it("全球視点（高高度）は粗タイルで可視キャップ全体を欠けなく被覆する（#335 全球モード）", () => {
         // 高度 15,000km の直下視＝地球の大部分が見える。視線方向に沿う 1 次元帯では 2 次元キャップを
         // 覆い切れないため全球モード（floorZoom 一様種付け＋タイルサイズ考慮の地平線カリング）に切替。
