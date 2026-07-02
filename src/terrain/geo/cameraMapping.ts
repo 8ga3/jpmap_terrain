@@ -460,7 +460,7 @@ export const resolveTerrainClickElevationToRef = (
     }
     const tFar = hasSeaLevelFar ? seaLevelFarT : rtcOuterHits.t1;
 
-    // heightAboveTerrainToRef が直近に評価した地形標高（呼び出し元が「地形自体が海抜0か」を
+    // heightAboveTerrainToRef が直近に評価した地形標高（本関数内で「地形自体が海抜0か」を
     // 判定するために参照する。地表以下判定そのものには使わない）。
     let lastTerrainElevM = 0;
     const heightAboveTerrainToRef = (t: number): number => {
