@@ -20,8 +20,10 @@ import {
     type MarkerTextOptions,
 } from "../lib/types";
 
-// グローブ版オーバーレイが同じ描画レイヤーに揃えるため export する。
-export const RENDERING_GROUP_ID = 1;
+// polygon/circle の頂点球等（renderingGroupId=1、常に地表より手前）とは別グループにする。
+// マーカーは地表深度バッファを継承させ（globe.ts で autoClearDepthStencil=false を設定）、
+// 視線上の山などに正しくオクルードされるようにするため（Issue #451）。
+export const RENDERING_GROUP_ID = 3;
 const MAX_DT_SIZE = 1024;
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);

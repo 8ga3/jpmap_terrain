@@ -368,7 +368,7 @@ interface MarkerOptions {
 **仕様:**
 
 - `icon` と `text` は **少なくとも片方が必須**。両方指定時は **上=text、下=icon** の順で線の上にスタックする。
-- ビルボードは `BILLBOARDMODE_ALL` でカメラ常時追従。`renderingGroupId = 1` で最前面に描画する。
+- ビルボードは `BILLBOARDMODE_ALL` でカメラ常時追従。`renderingGroupId = 3`（polygon/circle 用の `1` とは別グループ）を用い、`scene.setRenderingAutoClearDepthStencil(3, false)` により地形（`renderingGroupId = 0`）の深度を継承する。これにより視線上の山などに正しくオクルードされる（自局所地表への埋没は「線の高さ」分のクリアランスで回避）。
 - 表示位置の高さは **「タイル表面の標高 + 線の高さ」**。線の高さはカメラ距離・仰角から
   動的に算出される値（`radius * 0.1 * clamp(sin(beta), 0.3, 1)` を 100m–10000m にクランプ）を採用し、
   カメラ距離が変わってもスクリーン上で安定した長さに見えるようにする。`line.height` は
