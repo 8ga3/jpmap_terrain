@@ -4,7 +4,7 @@
  * マーカー用 `RENDERING_GROUP_ID` が地形タイルの既定 renderingGroupId（0）と一致することを
  * 検証する。異なるグループにすると、Babylon.js は renderingGroup 間で既定で深度バッファを
  * クリアするため、地形とマーカーの間に空でない中間グループが存在する場合にマーカーが
- * 地形の深度を継承できなくなり、山などに正しく隠れなくなる（レビュー指摘: PR #452）。
+ * 地形の深度を継承できなくなり、山などに正しく隠れなくなる。
  * 実際の見た目（山の裏に隠れるか）は 3DCG のため別ゲート（HITL）。
  */
 import { describe, it, expect } from "@jest/globals";
