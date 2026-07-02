@@ -439,7 +439,7 @@ describe("resolveTerrainClickElevationToRef", () => {
         // 正に残留し(このケースで緯度約-0.25°地点で約+0.4m)、粗探索の最終サンプルが
         // heightAboveTerrain<=0を満たさなくなる。これにより「反転なし→全域再細分」分岐に
         // 常に入ってしまい、「粗探索の最終サンプルがtFarそのものであるために反転扱いされる」
-        // という実運用WGS84での本来の不具合（PR#450レビュー指摘）を再現できない。
+        // という実運用WGS84での本来の不具合（#443の回帰条件そのもの）を再現できない。
         const A = Wgs84Ellipsoid.semiMajorAxis;
         const B = Wgs84Ellipsoid.semiMinorAxis;
         const camAlt = 500;
