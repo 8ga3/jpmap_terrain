@@ -529,9 +529,8 @@ export const resolveTerrainClickElevationToRef = (
         // 地形標高0（平地）なら定義上つねに heightAboveTerrain(tFar)≈0 になる（実測: WGS84の
         // 実楕円体を渡すと厳密に 0）。これは隠れた尾根の有無と無関係なので「反転」として採用
         // すると、途中で尾根を見逃していてもここで crossed=true になってしまい、後段の全域細分
-        // （下の else if 分岐）が発火しない＝隠れた尾根を貫通する（#443 のレビュー指摘）。そこで
-        // 最終サンプルかつ hasSeaLevelFar の場合だけは「反転」として採用せず、ループを反転なしの
-        // まま終える。
+        // （下の else if 分岐）が発火しない＝隠れた尾根を貫通する。そこで最終サンプルかつ
+        // hasSeaLevelFar の場合だけは「反転」として採用せず、ループを反転なしのまま終える。
         const isTautologicalSeaLevelEnd = i === steps && hasSeaLevelFar;
         if (!isTautologicalSeaLevelEnd && heightAboveTerrainToRef(t) <= 0) {
             coarseLoT = prevT;
@@ -551,10 +550,10 @@ export const resolveTerrainClickElevationToRef = (
         // 第1段は反転を検出しなかったが、奥端が標高0面（海面）に到達しており、かつ
         // maxCoarseSteps で頭打ちして実効ステップ幅が stepDistanceM より粗くなっている
         // （steps < idealSteps）。この場合のみ、途中の狭い尾根を格子間隙で跨いで見逃した
-        // 可能性がある（見逃すとレイは奥の海面まで貫通し、遠方点が回転中心になる #443 の不具合）。
+        // 可能性がある（見逃すとレイは奥の海面まで貫通し、遠方点が回転中心になってしまう）。
         // 頭打ちしていない（steps === idealSteps、通常の近距離・低速フレーム）場合は第1段が
         // すでに stepDistanceM 相当の解像度で走査済みなので、全域再細分は不要かつ無駄なコスト
-        // 増になるため行わない（レビュー指摘）。
+        // 増になるため行わない。
         //
         // 探索区間全体を専用上限 SUBDIVIDE_MAX_STEPS_FAR まで細分し直し、隠れた尾根（＝反転）を
         // 探す。反転が見つかればその区間を二分探索へ回し、見つからなければ本当に地表が無い
