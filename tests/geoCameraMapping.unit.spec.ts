@@ -13,6 +13,7 @@ import { describe, it, expect } from "@jest/globals";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import { DEG2RAD, geodeticToEcef, ecefToGeodetic, type Geodetic } from "../src/terrain/geo/ecef";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import {
     uiToYawPitch,
     yawPitchToUi,
@@ -432,8 +433,17 @@ describe("resolveTerrainClickElevationToRef", () => {
         // 約28km先の遠方点を採用していた（山を突き抜けた超遠方がカメラ回転中心になる不具合）。
         // 二段階探索では「第1段で反転せず奥端が標高0面」のケースで探索区間全体を細分し直し、
         // 隠れた尾根を捕捉して尾根手前で止まる。
+        //
+        // 楕円体はR,Rの球近似ではなく実運用どおりWGS84の実楕円体(a,b)を渡す。球近似だと、
+        // 標高0(平地)でも探索区間奥端(tFar)でのaltMetersがWGS84実楕円体との離心率差分だけ
+        // 正に残留し(このケースで緯度約-0.25°地点で約+0.4m)、粗探索の最終サンプルが
+        // heightAboveTerrain<=0を満たさなくなる。これにより「反転なし→全域再細分」分岐に
+        // 常に入ってしまい、「粗探索の最終サンプルがtFarそのものであるために反転扱いされる」
+        // という実運用WGS84での本来の不具合（PR#450レビュー指摘）を再現できない。
+        const A = Wgs84Ellipsoid.semiMajorAxis;
+        const B = Wgs84Ellipsoid.semiMinorAxis;
         const camAlt = 500;
-        const camOrigin = new Vector3(R + camAlt, 0, 0);
+        const camOrigin = new Vector3(A + camAlt, 0, 0);
         const downAngle = 0.02; // ローカル水平（+Z接線）からの下向き角[rad]
         const dir = new Vector3(-Math.sin(downAngle), 0, -Math.cos(downAngle)).normalize();
 
@@ -441,14 +451,14 @@ describe("resolveTerrainClickElevationToRef", () => {
         const flatHit = new Vector3();
         const flatGeo = emptyGeo();
         const gotFlat = resolveTerrainClickElevationToRef(
-            camOrigin, dir, R, R, () => 0, 5000, 5, 20, 300, 16, flatHit, flatGeo,
+            camOrigin, dir, A, B, () => 0, 5000, 5, 20, 300, 16, flatHit, flatGeo,
         );
         expect(gotFlat).toBe(true);
-        const tFar = flatHit.subtract(camOrigin).length(); // ≈ 28094m
+        const tFar = flatHit.subtract(camOrigin).length(); // ≈ 28121m
         expect(tFar).toBeGreaterThan(20000);
 
         // 第1段の粗サンプル格子（steps=300 で頭打ち）を再現し、区間中央の格子間隙の緯度を求める。
-        const steps = 300; // ceil(28094/5)=5619 だが maxCoarseSteps=300 で頭打ち
+        const steps = 300; // ceil(28121/5)=5625 だが maxCoarseSteps=300 で頭打ち
         const stepT = tFar / steps;
         const iMid = Math.floor(steps / 2);
         const unitDir = dir.clone();
@@ -459,7 +469,7 @@ describe("resolveTerrainClickElevationToRef", () => {
         const gapLat = geodeticLatAt(stepT * iMid + stepT / 2); // 2サンプルの中間（格子間隙）
 
         // 幅28m相当の尾根帯を格子間隙の緯度に中心を合わせて置く（両隣の粗サンプルは帯の外側）。
-        const halfBandDeg = 28 / (R * DEG2RAD) / 2;
+        const halfBandDeg = 28 / (A * DEG2RAD) / 2;
         expect(Math.abs(latSampleA - gapLat)).toBeGreaterThan(halfBandDeg); // 手前サンプルは帯外
         expect(Math.abs(latSampleB - gapLat)).toBeGreaterThan(halfBandDeg); // 奥サンプルは帯外
         const ridgeElevM = 300;
@@ -469,7 +479,7 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            camOrigin, dir, R, R, terrainElevAt, 5000, 5, 20, 300, 16, outHit, geo,
+            camOrigin, dir, A, B, terrainElevAt, 5000, 5, 20, 300, 16, outHit, geo,
         );
         expect(hit).toBe(true);
         // 尾根を貫通せず尾根近傍で止まること。標高は尾根相当（高さ300m付近まで持ち上がる）で、

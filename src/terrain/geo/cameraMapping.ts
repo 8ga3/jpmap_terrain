@@ -334,6 +334,13 @@ let farSubdivideCapWarned = false;
  * は第1段が手前で反転するため全域細分に入らず、コストを増やさない）。全域細分でも反転が見つから
  * なければ本当に地表が無い（平地・海面）ので、従来どおり標高 0 交点にフォールバックする。
  *
+ * 注意: 奥端が標高 0 面（`hasSeaLevelFar`）のとき、第1段の最終サンプル（t=tFar）は定義上つねに
+ * 「標高 0 面との交点」そのものであり、地形標高が 0（平地）ならレイ高度はそこで必ず 0 に収束する
+ * （隠れた尾根の有無と無関係に成立するトートロジー）。これを通常の「反転検出」として採用すると、
+ * 途中で尾根を見逃していても最終サンプルで必ず crossed 扱いになってしまい、全域細分（本来の対策）
+ * が発火しなくなる。そのため第1段では、hasSeaLevelFar かつ最終サンプルの場合に限り反転判定から
+ * 除外する（詳細は実装のコメント参照）。
+ *
  * 内部の ECEF↔測地変換（`ecefToGeodeticToRef`）は WGS84 の離心率で固定されているため、
  * `ellipsoidSemiMajor`/`ellipsoidSemiMinor` には WGS84 の値（`Wgs84Ellipsoid.semiMajorAxis`/
  * `semiMinorAxis`）を渡すこと。異なる楕円体を渡すと、半径ベースの交差判定と測地座標変換の
@@ -514,7 +521,15 @@ export const resolveTerrainClickElevationToRef = (
     let prevT = tNear;
     for (let i = 1; i <= steps; i++) {
         const t = tNear + ((tFar - tNear) * i) / steps;
-        if (heightAboveTerrainToRef(t) <= 0) {
+        // hasSeaLevelFar のとき、最終サンプル（t=tFar）は「標高0面との交点」そのものであり、
+        // 地形標高0（平地）なら定義上つねに heightAboveTerrain(tFar)≈0 になる（実測: WGS84の
+        // 実楕円体を渡すと厳密に 0）。これは隠れた尾根の有無と無関係なので「反転」として採用
+        // すると、途中で尾根を見逃していてもここで crossed=true になってしまい、後段の全域細分
+        // （下の else if 分岐）が発火しない＝隠れた尾根を貫通する（#443 のレビュー指摘）。そこで
+        // 最終サンプルかつ hasSeaLevelFar の場合だけは「反転」として採用せず、ループを反転なしの
+        // まま終える。
+        const isTautologicalSeaLevelEnd = i === steps && hasSeaLevelFar;
+        if (!isTautologicalSeaLevelEnd && heightAboveTerrainToRef(t) <= 0) {
             coarseLoT = prevT;
             coarseHiT = t;
             crossed = true;
