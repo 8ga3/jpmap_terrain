@@ -8,7 +8,7 @@
  * - clampRadiusForGroundClearance: 潜り込み補正・既クリアランス・水平視の発散回避
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
@@ -448,6 +448,11 @@ describe("resolveTerrainClickElevationToRef", () => {
         const downAngle = 0.02; // ローカル水平（+Z接線）からの下向き角[rad]
         const dir = new Vector3(-Math.sin(downAngle), 0, -Math.cos(downAngle)).normalize();
 
+        // このテストの探索区間（約28km）は idealSteps が全域細分の上限を超えるため、
+        // 実装側の one-shot 警告（narrow terrain may be missed）が発火する。想定内の警告
+        // でテストログを汚さないよう抑止する。
+        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
         // 標高0面到達距離（tFar）を平地で1回解いて幾何を確定し、第1段の粗サンプル格子を再現する。
         const flatHit = new Vector3();
         const flatGeo = emptyGeo();
@@ -490,6 +495,7 @@ describe("resolveTerrainClickElevationToRef", () => {
         expect(hitDist).toBeLessThan(tFar * 0.6); // 遠方海面(≈tFar)ではなく尾根手前〜尾根上
         expect(geo.altMeters).toBeGreaterThan(100); // 平地(0m)ではなく尾根の標高に達している
         expect(geo.altMeters).toBeLessThanOrEqual(ridgeElevM + 1);
+        warn.mockRestore();
     });
 
     it("奥端(tFar)近傍の地形標高が実際に0でない場合は最終サンプルの反転も見逃さない", () => {
