@@ -43,6 +43,7 @@ import {
     clampRadiusForGroundClearance,
     rayEllipsoidNearHitToRef,
     resolveTerrainClickElevationToRef,
+    resolveRecalcCenterSource,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
@@ -164,6 +165,16 @@ const TERRAIN_CLICK_MAX_COARSE_STEPS = 300;
 
 /** 同上。粗い探索で見つけた区間を絞り込む二分探索の反復数。 */
 const TERRAIN_CLICK_REFINE_ITERATIONS = 6;
+
+/**
+ * ズーム中の毎フレーム向き補正で、レイマーチングの地表検出が稜線境界付近でちらついて失敗した
+ * フレームでも、直近に採用した実在の地表点を再利用してよい最大経過時間 [ms]。山岳地帯を水平
+ * チルトでズームすると true/false が数フレーム断続的に切り替わり、補正が停止する間にネイティブ
+ * ズームのフレーム結合誤差が蓄積して終了間際にスナップする。数フレーム相当（60fps で ~6 フレーム）
+ * の間は直近の成功点で補正を継続し、それを超えて失敗が続く場合は保持を破棄して補正を止める
+ * （古い点の再利用でカメラが的外れな向きへ寄るのを防ぐ）。
+ */
+const RECALC_CENTER_HOLD_MS = 100;
 
 /**
  * 地球楕円体スフィア（背景＋地平線リファレンス）を海面より沈める量 [m]。
@@ -1120,9 +1131,21 @@ export class GlobeScene {
         //     ほぼ不変＝カーソル下の画素が固定される）。
         // これによりネイティブ _recalculateCenter（_checkInputs から毎フレーム呼ばれ、確定時のみ発火）は
         // 残るが、本補正で既に整っているため実質 no-op となり整合する。
+        //
+        // ちらつき対策: 山岳地帯を水平に近いチルトでズームすると、lookAt レイが稜線をわずかに超えて
+        // 空を指す状態（pickAlongVector が null＝地表未検出）と山を捉える状態が数フレームにわたり
+        // 断続的に切り替わる。失敗フレームでは補正が停止し、その間ネイティブズームのフレーム結合誤差が
+        // 無補正で蓄積 → 次に成功したフレームで一括補正され、ズーム終了間際に画面が急に動く。そこで
+        // 同一ズームジェスチャ内で直近に採用した実在の地表点を短時間だけ保持し、失敗フレームでは
+        // それを再利用して補正を連続させる（遠方の仮想点は捏造しない＝水平チルトでの暴走は再発させない）。
         const recalcLookAt = new Vector3();
         const recalcCenterToOrigin = new Vector3();
         const recalcYawPitch = new Vector2();
+        // 直近に採用した center（実在の地表点）と、その採用時刻。ズームジェスチャ間で古い点を
+        // 持ち越さないよう、保持時刻が古くなれば resolveRecalcCenterSource が破棄する。
+        const recalcLastValidCenter = new Vector3();
+        let recalcLastValidTimeMs = Number.NEGATIVE_INFINITY;
+        let recalcHasLastValid = false;
         const recalculateCenterPublic = (): void => {
             ComputeLookAtFromYawPitchToRef(
                 camera.yaw,
@@ -1132,16 +1155,32 @@ export class GlobeScene {
                 recalcLookAt,
                 movement.calculateUpVectorFromPointToRef,
             );
-            const newCenter = movement.pickAlongVector(recalcLookAt);
-            if (!newCenter?.pickedPoint) return;
+            const nowMs = performance.now();
+            const picked = movement.pickAlongVector(recalcLookAt);
+            const source = resolveRecalcCenterSource(
+                !!picked?.pickedPoint,
+                recalcHasLastValid,
+                nowMs - recalcLastValidTimeMs,
+                RECALC_CENTER_HOLD_MS,
+            );
+            // 補正に使う center。今フレーム成功なら pick 結果、失敗でも保持が新しければ直近の実在点を
+            // 再利用、いずれも無ければ補正しない。
+            let centerForRecalc: Vector3;
+            if (source === "current" && picked?.pickedPoint) {
+                centerForRecalc = picked.pickedPoint;
+            } else if (source === "held") {
+                centerForRecalc = recalcLastValidCenter;
+            } else {
+                return;
+            }
             // 地球の裏側の center を採らないよう、center→原点方向が lookAt とおおむね一致する場合のみ更新。
-            recalcCenterToOrigin.copyFrom(newCenter.pickedPoint).negateInPlace().normalize();
+            recalcCenterToOrigin.copyFrom(centerForRecalc).negateInPlace().normalize();
             if (Vector3.Dot(recalcLookAt, recalcCenterToOrigin) <= 0) return;
-            const newRadius = Vector3.Distance(computeCameraEcef(), newCenter.pickedPoint);
+            const newRadius = Vector3.Distance(computeCameraEcef(), centerForRecalc);
             if (newRadius <= 1e-6) return;
             ComputeYawPitchFromLookAtToRef(
                 recalcLookAt,
-                newCenter.pickedPoint,
+                centerForRecalc,
                 scene.useRightHandedSystem,
                 camera.yaw,
                 recalcYawPitch,
@@ -1149,10 +1188,17 @@ export class GlobeScene {
             );
             // center→yaw→pitch→radius の順で公開セッタへ反映（各セッタが _setOrientation を呼び、
             // 最終呼び出しが (newYaw, newPitch, newRadius, newCenter) 等価になる）。
-            camera.center = newCenter.pickedPoint;
+            camera.center = centerForRecalc;
             camera.yaw = recalcYawPitch.x;
             camera.pitch = recalcYawPitch.y;
             camera.radius = newRadius;
+            // 今フレーム成功した実在点のみを保持点として更新する（Dot ガード等を通過して実際に
+            // 採用できた点だけを次の失敗フレームの再利用対象にする）。
+            if (source === "current") {
+                recalcLastValidCenter.copyFrom(centerForRecalc);
+                recalcLastValidTimeMs = nowMs;
+                recalcHasLastValid = true;
+            }
         };
         const origZoomToPoint = camera.zoomToPoint.bind(camera);
         camera.zoomToPoint = (targetPoint, distance): void => {

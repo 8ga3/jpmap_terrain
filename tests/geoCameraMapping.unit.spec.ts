@@ -23,6 +23,7 @@ import {
     clampRadiusForGroundClearance,
     rayEllipsoidNearHitToRef,
     resolveTerrainClickElevationToRef,
+    resolveRecalcCenterSource,
 } from "../src/terrain/geo/cameraMapping";
 
 describe("uiToYawPitch / yawPitchToUi", () => {
@@ -556,5 +557,37 @@ describe("polePanSpeedMultiplier", () => {
             expect(Number.isNaN(m)).toBe(false);
             expect(m).toBe(1);
         }
+    });
+});
+
+describe("resolveRecalcCenterSource", () => {
+    it("今フレームで地表を検出できたら常に current を使う（保持の有無・鮮度に依らない）", () => {
+        expect(resolveRecalcCenterSource(true, false, 0, 100)).toBe("current");
+        expect(resolveRecalcCenterSource(true, true, 0, 100)).toBe("current");
+        // 保持が古くても成功フレームは current 優先。
+        expect(resolveRecalcCenterSource(true, true, 9999, 100)).toBe("current");
+    });
+
+    it("検出失敗でも保持点が新しければ held を使い、補正の停止（＝一括スナップ）を避ける", () => {
+        expect(resolveRecalcCenterSource(false, true, 0, 100)).toBe("held");
+        expect(resolveRecalcCenterSource(false, true, 50, 100)).toBe("held");
+        // 境界（経過時間 == 上限）は再利用可。
+        expect(resolveRecalcCenterSource(false, true, 100, 100)).toBe("held");
+    });
+
+    it("検出失敗で保持が古すぎる/存在しない場合は skip（補正しない）", () => {
+        // 保持なし。
+        expect(resolveRecalcCenterSource(false, false, 0, 100)).toBe("skip");
+        // 保持が上限超過（数フレームを超えて失敗が継続）。古い点の再利用でカメラが的外れに寄るのを防ぐ。
+        expect(resolveRecalcCenterSource(false, true, 101, 100)).toBe("skip");
+        expect(resolveRecalcCenterSource(false, true, 9999, 100)).toBe("skip");
+    });
+
+    it("経過時間・上限が非有限/負なら held を採らず skip（NaN の rest 混入で誤って再利用しない）", () => {
+        expect(resolveRecalcCenterSource(false, true, NaN, 100)).toBe("skip");
+        expect(resolveRecalcCenterSource(false, true, Infinity, 100)).toBe("skip");
+        expect(resolveRecalcCenterSource(false, true, -1, 100)).toBe("skip");
+        expect(resolveRecalcCenterSource(false, true, 50, NaN)).toBe("skip");
+        expect(resolveRecalcCenterSource(false, true, 50, -1)).toBe("skip");
     });
 });
