@@ -21,6 +21,7 @@ let webgpuSupported = true;
 
 class MockWebGPUEngine {
     initAsync = webgpuInitAsync;
+    useReverseDepthBuffer = false;
     constructor(...args: unknown[]) {
         webgpuConstructor(...args);
     }
@@ -30,6 +31,7 @@ class MockWebGPUEngine {
 }
 
 class MockEngine {
+    useReverseDepthBuffer = false;
     constructor(...args: unknown[]) {
         engineConstructor(...args);
     }
@@ -108,5 +110,19 @@ describe("createBabylonEngine", () => {
             | { useHighPrecisionMatrix?: boolean }
             | undefined;
         expect(options?.useHighPrecisionMatrix).toBe(true);
+    });
+
+    it("WebGL2 生成時に reverse-Z 深度バッファを有効化する (地平線 z-fighting 対策)", async () => {
+        const engine = (await createBabylonEngine(canvas(), "webgl2")) as unknown as {
+            useReverseDepthBuffer: boolean;
+        };
+        expect(engine.useReverseDepthBuffer).toBe(true);
+    });
+
+    it("WebGPU 生成時に reverse-Z 深度バッファを有効化する (地平線 z-fighting 対策)", async () => {
+        const engine = (await createBabylonEngine(canvas(), "webgpu")) as unknown as {
+            useReverseDepthBuffer: boolean;
+        };
+        expect(engine.useReverseDepthBuffer).toBe(true);
     });
 });

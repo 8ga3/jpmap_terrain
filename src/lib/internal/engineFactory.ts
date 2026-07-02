@@ -65,8 +65,26 @@ export async function createBabylonEngine(
                 useHighPrecisionMatrix,
             });
             await engine.initAsync();
+            enableReverseDepthBuffer(engine);
             return engine;
         }
     }
-    return new Engine(canvas, true, { useHighPrecisionMatrix });
+    const engine = new Engine(canvas, true, { useHighPrecisionMatrix });
+    enableReverseDepthBuffer(engine);
+    return engine;
+}
+
+/**
+ * reverse-Z 深度バッファを有効化する。
+ *
+ * 低高度・水平チルト（地平線付近）では minZ:maxZ 比が極端（例: 1m : ~733km）になり、
+ * 24bit 整数深度では遠景の深度分解能が枯渇して地形メッシュとスカイボックスが z-fighting し、
+ * 地平線付近の地形が透けて見える。reverse-Z は投影行列レベルで near/far の深度分布を反転し、
+ * 遠景の深度分解能を大幅に改善する。全メッシュ・全マテリアルへ自動適用されるため
+ * マテリアル毎の設定漏れリスクがなく、追加シェーダーコストもほぼゼロ。
+ * 右手系・ORTHOGRAPHIC(2D) の双方に Babylon 本体が対応済み。
+ */
+function enableReverseDepthBuffer(engine: AbstractEngine): void {
+    engine.useReverseDepthBuffer = true;
+    console.info("[engineFactory] reverse-Z depth buffer enabled");
 }
