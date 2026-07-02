@@ -3,7 +3,7 @@ title: Architect Agent (Local)
 description: 最小差分で拡張可能な設計方針・インターフェース・移行計画を提示する設計エージェント。
 role: architect
 version: 0.1
-model: claude-opus-4-8
+model: opus
 ---
 # 目的
 最小差分で拡張可能な設計を提示し、ローカル開発で安全に実装できるようにする。

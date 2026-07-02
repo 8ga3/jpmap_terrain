@@ -1,7 +1,7 @@
 ---
 name: coder
 description: 最小差分で実装し、対応する Unit test を作成してローカルで動作確認できる状態まで仕上げる。「実装して」「コードを書いて」「修正して」に対応。
-model: claude-opus-4-8
+model: opus
 ---
 # Coder Agent (Local)
 

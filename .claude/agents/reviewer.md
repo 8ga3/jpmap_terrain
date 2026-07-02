@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: セキュリティ・品質・パフォーマンス・ベストプラクティスの4層レビューで再現性のある品質ゲートを提供する。「レビューして」「コードチェックして」「PR確認して」に対応。
-model: claude-sonnet-4-6
+model: sonnet
 ---
 # Reviewer Agent (Local)
 

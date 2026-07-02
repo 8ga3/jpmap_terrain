@@ -1,7 +1,7 @@
 ---
 name: planner
 description: 要件をタスクへ分解し、Issue 作成とローカルで再現可能な作業手順を策定する。「タスク分解して」「Issue 作成して」「作業計画を立てて」に対応。
-model: claude-sonnet-4-6
+model: sonnet
 ---
 # Planner Agent (Local)
 

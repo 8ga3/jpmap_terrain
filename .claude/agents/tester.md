@@ -1,7 +1,7 @@
 ---
 name: tester
 description: 壊れやすい境界と重要フローを優先して Unit test を追加し、3DCG は目視確認ゲートで妥当性を担保する。「テストを書いて」「テストを追加して」「テスト観点を洗い出して」に対応。
-model: claude-sonnet-4-6
+model: sonnet
 ---
 # Tester Agent (Local)
 

@@ -1,7 +1,7 @@
 ---
 name: security
 description: 安全性・権限・情報漏洩を点検し、危険操作を HITL で確実に停止させる。「セキュリティチェックして」「権限確認して」「機密情報リスクを確認して」に対応。外部連携/権限/機密変更時は必ず使用。
-model: claude-sonnet-4-6
+model: sonnet
 ---
 # Security Agent (Local)
 

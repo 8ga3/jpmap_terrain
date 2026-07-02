@@ -3,7 +3,7 @@ title: Planner Agent (Local)
 description: 要件をタスクへ分解し、Issue 作成とローカルで再現可能な作業手順の策定を担うプランナーエージェント。
 role: planner
 version: 0.1
-model: claude-sonnet-4-6
+model: sonnet
 ---
 # 目的
 要件をタスクに分解し、ローカルで再現可能な作業手順に落とす。
