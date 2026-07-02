@@ -22,6 +22,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 
 import {
     computeOverlayDistanceScale,
+    computeOverlayPointDiameter,
     computeScreenUpToRef,
     drapedPolygonPathLength,
     writeDrapedPolygonPathsToRef,
@@ -33,14 +34,13 @@ import {
     type PolygonStyleOptions,
 } from "../../lib/types";
 
-const RENDERING_GROUP_ID = 1;
-const SUBTERRAIN_RENDERING_GROUP_ID = 0;
 /**
- * ラベルは専用の上位グループで描画する。レンダリンググループ間は既定で深度バッファが
- * クリアされるため、ラベルが線（`RENDERING_GROUP_ID`）の背後に回り込んでも文字が常に
- * 手前へ描かれ、可読性を保てる（2D/3D 共通）。
+ * 頂点球・垂線・壁・線（アウトライン）・ラベルは全て地表メッシュ（既定グループ 0）と同グループ
+ * で描画し、地表の深度バッファで正しくオクルードさせる。以前は線・ラベルを別グループにして
+ * 「常に地表より手前」にしていたが、山などに正しく隠れてほしいという要望（Issue #451）により
+ * 撤回し、地形と同じ深度で扱う方式に統一した。
  */
-const LABEL_RENDERING_GROUP_ID = 2;
+const SUBTERRAIN_RENDERING_GROUP_ID = 0;
 const LABEL_MAX_DT_SIZE = 1024;
 const LABEL_MIN_DT_SIZE = 32;
 
@@ -257,6 +257,7 @@ const createMaterial = (
     return mat;
 };
 
+
 const labelDpr = (): number =>
     typeof globalThis !== "undefined" &&
     typeof (globalThis as { devicePixelRatio?: number }).devicePixelRatio === "number"
@@ -381,7 +382,7 @@ const createLabelMesh = (
         scene,
     );
     mesh.billboardMode = AbstractMesh.BILLBOARDMODE_ALL;
-    mesh.renderingGroupId = LABEL_RENDERING_GROUP_ID;
+    mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
     mesh.isPickable = false;
     const material = new StandardMaterial(
         `${id}-${prefix}-mat-${index}`,
@@ -549,8 +550,9 @@ export const createGlobePolygonManager = (
         }
         // 点（頂点マーカー）のワールド直径。マーカーと同様、distScale（= 距離比例）を掛けて
         // ズームに依らず画面上の見かけ大きさを一定に保つ（line/label も同様にスケールするため
-        // 相対比が保たれ、ズームインで点がラインに埋もれない）。
-        const pointWorldDiameter = Math.max(node.style.pointDiameter, 0.001) * distScale;
+        // 相対比が保たれ、ズームインで点がラインに埋もれない）。ただし上限クランプあり
+        // （地形と同じ深度で描画されるため、無制限に拡大すると遠距離で地形を貫通してしまう。Issue #451）。
+        const pointWorldDiameter = computeOverlayPointDiameter(node.style.pointDiameter, distScale);
         const pointRadius = pointWorldDiameter * 0.5;
         node.pointWorldRadius = pointRadius;
         const labelGap = node.style.labelFontSize * distScale * LABEL_GAP_FONT_RATIO;
@@ -694,7 +696,7 @@ export const createGlobePolygonManager = (
                 { diameter: 1, segments: 16 },
                 scene,
             );
-            mesh.renderingGroupId = RENDERING_GROUP_ID;
+            mesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
             mesh.isPickable = true;
             const material = createMaterial(
                 scene,
@@ -752,7 +754,7 @@ export const createGlobePolygonManager = (
             },
             scene,
         );
-        lineMesh.renderingGroupId = RENDERING_GROUP_ID;
+        lineMesh.renderingGroupId = SUBTERRAIN_RENDERING_GROUP_ID;
         lineMesh.isPickable = false;
         const lineMat = createMaterial(
             scene,

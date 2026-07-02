@@ -212,12 +212,13 @@ describe("add / CRUD", () => {
         expect(createdLines.length).toBe(1);
         expect(createdRibbons.length).toBe(1);
         expect(createdLines[0].isPickable).toBe(false);
-        expect(createdLines[0].renderingGroupId).toBe(1);
         expect(createdRibbons[0].isPickable).toBe(false);
+        // 頂点球・線・壁・ラベルは全て地形と同グループ(0)で描画し、地形に正しくオクルードされる（Issue #451）。
+        expect(createdPoints.every((p) => p.renderingGroupId === 0)).toBe(true);
+        expect(createdLines[0].renderingGroupId).toBe(0);
         expect(createdRibbons[0].renderingGroupId).toBe(0);
-        // ラベル（平面）は線より上位グループ(2)で描画し、常に読めるようにする。
         expect(createdPlanes.length).toBeGreaterThan(0);
-        expect(createdPlanes.every((p) => p.renderingGroupId === 2)).toBe(true);
+        expect(createdPlanes.every((p) => p.renderingGroupId === 0)).toBe(true);
     });
 
     it("1 点のみも許容し、線・壁は非表示", () => {
