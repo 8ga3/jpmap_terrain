@@ -329,10 +329,14 @@ let farSubdivideCapWarned = false;
  * `stepDistanceM` より粗くなる。すると途中の幅の狭い尾根が第1段のサンプル格子の間隙に隠れて反転が
  * 検出されず（尾根の頂はどの粗サンプルにも入らずレイ高度の反転も局所ディップも第1段には現れない）、
  * レイはそのまま奥端の標高 0 面まで到達してしまう。この「第1段で反転せず、かつ奥端が標高 0 面
- * （海面）」のケースでは、手前区間の細分では尾根を見つけられないため、第2段の対象を探索区間全体に
- * 広げ、専用の上限 `SUBDIVIDE_MAX_STEPS_FAR` まで細かく刻み直して隠れた尾根を捕捉する（通常フレーム
- * は第1段が手前で反転するため全域細分に入らず、コストを増やさない）。全域細分でも反転が見つから
- * なければ本当に地表が無い（平地・海面）ので、従来どおり標高 0 交点にフォールバックする。
+ * （海面）であり、かつ `maxCoarseSteps` の頭打ちで実効ステップ幅が `stepDistanceM` より粗くなっている
+ * （`steps < idealSteps`）」ケースに限り、手前区間の細分では尾根を見つけられないため第2段の対象を
+ * 探索区間全体に広げ、専用の上限 `SUBDIVIDE_MAX_STEPS_FAR` まで細かく刻み直して隠れた尾根を捕捉する
+ * （通常フレームは第1段が手前で反転するか、頭打ちしておらずすでに `stepDistanceM` 相当の解像度で
+ * 走査済みのため全域細分に入らず、コストを増やさない）。全域細分でも反転が見つからなければ本当に
+ * 地表が無い（平地・海面）ので、従来どおり標高 0 交点にフォールバックする。頭打ちしていない場合
+ * （`steps === idealSteps`）は、第1段がすでに設計解像度で走査済みであり反転も見つからなかった＝
+ * 本当に地表が無いと判断できるため、全域再細分せず直接標高 0 交点にフォールバックする。
  *
  * 注意: 奥端が標高 0 面（`hasSeaLevelFar`）のとき、第1段の最終サンプル（t=tFar）は定義上つねに
  * 「標高 0 面との交点」そのものであり、地形標高が 0（平地）ならレイ高度はそこで必ず 0 に収束する
@@ -511,10 +515,10 @@ export const resolveTerrainClickElevationToRef = (
     // 応じてステップ数を動的に決めるが、上限 maxCoarseSteps で頭打ちにする（近水平視線で探索
     // 区間が数十kmに伸びると実効ステップ幅が stepDistanceM より粗くなり得る）。ここでは
     // 「符号反転が起きた手前区間」を第2段の細分対象として絞り込むだけで、精度は第2段が担保する。
-    const steps = Math.min(
-        Math.max(minCoarseSteps, Math.ceil((tFar - tNear) / stepDistanceM)),
-        maxCoarseSteps,
-    );
+    // idealSteps は頭打ち前の理想ステップ数（= 実効ステップ幅が stepDistanceM 相当に保てているか
+    // の判定にも使う。steps < idealSteps なら maxCoarseSteps で頭打ちして粗くなっている）。
+    const idealSteps = Math.max(1, Math.ceil((tFar - tNear) / stepDistanceM));
+    const steps = Math.min(Math.max(minCoarseSteps, idealSteps), maxCoarseSteps);
     let crossed = false;
     let coarseLoT = tNear; // 反転区間の手前端（直前の非反転サンプル）
     let coarseHiT = tFar; // 反転区間の奥端（初めて反転したサンプル）
@@ -543,22 +547,25 @@ export const resolveTerrainClickElevationToRef = (
         // 細分して反転区間を確定する。第1段で h(coarseHiT)<=0 を確認済みなので、この区間の
         // 細分は最終サンプルで必ず反転を捉える（subdivideForCrossing は true を返す）。
         subdivideForCrossing(coarseLoT, coarseHiT, SUBDIVIDE_MAX_STEPS);
-    } else if (hasSeaLevelFar) {
-        // 第1段は反転を検出しなかったが、奥端が標高0面（海面）に到達している。近水平・長距離の
-        // 探索では第1段が maxCoarseSteps で頭打ちして粗くなり、途中の狭い尾根を格子間隙で跨いで
-        // 見逃した可能性がある（見逃すとレイは奥の海面まで貫通し、遠方点が回転中心になる #443 の
-        // 不具合）。そこで探索区間全体を専用上限 SUBDIVIDE_MAX_STEPS_FAR まで細分し直し、隠れた
-        // 尾根（＝反転）を探す。反転が見つかればその区間を二分探索へ回し、見つからなければ本当に
-        // 地表が無い（平地・海面）ので従来どおり標高0交点にフォールバックする。
-        const span = tFar - tNear;
-        const idealSteps = Math.max(1, Math.ceil(span / stepDistanceM));
+    } else if (hasSeaLevelFar && steps < idealSteps) {
+        // 第1段は反転を検出しなかったが、奥端が標高0面（海面）に到達しており、かつ
+        // maxCoarseSteps で頭打ちして実効ステップ幅が stepDistanceM より粗くなっている
+        // （steps < idealSteps）。この場合のみ、途中の狭い尾根を格子間隙で跨いで見逃した
+        // 可能性がある（見逃すとレイは奥の海面まで貫通し、遠方点が回転中心になる #443 の不具合）。
+        // 頭打ちしていない（steps === idealSteps、通常の近距離・低速フレーム）場合は第1段が
+        // すでに stepDistanceM 相当の解像度で走査済みなので、全域再細分は不要かつ無駄なコスト
+        // 増になるため行わない（レビュー指摘）。
+        //
+        // 探索区間全体を専用上限 SUBDIVIDE_MAX_STEPS_FAR まで細分し直し、隠れた尾根（＝反転）を
+        // 探す。反転が見つかればその区間を二分探索へ回し、見つからなければ本当に地表が無い
+        // （平地・海面）ので従来どおり標高0交点にフォールバックする。
         if (idealSteps > SUBDIVIDE_MAX_STEPS_FAR && !farSubdivideCapWarned) {
             // 全域細分が上限で頭打ちし、実効ステップ幅が stepDistanceM より粗いままになる。
             // 想定より狭い尾根を再び見逃し得るため、パラメータ調整の観測点として一度だけ警告する
             // （恒常ログは避け、モジュールスコープのフラグで再発火を防ぐ）。
             farSubdivideCapWarned = true;
             console.warn(
-                `[cameraMapping] far subdivide capped (span=${span.toFixed(0)}m, ` +
+                `[cameraMapping] far subdivide capped (span=${(tFar - tNear).toFixed(0)}m, ` +
                     `cap=${SUBDIVIDE_MAX_STEPS_FAR}); narrow terrain may be missed`,
             );
         }
@@ -566,6 +573,11 @@ export const resolveTerrainClickElevationToRef = (
             // 隠れた尾根も無かった → 従来通り標高0交点にフォールバックする。
             return adopt(tFar);
         }
+    } else if (hasSeaLevelFar) {
+        // 第1段が頭打ちしておらず（steps === idealSteps）、すでに stepDistanceM 相当の解像度で
+        // 走査済み。反転が見つからなかった＝本当に地表が無い（平地・海面）ので、全域再細分せず
+        // 直接標高0交点にフォールバックする。
+        return adopt(tFar);
     } else {
         // 水平線よりわずかに上を見ている（標高0面には当たらない）ケースで地表（山）を検出
         // できなかった。外殻の奥交点は実際の地形と無関係などこか遠方の仮想点になり得るため、

@@ -11,9 +11,9 @@
 import { describe, it, expect } from "@jest/globals";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
 import { DEG2RAD, geodeticToEcef, ecefToGeodetic, type Geodetic } from "../src/terrain/geo/ecef";
-import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import {
     uiToYawPitch,
     yawPitchToUi,
