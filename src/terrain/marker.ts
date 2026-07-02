@@ -20,10 +20,14 @@ import {
     type MarkerTextOptions,
 } from "../lib/types";
 
-// polygon/circle の頂点球等（renderingGroupId=1、常に地表より手前）とは別グループにする。
-// マーカーは地表深度バッファを継承させ（globe.ts で autoClearDepthStencil=false を設定）、
-// 視線上の山などに正しくオクルードされるようにするため（Issue #451）。
-export const RENDERING_GROUP_ID = 3;
+// 地形タイル（renderingGroupId=0）と同じグループに描画し、実深度で正しくオクルードされる
+// ようにする（Issue #451）。polygon/circle の頂点球等（renderingGroupId=1）と違うグループ
+// にすると、Babylon.js は renderingGroup を描画順に処理する際、既定で各グループの描画前に
+// 深度バッファをクリアする（renderingGroup にメッシュが 1 つでもあれば発火）。地形(0)と
+// マーカーの間に空でない中間グループ（polygon/circle の 1、ラベルの 2 等）があると、
+// マーカー側で autoClearDepthStencil を無効化しても中間グループのクリアで地形の深度は
+// 失われてしまう。同一グループにすることでこの問題を回避する。
+export const RENDERING_GROUP_ID = 0;
 const MAX_DT_SIZE = 1024;
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "data:"]);

@@ -4,6 +4,7 @@
  * - groundPlacementToRef: 位置が球面上（地心距離≈標高+曲率半径）・up が地心方向の単位ベクトル
  * - computeOverlayDistanceScale: 距離比例・下限 0.1
  * - computeOverlayLineHeight: 距離比例・[100,10000] クランプ
+ * - computeOverlayPointDiameter: 距離比例・上限クランプ（地形貫通抑制）
  */
 
 import { describe, it, expect } from "@jest/globals";
@@ -16,6 +17,7 @@ import {
     computeOverlayDistanceScale,
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
+    computeOverlayPointDiameter,
     computeScreenUpToRef,
     buildDrapedPolygonPaths,
     generateGeodesicRing,
@@ -119,6 +121,18 @@ describe("computeOverlayLineHeight", () => {
     });
     it("上限 10000m", () => {
         expect(computeOverlayLineHeight(1_000_000)).toBe(10000); // 100000 → 上限
+    });
+});
+
+describe("computeOverlayPointDiameter", () => {
+    it("距離比例スケールを反映する（クランプ範囲内）", () => {
+        expect(computeOverlayPointDiameter(20, 2)).toBeCloseTo(40, 6);
+    });
+    it("100m を超えると上限クランプ（地形貫通抑制、Issue #451）", () => {
+        expect(computeOverlayPointDiameter(20, 1000)).toBe(100); // 20*1000=20000 → 上限 100
+    });
+    it("baseDiameterM が 0 以下でも下限 0.001 を使う", () => {
+        expect(computeOverlayPointDiameter(0, 1)).toBeCloseTo(0.001, 6);
     });
 });
 

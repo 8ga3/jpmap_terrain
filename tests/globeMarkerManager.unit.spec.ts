@@ -79,7 +79,7 @@ const createdIconTexts: {
     disposed: boolean;
 }[] = [];
 jest.unstable_mockModule("../src/terrain/marker", () => ({
-    RENDERING_GROUP_ID: 3,
+    RENDERING_GROUP_ID: 0,
     validateIconUrl,
     resolveIcon: (icon?: { url: string }) =>
         icon ? { url: icon.url, width: 24, height: 24 } : null,
@@ -145,11 +145,11 @@ describe("CRUD", () => {
         expect(createdCylinders[0].position.length()).toBeGreaterThan(6_000_000);
     });
 
-    it("ポールは isPickable=false / renderingGroupId=3", () => {
+    it("ポールは isPickable=false / renderingGroupId=0（地形と同グループ）", () => {
         const { mgr } = makeManager();
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
         expect(createdCylinders[0].isPickable).toBe(false);
-        expect(createdCylinders[0].renderingGroupId).toBe(3);
+        expect(createdCylinders[0].renderingGroupId).toBe(0);
     });
 
     it("remove でポール mesh が dispose される", () => {

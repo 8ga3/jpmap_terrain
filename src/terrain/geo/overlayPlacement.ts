@@ -33,6 +33,13 @@ const LINE_HEIGHT_MIN = 100;
 const LINE_HEIGHT_MAX = 10000;
 
 /**
+ * 頂点球のワールド直径上限 [m]。距離比例スケール（`computeOverlayDistanceScale`）を無制限に
+ * 掛けると、遠距離では球が地形の起伏より大きくなり、深度テストが正しくても手前側の一部が
+ * 山を貫通してはみ出て見える（Issue #451）。地形の一般的な起伏より十分小さい値に抑える。
+ */
+const POINT_DIAMETER_MAX_M = 100;
+
+/**
  * 緯度経度＋標高 → 地表 ECEF 位置（`posRef`）と地心 up（`upRef`）を書き込む。
  * up は位置ベクトルの正規化（楕円体の厳密法線ではなく地心方向の近似だが、オーバーレイの
  * 立ち上がり方向としては十分）。
@@ -91,6 +98,15 @@ export const computeOverlayLineHeight = (distanceM: number): number => {
     const h = distanceM * 0.1;
     return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, h));
 };
+
+/**
+ * 頂点球のワールド直径 [m]。距離比例スケール（distScale）を掛けて画面上の見かけ大きさを
+ * 保ちつつ、{@link POINT_DIAMETER_MAX_M} で上限クランプし地形貫通を抑える（Issue #451）。
+ */
+export const computeOverlayPointDiameter = (
+    baseDiameterM: number,
+    distScale: number,
+): number => Math.min(POINT_DIAMETER_MAX_M, Math.max(baseDiameterM, 0.001) * distScale);
 
 // computeScreenUpToRef のスクラッチ（毎フレーム・点数ぶん呼ばれるため割り当て回避）。
 const _suToCam = new Vector3();

@@ -47,8 +47,11 @@ import {
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
-import { RENDERING_GROUP_ID as MARKER_RENDERING_GROUP_ID } from "../terrain/marker";
-import { createGlobePolygonManager, type GlobePolygonManager, type GlobePolygonPickablePoint } from "../terrain/geo/globePolygonManager";
+import {
+    createGlobePolygonManager,
+    type GlobePolygonManager,
+    type GlobePolygonPickablePoint,
+} from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
 import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
 import { OVERLAY_REF_DISTANCE_M } from "../terrain/geo/overlayPlacement";
@@ -421,9 +424,6 @@ export class GlobeScene {
         // useHighPrecisionMatrix を渡す）。両方揃って初めてジッターのない large world になる。
         const scene = new Scene(engine, { useFloatingOrigin: true });
         scene.clearColor = new Color4(0.75, 0.86, 0.95, 1);
-        // マーカー用 renderingGroup は既定の深度バッファクリアを無効化し、地形（renderingGroupId=0）の
-        // 深度を継承する。これによりマーカーは視線上の山などに正しくオクルードされる（Issue #451）。
-        scene.setRenderingAutoClearDepthStencil(MARKER_RENDERING_GROUP_ID, false);
         // EcefFromLatLonAltToRef は常に右手系 ECEF（X→経度0, Y→東経90°, Z→北極）を出力し、
         // GeospatialCamera も scene.useRightHandedSystem を前提に視点を組む。既定の左手系の
         // ままだと右手系データを鏡像で見るため東西が反転する。右手系に揃える。
