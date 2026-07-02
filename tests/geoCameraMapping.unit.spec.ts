@@ -492,6 +492,48 @@ describe("resolveTerrainClickElevationToRef", () => {
         expect(geo.altMeters).toBeLessThanOrEqual(ridgeElevM + 1);
     });
 
+    it("奥端(tFar)近傍の地形標高が実際に0でない場合は最終サンプルの反転も見逃さない", () => {
+        // hasSeaLevelFar かつ最終サンプルの「反転」除外は、その地点の地形標高が実際に0（海面・
+        // 未ロードのフォールバック含む）の場合に限る必要がある。沿岸・低地等でtFar近傍の地形標高が
+        // 0でない場合、そこでの反転は本物の地表検出であり、除外すると地表を検出できず標高0交点
+        // （地表より低い位置）を誤って採用してしまう。
+        //
+        // maxCoarseSteps=200を固定し、idealSteps（後述）がこれを下回るようにして「頭打ちしていない
+        // 通常ケース」を作る（頭打ちしている場合は全域再細分が別途走り、この分岐の単体検証にならない）。
+        const dir = new Vector3(-1, 0, 0.3).normalize();
+        const flatHit = new Vector3();
+        const flatGeo = emptyGeo();
+        const gotFlat = resolveTerrainClickElevationToRef(
+            origin, dir, R, R, () => 0, 5000, 200, 200, 200, 16, flatHit, flatGeo,
+        );
+        expect(gotFlat).toBe(true);
+        const tFar = flatHit.subtract(origin).length();
+        const idealSteps = Math.ceil(tFar / 200);
+        expect(idealSteps).toBeLessThan(200); // 頭打ちしていないことの前提を確認
+
+        // 第1段最終区間 [t(steps-1), tFar] の中点より奥だけを標高10mにする。手前側の粗サンプル
+        // （i=steps-1 以前）は地形標高0のまま＝反転しない。最終サンプル（t=tFar）だけが
+        // heightAboveTerrain<=0になる状況を作る。
+        const steps = 200;
+        const stepT = tFar / steps;
+        const secondLastT = stepT * (steps - 1);
+        const geodeticLatAt = (t: number): number =>
+            ecefToGeodetic(dir.clone().scale(t).add(origin)).latDeg;
+        const midLat = (geodeticLatAt(secondLastT) + geodeticLatAt(tFar)) / 2;
+        const coastElevM = 10;
+        const terrainElevAt = (latDeg: number): number => (latDeg >= midLat ? coastElevM : 0);
+
+        const outHit = new Vector3();
+        const geo = emptyGeo();
+        const hit = resolveTerrainClickElevationToRef(
+            origin, dir, R, R, terrainElevAt, 5000, 200, 200, 200, 16, outHit, geo,
+        );
+        expect(hit).toBe(true);
+        // 標高0交点（地表より低い位置）ではなく、実際の地形標高付近で止まっていること。
+        expect(geo.altMeters).toBeGreaterThan(1);
+        expect(geo.altMeters).toBeLessThanOrEqual(coastElevM + 1);
+    });
+
     it("水平線よりわずかに上に高い山の頂上だけが見えるレイでも交点を検出する（貫通せずfalseも返さない）", () => {
         // カメラ高度50km。視線は「標高0楕円体の地平線角度」と「想定最大標高(5000m)楕円体の
         // 地平線角度」のちょうど中間を向く（Pythonで検算した角度）。この視線は標高0面には
