@@ -301,9 +301,12 @@ const rtcOuterHits: EllipsoidHits = { t0: 0, t1: 0 };
 const rtcInnerHits: EllipsoidHits = { t0: 0, t1: 0 };
 // 探索中の各サンプル点の測地座標（呼び出し元の outGeo は採用確定時のみ書き込む）。
 const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
+// 遠方海面ケースの全域細分が上限で頭打ちして実効ステップ幅が想定より粗いままになったことを
+// 一度だけ警告するためのガード（毎フレーム同じ警告を出さないための one-shot）。
+let farSubdivideCapWarned = false;
 
 /**
- * レイと地形表面（実標高データに基づく面）の交点を、レイに沿ったマーチング（粗い等分探索 +
+ * レイと地形表面（実標高データに基づく面）の交点を、レイに沿ったマーチング（二段階の粗探索 +
  * 二分探索での絞り込み）で求める（地形クリックピック・ズーム貫通対策）。
  *
  * 解析的な楕円体（クリック方向 1 点の標高だけで構成した定数面）との交差では、レイが経路上で
@@ -314,6 +317,22 @@ const rtcGeo: Geodetic = { latDeg: 0, lonDeg: 0, altMeters: 0 };
  * よりわずかに上を見ていて標高 0 面に当たらない（高い山の頂上だけが見えている）場合は「外殻
  * （maxTerrainElevM 面）の奥側交点」を使う。その場合に地表を検出できなければ、実際の地形と
  * 無関係な遠方の仮想点を返さないよう false を返す（詳細は本体コメント参照）。
+ *
+ * 粗探索は二段階で行う（two-tier coarse marching）。第1段は当たり付けのスキャンで、ステップ数を
+ * `[minCoarseSteps, maxCoarseSteps]` にクランプして tNear→tFar を進み、レイ高度が地形以下に
+ * なる（符号反転する）手前区間を第2段の細分対象として絞り込む。第2段はその区間だけを
+ * `stepDistanceM` 相当の細かさ（上限 `SUBDIVIDE_MAX_STEPS`）で再サンプリングして符号反転区間を
+ * 確定し、二分探索へ渡す。すなわち `maxCoarseSteps` は「第1段の当たり付けの計算量上限」を担い、
+ * 狭い尾根に対する検出精度は第2段の局所細分が担保する。
+ *
+ * 近水平視線では探索区間が数十 km に伸び、第1段が `maxCoarseSteps` で頭打ちして実効ステップ幅が
+ * `stepDistanceM` より粗くなる。すると途中の幅の狭い尾根が第1段のサンプル格子の間隙に隠れて反転が
+ * 検出されず（尾根の頂はどの粗サンプルにも入らずレイ高度の反転も局所ディップも第1段には現れない）、
+ * レイはそのまま奥端の標高 0 面まで到達してしまう。この「第1段で反転せず、かつ奥端が標高 0 面
+ * （海面）」のケースでは、手前区間の細分では尾根を見つけられないため、第2段の対象を探索区間全体に
+ * 広げ、専用の上限 `SUBDIVIDE_MAX_STEPS_FAR` まで細かく刻み直して隠れた尾根を捕捉する（通常フレーム
+ * は第1段が手前で反転するため全域細分に入らず、コストを増やさない）。全域細分でも反転が見つから
+ * なければ本当に地表が無い（平地・海面）ので、従来どおり標高 0 交点にフォールバックする。
  *
  * 内部の ECEF↔測地変換（`ecefToGeodeticToRef`）は WGS84 の離心率で固定されているため、
  * `ellipsoidSemiMajor`/`ellipsoidSemiMinor` には WGS84 の値（`Wgs84Ellipsoid.semiMajorAxis`/
@@ -449,29 +468,90 @@ export const resolveTerrainClickElevationToRef = (
         return adopt(tNear);
     }
 
-    // ステップ幅を stepDistanceM 相当に保つよう、探索距離に応じてステップ数を動的に決める。
+    // 第2段（局所細分）の再サンプリング数の上限。第1段で当たりを付けた狭い区間だけを
+    // stepDistanceM 相当の細かさで刻み直すためのローカル定数。ズーム毎フレーム呼び出しでの
+    // コスト増を避けるため控えめに取る（第1段 maxCoarseSteps + 第2段でも数百回程度に収める）。
+    const SUBDIVIDE_MAX_STEPS = 64;
+    // 第1段が反転を検出できず、かつ奥端が標高0面（hasSeaLevelFar）のケースで、探索区間全体を
+    // 細分し直すときの上限。近水平・長距離の探索では第1段が maxCoarseSteps で頭打ちして実効
+    // ステップ幅が広がり、途中の狭い尾根が粗サンプル格子の間隙に隠れる（尾根の頂はどの粗サンプル
+    // にも入らずレイ高度の反転も局所ディップも第1段には現れない）。このとき探索区間全体（数十km）を
+    // 細かく刻み直して隠れた尾根を捕捉するため、通常の上限より大きく取る（実効ステップ幅が想定
+    // 尾根幅より十分細かくなる目安。詳細は下の分岐コメント参照）。
+    const SUBDIVIDE_MAX_STEPS_FAR = 2048;
+
+    // 対象区間 [ta, tb] を stepDistanceM 相当（上限 cap）で細分し、最初の符号反転区間を
+    // [loT, hiT] に確定して true を返す局所探索。反転が無ければ false（loT/hiT は未確定）。
+    let loT = tNear;
+    let hiT = tFar;
+    const subdivideForCrossing = (ta: number, tb: number, cap: number): boolean => {
+        const subSpan = tb - ta;
+        const subSteps = Math.min(Math.max(1, Math.ceil(subSpan / stepDistanceM)), cap);
+        let subPrevT = ta;
+        for (let i = 1; i <= subSteps; i++) {
+            const t = ta + (subSpan * i) / subSteps;
+            if (heightAboveTerrainToRef(t) <= 0) {
+                loT = subPrevT;
+                hiT = t;
+                return true;
+            }
+            subPrevT = t;
+        }
+        return false;
+    };
+
+    // 第1段（粗スキャン / 当たり付け）: ステップ幅を stepDistanceM 相当に保つよう探索距離に
+    // 応じてステップ数を動的に決めるが、上限 maxCoarseSteps で頭打ちにする（近水平視線で探索
+    // 区間が数十kmに伸びると実効ステップ幅が stepDistanceM より粗くなり得る）。ここでは
+    // 「符号反転が起きた手前区間」を第2段の細分対象として絞り込むだけで、精度は第2段が担保する。
     const steps = Math.min(
         Math.max(minCoarseSteps, Math.ceil((tFar - tNear) / stepDistanceM)),
         maxCoarseSteps,
     );
-    let loT = tNear;
-    let hiT = tFar;
     let crossed = false;
+    let coarseLoT = tNear; // 反転区間の手前端（直前の非反転サンプル）
+    let coarseHiT = tFar; // 反転区間の奥端（初めて反転したサンプル）
+    let prevT = tNear;
     for (let i = 1; i <= steps; i++) {
         const t = tNear + ((tFar - tNear) * i) / steps;
         if (heightAboveTerrainToRef(t) <= 0) {
-            hiT = t;
+            coarseLoT = prevT;
+            coarseHiT = t;
             crossed = true;
             break;
         }
-        loT = t;
+        prevT = t;
     }
-    if (!crossed) {
-        if (hasSeaLevelFar) {
-            // 通常ケース（標高0面が奥端）: 地表が見つからないのは理論上ほぼ起きないはずだが、
-            // 保険として従来通り標高0交点にフォールバックする。
+
+    if (crossed) {
+        // 通常ケース: 反転した手前の狭区間 [coarseLoT, coarseHiT] だけを stepDistanceM 相当で
+        // 細分して反転区間を確定する。第1段で h(coarseHiT)<=0 を確認済みなので、この区間の
+        // 細分は最終サンプルで必ず反転を捉える（subdivideForCrossing は true を返す）。
+        subdivideForCrossing(coarseLoT, coarseHiT, SUBDIVIDE_MAX_STEPS);
+    } else if (hasSeaLevelFar) {
+        // 第1段は反転を検出しなかったが、奥端が標高0面（海面）に到達している。近水平・長距離の
+        // 探索では第1段が maxCoarseSteps で頭打ちして粗くなり、途中の狭い尾根を格子間隙で跨いで
+        // 見逃した可能性がある（見逃すとレイは奥の海面まで貫通し、遠方点が回転中心になる #443 の
+        // 不具合）。そこで探索区間全体を専用上限 SUBDIVIDE_MAX_STEPS_FAR まで細分し直し、隠れた
+        // 尾根（＝反転）を探す。反転が見つかればその区間を二分探索へ回し、見つからなければ本当に
+        // 地表が無い（平地・海面）ので従来どおり標高0交点にフォールバックする。
+        const span = tFar - tNear;
+        const idealSteps = Math.max(1, Math.ceil(span / stepDistanceM));
+        if (idealSteps > SUBDIVIDE_MAX_STEPS_FAR && !farSubdivideCapWarned) {
+            // 全域細分が上限で頭打ちし、実効ステップ幅が stepDistanceM より粗いままになる。
+            // 想定より狭い尾根を再び見逃し得るため、パラメータ調整の観測点として一度だけ警告する
+            // （恒常ログは避け、モジュールスコープのフラグで再発火を防ぐ）。
+            farSubdivideCapWarned = true;
+            console.warn(
+                `[cameraMapping] far subdivide capped (span=${span.toFixed(0)}m, ` +
+                    `cap=${SUBDIVIDE_MAX_STEPS_FAR}); narrow terrain may be missed`,
+            );
+        }
+        if (!subdivideForCrossing(tNear, tFar, SUBDIVIDE_MAX_STEPS_FAR)) {
+            // 隠れた尾根も無かった → 従来通り標高0交点にフォールバックする。
             return adopt(tFar);
         }
+    } else {
         // 水平線よりわずかに上を見ている（標高0面には当たらない）ケースで地表（山）を検出
         // できなかった。外殻の奥交点は実際の地形と無関係などこか遠方の仮想点になり得るため、
         // 採用せず false を返す（採用するとズームやセンター再計算が遠方点へ暴走する）。

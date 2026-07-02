@@ -12,7 +12,7 @@ import { describe, it, expect } from "@jest/globals";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { DEG2RAD, geodeticToEcef, type Geodetic } from "../src/terrain/geo/ecef";
+import { DEG2RAD, geodeticToEcef, ecefToGeodetic, type Geodetic } from "../src/terrain/geo/ecef";
 import {
     uiToYawPitch,
     yawPitchToUi,
@@ -403,7 +403,12 @@ describe("resolveTerrainClickElevationToRef", () => {
     });
 
     it("ステップ数を1に固定する（動的分割を無効化）と、幅の狭い尾根を見逃して貫通する", () => {
-        // 上と同じ狭い尾根だが、min=max=1 でステップ数を1に固定した比較用ケース。
+        // 上と同じ狭い尾根だが、min=max=1 かつ stepDistanceM=1,000,000m でステップ数を1に固定
+        // した比較用ケース。二段階探索では第2段の細分数も stepDistanceM に依存するため、
+        // stepDistanceM を探索区間より桁違いに大きくすると第2段（遠方海面ケースの全域細分を
+        // 含む）でも subSteps=ceil(区間/1,000,000)=1 に潰れ、尾根を跨いだまま見逃す。粗い設定
+        // では検出できないという回帰デモの意図を維持する（本来は stepDistanceM を地形解像度に
+        // 合わせて細かく渡すことで検出する）。
         const dir = new Vector3(-1, 0, 0.3).normalize();
         const terrainElevAt = (latDeg: number): number =>
             latDeg >= 0.02 && latDeg < 0.021 ? 3000 : 0;
@@ -415,6 +420,65 @@ describe("resolveTerrainClickElevationToRef", () => {
         expect(hit).toBe(true);
         // 尾根を検出できず、平地（標高0付近）に着地してしまう。
         expect(geo.altMeters).toBeLessThan(100);
+    });
+
+    it("近水平視線・長距離探索で第1段の粗格子間隙に隠れた狭い尾根を貫通しない（#443 実測条件）", () => {
+        // #443 実測再現: カメラ高度500m、下向き角0.02rad相当のほぼ水平視線。標高0面到達まで
+        // 約28km（探索区間が長大）。実運用定数（stepDistanceM=5, minCoarseSteps=20,
+        // maxCoarseSteps=300）では第1段が300ステップで頭打ちし、実効ステップ幅が約93.6mまで
+        // 劣化する。幅28m・高さ300mの尾根を探索区間中央付近の「隣り合う粗サンプルの間隙」に
+        // 置くと、粗探索はどの粗サンプルの緯度も尾根帯に入らず反転を検出できない。旧実装（単段
+        // 粗探索）では反転が一度も起きないまま奥端まで走破し、標高0面（海面）フォールバックで
+        // 約28km先の遠方点を採用していた（山を突き抜けた超遠方がカメラ回転中心になる不具合）。
+        // 二段階探索では「第1段で反転せず奥端が標高0面」のケースで探索区間全体を細分し直し、
+        // 隠れた尾根を捕捉して尾根手前で止まる。
+        const camAlt = 500;
+        const camOrigin = new Vector3(R + camAlt, 0, 0);
+        const downAngle = 0.02; // ローカル水平（+Z接線）からの下向き角[rad]
+        const dir = new Vector3(-Math.sin(downAngle), 0, -Math.cos(downAngle)).normalize();
+
+        // 標高0面到達距離（tFar）を平地で1回解いて幾何を確定し、第1段の粗サンプル格子を再現する。
+        const flatHit = new Vector3();
+        const flatGeo = emptyGeo();
+        const gotFlat = resolveTerrainClickElevationToRef(
+            camOrigin, dir, R, R, () => 0, 5000, 5, 20, 300, 16, flatHit, flatGeo,
+        );
+        expect(gotFlat).toBe(true);
+        const tFar = flatHit.subtract(camOrigin).length(); // ≈ 28094m
+        expect(tFar).toBeGreaterThan(20000);
+
+        // 第1段の粗サンプル格子（steps=300 で頭打ち）を再現し、区間中央の格子間隙の緯度を求める。
+        const steps = 300; // ceil(28094/5)=5619 だが maxCoarseSteps=300 で頭打ち
+        const stepT = tFar / steps;
+        const iMid = Math.floor(steps / 2);
+        const unitDir = dir.clone();
+        const geodeticLatAt = (t: number): number =>
+            ecefToGeodetic(unitDir.scale(t).add(camOrigin)).latDeg;
+        const latSampleA = geodeticLatAt(stepT * iMid); // 尾根手前の粗サンプル
+        const latSampleB = geodeticLatAt(stepT * (iMid + 1)); // 尾根奥の粗サンプル
+        const gapLat = geodeticLatAt(stepT * iMid + stepT / 2); // 2サンプルの中間（格子間隙）
+
+        // 幅28m相当の尾根帯を格子間隙の緯度に中心を合わせて置く（両隣の粗サンプルは帯の外側）。
+        const halfBandDeg = 28 / (R * DEG2RAD) / 2;
+        expect(Math.abs(latSampleA - gapLat)).toBeGreaterThan(halfBandDeg); // 手前サンプルは帯外
+        expect(Math.abs(latSampleB - gapLat)).toBeGreaterThan(halfBandDeg); // 奥サンプルは帯外
+        const ridgeElevM = 300;
+        const terrainElevAt = (latDeg: number): number =>
+            latDeg > gapLat - halfBandDeg && latDeg < gapLat + halfBandDeg ? ridgeElevM : 0;
+
+        const outHit = new Vector3();
+        const geo = emptyGeo();
+        const hit = resolveTerrainClickElevationToRef(
+            camOrigin, dir, R, R, terrainElevAt, 5000, 5, 20, 300, 16, outHit, geo,
+        );
+        expect(hit).toBe(true);
+        // 尾根を貫通せず尾根近傍で止まること。標高は尾根相当（高さ300m付近まで持ち上がる）で、
+        // 平地(0m)ではない。着地距離は尾根位置（中央 ≈ tFar/2）付近で、遠方28km地点まで進んで
+        // いない（旧実装のバグ再現＝約28kmを明確に下回る）。
+        const hitDist = outHit.subtract(camOrigin).length();
+        expect(hitDist).toBeLessThan(tFar * 0.6); // 遠方海面(≈tFar)ではなく尾根手前〜尾根上
+        expect(geo.altMeters).toBeGreaterThan(100); // 平地(0m)ではなく尾根の標高に達している
+        expect(geo.altMeters).toBeLessThanOrEqual(ridgeElevM + 1);
     });
 
     it("水平線よりわずかに上に高い山の頂上だけが見えるレイでも交点を検出する（貫通せずfalseも返さない）", () => {
