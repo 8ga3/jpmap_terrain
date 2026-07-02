@@ -450,52 +450,55 @@ describe("resolveTerrainClickElevationToRef", () => {
 
         // このテストの探索区間（約28km）は idealSteps が全域細分の上限を超えるため、
         // 実装側の one-shot 警告（narrow terrain may be missed）が発火する。想定内の警告
-        // でテストログを汚さないよう抑止する。
+        // でテストログを汚さないよう抑止する。expect失敗時もリークしないよう try/finally で
+        // 必ず restore する。
         const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            // 標高0面到達距離（tFar）を平地で1回解いて幾何を確定し、第1段の粗サンプル格子を再現する。
+            const flatHit = new Vector3();
+            const flatGeo = emptyGeo();
+            const gotFlat = resolveTerrainClickElevationToRef(
+                camOrigin, dir, A, B, () => 0, 5000, 5, 20, 300, 16, flatHit, flatGeo,
+            );
+            expect(gotFlat).toBe(true);
+            const tFar = flatHit.subtract(camOrigin).length(); // ≈ 28121m
+            expect(tFar).toBeGreaterThan(20000);
 
-        // 標高0面到達距離（tFar）を平地で1回解いて幾何を確定し、第1段の粗サンプル格子を再現する。
-        const flatHit = new Vector3();
-        const flatGeo = emptyGeo();
-        const gotFlat = resolveTerrainClickElevationToRef(
-            camOrigin, dir, A, B, () => 0, 5000, 5, 20, 300, 16, flatHit, flatGeo,
-        );
-        expect(gotFlat).toBe(true);
-        const tFar = flatHit.subtract(camOrigin).length(); // ≈ 28121m
-        expect(tFar).toBeGreaterThan(20000);
+            // 第1段の粗サンプル格子（steps=300 で頭打ち）を再現し、区間中央の格子間隙の緯度を求める。
+            const steps = 300; // ceil(28121/5)=5625 だが maxCoarseSteps=300 で頭打ち
+            const stepT = tFar / steps;
+            const iMid = Math.floor(steps / 2);
+            const unitDir = dir.clone();
+            const geodeticLatAt = (t: number): number =>
+                ecefToGeodetic(unitDir.scale(t).add(camOrigin)).latDeg;
+            const latSampleA = geodeticLatAt(stepT * iMid); // 尾根手前の粗サンプル
+            const latSampleB = geodeticLatAt(stepT * (iMid + 1)); // 尾根奥の粗サンプル
+            const gapLat = geodeticLatAt(stepT * iMid + stepT / 2); // 2サンプルの中間（格子間隙）
 
-        // 第1段の粗サンプル格子（steps=300 で頭打ち）を再現し、区間中央の格子間隙の緯度を求める。
-        const steps = 300; // ceil(28121/5)=5625 だが maxCoarseSteps=300 で頭打ち
-        const stepT = tFar / steps;
-        const iMid = Math.floor(steps / 2);
-        const unitDir = dir.clone();
-        const geodeticLatAt = (t: number): number =>
-            ecefToGeodetic(unitDir.scale(t).add(camOrigin)).latDeg;
-        const latSampleA = geodeticLatAt(stepT * iMid); // 尾根手前の粗サンプル
-        const latSampleB = geodeticLatAt(stepT * (iMid + 1)); // 尾根奥の粗サンプル
-        const gapLat = geodeticLatAt(stepT * iMid + stepT / 2); // 2サンプルの中間（格子間隙）
+            // 幅28m相当の尾根帯を格子間隙の緯度に中心を合わせて置く（両隣の粗サンプルは帯の外側）。
+            const halfBandDeg = 28 / (A * DEG2RAD) / 2;
+            expect(Math.abs(latSampleA - gapLat)).toBeGreaterThan(halfBandDeg); // 手前サンプルは帯外
+            expect(Math.abs(latSampleB - gapLat)).toBeGreaterThan(halfBandDeg); // 奥サンプルは帯外
+            const ridgeElevM = 300;
+            const terrainElevAt = (latDeg: number): number =>
+                latDeg > gapLat - halfBandDeg && latDeg < gapLat + halfBandDeg ? ridgeElevM : 0;
 
-        // 幅28m相当の尾根帯を格子間隙の緯度に中心を合わせて置く（両隣の粗サンプルは帯の外側）。
-        const halfBandDeg = 28 / (A * DEG2RAD) / 2;
-        expect(Math.abs(latSampleA - gapLat)).toBeGreaterThan(halfBandDeg); // 手前サンプルは帯外
-        expect(Math.abs(latSampleB - gapLat)).toBeGreaterThan(halfBandDeg); // 奥サンプルは帯外
-        const ridgeElevM = 300;
-        const terrainElevAt = (latDeg: number): number =>
-            latDeg > gapLat - halfBandDeg && latDeg < gapLat + halfBandDeg ? ridgeElevM : 0;
-
-        const outHit = new Vector3();
-        const geo = emptyGeo();
-        const hit = resolveTerrainClickElevationToRef(
-            camOrigin, dir, A, B, terrainElevAt, 5000, 5, 20, 300, 16, outHit, geo,
-        );
-        expect(hit).toBe(true);
-        // 尾根を貫通せず尾根近傍で止まること。標高は尾根相当（高さ300m付近まで持ち上がる）で、
-        // 平地(0m)ではない。着地距離は尾根位置（中央 ≈ tFar/2）付近で、遠方28km地点まで進んで
-        // いない（旧実装のバグ再現＝約28kmを明確に下回る）。
-        const hitDist = outHit.subtract(camOrigin).length();
-        expect(hitDist).toBeLessThan(tFar * 0.6); // 遠方海面(≈tFar)ではなく尾根手前〜尾根上
-        expect(geo.altMeters).toBeGreaterThan(100); // 平地(0m)ではなく尾根の標高に達している
-        expect(geo.altMeters).toBeLessThanOrEqual(ridgeElevM + 1);
-        warn.mockRestore();
+            const outHit = new Vector3();
+            const geo = emptyGeo();
+            const hit = resolveTerrainClickElevationToRef(
+                camOrigin, dir, A, B, terrainElevAt, 5000, 5, 20, 300, 16, outHit, geo,
+            );
+            expect(hit).toBe(true);
+            // 尾根を貫通せず尾根近傍で止まること。標高は尾根相当（高さ300m付近まで持ち上がる）で、
+            // 平地(0m)ではない。着地距離は尾根位置（中央 ≈ tFar/2）付近で、遠方28km地点まで進んで
+            // いない（旧実装のバグ再現＝約28kmを明確に下回る）。
+            const hitDist = outHit.subtract(camOrigin).length();
+            expect(hitDist).toBeLessThan(tFar * 0.6); // 遠方海面(≈tFar)ではなく尾根手前〜尾根上
+            expect(geo.altMeters).toBeGreaterThan(100); // 平地(0m)ではなく尾根の標高に達している
+            expect(geo.altMeters).toBeLessThanOrEqual(ridgeElevM + 1);
+        } finally {
+            warn.mockRestore();
+        }
     });
 
     it("奥端(tFar)近傍の地形標高が実際に0でない場合は最終サンプルの反転も見逃さない", () => {
