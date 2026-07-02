@@ -86,5 +86,4 @@ export async function createBabylonEngine(
  */
 function enableReverseDepthBuffer(engine: AbstractEngine): void {
     engine.useReverseDepthBuffer = true;
-    console.info("[engineFactory] reverse-Z depth buffer enabled");
 }
