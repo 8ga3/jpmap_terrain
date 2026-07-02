@@ -11,6 +11,7 @@
 import { describe, it, expect } from "@jest/globals";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { ComputeLookAtFromYawPitchToRef } from "@babylonjs/core/Cameras/geospatialCamera";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
 import { tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
 import { geodeticToEcef, ecefToGeodetic } from "../src/terrain/geo/ecef";
@@ -125,7 +126,10 @@ describe("selectGlobeTiles", () => {
     });
 
     describe("高チルト（水平気味）でも可視地表を欠けなく被覆する（#446 地平線カリング）", () => {
-        const EARTH_R = 6_371_000;
+        // `geodeticToEcef`/`ecefToGeodetic` は WGS84 楕円体（赤道半径 a）基準のため、
+        // 地表判定の球近似も平均半径ではなく a に揃える（レビュー指摘: 半径不整合による
+        // 交点ズレ・被覆率誤判定の防止）。
+        const EARTH_R = Wgs84Ellipsoid.semiMajorAxis;
         const DEG = Math.PI / 180;
         const V_FOV = 0.8;
         const ASPECT = 1920 / 1080;
