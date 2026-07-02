@@ -520,3 +520,46 @@ export const clampRadiusForGroundClearance = (
     const next = radius + deficit / dAltPerRadius;
     return Number.isFinite(next) ? next : radius;
 };
+
+/**
+ * ズーム中の毎フレーム向き補正（center 再スナップ）で、レイマーチングの地表検出（true/false）が
+ * 境界付近でちらついても補正を連続させるための「使用する center の選び方」を決める純関数。
+ *
+ * 背景: 山岳地帯でチルトを水平に近づけると、視線レイが稜線をわずかに超えて空を指す状態
+ * （地表未検出＝pick 失敗）と、山を捉える状態（pick 成功）の境界付近になりやすい。ズーム中は
+ * カメラ位置が毎フレーム動くため、この境界を数フレームにわたり断続的にまたぐ。向き補正は失敗
+ * フレームで完全に停止するため、その間ネイティブズームのフレーム結合誤差が無補正で蓄積し、次に
+ * 成功したフレームで一括補正されて画面が急に動く（ズーム終了間際のスナップ）。
+ *
+ * 対策として、pick が失敗しても「同一ズームジェスチャ内で直近に成功した実在の地表点」がまだ新しい
+ * 間はそれを補正に再利用し、補正の停止（＝誤差の一括蓄積→スナップ）を避ける。再利用するのは
+ * あくまで直近フレームで実際に検出した実在の近傍地表点であり、遠方の仮想点を捏造しない
+ * （水平チルトで遠方点へ暴走する既知不具合を再発させない）ことがこの設計の要点。
+ *
+ * @param pickSucceeded 今フレームのレイマーチングが地表交点を採用できたか。
+ * @param hasLastValid 同一ズームジェスチャ内で過去に採用できた地表点を保持しているか。
+ * @param frameGapMs 直近の成功フレームから今フレームまでの経過時間 [ms]（保持点の鮮度）。
+ * @param maxHoldMs 保持点を再利用してよい最大経過時間 [ms]。これを超えたら保持を破棄して補正を
+ *        止める（古すぎる点の再利用でカメラが的外れな向きへ寄るのを防ぐ）。0 以上の有限数。
+ * @returns "current" = 今フレームの成功結果を使う / "held" = 保持している直近の成功結果を再利用する /
+ *          "skip" = 使える center が無いので補正しない。
+ */
+export const resolveRecalcCenterSource = (
+    pickSucceeded: boolean,
+    hasLastValid: boolean,
+    frameGapMs: number,
+    maxHoldMs: number,
+): "current" | "held" | "skip" => {
+    if (pickSucceeded) return "current";
+    if (
+        hasLastValid &&
+        Number.isFinite(frameGapMs) &&
+        frameGapMs >= 0 &&
+        Number.isFinite(maxHoldMs) &&
+        maxHoldMs >= 0 &&
+        frameGapMs <= maxHoldMs
+    ) {
+        return "held";
+    }
+    return "skip";
+};
