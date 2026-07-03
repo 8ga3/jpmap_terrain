@@ -267,6 +267,20 @@ describe("projectToViewport", () => {
         const p = projectToViewport(0, 200, 0, 1000, 0, 90, FOV_Y, 1);
         expect(Math.abs(p.rx)).toBeGreaterThan(Math.abs(p.ry));
     });
+
+    it("fovYRad=0（tanHalfY=0 で rx/ry が無限）なら behind=true・rx/ry 無効化", () => {
+        const p = projectToViewport(0, 200, 0, 1000, 0, 0, 0, 1);
+        expect(p.behind).toBe(true);
+        expect(p.rx).toBe(0);
+        expect(p.ry).toBe(0);
+    });
+
+    it("fovYRad が非有限(NaN)なら behind=true・rx/ry 無効化", () => {
+        const p = projectToViewport(0, 200, 0, 1000, 0, 0, NaN, 1);
+        expect(p.behind).toBe(true);
+        expect(Number.isFinite(p.rx)).toBe(true);
+        expect(Number.isFinite(p.ry)).toBe(true);
+    });
 });
 
 describe("computeAutoScroll (projection: 実スクリーン射影ベース)", () => {

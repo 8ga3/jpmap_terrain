@@ -205,6 +205,16 @@ describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ�
         expect(boost).toBeCloseTo(400, 1);
     });
 
+    it("水平視ガードで押し出せない潜り込みフレームは現状維持（boost を戻さない）", () => {
+        // naturalRadius=1000, boost=400, dAltPerRadius=0(水平視) → naturalAlt=1100。
+        // deficit = 1000+300-1100 = 200 > 0 だが clampRadiusForGroundClearance は
+        // dAltPerRadius<1e-3 ガードで naturalRadius 据え置き → 押し出せない。
+        // このフレームは relax で追加分を戻さず現状維持すべき。
+        const s = stepGroundClearanceRadius(1400, 400, 1100, 1000, 300, 0, PUSH, RELAX);
+        expect(s.radius).toBe(1400);
+        expect(s.boost).toBe(400);
+    });
+
     it("障害が解消すると boost は 0 へ戻り radius は素の値へ復帰する（単調増加しない）", () => {
         // 追加分 400 を持った状態から、地形が十分低くなった（クリアランス余裕）フレーム。
         // naturalRadius=1400-400=1000。camAlt はその radius で余裕あり(5000)。

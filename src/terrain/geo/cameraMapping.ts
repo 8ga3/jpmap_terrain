@@ -684,6 +684,14 @@ export const stepGroundClearanceRadius = (
         minClearance,
         dAltPerRadius,
     );
+    // 潜り込み中（deficit>0）なのに clampRadiusForGroundClearance が radius を増やせなかった
+    // （水平視 dAltPerRadius≈0 や非有限などのガードで naturalRadius 据え置き）フレームは、
+    // targetBoost=0 として relax で追加分を戻すと衝突が悪化する。この場合は現状維持（radius/boost
+    // を変えない）にして、押し出せる姿勢に戻るまで既存の追加分を保つ。
+    const deficit = terrainElevMeters + minClearance - naturalAlt;
+    if (deficit > 0 && requiredRadius <= naturalRadius) {
+        return { radius, boost };
+    }
     const targetBoost = Math.max(0, requiredRadius - naturalRadius);
     const lerp = targetBoost > boost ? pushLerp : relaxLerp;
     const nextBoost = boost + (targetBoost - boost) * lerp;
