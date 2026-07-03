@@ -144,6 +144,14 @@ const MIN_GROUND_CLEARANCE = 50;
 const GROUND_CLEARANCE_PUSH_LERP = 0.3;
 const GROUND_CLEARANCE_RELAX_LERP = 0.1;
 
+/**
+ * 外部（setAltitude / setView / ホイールズーム等）による radius 直接上書きの検知しきい値（相対）。
+ * enforceGroundClearance が最後に書いた radius との差がこの相対値を超えたら「外部上書き」とみなし、
+ * 地形衝突の追加分(clearanceBoost)を破棄して現在の radius を新たな素の値として再基準化する。
+ * 我々自身が書いた値はフレーム間で厳密一致するため、通常フレームでは誤検知しない。
+ */
+const EXTERNAL_RADIUS_EPS = 1e-6;
+
 /** WASD パン対象キー。 */
 const PAN_KEYS = new Set(["w", "a", "s", "d"]);
 
@@ -1165,9 +1173,12 @@ export class GlobeScene {
         // カメラ地形衝突で radius に上乗せしている追加分[m]（enforceGroundClearance が更新）。
         // isZoomActive はこの追加分を除いた「素の radius」変化のみをズーム判定に使い、
         // enforceGroundClearance は「camera.radius - clearanceBoost」を素の radius とみなして補間する。
-        // ホイールズーム（recalculateCenterPublic）が radius を直接上書きする箇所でも参照/リセット
-        // できるよう、ここで宣言する。
         let clearanceBoost = 0;
+        // enforceGroundClearance が最後に camera.radius へ書き込んだ値。次フレームでこれと実際の
+        // camera.radius を比較し、外部（setAltitude / setView / ホイールズーム等、経路を問わず）が
+        // radius を直接上書きしていれば追加分(clearanceBoost)を破棄して現在値を新たな素の radius と
+        // みなす（同期ズレによる意図しない radius 収束を防ぐ）。
+        let lastAppliedRadius = camera.radius;
         const recalculateCenterPublic = (): void => {
             ComputeLookAtFromYawPitchToRef(
                 camera.yaw,
@@ -1214,12 +1225,9 @@ export class GlobeScene {
             camera.yaw = recalcYawPitch.x;
             camera.pitch = recalcYawPitch.y;
             camera.radius = newRadius;
-            // ズームは radius を直接上書きする。ここで確定した radius を新たな「素の値」とみなし、
-            // 地形衝突の追加分をリセットする。これをしないと、enforceGroundClearance が古い
-            // clearanceBoost を差し引いた誤った素の高度を基準に再計算し、ズーム中の意図しない
-            // radius 変動やズーム直後のカメラ急変を招く。次フレーム以降の衝突判定は上書き後の
-            // radius から新たに積み直す。
-            clearanceBoost = 0;
+            // radius をここで直接上書きする。この外部上書きは次フレーム先頭の再基準化ロジック
+            // （lastAppliedRadius との比較）が検知して clearanceBoost を破棄するため、ここでの
+            // 明示リセットは不要（全経路を単一の仕組みで扱う）。
             // 今フレーム成功した実在点のみを保持点として更新する（Dot ガード等を通過して実際に
             // 採用できた点だけを次の失敗フレームの再利用対象にする）。
             if (source === "current") {
@@ -1915,8 +1923,23 @@ export class GlobeScene {
         // camEcef / camGeo / lookAt は observer で 1 回だけ計算したものを共有する
         // （seat → 衝突で computeCameraEcef / ecefToGeodetic を二重実行しないため）。
         const enforceGroundClearance = (camEcef: Vector3, camGeo: Geodetic): void => {
+            // 外部（setAltitude / setView / ホイールズーム等、経路を問わず）が radius を直接
+            // 上書きしていれば、地形衝突の追加分を破棄して現在の radius を新たな素の値として
+            // 再基準化する。これをしないと stepGroundClearanceRadius が誤った naturalRadius
+            // （= 現在 radius − 旧 clearanceBoost）を基準にし、ユーザー設定 radius が旧ベース値へ
+            // 意図せず収束する等の挙動を招く。
+            if (
+                Math.abs(camera.radius - lastAppliedRadius) >
+                EXTERNAL_RADIUS_EPS * Math.max(1, camera.radius)
+            ) {
+                clearanceBoost = 0;
+            }
             const terrain = tileManager.terrainElevAt(camGeo.latDeg, camGeo.lonDeg);
-            if (terrain === null) return;
+            if (terrain === null) {
+                // radius を変えないので次フレームの誤検知を避けるため基準値を現在値に同期する。
+                lastAppliedRadius = camera.radius;
+                return;
+            }
             // radius あたりのカメラ高度増加率 = カメラ地心 up・(center→camera 単位方向)。
             // center→camera 単位方向は -lookAt/|lookAt|。computeCameraEcef は lookAt を
             // radius 倍にスケール済み（|lookAt|=radius）なので、内積を |camEcef|·radius で割って
@@ -1939,6 +1962,7 @@ export class GlobeScene {
             );
             camera.radius = stepped.radius;
             clearanceBoost = stepped.boost;
+            lastAppliedRadius = camera.radius;
         };
 
         // ---- 視点モード 2D/3D ----
