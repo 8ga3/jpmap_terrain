@@ -157,11 +157,14 @@ export const projectToViewport = (
 
     const tanHalfY = Math.tan(fovYRad / 2);
     const tanHalfX = tanHalfY * Math.max(aspect, 1e-6);
-    return {
-        rx: xc / zc / tanHalfX,
-        ry: yc / zc / tanHalfY,
-        behind: false,
-    };
+    const rx = xc / zc / tanHalfX;
+    const ry = yc / zc / tanHalfY;
+    // 契約: rx/ry が有限でない（fovYRad が 0/非有限で tanHalfY が 0/NaN になる等）場合は
+    // 射影不能として behind=true を返し、rx/ry を無効化する（呼び出し側の画面外扱いに寄せる）。
+    if (!Number.isFinite(rx) || !Number.isFinite(ry)) {
+        return { rx: 0, ry: 0, behind: true };
+    }
+    return { rx, ry, behind: false };
 };
 
 /**
