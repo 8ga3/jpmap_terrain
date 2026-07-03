@@ -237,8 +237,17 @@ const computeAutoScrollProjected = (
     params: AutoScrollParams,
     proj: ViewportProjection,
 ): AutoScrollResult => {
-    const { avatarLat, avatarLon, cameraLat, cameraLon, cameraAltitude, cameraTilt } =
-        params;
+    // AutoScrollParams.cameraAltitude は GeospatialCamera.radius（中心→カメラ距離）を保持する。
+    // projectToViewport には「radius」として渡すため、このスコープでは cameraRadiusM に別名化して
+    // 楕円体高度との混同を避ける。
+    const {
+        avatarLat,
+        avatarLon,
+        cameraLat,
+        cameraLon,
+        cameraTilt,
+        cameraAltitude: cameraRadiusM,
+    } = params;
 
     const rawDeadzone = params.deadzoneRatio;
     const rawLerp = params.scrollLerp;
@@ -259,7 +268,7 @@ const computeAutoScrollProjected = (
         dEastM,
         dNorthM,
         dHeightM,
-        cameraAltitude,
+        cameraRadiusM,
         cameraTilt,
         proj.cameraAzimuth,
         proj.fovYRad,
