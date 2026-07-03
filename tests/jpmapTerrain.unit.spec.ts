@@ -115,6 +115,9 @@ const createPolygonNode = (
         options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean; wallsEnabled?: boolean },
     ) => {
         let enabled = options.enabled ?? true;
+        let verticalsEnabled = options.verticalsEnabled ?? true;
+        let labelsEnabled = options.labelsEnabled ?? true;
+        let wallsEnabled = options.wallsEnabled ?? true;
         const altitudeMode = options.altitudeMode ?? "terrain";
         let elevationResolved = altitudeMode === "absolute";
         const points = options.points.map((p) => ({ ...p }));
@@ -129,18 +132,15 @@ const createPolygonNode = (
             setEnabledLogical: (v: boolean) => {
                 enabled = v;
             },
-            // 引数はインターフェース整合のためだけに受け取り、スタブでは未使用。
-            /* eslint-disable @typescript-eslint/no-unused-vars */
-            setVerticalsEnabledLogical: (_enabled: boolean) => {
-                /* no-op */
+            setVerticalsEnabledLogical: (v: boolean) => {
+                verticalsEnabled = v;
             },
-            setLabelsEnabledLogical: (_enabled: boolean) => {
-                /* no-op */
+            setLabelsEnabledLogical: (v: boolean) => {
+                labelsEnabled = v;
             },
-            setWallsEnabledLogical: (_enabled: boolean) => {
-                /* no-op */
+            setWallsEnabledLogical: (v: boolean) => {
+                wallsEnabled = v;
             },
-            /* eslint-enable @typescript-eslint/no-unused-vars */
             setElevationResolved: (v: boolean) => {
                 elevationResolved = v;
             },
@@ -153,9 +153,9 @@ const createPolygonNode = (
                 edgeLabels: undefined,
                 style: {} as unknown as PolygonHandle["style"],
                 enabled,
-                verticalsEnabled: options.verticalsEnabled ?? true,
-                labelsEnabled: options.labelsEnabled ?? true,
-                wallsEnabled: options.wallsEnabled ?? true,
+                verticalsEnabled,
+                labelsEnabled,
+                wallsEnabled,
                 elevationResolved,
             }),
             dispose: () => {
@@ -202,6 +202,10 @@ const createCircleNode = (
         options: { center: { lat: number; lon: number; altitude?: number }; radius: number; segments?: number; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; pointEnabled?: boolean; lineEnabled?: boolean; wallEnabled?: boolean; labelEnabled?: boolean },
     ) => {
         let enabled = options.enabled ?? true;
+        let pointEnabled = options.pointEnabled ?? true;
+        let lineEnabled = options.lineEnabled ?? true;
+        let wallEnabled = options.wallEnabled ?? true;
+        let labelEnabled = options.labelEnabled ?? true;
         const altitudeMode = options.altitudeMode ?? "terrain";
         let elevationResolved = altitudeMode === "absolute";
         let _center = { ...options.center };
@@ -219,13 +223,10 @@ const createCircleNode = (
             get segments() { return segments; },
             applyTransform: () => { /* no-op */ },
             setEnabledLogical: (v: boolean) => { enabled = v; },
-            // 引数はインターフェース整合のためだけに受け取り、スタブでは未使用。
-            /* eslint-disable @typescript-eslint/no-unused-vars */
-            setPointEnabledLogical: (_enabled: boolean) => { /* no-op */ },
-            setLineEnabledLogical: (_enabled: boolean) => { /* no-op */ },
-            setWallEnabledLogical: (_enabled: boolean) => { /* no-op */ },
-            setLabelEnabledLogical: (_enabled: boolean) => { /* no-op */ },
-            /* eslint-enable @typescript-eslint/no-unused-vars */
+            setPointEnabledLogical: (v: boolean) => { pointEnabled = v; },
+            setLineEnabledLogical: (v: boolean) => { lineEnabled = v; },
+            setWallEnabledLogical: (v: boolean) => { wallEnabled = v; },
+            setLabelEnabledLogical: (v: boolean) => { labelEnabled = v; },
             setElevationResolved: (v: boolean) => { elevationResolved = v; },
             getHandle: (): CircleHandle => ({
                 id,
@@ -236,10 +237,10 @@ const createCircleNode = (
                 label: null,
                 style: {} as unknown as CircleHandle["style"],
                 enabled,
-                pointEnabled: options.pointEnabled ?? true,
-                lineEnabled: options.lineEnabled ?? true,
-                wallEnabled: options.wallEnabled ?? true,
-                labelEnabled: options.labelEnabled ?? true,
+                pointEnabled,
+                lineEnabled,
+                wallEnabled,
+                labelEnabled,
                 elevationResolved,
             }),
             dispose: () => { /* no-op */ },
