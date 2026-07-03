@@ -30,6 +30,7 @@ import {
     MARKER_DEFAULTS,
     MODEL_DEFAULTS,
     POLYGON_DEFAULTS,
+    type CircleHandle,
     type CircleOptions,
     type CircleUpdate,
     type MarkerHandle,
@@ -38,6 +39,7 @@ import {
     type ModelHandle,
     type ModelOptions,
     type ModelUpdate,
+    type PolygonHandle,
     type PolygonOptions,
     type PolygonPointOptions,
     type PolygonPointPartial,
@@ -105,10 +107,9 @@ const triggerResizeObservers = (): void => {
     }
 };
 
-// `polygon.ts` は Babylon 実体に依存するため、Polygon API テストでは
-// `createPolygonNode` を軽量スタブに差し替える。
-jest.unstable_mockModule("../src/terrain/polygon", () => ({
-    createPolygonNode: (
+// Polygon API テストでは実際の Polygon ノード（Babylon 実体に依存）ではなく、
+// 振る舞いのみを再現した軽量スタブファクトリを用いる。
+const createPolygonNode = (
         _scene: unknown,
         id: string,
         options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean; wallsEnabled?: boolean },
@@ -128,25 +129,29 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
             setEnabledLogical: (v: boolean) => {
                 enabled = v;
             },
-            setVerticalsEnabledLogical: () => {
+            // 引数はインターフェース整合のためだけに受け取り、スタブでは未使用。
+            /* eslint-disable @typescript-eslint/no-unused-vars */
+            setVerticalsEnabledLogical: (_enabled: boolean) => {
                 /* no-op */
             },
-            setLabelsEnabledLogical: () => {
+            setLabelsEnabledLogical: (_enabled: boolean) => {
                 /* no-op */
             },
-            setWallsEnabledLogical: () => {
+            setWallsEnabledLogical: (_enabled: boolean) => {
                 /* no-op */
             },
+            /* eslint-enable @typescript-eslint/no-unused-vars */
             setElevationResolved: (v: boolean) => {
                 elevationResolved = v;
             },
-            getHandle: () => ({
+            getHandle: (): PolygonHandle => ({
                 id,
                 points: points.map((p) => ({ ...p })),
                 closed: options.closed ?? false,
                 altitudeMode,
                 labels: undefined,
-                style: {} as unknown as Record<string, unknown>,
+                edgeLabels: undefined,
+                style: {} as unknown as PolygonHandle["style"],
                 enabled,
                 verticalsEnabled: options.verticalsEnabled ?? true,
                 labelsEnabled: options.labelsEnabled ?? true,
@@ -187,13 +192,11 @@ jest.unstable_mockModule("../src/terrain/polygon", () => ({
                 for (const p of next) points.push({ ...p });
             },
         };
-    },
-}));
+    };
 
-// `circle.ts` は Babylon 実体に依存するため、Circle API テストでは
-// `createCircleNode` を軽量スタブに差し替える。
-jest.unstable_mockModule("../src/terrain/circle", () => ({
-    createCircleNode: (
+// Circle API テストでは実際の Circle ノード（Babylon 実体に依存）ではなく、
+// 振る舞いのみを再現した軽量スタブファクトリを用いる。
+const createCircleNode = (
         _scene: unknown,
         id: string,
         options: { center: { lat: number; lon: number; altitude?: number }; radius: number; segments?: number; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; pointEnabled?: boolean; lineEnabled?: boolean; wallEnabled?: boolean; labelEnabled?: boolean },
@@ -216,19 +219,22 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
             get segments() { return segments; },
             applyTransform: () => { /* no-op */ },
             setEnabledLogical: (v: boolean) => { enabled = v; },
-            setPointEnabledLogical: () => { /* no-op */ },
-            setLineEnabledLogical: () => { /* no-op */ },
-            setWallEnabledLogical: () => { /* no-op */ },
-            setLabelEnabledLogical: () => { /* no-op */ },
+            // 引数はインターフェース整合のためだけに受け取り、スタブでは未使用。
+            /* eslint-disable @typescript-eslint/no-unused-vars */
+            setPointEnabledLogical: (_enabled: boolean) => { /* no-op */ },
+            setLineEnabledLogical: (_enabled: boolean) => { /* no-op */ },
+            setWallEnabledLogical: (_enabled: boolean) => { /* no-op */ },
+            setLabelEnabledLogical: (_enabled: boolean) => { /* no-op */ },
+            /* eslint-enable @typescript-eslint/no-unused-vars */
             setElevationResolved: (v: boolean) => { elevationResolved = v; },
-            getHandle: () => ({
+            getHandle: (): CircleHandle => ({
                 id,
                 center: { ..._center },
                 radius: _radius,
                 segments,
                 altitudeMode,
                 label: null,
-                style: {} as unknown as Record<string, unknown>,
+                style: {} as unknown as CircleHandle["style"],
                 enabled,
                 pointEnabled: options.pointEnabled ?? true,
                 lineEnabled: options.lineEnabled ?? true,
@@ -238,11 +244,7 @@ jest.unstable_mockModule("../src/terrain/circle", () => ({
             }),
             dispose: () => { /* no-op */ },
         };
-    },
-}));
-
-const { createPolygonNode } = await import("../src/terrain/polygon");
-const { createCircleNode } = await import("../src/terrain/circle");
+    };
 
 const createMarkerManagerStub = (): MarkerManager => {
     const markers = new Map<string, MarkerHandle>();
