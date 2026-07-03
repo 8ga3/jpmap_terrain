@@ -40,7 +40,7 @@ import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     polePanSpeedMultiplier,
-    clampRadiusForGroundClearance,
+    stepGroundClearanceRadius,
     rayEllipsoidNearHitToRef,
     resolveTerrainClickElevationToRef,
     resolveRecalcCenterSource,
@@ -131,6 +131,18 @@ const PAN_RATE_PER_SEC = 0.6;
 
 /** カメラ地形衝突: 地表からの最小クリアランス[m]（URL altitude 下限と整合）。 */
 const MIN_GROUND_CLEARANCE = 50;
+
+/**
+ * カメラ地形衝突の radius 補正をスムーズに行うための補間係数。
+ * 従来は必要な radius をアニメーション無しで直接代入していたため、パンでカメラ高度が急落した
+ * フレームに radius が一段で跳ね（カメラ位置が一瞬飛ぶ）、さらに一度増えた radius が戻らず
+ * カメラがアバターから離れていった。押し出しは PUSH、制約が解けたときの復帰は RELAX で
+ * それぞれ滑らかに補間し、単調増加を避ける。
+ * - `PUSH`: 衝突回避のため radius を増やす際の 1 フレーム補間率（速め）。
+ * - `RELAX`: 衝突が解消し追加分を戻す際の 1 フレーム補間率（ゆっくり）。
+ */
+const GROUND_CLEARANCE_PUSH_LERP = 0.3;
+const GROUND_CLEARANCE_RELAX_LERP = 0.1;
 
 /** WASD パン対象キー。 */
 const PAN_KEYS = new Set(["w", "a", "s", "d"]);
@@ -1150,6 +1162,12 @@ export class GlobeScene {
         const recalcLastValidCenter = new Vector3();
         let recalcLastValidTimeMs = Number.NEGATIVE_INFINITY;
         let recalcHasLastValid = false;
+        // カメラ地形衝突で radius に上乗せしている追加分[m]（enforceGroundClearance が更新）。
+        // isZoomActive はこの追加分を除いた「素の radius」変化のみをズーム判定に使い、
+        // enforceGroundClearance は「camera.radius - clearanceBoost」を素の radius とみなして補間する。
+        // ホイールズーム（recalculateCenterPublic）が radius を直接上書きする箇所でも参照/リセット
+        // できるよう、ここで宣言する。
+        let clearanceBoost = 0;
         const recalculateCenterPublic = (): void => {
             ComputeLookAtFromYawPitchToRef(
                 camera.yaw,
@@ -1196,6 +1214,12 @@ export class GlobeScene {
             camera.yaw = recalcYawPitch.x;
             camera.pitch = recalcYawPitch.y;
             camera.radius = newRadius;
+            // ズームは radius を直接上書きする。ここで確定した radius を新たな「素の値」とみなし、
+            // 地形衝突の追加分をリセットする。これをしないと、enforceGroundClearance が古い
+            // clearanceBoost を差し引いた誤った素の高度を基準に再計算し、ズーム中の意図しない
+            // radius 変動やズーム直後のカメラ急変を招く。次フレーム以降の衝突判定は上書き後の
+            // radius から新たに積み直す。
+            clearanceBoost = 0;
             // 今フレーム成功した実在点のみを保持点として更新する（Dot ガード等を通過して実際に
             // 採用できた点だけを次の失敗フレームの再利用対象にする）。
             if (source === "current") {
@@ -1814,11 +1838,16 @@ export class GlobeScene {
 
         // ズーム中（ホイール入力〜慣性減衰）か否かを判定する。ホイールが idle かつ radius が
         // フレーム間で settle したら「ズーム終了」とみなし seat を復帰させる。
-        let prevRadius = camera.radius;
+        // 地形衝突補正（clearanceBoost）や自動スクロール由来の radius 変動を「ズーム操作中」と
+        // 誤判定しないよう、追加分を除いた素の radius でのみ settle を評価する。移動操作中に
+        // ユーザーがホイール操作をしなければ素の radius は変わらないため、ズーム扱いにならない。
+        let prevNaturalRadius = camera.radius - clearanceBoost;
         const isZoomActive = (): boolean => {
-            const radiusDelta = Math.abs(camera.radius - prevRadius);
-            const settling = radiusDelta > ZOOM_SETTLE_RATIO * Math.max(1, camera.radius);
-            prevRadius = camera.radius;
+            const naturalRadius = camera.radius - clearanceBoost;
+            const radiusDelta = Math.abs(naturalRadius - prevNaturalRadius);
+            const settling =
+                radiusDelta > ZOOM_SETTLE_RATIO * Math.max(1, naturalRadius);
+            prevNaturalRadius = naturalRadius;
             return performance.now() - lastWheelTimeMs < ZOOM_PAUSE_IDLE_MS || settling;
         };
 
@@ -1895,14 +1924,21 @@ export class GlobeScene {
             const denom = Math.max(1, camEcef.length()) * Math.max(1, camera.radius);
             const dAltPerRadius =
                 -(camEcef.x * lookAt.x + camEcef.y * lookAt.y + camEcef.z * lookAt.z) / denom;
-            const newRadius = clampRadiusForGroundClearance(
+            // 追加分(clearanceBoost)を除いた素の radius/高度を基準にスムーズ補間で 1 フレーム進める。
+            // これにより radius がアニメーション無しで一段に跳ねず、障害が解消すれば追加分が戻る
+            // （単調増加を避ける）。
+            const stepped = stepGroundClearanceRadius(
                 camera.radius,
+                clearanceBoost,
                 camGeo.altMeters,
                 terrain,
                 MIN_GROUND_CLEARANCE,
                 dAltPerRadius,
+                GROUND_CLEARANCE_PUSH_LERP,
+                GROUND_CLEARANCE_RELAX_LERP,
             );
-            if (newRadius !== camera.radius) camera.radius = newRadius;
+            camera.radius = stepped.radius;
+            clearanceBoost = stepped.boost;
         };
 
         // ---- 視点モード 2D/3D ----
