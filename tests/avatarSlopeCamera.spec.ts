@@ -213,8 +213,12 @@ test("Avatar stays within viewport while moving on sloped terrain with WebGL2", 
     // 前進キーを押し続け、一定距離（`MOVE_DISTANCE_M`）進んだ時点で離す。
     // ピクセル単位で完全決定的な「経過フレーム数」ではなく「移動距離」を
     // 停止条件にすることで、実行環境の速度差による flaky を避ける。
+    // `sampleCap` はあくまで安全弁（回帰でアバターが動かなくなった場合に
+    // 無限ポーリングを避けるためのもの）であり、そちらで打ち切られた場合は
+    // 「所定距離を移動できなかった」異常系として明示的にテストを失敗させる
+    // （`dist`/`samples` を返し、下記で `reachedCap` を検証する）。
     await page.keyboard.down("KeyW");
-    await page.waitForFunction(
+    const moveResultHandle = await page.waitForFunction(
         ({ moveDistanceM, sampleCap, metersPerDegLat }) => {
             const w = window as unknown as {
                 viewer?: DemoViewer;
@@ -236,7 +240,11 @@ test("Avatar stays within viewport while moving on sloped terrain with WebGL2", 
                 metersPerDegLat *
                 Math.cos((start.lat * Math.PI) / 180);
             const dist = Math.hypot(dLat, dLon);
-            return dist > moveDistanceM || w.__avatarSlopeSamples > sampleCap;
+            const samples = w.__avatarSlopeSamples;
+            if (dist > moveDistanceM || samples > sampleCap) {
+                return { dist, samples };
+            }
+            return false;
         },
         {
             moveDistanceM: MOVE_DISTANCE_M,
@@ -245,6 +253,17 @@ test("Avatar stays within viewport while moving on sloped terrain with WebGL2", 
         },
         { timeout: 30000, polling: "raf" },
     );
+    const moveResult = await moveResultHandle.jsonValue();
+    // `waitForFunction` はここでは常に truthy（オブジェクト）を返して解決するはずだが、
+    // 型上は `false` も取り得るため明示的に narrowing しておく。
+    if (moveResult === false) {
+        throw new Error("[avatarSlopeCamera] waitForFunction resolved without a result payload");
+    }
+
+    // sampleCap（安全弁）で打ち切られていない = 所定距離まで正常に移動できたことを明示的に検証する。
+    // ここが崩れる場合、待機が「移動できていない」異常系のまま偽陽性で成功してしまう回帰を防ぐ。
+    expect(moveResult.samples).toBeLessThanOrEqual(MOVE_SAMPLE_CAP);
+    expect(moveResult.dist).toBeGreaterThan(MOVE_DISTANCE_M);
 
     // 移動中（キーを離す直前）のスクリーンショット。
     // アバターが画面外/画面ギリギリに出ていないことを確認する。
@@ -274,17 +293,26 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
     // 前進キーを押しっぱなしにしつつ、ブラウザ側の rAF ループでフレーム毎に
     // `viewer.altitude`（ズーム相当）をサンプリングする。移動距離
     // (`MOVE_DISTANCE_M`) に到達したら自動的にループを終了する。
+    // `sampleCap` は安全弁であり、そちらで打ち切られた場合は「所定距離を
+    // 移動できなかった」異常系として `reachedCap` で検知し、後段で明示的に
+    // アサートする（偽陽性でテストが成功してしまうのを防ぐ）。
     await page.keyboard.down("KeyW");
-    const altitudeSamples = await page.evaluate(
+    const { samples: altitudeSamples, finalDistance, reachedCap } = await page.evaluate(
         async ({ moveDistanceM, sampleCap, metersPerDegLat }) => {
             const viewer = (window as unknown as { viewer: DemoViewer })
                 .viewer;
             const start = viewer.getModel("avatar");
-            if (!start) return [];
+            if (!start) {
+                return { samples: [] as number[], finalDistance: 0, reachedCap: false };
+            }
             const startLat = start.lat;
             const startLon = start.lon;
             const samples: number[] = [];
-            return await new Promise<number[]>((resolve) => {
+            return await new Promise<{
+                samples: number[];
+                finalDistance: number;
+                reachedCap: boolean;
+            }>((resolve) => {
                 const tick = (): void => {
                     samples.push(viewer.altitude);
                     const model = viewer.getModel("avatar");
@@ -295,7 +323,11 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
                         Math.cos((startLat * Math.PI) / 180);
                     const dist = Math.hypot(dLat, dLon);
                     if (dist > moveDistanceM || samples.length > sampleCap) {
-                        resolve(samples);
+                        resolve({
+                            samples,
+                            finalDistance: dist,
+                            reachedCap: !(dist > moveDistanceM),
+                        });
                         return;
                     }
                     requestAnimationFrame(tick);
@@ -310,6 +342,10 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
         },
     );
     await page.keyboard.up("KeyW");
+
+    // sampleCap（安全弁）で打ち切られていない = 所定距離まで正常に移動できたことを明示的に検証する。
+    expect(reachedCap).toBe(false);
+    expect(finalDistance).toBeGreaterThan(MOVE_DISTANCE_M);
 
     // 移動後、自動スクロールのイージングとタイル安定を待ってから停止状態を確定する。
     await waitForFrames(page, 60);
