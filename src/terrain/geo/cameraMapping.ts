@@ -636,6 +636,60 @@ export const clampRadiusForGroundClearance = (
     return Number.isFinite(next) ? next : radius;
 };
 
+/** {@link stepGroundClearanceRadius} の結果。 */
+export interface GroundClearanceStep {
+    /** 補正後の radius[m]。 */
+    radius: number;
+    /** 補正後の追加分[m]（次フレームへ持ち越す）。 */
+    boost: number;
+}
+
+/**
+ * カメラ地形衝突の radius 補正を 1 フレーム分だけスムーズに進める。
+ *
+ * `clampRadiusForGroundClearance` が求める必要 radius を直接代入するとカメラ位置が一段で
+ * 跳ね、また一度増えた radius が戻らずカメラが被写体から離れていく。これを避けるため:
+ * - 追加分 `boost` を除いた「素の radius / 高度」を基準に必要 radius（= 目標追加分）を求める。
+ *   これにより目標追加分が前フレームの補正量に依存せず一意に決まり、押し出しと復帰が振動しない。
+ * - 押し出し（増加）は `pushLerp`、復帰（減少）は `relaxLerp` で補間する。障害が解消すると
+ *   目標追加分は 0 になり `boost` は 0 へ戻り、radius は素の値へ復帰する（単調増加を避ける）。
+ *
+ * @param radius            現在の radius[m]（前フレームの追加分を含む）。
+ * @param boost             現在の追加分[m]（前フレームから持ち越した補正量）。
+ * @param camAltMeters      現在の radius に対応するカメラの楕円体高度[m]。
+ * @param terrainElevMeters カメラ直下の地形標高[m]。
+ * @param minClearance      地表からの最小クリアランス[m]。
+ * @param dAltPerRadius     radius あたりのカメラ高度増加率。
+ * @param pushLerp          押し出し（増加）の 1 フレーム補間率 (0〜1)。
+ * @param relaxLerp         復帰（減少）の 1 フレーム補間率 (0〜1)。
+ * @returns 補正後の radius と追加分。
+ */
+export const stepGroundClearanceRadius = (
+    radius: number,
+    boost: number,
+    camAltMeters: number,
+    terrainElevMeters: number,
+    minClearance: number,
+    dAltPerRadius: number,
+    pushLerp: number,
+    relaxLerp: number,
+): GroundClearanceStep => {
+    // 追加分を除いた素の radius / 高度（高度は radius に線形と近似）。
+    const naturalRadius = radius - boost;
+    const naturalAlt = camAltMeters - boost * dAltPerRadius;
+    const requiredRadius = clampRadiusForGroundClearance(
+        naturalRadius,
+        naturalAlt,
+        terrainElevMeters,
+        minClearance,
+        dAltPerRadius,
+    );
+    const targetBoost = Math.max(0, requiredRadius - naturalRadius);
+    const lerp = targetBoost > boost ? pushLerp : relaxLerp;
+    const nextBoost = boost + (targetBoost - boost) * lerp;
+    return { radius: naturalRadius + nextBoost, boost: nextBoost };
+};
+
 /**
  * ズーム中の毎フレーム向き補正（center 再スナップ）で、レイマーチングの地表検出（true/false）が
  * 境界付近でちらついても補正を連続させるための「使用する center の選び方」を決める純関数。

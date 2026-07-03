@@ -69,6 +69,12 @@ const MAX_CLICK_DISTANCE_M = 5000;
 /** 移動を「歩行中」とみなす入力強度の閾値 */
 const MOVING_THRESHOLD = 0.05;
 
+/**
+ * 自動スクロールの実スクリーン射影に用いる垂直 FOV (rad)。
+ * globe の GeospatialCamera は fov を明示設定せず Babylon 既定値 0.8 rad を使うためこれに合わせる。
+ */
+const CAMERA_FOV_Y_RAD = 0.8;
+
 const WALK_ANIM = "rig-action";
 
 const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
@@ -462,6 +468,15 @@ const start = async (): Promise<void> => {
         if (isMovingForScroll && autoScrollEnabled) {
             const cameraLatNow = viewer.lat;
             const cameraLonNow = viewer.lon;
+            // 実スクリーン射影で判定するため、カメラ中心とアバター直下の地形標高・アスペクト比を渡す。
+            // 勾配地形でアバターが画面外に出るのを防ぐ。標高が未解決(null)なら 0 とみなす。
+            const camGroundElevation =
+                viewer.terrainElevAt(cameraLatNow, cameraLonNow) ?? 0;
+            const avatarGroundElevation =
+                viewer.terrainElevAt(avatarLat, avatarLon) ?? 0;
+            const viewW = mount.clientWidth;
+            const viewH = mount.clientHeight;
+            const aspect = viewH > 0 ? viewW / viewH : 1;
             const scroll = computeAutoScroll({
                 avatarLat,
                 avatarLon,
@@ -471,6 +486,13 @@ const start = async (): Promise<void> => {
                 cameraTilt: viewer.tilt,
                 deadzoneRatio: DEFAULT_DEADZONE_RATIO,
                 scrollLerp: DEFAULT_SCROLL_LERP,
+                projection: {
+                    cameraAzimuth: viewer.azimuth,
+                    fovYRad: CAMERA_FOV_Y_RAD,
+                    aspect,
+                    avatarGroundElevation,
+                    cameraGroundElevation: camGroundElevation,
+                },
             });
             if (scroll.scrolled) {
                 // globe: カメラ中心を直接動かす。タイルは camera.center 駆動で

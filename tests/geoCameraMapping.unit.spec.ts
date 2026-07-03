@@ -22,6 +22,7 @@ import {
     panCenterOnSphereToRef,
     polePanSpeedMultiplier,
     clampRadiusForGroundClearance,
+    stepGroundClearanceRadius,
     rayEllipsoidNearHitToRef,
     resolveTerrainClickElevationToRef,
     resolveRecalcCenterSource,
@@ -161,6 +162,62 @@ describe("clampRadiusForGroundClearance", () => {
         // NaN は < 1e-3 判定を素通りするため明示ガードが必要（camera.radius=NaN 防止）。
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, NaN)).toBe(1000);
         expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, Infinity)).toBe(1000);
+    });
+});
+
+describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ化・復帰)", () => {
+    const PUSH = 0.3;
+    const RELAX = 0.1;
+    const MIN = 50;
+    const D = 0.5; // dAltPerRadius
+
+    it("クリアランスに余裕があれば radius/boost は変化しない", () => {
+        // camAlt=5000 >> terrain(1000)+MIN。boost=0。
+        const s = stepGroundClearanceRadius(60000, 0, 5000, 1000, MIN, D, PUSH, RELAX);
+        expect(s.radius).toBeCloseTo(60000, 6);
+        expect(s.boost).toBeCloseTo(0, 6);
+    });
+
+    it("潜り込み時は 1 フレームで一気に必要 radius へ跳ねず、押し出しは PUSH 補間で緩やか", () => {
+        // naturalRadius=1000, camAlt=1100, terrain=1000, MIN=300 → deficit=200,
+        // required=1000+200/0.5=1400, targetBoost=400。1フレーム目 boost=400*PUSH=120。
+        const s = stepGroundClearanceRadius(1000, 0, 1100, 1000, 300, D, PUSH, RELAX);
+        expect(s.boost).toBeCloseTo(120, 6);
+        expect(s.radius).toBeCloseTo(1120, 6);
+        // 直接代入（1400）より小さい＝一段でジャンプしない。
+        expect(s.radius).toBeLessThan(1400);
+    });
+
+    it("潜り込みが続くと数フレームで必要 radius へ収束する（振動しない）", () => {
+        let radius = 1000;
+        let boost = 0;
+        // camAlt は radius に線形（camAlt = baseAlt + (radius-baseRadius)*D）と近似して駆動。
+        const baseRadius = 1000;
+        const baseAlt = 1100;
+        for (let i = 0; i < 60; i++) {
+            const camAlt = baseAlt + (radius - baseRadius) * D;
+            const s = stepGroundClearanceRadius(radius, boost, camAlt, 1000, 300, D, PUSH, RELAX);
+            radius = s.radius;
+            boost = s.boost;
+        }
+        // required=1400 相当（deficit を D で割った分）に収束。
+        expect(radius).toBeCloseTo(1400, 1);
+        expect(boost).toBeCloseTo(400, 1);
+    });
+
+    it("障害が解消すると boost は 0 へ戻り radius は素の値へ復帰する（単調増加しない）", () => {
+        // 追加分 400 を持った状態から、地形が十分低くなった（クリアランス余裕）フレーム。
+        // naturalRadius=1400-400=1000。camAlt はその radius で余裕あり(5000)。
+        let radius = 1400;
+        let boost = 400;
+        // RELAX=0.1 の指数減衰で 0 へ漸近する。十分なフレーム数で素の値へ戻ることを確認。
+        for (let i = 0; i < 200; i++) {
+            const s = stepGroundClearanceRadius(radius, boost, 5000, 0, MIN, D, PUSH, RELAX);
+            radius = s.radius;
+            boost = s.boost;
+        }
+        expect(boost).toBeCloseTo(0, 3);
+        expect(radius).toBeCloseTo(1000, 3);
     });
 });
 

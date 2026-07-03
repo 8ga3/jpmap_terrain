@@ -50,7 +50,7 @@ import type {
     GlobeModelUpdate,
     GlobeModelState,
 } from "../src/terrain/geo/globeModelManager";
-import { geodeticToEcef } from "../src/terrain/geo/ecef";
+import { geodeticToEcef, ecefToGeodetic } from "../src/terrain/geo/ecef";
 
 /** camera のみ参照する軽量スタブ GlobeSceneController を作る。 */
 const makeStub = (
@@ -186,6 +186,24 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
         c.setLon(140.25);
         expect(c.getLat()).toBeCloseTo(36.5, 4);
         expect(c.getLon()).toBeCloseTo(140.25, 4);
+    });
+
+    it("setLat/setLon はパン時に中心の高度(標高)を保持する（0へリセットしない）", () => {
+        // 回帰: 以前は setCenterLatLon が高度 0（海面）へリセットしていたため、パンのたびに
+        // 中心が地表下へ落ち、対地クリアランス補正が radius を押し上げてカメラが被写体から
+        // 離れていく症状を招いた（enforceGroundClearance との悪連携）。現在高度を維持することで
+        // これを断つ。ここでは setCenterLatLon 側（高度維持）の回帰を検証する。
+        const { gc } = makeStub(35, 139, 1000, 0, 0);
+        const cam = (gc as unknown as { camera: { center: Vector3 } }).camera;
+        // 地形標高 300m 相当の高度を持つ中心に設定してからパンする。
+        cam.center = geodeticToEcef(35, 139, 300);
+        const c = createGlobeSceneController(gc, "std");
+        c.setLat(35.5);
+        c.setLon(139.5);
+        const after = ecefToGeodetic(cam.center);
+        expect(after.altMeters).toBeCloseTo(300, 0); // 0 にリセットされていない
+        expect(c.getLat()).toBeCloseTo(35.5, 4);
+        expect(c.getLon()).toBeCloseTo(139.5, 4);
     });
 
     it("setAltitude は camera.radius に反映される", () => {

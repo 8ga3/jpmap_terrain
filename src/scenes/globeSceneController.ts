@@ -1400,9 +1400,19 @@ export const createGlobeSceneController = (
         return { latDeg: g.latDeg, lonDeg: g.lonDeg };
     };
 
-    /** lat/lon を中心へ反映する（高度は seat-on-terrain が地表へ再吸着）。 */
+    /**
+     * lat/lon を中心へ反映する（パン）。高度は現在のカメラ中心の楕円体高度を引き継ぐ。
+     *
+     * 以前は高度を 0（海面）へリセットしていたが、パンのたびに中心が地表下へ落ち込み、
+     * seat-on-terrain の緩補間が追いつく数フレームの間にカメラの対地クリアランスが不足して
+     * ground-clearance 補正が radius を押し上げ、結果としてカメラがアバターから離れていく
+     * 症状を招いていた。現在高度を維持することでパン中の鉛直方向のばたつきを断つ
+     * （地表への微調整は seat-on-terrain が担う）。
+     */
     const setCenterLatLon = (latDeg: number, lonDeg: number): void => {
-        camera.center = geodeticToEcef(latDeg, lonDeg, 0);
+        const current = ecefToGeodetic(camera.center);
+        const altMeters = Number.isFinite(current.altMeters) ? current.altMeters : 0;
+        camera.center = geodeticToEcef(latDeg, lonDeg, altMeters);
     };
 
     // 外部追従カメラ（flight FollowCamera 等）によるタイル制御フラグ。
