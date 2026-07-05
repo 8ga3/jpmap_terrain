@@ -94,7 +94,7 @@ const BASE_LAYER_TEXTURE_TINT = new Color3(1, 1, 1);
  * `globeLod` の SSE 距離累進（`SSE_FALLOFF_RATE`）により、低高度から遠方（例: 東京駅〜富士山
  * 間 ≈100km）を注視すると root zoom が minZoom を下回ることがあるが、この距離帯は実 DEM が
  * あれば地形表現が重要（#457）。東京駅（丸の内）〜富士山山頂の実距離は約100.5km あり、
- * 100km ちょうどでは境界未満に切り捨てられてしまうため、これを確実に上回る値にする。
+ * これを確実に含むよう 150km（100.5km に対し十分な安全マージンを確保した値）を選んでいる。
  * 全球視点（`GLOBAL_VIEW_EARTH_ANG_RADIUS` 相当、高度 ≳1,200km で発生する distance）には
  * 影響しないよう、全球距離とは一桁近く離れた値に設定する。
  * 注: この閾値は東京〜富士山ケースに限らず、「zoom<minZoom かつ distance≤150km」に該当する
