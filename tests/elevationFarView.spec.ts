@@ -1,7 +1,9 @@
 import { test, expect } from "./tileCache.fixture";
 
 /**
- * Issue #457: 標高タイルの地形表現を遠方（約50km、東京-富士山相当）まで維持する回帰テスト。
+ * Issue #457: 標高タイルの地形表現を遠方まで維持する回帰テスト。
+ * 本テストのシナリオは富士山から約50km（実際の東京駅〜富士山は約100.5kmあり、
+ * 本テストの距離とは異なる。詳細は補足2を参照）。
  *
  * 富士山（山頂）から南東へ約50km（小田原よりやや南、真鶴・湯河原方面）の地点を注視点
  * （`avatar-controller.html` の `lat`/`lon`、`GeospatialCamera` の center に相当。

@@ -627,7 +627,7 @@ describe("createGlobeTileManager", () => {
         expect(mesh.isEnabled()).toBe(true); // onError 後は表示（白でもホールより良い）
     });
 
-    it("zoom < minZoom でも近距離（東京〜富士山相当）なら標高ロード完了を待って建築する", async () => {
+    it("zoom < minZoom でも近距離（距離閾値 ELEVATION_RELEVANT_MAX_DISTANCE_M 未満）なら標高ロード完了を待って建築する", async () => {
         // minZoom=10・zoom=9 でも distance=60000（ELEVATION_RELEVANT_MAX_DISTANCE_M=150000 未満）
         // なら標高が視覚的に意味を持つとみなし、ロード中は建築をスキップする（#457）。
         selectedTiles = [tile(50, 50, 9, 60_000)];
