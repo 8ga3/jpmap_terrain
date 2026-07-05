@@ -990,7 +990,7 @@ export const createGlobeTileManager = (
             const cachedElev = elevCache.get(gk);
             // 標高が視覚的に意味を持つか。固定 minZoom ではなく、カメラ距離も考慮する
             // （`ELEVATION_RELEVANT_MAX_DISTANCE_M` 参照）。`globeLod` の SSE 距離累進で root zoom
-            // が minZoom を下回っても、東京〜富士山間（≈50km）のような近距離では実 DEM があれば
+            // が minZoom を下回っても、東京駅〜富士山間（≈100.5km）のような近距離では実 DEM があれば
             // 地形表現を維持したい（#457）。全球視点（distance が極めて大きい）は従来どおり
             // 「標高が視覚的に無意味」として扱う。
             const isElevationRelevant =

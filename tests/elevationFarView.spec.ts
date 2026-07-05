@@ -47,7 +47,13 @@ const FUJI_LON = 138.7274;
 const CAMERA_LAT = 35.240785;
 const CAMERA_LON = 139.258448;
 
-/** カメラの向き [deg]（0=北, +=東回り）。実測により富士山が視界に入ることを確認した値。 */
+/**
+ * カメラの向き [deg]（0=北, +=東回り、`GeospatialCamera.yaw` の規約 "0 = north,
+ * π/2 = east" に準拠）。実測により富士山が視界に入ることを確認した値。
+ * 注: `src/demos/avatar-controller/cameraControl.ts` のコメントは「反時計回り正」と
+ * 記載しているが、`GeospatialCamera` 本体のドキュメント（および本テストでの実機確認）
+ * とは逆であり、そちらのコメントが実態と食い違っている可能性がある（別課題、本PRの対象外）。
+ */
 const CAMERA_AZIMUTH_TO_FUJI = 0;
 
 /** カメラ高度 [m]。地表付近の低空から遠景の富士山を望む構図にする。 */
@@ -141,7 +147,7 @@ async function waitForViewerReady(
     );
 }
 
-test("富士山から東50km地点から望む地形が海面フラット化せず標高を維持する（#457）", async ({
+test("富士山から南東50km地点から望む地形が海面フラット化せず標高を維持する（#457）", async ({
     page,
 }, testInfo) => {
     test.setTimeout(SCENE_TEST_TIMEOUT_MS);
