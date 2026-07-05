@@ -3,8 +3,10 @@ import { test, expect } from "./tileCache.fixture";
 /**
  * Issue #457: 標高タイルの地形表現を遠方（約50km、東京-富士山相当）まで維持する回帰テスト。
  *
- * 富士山（山頂）から南東へ約50km（小田原よりやや南、真鶴・湯河原方面）の地点にカメラを置き、
- * 低空・水平寄りのチルトで遠景を望む視点を作る。**主たる検証はスクリーンショット比較**
+ * 富士山（山頂）から南東へ約50km（小田原よりやや南、真鶴・湯河原方面）の地点を注視点
+ * （`avatar-controller.html` の `lat`/`lon`、`GeospatialCamera` の center に相当。
+ * カメラ自身の位置ではない）に設定し、低空・水平寄りのチルトで遠景を望む視点を作る。
+ * **主たる検証はスクリーンショット比較**
  * （富士山の稜線が遠景に破綻なく表示されること）で、`terrainElevAt` による数値検証は
  * 補助的な確認として添える（この距離・視点では zoom>=minZoom が選ばれ、後述の制限に
  * 抵触しないため数値検証も機能する）。
@@ -43,7 +45,10 @@ import { test, expect } from "./tileCache.fixture";
 const FUJI_LAT = 35.3606;
 const FUJI_LON = 138.7274;
 
-/** 富士山から南東へ約50km（真鶴・湯河原方面）の地点。 */
+/**
+ * 富士山から南東へ約50km（真鶴・湯河原方面）の地点。カメラ自身の位置ではなく、
+ * `avatar-controller.html` の `lat`/`lon`（= `GeospatialCamera` の注視点/center）に渡す値。
+ */
 const CAMERA_LAT = 35.240785;
 const CAMERA_LON = 139.258448;
 
