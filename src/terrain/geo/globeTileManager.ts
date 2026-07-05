@@ -89,6 +89,19 @@ const BASE_LAYER_OCEAN = new Color3(0.16, 0.26, 0.36);
  */
 const BASE_LAYER_TEXTURE_TINT = new Color3(1, 1, 1);
 
+/**
+ * 標高が視覚的に意味を持つとみなす、固定 minZoom 判定の代替として使うカメラ距離上限 [m]。
+ * `globeLod` の SSE 距離累進（`SSE_FALLOFF_RATE`）により、低高度から遠方（例: 東京駅〜富士山
+ * 間 ≈100km）を注視すると root zoom が minZoom を下回ることがあるが、この距離帯は実 DEM が
+ * あれば地形表現が重要（#457）。東京駅（丸の内）〜富士山山頂の実距離は約100.5km あり、
+ * 100km ちょうどでは境界未満に切り捨てられてしまうため、これを確実に上回る値にする。
+ * 全球視点（`GLOBAL_VIEW_EARTH_ANG_RADIUS` 相当、高度 ≳1,200km で発生する distance）には
+ * 影響しないよう、全球距離とは一桁近く離れた値に設定する。
+ * 注: この閾値は東京〜富士山ケースに限らず、「zoom<minZoom かつ distance≤150km」に該当する
+ * 全タイル（中高度からの広域見渡し視点等）に一様適用される。
+ */
+const ELEVATION_RELEVANT_MAX_DISTANCE_M = 150_000;
+
 /** 標高タイル取得失敗時の再試行バックオフ初期値 [ms]。 */
 const FAILED_RETRY_BASE_MS = 5_000;
 /** 同・上限 [ms]（no-data タイルを叩き続けないための頭打ち）。 */
@@ -975,20 +988,27 @@ export const createGlobeTileManager = (
             const { gz, gx, gy } = geomCoordOf(t);
             const gk = tileKey(gz, gx, gy);
             const cachedElev = elevCache.get(gk);
+            // 標高が視覚的に意味を持つか。固定 minZoom ではなく、カメラ距離も考慮する
+            // （`ELEVATION_RELEVANT_MAX_DISTANCE_M` 参照）。`globeLod` の SSE 距離累進で root zoom
+            // が minZoom を下回っても、東京〜富士山間（≈50km）のような近距離では実 DEM があれば
+            // 地形表現を維持したい（#457）。全球視点（distance が極めて大きい）は従来どおり
+            // 「標高が視覚的に無意味」として扱う。
+            const isElevationRelevant =
+                t.zoom >= minZoom || t.distance <= ELEVATION_RELEVANT_MAX_DISTANCE_M;
             // 実標高が未取得（ロード中 or 取得失敗でバックオフ中）の場合の暫定値（海面フラット 0m）。
             // ただしフラットで暫定建築するのは「取得失敗でバックオフ中(failedRetryAt)」または
-            // 「minZoom 未満（高高度で標高が無意味）」に限る。それ以外（minZoom 以上のロード中）は
-            // 直後の分岐で建築自体をスキップする（フラット→実標高の近景チラつきを避けるため）。
+            // 「標高が視覚的に無意味（isElevationRelevant=false）」に限る。それ以外（有意義な
+            // ロード中）は直後の分岐で建築自体をスキップする（フラット→実標高の近景チラつきを避ける）。
             // loadElevationTile は no-data(404) と一時的障害を区別できないため、失敗は一律バックオフ
             // 扱い。実標高が届いたら次 sync で実標高へ再構築（sig で検知）、失敗継続なら海面のまま残す。
             const isFlatFallback = !cachedElev;
             let geomElev = cachedElev ?? FLAT_SEA_ELEV;
 
-            // 標高が視覚的に意味を持つ zoom レベル（minZoom 以上）では、標高ロード中は建築をスキップ。
+            // 標高が視覚的に意味を持つ（isElevationRelevant）場合は、標高ロード中は建築をスキップ。
             // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため。
             // - failedRetryAt（取得失敗でバックオフ中）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
-            // - minZoom 未満（高高度グローバルビュー）は標高が視覚的に無意味なので即建築。
-            if (isFlatFallback && !failedRetryAt.has(gk) && t.zoom >= minZoom) continue;
+            // - 標高が視覚的に無意味（全球視点等）なら即建築。
+            if (isFlatFallback && !failedRetryAt.has(gk) && isElevationRelevant) continue;
 
             // 暫定平坦建築の代表標高[m]（sig へ反映し、隣接ロードで値が変われば再建築させる）。
             let repElev: number | undefined;
@@ -997,8 +1017,8 @@ export const createGlobeTileManager = (
             //     GSI は水域の高 zoom タイルを 404 で配信しないため、従来は FLAT_SEA_ELEV(0m) で
             //     平坦建築され「湖中央が 0m に沈む（≒900m クレーター）」原因になっていた。
             //     隣接タイルの接線標高（湖岸/湖面 ≒ 湖面標高）で平坦化し、段差無く連続させる。
-            //     隣接も全て無効なら従来どおり 0m（外洋として妥当）。高高度(minZoom 未満)は標高無意味。
-            if (isFlatFallback && t.zoom >= minZoom) {
+            //     隣接も全て無効なら従来どおり 0m（外洋として妥当）。標高が無意味な距離帯は対象外。
+            if (isFlatFallback && isElevationRelevant) {
                 repElev = coarseSeed.get(gk) ?? neighborRepElev(gz, gx, gy) ?? lastRepElev;
                 if (repElev !== undefined) geomElev = flatElevArray(repElev);
             }
@@ -1009,7 +1029,7 @@ export const createGlobeTileManager = (
             //     暫定代表標高（粗ズーム祖先 ?? 隣接接線 ?? 直近代表標高 ?? referenceAltitude）で平坦建築。
             //     地図テクスチャは標高非依存で読まれるため、湖面相当の高さに平坦な正しい地図が描かれる。
             //     `refineAllNaNTiles` が正確な湖面標高で確定（allNanGeom から除外）し次第、sig 差分で再建築。
-            const isAllNanPending = !!cachedElev && allNanGeom.has(gk) && t.zoom >= minZoom;
+            const isAllNanPending = !!cachedElev && allNanGeom.has(gk) && isElevationRelevant;
             if (isAllNanPending) {
                 repElev =
                     coarseSeed.get(gk) ??
@@ -1030,7 +1050,7 @@ export const createGlobeTileManager = (
             // 再建築スキップが、無駄な全コピーを伴わないようにするため（レビュー指摘）。
             let stitchNeighbors: StitchNeighbors | undefined;
             let stitchSig = "";
-            if (!isFlatFallback && !isAllNanPending && t.zoom >= minZoom) {
+            if (!isFlatFallback && !isAllNanPending && isElevationRelevant) {
                 const { neighbors, sig: nSig } = collectSameZoomNeighbors(gz, gx, gy);
                 if (nSig.length > 0) {
                     stitchNeighbors = neighbors;
