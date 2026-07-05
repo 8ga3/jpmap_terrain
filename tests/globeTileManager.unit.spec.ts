@@ -118,12 +118,12 @@ interface SelTile {
     tileSizeMeters: number;
     distance: number;
 }
-const tile = (x: number, y: number, zoom = 10): SelTile => ({
+const tile = (x: number, y: number, zoom = 10, distance = 60000): SelTile => ({
     zoom,
     x,
     y,
     tileSizeMeters: 1000,
-    distance: 60000,
+    distance,
 });
 let selectedTiles: SelTile[] = [tile(100, 100)];
 jest.unstable_mockModule("../src/terrain/geo/globeLod", () => ({
@@ -627,12 +627,26 @@ describe("createGlobeTileManager", () => {
         expect(mesh.isEnabled()).toBe(true); // onError 後は表示（白でもホールより良い）
     });
 
-    it("zoom < minZoom の高高度タイルは標高ロード中でも即時建築する", async () => {
-        // minZoom=10 なので zoom=9 は「高高度・標高不要」扱い。
-        selectedTiles = [tile(50, 50, 9)];
+    it("zoom < minZoom でも近距離（東京〜富士山相当）なら標高ロード完了を待って建築する", async () => {
+        // minZoom=10・zoom=9 でも distance=60000（ELEVATION_RELEVANT_MAX_DISTANCE_M=150000 未満）
+        // なら標高が視覚的に意味を持つとみなし、ロード中は建築をスキップする（#457）。
+        selectedTiles = [tile(50, 50, 9, 60_000)];
         const mgr = makeManager();
         mgr.sync(syncParams());
-        // 標高ロード前でも即時建築（高高度では標高が視覚的に無意味）。
+        // 標高ロード中は建築されない。
+        expect(MeshMock).toHaveBeenCalledTimes(0);
+        await flush();
+        mgr.sync(syncParams());
+        // 実標高到着後に建築される。
+        expect(MeshMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("zoom < minZoom かつ遠距離（全球視点相当）は標高ロード中でも即時建築する", async () => {
+        // distance=500000（ELEVATION_RELEVANT_MAX_DISTANCE_M=150000 超）は全球視点相当として、
+        // 従来どおり標高ロードを待たずに即時建築する（高高度では標高が視覚的に無意味）。
+        selectedTiles = [tile(50, 50, 9, 500_000)];
+        const mgr = makeManager();
+        mgr.sync(syncParams());
         expect(MeshMock).toHaveBeenCalledTimes(1);
     });
 
@@ -780,9 +794,10 @@ describe("createGlobeTileManager", () => {
         // minZoom=10。親 z8・子 z9 はいずれも minZoom 未満。祖先探索の下限を minZoom に
         // すると hasZoomRelation/visibleAncestorKeys が空になり、親が即破棄されて背景球が
         // 露出した。SEAMLESS_FLOOR_ZOOM=0 で全 zoom を橋渡し。
+        // distance=500000（全球視点相当）にして標高ロード待ちを起こさず、原子スワップのみ検証する。
         const mgr = makeManager();
-        selectedTiles = [tile(50, 50, 8)];
-        mgr.sync(syncParams()); // zoom<minZoom は標高待ちせず即建築。
+        selectedTiles = [tile(50, 50, 8, 500_000)];
+        mgr.sync(syncParams()); // zoom<minZoom かつ遠距離は標高待ちせず即建築。
         expect(MeshMock).toHaveBeenCalledTimes(1);
         const parent = MeshMock.mock.results[0].value as {
             isEnabled: () => boolean;
@@ -793,8 +808,8 @@ describe("createGlobeTileManager", () => {
 
         // zoom-in: z9 の子 4 枚（親 50/50@z8 を完全カバー）。
         selectedTiles = [
-            tile(100, 100, 9), tile(101, 100, 9),
-            tile(100, 101, 9), tile(101, 101, 9),
+            tile(100, 100, 9, 500_000), tile(101, 100, 9, 500_000),
+            tile(100, 101, 9, 500_000), tile(101, 101, 9, 500_000),
         ];
         mgr.sync(syncParams()); // 親 → pendingRelease、子を即建築（祖先 pending で非表示待機）。
         // 親は保持され破棄されない（穴を作らない）。
