@@ -1967,9 +1967,13 @@ export const createGlobeSceneController = (
 
         // ---- external frustum / tile camera（flight FollowCamera 用） ----
         // 外部追従カメラ（flight）では、機体 lat/lon を GeospatialCamera.center に据え、
-        // radius で従来互換の粗い LOD 制御を維持しつつ、渡された frustumPlanes/cameraPosition
-        // （呼び出し側が Frustum.GetPlanesToRef で実カメラから求めた、真の ECEF 空間の値。
-        // `flight/index.ts` 参照）を gc.setExternalFrustum で次回 syncTiles に反映する（#463）。
+        // radius で従来互換の粗い LOD 制御を維持しつつ、渡された frustumPlanes/cameraPosition を
+        // gc.setExternalFrustum で次回 syncTiles に反映する（#463）。座標系の契約は
+        // `globeLod.ts` の GlobeLodOptions.frustumPlanes / spec/package.md に従う:
+        //   - frustumPlanes: **camera 相対**（原点 = cameraPosition、回転のみ・並進なし）。
+        //     ECEF 絶対座標系で構築した平面を渡すと Float32 桁落ちで誤カリングする（呼び出し側
+        //     `flight/index.ts` が実 view 行列の並進行を 0 にして生成する）。
+        //   - cameraPosition: 外部カメラの**真の ECEF 絶対位置**（frustumPlanes の原点・SSE距離基準）。
         // これにより外部カメラの実チルト・向きに基づく視錐台カリングが効くようになる。
         // 実タイルロードは onBeforeRender の syncTiles が次フレームで反映するため、
         // 本メソッドは同期更新のみ行い解決済み Promise を返す。

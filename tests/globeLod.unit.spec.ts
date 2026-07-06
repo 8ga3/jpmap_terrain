@@ -172,7 +172,7 @@ describe("selectGlobeTiles", () => {
             expect(tiles.some((t) => t.zoom === 11 && t.x === p.x && t.y === p.y)).toBe(true);
         });
 
-        it("日本テクスチャ域外の pinnedPoints も、視錐台が全タイル外側で最粗rootが残る（WORLD_TEXTURE_MAX_ZOOM丸め分岐, PR #466レビュー）", () => {
+        it("日本テクスチャ域外の pinnedPoints も、視錐台が全タイル外側で最粗rootが残る（WORLD_TEXTURE_MAX_ZOOM丸め分岐, #463 レビュー指摘）", () => {
             // 域外（例: 太平洋 lat=0/lon=-140）は minZoom(11)>WORLD_TEXTURE_MAX_ZOOM(8) のため
             // traverse 開始が WORLD_TEXTURE_MAX_ZOOM へ丸められる分岐に入る。この開始ノードに
             // exempt を渡さないと zoom≠minZoom で pinnedRootKeys 免除も効かず、視錐台外判定で
