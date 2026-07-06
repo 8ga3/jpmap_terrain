@@ -619,9 +619,14 @@ export class JpmapTerrain {
      * Follow カメラなど、terrain 用 ArcRotateCamera とは別のカメラで描画しているときに、
      * そのカメラの frustum planes と位置を渡してタイルを更新する。
      *
-     * @param cameraPosition terrain camera target 基準のローカル座標系でのカメラ位置。
-     *   SSE (Screen-Space Error) による LOD 距離計算に使用される。
-     *   絶対ワールド座標ではなく、terrain camera target からの相対位置を渡すこと。
+     * @param frustumPlanes 6 面の視錐台平面（Babylon.js の `Frustum.GetPlanesToRef` 形式）。
+     *   **camera 相対**（原点 = `cameraPosition`、回転のみ・並進なし）で構築すること。
+     *   外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま projection と
+     *   合成すると、Float32 演算の桁落ちで画面内の地物を視錐台外と誤判定する。必ず view 行列の
+     *   並進行を 0 にしてから合成すること（`spec/package.md` §3.3.14.3 の利用例参照）。
+     * @param cameraPosition 外部カメラの**真の ECEF 絶対位置**（地心 ~6.4e6m スケール）。
+     *   SSE (Screen-Space Error) による LOD 距離計算、および `frustumPlanes` の camera 相対座標を
+     *   実座標へ戻す際の原点に使用する。
      *
      * `flyTo` と異なりカメラアニメーションは行わない。
      * 戻り値は内部のタイル fetch/mesh 適用が完了したら resolve する Promise。
