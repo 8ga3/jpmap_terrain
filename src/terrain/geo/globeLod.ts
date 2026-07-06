@@ -178,6 +178,15 @@ export interface GlobeRootSeedOptions {
      * には適用しない。省略時は既存の `rootZoomFloor`/SSE のみで判定する（後方互換）。
      */
     textureQualityFloorZoom?: number;
+    /**
+     * 注視点(center)の地表標高[m]。前方到達距離を決める tilt を「camera→center 地表点」の
+     * 実ベクトルから求める際に使う。省略時 0（海面）だが、高標高地（富士山頂等）を注視点にすると
+     * seat-on-terrain でカメラが山頂相当高度へ持ち上がり、center を海面(0m)扱いすると camera→center
+     * が実際より急な下向きと誤算出され、tilt 過小→前方到達距離が極端に短縮→遠方（例: 50km 先）が
+     * 未種付けになる。center を実標高で評価すると正しい tilt になり遠方まで帯が伸びる（#465 続き）。
+     * 負値（海面下）と NaN/Infinity は 0（海面）へ丸める。
+     */
+    referenceAltitude?: number;
 }
 
 /** カメラ↔地表点の弦距離の概算に使う WGS84 平均半径 [m]。 */
@@ -200,6 +209,20 @@ const FORWARD_REACH_MARGIN = 1.25;
  * 約 1.0rad（≒57°, 高度 ≳1,000km）。これ未満（低〜中高度）は従来の帯で効率を維持する。
  */
 const GLOBAL_VIEW_EARTH_ANG_RADIUS = 1.0;
+
+/**
+ * この高度[m]以上では root zoom のテクスチャ品質下限（textureQualityFloorZoom）を外し、
+ * zoom を HIGH_ALT_MAX_ZOOM に頭打ちにする。高度が上がるほど可視域が広く（地図の文字も読めなく）
+ * なるため、詳細タイル（z9〜）を張るとタイル数が maxTiles を食い潰し可視域の外周が欠ける
+ * （高高度で「半分しか出ない」）。距離累進（zStar/distCapZoom）の対数的粗化に委ね、上限で
+ * 抑えることで少数の粗タイルで広域を被覆する。しきい値は「200km 以上は z8 以下で十分」という
+ * 実地の目視基準に合わせる。全球モード（GLOBAL_VIEW_EARTH_ANG_RADIUS, ≒1,200km 以上）は
+ * 別途 floorZoom で全球種付けするため、本キャップは 200km〜全球境界の帯モードに効く。
+ */
+const HIGH_ALT_ZOOM_CAP_M = 190_000;
+
+/** 高高度（HIGH_ALT_ZOOM_CAP_M 以上）での root zoom 上限。 */
+const HIGH_ALT_MAX_ZOOM = 8;
 
 /**
  * SSE しきい値の距離累進係数。実効しきい値を
@@ -249,6 +272,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         verticalFov,
         sseThreshold,
         textureQualityFloorZoom,
+        referenceAltitude,
     } = opts;
     const margin = Math.max(0, rootSearchRadius);
     const budget = Math.max(1, maxRootTiles);
@@ -380,14 +404,23 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
             (edge0 * viewportHeight) / (eff * Math.max(1, d) * denom),
         );
         const distCapZoom = Math.ceil(Math.log2(edge0 / Math.max(1, d)));
+        // 高高度（HIGH_ALT_ZOOM_CAP_M 以上）では、テクスチャ品質下限
+        // （textureQualityFloorZoom）を外し、zoom 上限を HIGH_ALT_MAX_ZOOM に抑える。
+        // 高度が上がると可視域が広がり地図の文字も読めなくなるため、詳細（z9〜）を張ると
+        // タイル数が maxTiles を食い潰して可視域の外周が欠ける（半分しか出ない）。下限を外して
+        // zStar/distCapZoom の距離累進（対数的）に委ね、上限で頭打ちにすることで、少数の粗タイルで
+        // 可視域全体を被覆する。低〜中高度（未満）は従来どおり詳細＋品質下限を維持する。
+        const highAlt = h >= HIGH_ALT_ZOOM_CAP_M;
+        const texFloor = highAlt ? 0 : (textureQualityFloorZoom ?? 0);
+        const zCap = highAlt ? HIGH_ALT_MAX_ZOOM : minZoom;
+        // floorZoom（rootZoomFloor 省略時は minZoom）が zCap を上回ると、下の Math.max が
+        // floorZoom で張り付き zStar/distCapZoom の距離累進が効かず z=zCap に平坦化する。
+        // 高高度では floorZoom も zCap まで下げ、対数的粗化を活かす（rootZoomFloor 指定有無で
+        // 挙動が変わらないようにする。本番は rootZoomFloor=2 のため元から効くが、公開 API 一貫性）。
+        const effFloorZoom = highAlt ? Math.min(floorZoom, zCap) : floorZoom;
         return Math.min(
-            minZoom,
-            Math.max(
-                floorZoom,
-                textureQualityFloorZoom ?? 0,
-                Math.ceil(zStar),
-                distCapZoom,
-            ),
+            zCap,
+            Math.max(effFloorZoom, texFloor, Math.ceil(zStar), distCapZoom),
         );
     };
 
@@ -420,7 +453,17 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // nadir↔center の地表距離とチルトは、整数タイル座標（dirLen）由来だと丸め誤差で dFar が
     // 不正確になり特定高度で奥が欠けるため、実カメラ幾何（ベクトル）から正確に求める。
     // dirLenMeters = R·中心角(nadir↔center)。tilt = 視線(camera→center) と直下(−camera) のなす角。
-    const centerEcef = geodeticToEcefToRef(centerLat, centerLon, 0, new Vector3());
+    // 注視点の地表標高で center を評価する（tilt/前方到達距離の正確化）。負値（海面下）と
+    // NaN/Infinity は 0（海面）へ丸め、下流の cosPsi/acos への異常値伝播を防ぐ。
+    const centerAlt = Number.isFinite(referenceAltitude)
+        ? Math.max(0, referenceAltitude as number)
+        : 0;
+    const centerEcef = geodeticToEcefToRef(
+        centerLat,
+        centerLon,
+        centerAlt,
+        new Vector3(),
+    );
     const camLen = Math.max(1, cameraEcef.length());
     const cosPsi = Math.min(
         1,
@@ -609,6 +652,10 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 揃える。地心距離−平均半径の近似だと緯度により数 km ズレ、root と traverse で実効 SSE しきい値が
     // 食い違って余計な分割・訪問が起き得るため（選択ごとに 1 回のみの呼び出しでコストは無視できる）。
     const camAlt = Math.max(1, ecefToGeodetic(cameraEcef).altMeters);
+    // 高高度では traverse の細分化上限も HIGH_ALT_MAX_ZOOM に抑える（root だけでなく quadtree 分割も
+    // 頭打ちにしないと、近 nadir で root(z8) が z9 へ再分割されて「200km 以上は z8 以下」を満たさない）。
+    const effectiveMaxZoom =
+        camAlt >= HIGH_ALT_ZOOM_CAP_M ? Math.min(maxZoom, HIGH_ALT_MAX_ZOOM) : maxZoom;
     // 可視地平線の中心角（acos(R/r), r=カメラ地心距離）。地平線カリングの「タイルサイズ考慮」救済に
     // 使う（高高度の全球被覆で粗タイルの可視縁を取りこぼさないため）。
     const capAngle = Math.acos(
@@ -722,10 +769,10 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         // 交差判定は z>=WORLD_TEXTURE_MAX_ZOOM のノードに限定してコストを抑える。
         const effMaxZoom =
             zoom >= WORLD_TEXTURE_MAX_ZOOM &&
-            maxZoom > WORLD_TEXTURE_MAX_ZOOM &&
+            effectiveMaxZoom > WORLD_TEXTURE_MAX_ZOOM &&
             !tileIntersectsJapan(zoom, x, y)
                 ? WORLD_TEXTURE_MAX_ZOOM
-                : maxZoom;
+                : effectiveMaxZoom;
         const accept =
             zoom >= effMaxZoom ||
             ((tileSizeMeters * viewportHeight) /
@@ -762,6 +809,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         verticalFov,
         sseThreshold,
         textureQualityFloorZoom,
+        referenceAltitude,
     });
     // root シードを traverse 開始点とする。日本被覆域外の root が minZoom(>WORLD_TEXTURE_MAX_ZOOM)
     // で生成されると、それ以上分割しなくても root タイル自体のテクスチャが存在せず(404)白く欠ける。
@@ -790,16 +838,20 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 受容されるため中間ノードのカリング問題は生じない）。
     for (const key of pinnedRootKeys) {
         const [pz, px, py] = key.split("/").map(Number);
-        if (
+        // pinned は minZoom(z11) 固定で開始するが、開始ノードは effMaxZoom で即受容されるため、
+        // 高高度キャップ（effectiveMaxZoom）や域外 WORLD_TEXTURE_MAX_ZOOM 丸めを開始 zoom にも
+        // 適用しないと、キャップ下でも center の z11 タイル 1 枚が残ってしまう（#465 フォロー）。
+        const outOfJapan =
             pz > WORLD_TEXTURE_MAX_ZOOM &&
             maxZoom > WORLD_TEXTURE_MAX_ZOOM &&
-            !tileIntersectsJapan(pz, px, py)
-        ) {
-            const dz = pz - WORLD_TEXTURE_MAX_ZOOM;
-            traverse(WORLD_TEXTURE_MAX_ZOOM, px >> dz, py >> dz, true);
-        } else {
-            traverse(pz, px, py, true);
-        }
+            !tileIntersectsJapan(pz, px, py);
+        const startZoom = Math.min(
+            pz,
+            effectiveMaxZoom,
+            outOfJapan ? WORLD_TEXTURE_MAX_ZOOM : pz,
+        );
+        const dz = pz - startZoom;
+        traverse(startZoom, px >> dz, py >> dz, true);
     }
 
     // 正しい quadtree カットへ整える: 距離適応で root の zoom が位置ごとに変わるため、
