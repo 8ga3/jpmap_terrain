@@ -636,6 +636,12 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const limit = 1 << zoom;
         if (x < 0 || x >= limit || y < 0 || y >= limit) return;
 
+        // 距離適応で粗 root と近景 root の継ぎ目が重なる等、複数 root から同一タイルへ
+        // 到達し得る。既に受容済みなら結果は変わらないため、地平線/視錐台カリングや距離計算に
+        // 進む前に早期 return して重い計算を避ける（PR #467 レビュー指摘）。
+        const k = tileKey(zoom, x, y);
+        if (acceptedKeys.has(k)) return;
+
         const { lat } = tileCenterEcefToRef(zoom, x, y, referenceAltitude, tileEcef);
 
         // 地平線カリング: タイルの地心法線（= normalize(tileEcef)）とカメラ方向の内積。
@@ -722,11 +728,10 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
                 tileSizeMeters <= distance);
 
         if (accept) {
-            const k = tileKey(zoom, x, y);
-            if (!acceptedKeys.has(k)) {
-                acceptedKeys.add(k);
-                accepted.push({ zoom, x, y, tileSizeMeters, distance });
-            }
+            // k は関数先頭の acceptedKeys.has(k) チェックを通過済み（未受容）なのでここでは
+            // 常に新規追加になる。
+            acceptedKeys.add(k);
+            accepted.push({ zoom, x, y, tileSizeMeters, distance });
             return;
         }
 

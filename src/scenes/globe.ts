@@ -970,6 +970,13 @@ export class GlobeScene {
         const frustumViewOnly = Matrix.Identity();
         const frustumTransform = Matrix.Identity();
         const frustumRawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        // 戻り値バッファ（syncTiles 呼び出し内で同期的に消費されるのみで、フレームを越えて
+        // 保持されないため in-place 更新で安全に再利用できる）。毎フレームの map() による
+        // 配列＋オブジェクト再生成を避ける。
+        const frustumPlanesResult: FrustumPlane[] = Array.from({ length: 6 }, () => ({
+            normal: { x: 0, y: 0, z: 0 },
+            d: 0,
+        }));
         /**
          * GeospatialCamera の実 view/projection から真の視錐台6平面を求める（#463）。
          * 結果は **camera 相対**（原点 = cameraEcef、回転のみ）で返す（`globeLod.ts` の
@@ -988,10 +995,15 @@ export class GlobeScene {
             frustumViewOnly.setRowFromFloats(3, 0, 0, 0, 1);
             frustumViewOnly.multiplyToRef(camera.getProjectionMatrix(), frustumTransform);
             Frustum.GetPlanesToRef(frustumTransform, frustumRawPlanes);
-            return frustumRawPlanes.map((p) => ({
-                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
-                d: p.d,
-            }));
+            for (let i = 0; i < 6; i++) {
+                const p = frustumRawPlanes[i];
+                const out = frustumPlanesResult[i];
+                out.normal.x = p.normal.x;
+                out.normal.y = p.normal.y;
+                out.normal.z = p.normal.z;
+                out.d = p.d;
+            }
+            return frustumPlanesResult;
         };
 
         // ---- zoom-to-cursor の目標点を scene.pick 非依存で求める差し替え ----
