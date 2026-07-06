@@ -14,6 +14,7 @@
  */
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { FrustumPlane } from "../visibleTiles";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -171,6 +172,23 @@ export interface GlobeTileSyncParams {
     referenceAltitude: number;
     /** 遠景 root の最粗 zoom（距離適応ルートレベルの下限）。省略時 minZoom。 */
     rootZoomFloor?: number;
+    /**
+     * カメラの真の視錐台6平面。**camera 相対**（原点 = `cameraEcef`、回転のみ・並進なし）で
+     * 定義すること（`globeLod.ts` の `GlobeLodOptions.frustumPlanes` 参照。ECEF 原点基準で渡すと
+     * Float32 行列の桁落ちで誤カリングする）。指定時、視錐台外タイルの探索を打ち切る（#463）。
+     * 省略時は従来通り帯モデル＋地平線カリングのみで判定する。
+     */
+    frustumPlanes?: readonly FrustumPlane[];
+    /**
+     * 視錐台に関わらず必ず最粗root(minZoom)を確保したい地点（`globeLod.ts` の
+     * `GlobeLodOptions.pinnedPoints` 参照。centerEcef自体は暗黙に対象）。省略時は空。
+     */
+    pinnedPoints?: readonly { lat: number; lon: number }[];
+    /**
+     * 距離適応 root zoom がこれより粗くならないようにする下限（`globeLod.ts` の
+     * `GlobeLodOptions.textureQualityFloorZoom` 参照）。省略時は無効。
+     */
+    textureQualityFloorZoom?: number;
 }
 
 /** 同期結果の統計。 */
@@ -1231,6 +1249,9 @@ export const createGlobeTileManager = (
             horizonDotThreshold: params.horizonDotThreshold,
             referenceAltitude: params.referenceAltitude,
             rootZoomFloor: params.rootZoomFloor,
+            frustumPlanes: params.frustumPlanes,
+            pinnedPoints: params.pinnedPoints,
+            textureQualityFloorZoom: params.textureQualityFloorZoom,
         });
         desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
         // 可視タイルの全祖先キー集合と最大 zoom を構築（カバー判定・zoom 階層判定に使う）。

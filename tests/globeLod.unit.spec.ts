@@ -22,6 +22,7 @@ import {
     type GlobeLodOptions,
 } from "../src/terrain/geo/globeLod";
 import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
+import type { FrustumPlane } from "../src/terrain/visibleTiles";
 
 const CENTER_LAT = 35.3606;
 const CENTER_LON = 138.7274;
@@ -123,6 +124,102 @@ describe("selectGlobeTiles", () => {
         const tiles = selectGlobeTiles(baseOpts(60000));
         expect(tiles.length).toBeGreaterThan(0);
         for (const t of tiles) expect(t.tileSizeMeters).toBeGreaterThan(0);
+    });
+
+    describe("視錐台カリング（frustumPlanes, #463）", () => {
+        // 「normal·p + d < 0 なら外側」の判定式を使い、ECEF スケール(~6.4e6)を無視できる
+        // 巨大な d で「常に外側」「常に内側」の半空間を作る（実カメラ幾何は使わず判定式のみ検証）。
+        const ALWAYS_OUTSIDE: FrustumPlane[] = Array.from({ length: 6 }, () => ({
+            normal: { x: 1, y: 0, z: 0 },
+            d: -1e15,
+        }));
+        const ALWAYS_INSIDE: FrustumPlane[] = Array.from({ length: 6 }, () => ({
+            normal: { x: 1, y: 0, z: 0 },
+            d: 1e15,
+        }));
+
+        it("root自体は視錐台カリングを免除される（帯モデルの到達距離計算を信頼、地平線際の誤判定対策）", () => {
+            // root（帯モデルが選ぶ traverse 開始点）は SSE がそのまま受容（分割不要）すれば
+            // 視錐台が全タイルを外側と判定しても除外されない。root シード自体は距離・FOV に基づく
+            // 球面幾何で慎重に到達距離を計算済みで、frustum の AABB 近似より信頼できるため
+            // （地平線際のグレージング角度で誤判定し被覆が縮む回帰を防ぐ、#463 フォローアップ）。
+            const withFrustum = selectGlobeTiles(
+                baseOpts(60000, { frustumPlanes: ALWAYS_OUTSIDE }),
+            );
+            const withoutFrustum = selectGlobeTiles(baseOpts(60000));
+            expect(withFrustum).toEqual(withoutFrustum);
+        });
+
+        it("root が分割（SSE細分化）した先の子タイルには免除が継承されず視錐台カリングされる", () => {
+            // 近距離カメラは SSE が「分割が必要」と判定し root から子タイルへ細分化する。
+            // 免除は root 呼び出し自体にのみ効き子孫には継承しないため、画面外への過剰な精細化
+            // （#463 が解消した本来の無駄）は引き続き frustum で防げることを確認する。
+            const withFrustum = selectGlobeTiles(
+                baseOpts(3000, { maxZoom: 15, frustumPlanes: ALWAYS_OUTSIDE }),
+            );
+            const withoutFrustum = selectGlobeTiles(baseOpts(3000, { maxZoom: 15 }));
+            // 分割が起きる近距離では、免除されない子タイルが視錐台外と判定され除外される
+            // （centerのpinned安全網はminZoomのみに効くため、より深いzoomの精細化には及ばない）。
+            expect(withFrustum.length).toBeLessThan(withoutFrustum.length);
+        });
+
+        it("pinnedPoints指定地点も、視錐台が全タイル外側でも最粗rootが残る", () => {
+            const pinned = { lat: 40, lon: 140 };
+            const tiles = selectGlobeTiles(
+                baseOpts(60000, { frustumPlanes: ALWAYS_OUTSIDE, pinnedPoints: [pinned] }),
+            );
+            const p = toTileXY(pinned.lat, pinned.lon, 11);
+            expect(tiles.some((t) => t.zoom === 11 && t.x === p.x && t.y === p.y)).toBe(true);
+        });
+
+        it("視錐台が全タイルを内包するなら frustumPlanes 未指定と同じ結果になる", () => {
+            const withFrustum = selectGlobeTiles(
+                baseOpts(60000, { frustumPlanes: ALWAYS_INSIDE }),
+            );
+            const withoutFrustum = selectGlobeTiles(baseOpts(60000));
+            expect(withFrustum).toEqual(withoutFrustum);
+        });
+
+        it("frustumPlanes 省略時は視錐台カリングを行わない（後方互換）", () => {
+            const tiles = selectGlobeTiles(baseOpts(60000, { frustumPlanes: undefined }));
+            expect(tiles.length).toBeGreaterThan(0);
+        });
+    });
+
+    describe("textureQualityFloorZoom（#463 フォローアップ: 遠方の低解像度混在を防ぐ）", () => {
+        it("指定時、遠方の root zoom が指定値より粗くならない", () => {
+            // 高チルト・低高度で地平線付近まで見渡す構図（テクスチャ境界の混在が起きやすい状況）。
+            const nadirLat = CENTER_LAT - 0.4; // 高チルト相当。
+            const alt = 564;
+            const opts = baseOpts(alt, {
+                cameraEcef: geodeticToEcef(nadirLat, CENTER_LON, alt),
+                minZoom: 11,
+                maxZoom: 18,
+                rootZoomFloor: 2,
+            });
+            const withoutFloor = selectGlobeTiles(opts);
+            const withFloor = selectGlobeTiles({ ...opts, textureQualityFloorZoom: 9 });
+            // 指定なしでは floor(z2) まで粗化しうる一方、指定時は z9 未満が一切現れない。
+            expect(Math.min(...withFloor.map((t) => t.zoom))).toBeGreaterThanOrEqual(9);
+            expect(withFloor.every((t) => t.zoom >= 9)).toBe(true);
+            // 後方互換: 未指定時の挙動そのものは変えない（同一 opts で再現できる）。
+            expect(selectGlobeTiles(opts)).toEqual(withoutFloor);
+        });
+
+        it("全球モード（超高高度）には適用されない（タイル数爆発を避ける）", () => {
+            const alt = 15_000_000;
+            const tiles = selectGlobeTiles(
+                baseOpts(alt, {
+                    maxZoom: 18,
+                    rootZoomFloor: 2,
+                    maxTiles: 384,
+                    maxRootTiles: 384,
+                    textureQualityFloorZoom: 9,
+                }),
+            );
+            // 全球モードは effectively rootZoomFloor(=2) の一様種付けのまま、z9 へは上げない。
+            expect(Math.min(...tiles.map((t) => t.zoom))).toBeLessThanOrEqual(3);
+        });
     });
 
     describe("高チルト（水平気味）でも可視地表を欠けなく被覆する（#446 地平線カリング）", () => {

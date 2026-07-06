@@ -1966,16 +1966,23 @@ export const createGlobeSceneController = (
         },
 
         // ---- external frustum / tile camera（flight FollowCamera 用） ----
-        // globe はタイル選択を GeospatialCamera の center/radius から行う（frustum 非対応）。
         // 外部追従カメラ（flight）では、機体 lat/lon を GeospatialCamera.center に据え、
-        // radius で LOD を制御する。実タイルロードは onBeforeRender の syncTiles が次フレームで
-        // 反映するため、本メソッドは同期更新のみ行い解決済み Promise を返す。
-        refreshTerrainWithExternalFrustum: (lat, lon, _frustumPlanes, _cameraPosition, lodBias) => {
+        // radius で従来互換の粗い LOD 制御を維持しつつ、渡された frustumPlanes/cameraPosition
+        // （呼び出し側が Frustum.GetPlanesToRef で実カメラから求めた、真の ECEF 空間の値。
+        // `flight/index.ts` 参照）を gc.setExternalFrustum で次回 syncTiles に反映する（#463）。
+        // これにより外部カメラの実チルト・向きに基づく視錐台カリングが効くようになる。
+        // 実タイルロードは onBeforeRender の syncTiles が次フレームで反映するため、
+        // 本メソッドは同期更新のみ行い解決済み Promise を返す。
+        refreshTerrainWithExternalFrustum: (lat, lon, frustumPlanes, cameraPosition, lodBias) => {
             if (!externalTileControl) return Promise.resolve();
             const elev = gc.tileManager.terrainElevAt(lat, lon) ?? 0;
             camera.center = geodeticToEcef(lat, lon, elev);
             const bias = typeof lodBias === "number" ? lodBias : 0;
             camera.radius = FOLLOW_TILE_BASE_RADIUS_M * Math.pow(2, -bias);
+            gc.setExternalFrustum(
+                frustumPlanes,
+                new Vector3(cameraPosition.x, cameraPosition.y, cameraPosition.z),
+            );
             return Promise.resolve();
         },
         detachTileCamera: () => {
@@ -1983,8 +1990,9 @@ export const createGlobeSceneController = (
         },
         attachTileCamera: () => {
             externalTileControl = false;
-            // 通常制御へ戻す際、コンパス上書きも解除する。
+            // 通常制御へ戻す際、コンパス上書き・外部視錐台も解除する。
             externalCompassDeg = null;
+            gc.setExternalFrustum(null, null);
         },
         setExternalCompassDegrees: (degrees) => {
             // 次フレームの updateOverlayUi で反映される（null で camera.yaw 連動へ復帰）。

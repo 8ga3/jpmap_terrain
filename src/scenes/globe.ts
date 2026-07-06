@@ -13,7 +13,7 @@
  * URL 等価性はデモ（`demos/geospatial/index.ts`）側で実装。
  */
 import { Scene } from "@babylonjs/core/scene";
-import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector2, Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -25,13 +25,15 @@ import {
 } from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import { Camera } from "@babylonjs/core/Cameras/camera";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 
-import type { MapType } from "../terrain/gsiTile";
+import { WORLD_TEXTURE_MAX_ZOOM, type MapType } from "../terrain/gsiTile";
 import { TERRAIN_CLICK_DRAG_THRESHOLD_PX, POLYGON_POINT_DRAG_THRESHOLD_PX } from "../lib/types";
 import type { ViewMode } from "../lib/types";
 import { clampZoomLevel, radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
@@ -46,6 +48,7 @@ import {
     resolveRecalcCenterSource,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
+import type { FrustumPlane } from "../terrain/visibleTiles";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import {
     createGlobePolygonManager,
@@ -53,7 +56,7 @@ import {
     type GlobePolygonPickablePoint,
 } from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
-import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
+import { createGlobeModelManager, type GlobeModelManager, type GlobeModelState } from "../terrain/geo/globeModelManager";
 import { OVERLAY_REF_DISTANCE_M } from "../terrain/geo/overlayPlacement";
 import { computeSpaceFactor } from "../terrain/skybox";
 
@@ -97,6 +100,15 @@ export const GLOBE_SCENE_DEFAULTS = {
      * 背景スフィアが受け持つ。
      */
     rootZoomFloor: 2,
+    /**
+     * 距離適応 root zoom がこれより粗くならないようにする下限（`rootZoomFloor` とは別枠、
+     * 全球モードには適用されない。`globeLod.ts` の `GlobeLodOptions.textureQualityFloorZoom`
+     * 参照）。地理院タイルは `WORLD_TEXTURE_MAX_ZOOM`（=8）を境にソース画像の解像度が大きく
+     * 変わるため、低〜中高度・高チルトで地平線付近を見る際にこの境界を跨いだ混在（見た目の
+     * 破綻）を避ける（#463 フォローアップ）。予算逼迫時は前景優先で地平線側の被覆が狭まる形で
+     * 吸収される。
+     */
+    textureQualityFloorZoom: WORLD_TEXTURE_MAX_ZOOM + 1,
     /** タイルあたりの分割数（頂点は (seg+1)^2）。 */
     segments: 32,
     /** LOD 再評価の間隔（フレーム）。 */
@@ -399,6 +411,11 @@ export interface GlobeSceneController {
      * 2D 時のみ現在のズームレベル（Google Maps 互換）を返す。3D 時は undefined。
      */
     getZoomLevel: () => number | undefined;
+    /**
+     * 外部カメラ（flight FollowCamera 等）の真の視錐台6平面＋ECEF位置を次回 syncTiles に
+     * 反映する（#463）。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
+     */
+    setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcef: Vector3 | null) => void;
     dispose: () => void;
 }
 
@@ -924,6 +941,11 @@ export class GlobeScene {
         const seatLerp = new Vector3();
         // SSE 距離評価の基準標高（中心付近の地形標高）。前 sync の値を次 sync で使う。
         let centerElevation = 0;
+        // 外部カメラ（flight FollowCamera 等）から供給された真の視錐台6平面＋ECEFカメラ位置（#463）。
+        // 非 null の間、通常カメラ（GeospatialCamera）から算出する frustum/cameraEcef の代わりに使う
+        // （外部カメラは camera.yaw/pitch と実際の向きが一致しないため、GeospatialCamera 由来では
+        //  正しい frustum を作れない）。`attachTileCamera` / 未指定復帰で null に戻す。
+        let externalFrustumOverride: { planes: FrustumPlane[]; cameraEcef: Vector3 } | null = null;
 
         /** GeospatialCamera の center/yaw/pitch/radius から真の ECEF 位置を復元する。 */
         const computeCameraEcef = (): Vector3 => {
@@ -940,6 +962,36 @@ export class GlobeScene {
                 .copyFrom(camera.center)
                 .subtractInPlace(lookAt.scaleInPlace(camera.radius));
             return cameraEcef;
+        };
+
+        // frustum平面算出用の使い回しバッファ（毎フレーム呼ばれるため確保を避ける）。
+        // view/合成後 transform は別バッファに分ける（multiplyToRef の dest が operand と
+        // エイリアスすると実装依存で壊れ得るため、平面版 `tileManager.ts` と同様に分離する）。
+        const frustumViewOnly = Matrix.Identity();
+        const frustumTransform = Matrix.Identity();
+        const frustumRawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        /**
+         * GeospatialCamera の実 view/projection から真の視錐台6平面を求める（#463）。
+         * 結果は **camera 相対**（原点 = cameraEcef、回転のみ）で返す（`globeLod.ts` の
+         * `GlobeLodOptions.frustumPlanes` 契約）。ECEF 原点基準（eye=真のカメラ位置 ~6.4e6m）の
+         * view 行列をそのまま使うと、view*proj 合成やそこからの平面抽出を Babylon の Float32 演算が
+         * 行う際に巨大並進が桁落ちし、実際に画面内の遠方地物（例: 50km 先の富士山）を「視錐台外」と
+         * 誤判定する（回帰確認済み: #457 elevationFarView.spec.ts で検出）。
+         * yaw/pitch から view 行列を独自に再構築する手も検討したが、GeospatialCamera 実体の
+         * 向き（up ベクトルの補正等）と厳密には一致せず、境界付近のタイルで実レンダリングと不一致が
+         * 生じた（デバッグで実測）。そこで **実 view 行列**（`camera.getViewMatrix()`、回転は
+         * 巨大並進と無関係に正確）から並進行だけを 0 にする（回転はそのまま真の値を使う）。
+         */
+        const computeCameraFrustumPlanes = (): FrustumPlane[] | undefined => {
+            if (camera.mode === Camera.ORTHOGRAPHIC_CAMERA) return undefined;
+            frustumViewOnly.copyFrom(camera.getViewMatrix());
+            frustumViewOnly.setRowFromFloats(3, 0, 0, 0, 1);
+            frustumViewOnly.multiplyToRef(camera.getProjectionMatrix(), frustumTransform);
+            Frustum.GetPlanesToRef(frustumTransform, frustumRawPlanes);
+            return frustumRawPlanes.map((p) => ({
+                normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+                d: p.d,
+            }));
         };
 
         // ---- zoom-to-cursor の目標点を scene.pick 非依存で求める差し替え ----
@@ -1860,8 +1912,9 @@ export class GlobeScene {
         };
 
         const syncTiles = (): void => {
+            const override = externalFrustumOverride;
             const stats = tileManager.sync({
-                cameraEcef: computeCameraEcef(),
+                cameraEcef: override ? override.cameraEcef : computeCameraEcef(),
                 centerEcef: camera.center,
                 maxZoom: GLOBE_SCENE_DEFAULTS.maxZoom,
                 viewportHeight: engine.getRenderHeight(),
@@ -1874,6 +1927,15 @@ export class GlobeScene {
                 horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
                 referenceAltitude: centerElevation,
                 rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
+                frustumPlanes: override ? override.planes : computeCameraFrustumPlanes(),
+                // 登録済みモデル（avatar等）は注視点と無関係な地点にいる場合があるため、視錐台の
+                // 外でも最粗rootを確保し terrainElevAt/接地が機能するよう保険をかける（#463）。
+                pinnedPoints: modelManager
+                    .list()
+                    .map((id) => modelManager.get(id))
+                    .filter((s): s is GlobeModelState => s !== null)
+                    .map((s) => ({ lat: s.lat, lon: s.lon })),
+                textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
             });
             if (options.onSyncStats) {
                 const geo = ecefToGeodetic(camera.center);
@@ -2187,6 +2249,11 @@ export class GlobeScene {
             getViewMode: () => currentViewMode,
             setViewMode: (mode: ViewMode) => applyViewModeInternal(mode),
             getZoomLevel,
+            // 外部カメラ（flight FollowCamera 等）の真の視錐台6平面＋ECEF位置を次回 syncTiles に
+            // 反映する（#463）。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
+            setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcefPos: Vector3 | null) => {
+                externalFrustumOverride = planes && cameraEcefPos ? { planes, cameraEcef: cameraEcefPos } : null;
+            },
             dispose,
         };
     }

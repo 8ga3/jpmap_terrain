@@ -15,9 +15,10 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters, JAPAN_BOUNDS, WORLD_TEXTURE_MAX_ZOOM } from "../gsiTile";
+import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters, toTileXY, JAPAN_BOUNDS, WORLD_TEXTURE_MAX_ZOOM } from "../gsiTile";
 import { ecefToGeodetic, geodeticToEcefToRef } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
+import { isAABBInFrustum, DEFAULT_MAX_ELEVATION, type FrustumPlane } from "../visibleTiles";
 
 /** LOD 選択されたタイル。 */
 export interface GlobeTile {
@@ -85,6 +86,35 @@ export interface GlobeLodOptions {
      * 距離が地表基準になり、近接時に高 zoom が選択される。省略時 0。
      */
     referenceAltitude?: number;
+    /**
+     * カメラの真の視錐台6平面。**camera 相対**（原点 = `cameraEcef`、回転のみ・並進なし）で
+     * 定義すること。ECEF 原点基準（ワールド座標そのもの）で構築した平面を渡すと、Babylon の
+     * Float32 行列演算が ~6.4e6m の巨大並進を含むことで桁落ちし、実際に画面内の遠方地物を
+     * 「視錐台外」と誤判定する（#463 で発生した回帰。呼び出し側は eye=原点・target=視線方向の
+     * 回転のみの view 行列で平面を作ること。`globe.ts` の `computeCameraFrustumPlanes` 参照）。
+     * 指定時、各ノードのAABB（水平フットプリント×標高範囲[0, DEFAULT_MAX_ELEVATION]、
+     * cameraEcef 分平行移動して camera 相対化）が完全に視錐台外なら早期除外する
+     * （地平線カリング・SSEに続く3段目のカリング）。帯モデル・SSE遠方粗化だけでは
+     * 「視錐台に入っていないのに鉛直高度基準でレベルが決まる」無駄が生じるため、実frustum判定で
+     * 候補を絞り、浮いた maxTiles 予算を実際に視界へ入る（山の起伏で近く見える）タイルへ回す。
+     * 省略時は従来通り帯モデル＋地平線カリングのみで判定する（後方互換）。
+     */
+    frustumPlanes?: readonly FrustumPlane[];
+    /**
+     * 視錐台に関わらず必ず最粗root（minZoom）を確保したい地点（緯度経度）。
+     * 通常のroot帯（nadir→center→地平線）は画面表示用の候補選定であり、`terrainElevAt`や
+     * モデル接地（`addModel`のavatar等）が必要とする地点は注視点(center)やカメラ視界と
+     * 無関係な場所にありうる。真の視錐台カリング導入（#463）により、これらの地点が画面外だと
+     * `terrainElevAt`が永久にnullを返す回帰が生じた（例: avatar-controllerデモでアバターが
+     * 常に固定地点にスポーンし、カメラ注視点と無関係な場合）。centerLat/centerLon自体も
+     * 暗黙に対象に含む。省略時は空。
+     */
+    pinnedPoints?: readonly { lat: number; lon: number }[];
+    /**
+     * 距離適応 root zoom がこれより粗くならないようにする下限（`GlobeRootSeedOptions` 参照）。
+     * 省略時は無効（既存の `rootZoomFloor`/SSE のみで判定、後方互換）。
+     */
+    textureQualityFloorZoom?: number;
 }
 
 /** タイル中心の ECEF（基準標高 alt）を ref に書き込み、その緯度経度を返す。 */
@@ -135,6 +165,19 @@ export interface GlobeRootSeedOptions {
     verticalFov: number;
     /** SSE 採用しきい値 [px]（同上, 256px タイルの表示サイズ境界）。 */
     sseThreshold: number;
+    /**
+     * 距離適応 root zoom（`zoomForDist`）がこれより粗くならないようにする、`rootZoomFloor` とは
+     * 別枠の下限（省略時は無効）。地理院タイルは `WORLD_TEXTURE_MAX_ZOOM` を境に、それ以下は
+     * 世界全域の低解像度ベースマップ、それ以上（日本周辺）は高解像度の実データに切り替わり、
+     * ソース画像の見た目が大きく変わる。低〜中高度・高チルトで地平線付近を見るとき、距離累進
+     * SSE だけに任せるとこの境界を跨いだ混在（低解像度と高解像度が同一画面に混在する見た目の
+     * 破綻）が生じうる（#463 フォローアップ）。`rootZoomFloor`（全球モード用の効率優先の下限）
+     * とは独立に効かせるため別オプションとする。予算（`maxRootTiles`/`maxTiles`）が逼迫した場合は
+     * 既存の「前景優先で奥を捨てる」挙動により地平線側の被覆が狭まる形で吸収される
+     * （破綻するのではなく、覆う範囲が狭まる）。全球モード（`GLOBAL_VIEW_EARTH_ANG_RADIUS` 分岐）
+     * には適用しない。省略時は既存の `rootZoomFloor`/SSE のみで判定する（後方互換）。
+     */
+    textureQualityFloorZoom?: number;
 }
 
 /** カメラ↔地表点の弦距離の概算に使う WGS84 平均半径 [m]。 */
@@ -205,6 +248,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         viewportWidth,
         verticalFov,
         sseThreshold,
+        textureQualityFloorZoom,
     } = opts;
     const margin = Math.max(0, rootSearchRadius);
     const budget = Math.max(1, maxRootTiles);
@@ -338,7 +382,12 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         const distCapZoom = Math.ceil(Math.log2(edge0 / Math.max(1, d)));
         return Math.min(
             minZoom,
-            Math.max(floorZoom, Math.ceil(zStar), distCapZoom),
+            Math.max(
+                floorZoom,
+                textureQualityFloorZoom ?? 0,
+                Math.ceil(zStar),
+                distCapZoom,
+            ),
         );
     };
 
@@ -438,16 +487,14 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
 };
 
 /**
- * タイル (zoom,x,y) の地理範囲が日本テクスチャ被覆域（`JAPAN_BOUNDS`）と交差するか判定する。
- *
- * 地理院テクスチャ（std/seamlessphoto）は世界全域を z0–`WORLD_TEXTURE_MAX_ZOOM` まで、それより
- * 高ズームは日本周辺のみ配信する。域外を高ズーム細分化するとタイルが 404 で欠けるため、交差判定で
- * 域外タイルの細分化上限をクランプする。タイルの北西・南東角の緯度経度から範囲を
- * 求め、`JAPAN_BOUNDS` と AABB 交差するかを返す。
+ * タイル (zoom,x,y) の境界緯度経度（角、タイル中心ではない）を返す。
+ * `tileCenterLatLon` は中心を返すため、+0.5 オフセットを打ち消す形で角を直接算出する。
  */
-const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
-    // 角の緯度経度（タイル境界）。tileCenterLatLon は中心を返すため、+0.5 オフセットを打ち消す形で
-    // 角を直接算出する。
+const tileLatLonBounds = (
+    zoom: number,
+    x: number,
+    y: number,
+): { lonWest: number; lonEast: number; latNorth: number; latSouth: number } => {
     const n = 2 ** zoom;
     const lonWest = (x / n) * 360 - 180;
     const lonEast = ((x + 1) / n) * 360 - 180;
@@ -455,12 +502,58 @@ const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
         (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
     const latSouth =
         (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180) / Math.PI;
+    return { lonWest, lonEast, latNorth, latSouth };
+};
+
+/**
+ * タイル (zoom,x,y) の地理範囲が日本テクスチャ被覆域（`JAPAN_BOUNDS`）と交差するか判定する。
+ *
+ * 地理院テクスチャ（std/seamlessphoto）は世界全域を z0–`WORLD_TEXTURE_MAX_ZOOM` まで、それより
+ * 高ズームは日本周辺のみ配信する。域外を高ズーム細分化するとタイルが 404 で欠けるため、交差判定で
+ * 域外タイルの細分化上限をクランプする。
+ */
+const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
+    const { lonWest, lonEast, latNorth, latSouth } = tileLatLonBounds(zoom, x, y);
     return (
         lonEast >= JAPAN_BOUNDS.minLon &&
         lonWest <= JAPAN_BOUNDS.maxLon &&
         latNorth >= JAPAN_BOUNDS.minLat &&
         latSouth <= JAPAN_BOUNDS.maxLat
     );
+};
+
+/**
+ * タイル (zoom,x,y) のECEF AABBを求める（4隅の経緯度×標高[0, DEFAULT_MAX_ELEVATION]の8点包含）。
+ * 標高範囲は実測ではなく固定上限（日本の最高標高+マージン、平面版 `visibleTiles.ts` と同じ定数）
+ * を使う保守的な近似。実測より広め＝カリングは「完全に外側」の場合のみ働く安全側の近似となる。
+ */
+const tileEcefAabb = (
+    zoom: number,
+    x: number,
+    y: number,
+    scratch: Vector3,
+): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } => {
+    const { lonWest, lonEast, latNorth, latSouth } = tileLatLonBounds(zoom, x, y);
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    for (const lat of [latSouth, latNorth]) {
+        for (const lon of [lonWest, lonEast]) {
+            for (const alt of [0, DEFAULT_MAX_ELEVATION]) {
+                geodeticToEcefToRef(lat, lon, alt, scratch);
+                if (scratch.x < minX) minX = scratch.x;
+                if (scratch.x > maxX) maxX = scratch.x;
+                if (scratch.y < minY) minY = scratch.y;
+                if (scratch.y > maxY) maxY = scratch.y;
+                if (scratch.z < minZ) minZ = scratch.z;
+                if (scratch.z > maxZ) maxZ = scratch.z;
+            }
+        }
+    }
+    return { minX, minY, minZ, maxX, maxY, maxZ };
 };
 
 /**
@@ -487,9 +580,20 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         horizonDotThreshold,
         referenceAltitude = 0,
         rootZoomFloor = minZoom,
+        frustumPlanes,
+        pinnedPoints,
+        textureQualityFloorZoom,
     } = opts;
 
     if (maxZoom < minZoom) return [];
+
+    // 視錐台に関わらず必ず最粗root(minZoom)を確保したい地点（centerLat/Lon自体を暗黙に含む）。
+    // `terrainElevAt`/モデル接地が必要とする地点はカメラ視界と無関係な場合があるため（#463）。
+    const pinnedRootKeys = new Set<string>();
+    for (const p of [{ lat: centerLat, lon: centerLon }, ...(pinnedPoints ?? [])]) {
+        const t = toTileXY(p.lat, p.lon, minZoom);
+        pinnedRootKeys.add(tileKey(minZoom, t.x, t.y));
+    }
 
     const tanHalfFov = Math.max(1e-6, Math.tan(verticalFov / 2));
     const sseDenomBase = 2 * tanHalfFov;
@@ -510,11 +614,22 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 同一 z/x/y へ到達しうるため、重複受容を防いで予算（maxTiles）の浪費を避ける。
     const acceptedKeys = new Set<string>();
     const tileEcef = new Vector3();
+    const aabbScratch = new Vector3();
     // 暴発防止の訪問上限。
     const maxVisited = Math.max(maxTiles, 256) * 32;
     let visited = 0;
 
-    const traverse = (zoom: number, x: number, y: number): void => {
+    /**
+     * `exempt=true` は、この呼び出し（root シード自体のみ、子孫には継承しない）で
+     * 視錐台カリングを行わない。root シード自体（帯モデルの along-track/lateral 計算）は
+     * 距離・FOV に基づく球面幾何で慎重に到達距離を計算済みであり、frustum の AABB 近似
+     * （地平線際のグレージング角度で誤判定しやすい, #463 フォローアップ）より信頼できる。
+     * 遠方の root は通常 SSE が「粗いまま受容（分割不要）」を選ぶため、この免除で
+     * 地平線際の被覆が frustum 誤判定で縮む回帰を防げる。一方、子孫（SSE 細分化で生じる
+     * より高精細なタイル）には免除を継承しない＝画面外への過剰な精細化（#463 が解消した
+     * 本来の無駄）は引き続き frustum で防ぐ。
+     */
+    const traverse = (zoom: number, x: number, y: number, exempt = false): void => {
         if (visited >= maxVisited) return;
         visited++;
 
@@ -540,6 +655,47 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             const centerAngle = Math.acos(Math.max(-1, Math.min(1, horizonDot)));
             const nodeAngRadius = ((2 * Math.PI) / (1 << zoom)) * 0.75;
             if (centerAngle - nodeAngRadius > capAngle) return;
+        }
+
+        // 視錐台カリング（#463）: 実カメラ frustum が渡されていれば、タイルの AABB
+        // （水平フットプリント×標高範囲）が完全に外側の場合は除外する。帯モデル・地平線カリングは
+        // 「裏側/概形」のみ見て真の視錐台を見ないため、チルトアップ時に画面外の地表も鉛直高度基準の
+        // 距離累進でレベルが決まり、maxTiles 予算を浪費して真に見えている山（起伏で近い）が
+        // 粗くなる無駄が生じていた。AABB が親の水平フットプリントの部分集合＝子で外側→親も外側なので、
+        // ここで打ち切れば子孫の探索ごと安全に省略できる。
+        //
+        // `frustumPlanes` は「camera 相対」座標系（原点 = cameraEcef、回転のみ・並進なし）で定義される
+        // 契約（呼び出し側は cameraEcef を原点とみなした frustum を渡す）。ECEF は原点からカメラまで
+        // ~6.4e6m の巨大な並進を持ち、これを含む行列を Babylon の Float32 演算で作ると、view*proj の
+        // 合成やそこからの平面抽出で桁落ち（catastrophic cancellation）し、実際に画面内の遠方地物
+        // （例: 50km 先の富士山）が「視錐台外」と誤判定される（#463 回帰: 本ファイル参照元
+        // `globe.ts` の zoom-to-cursor 精度ワークアラウンドと同種の精度要因）。そこで AABB 側を
+        // ここで cameraEcef 分だけ平行移動（JS 倍精度の単純な減算）してから camera 相対平面へ渡す。
+        //
+        // ただし center / pinnedPoints の最粗root（minZoom）はこのカリングを免除する。真の視錐台
+        // カリングは「画面に映るタイル」の最適化として正しいが、`terrainElevAt` やモデル接地は
+        // 画面外の地点（例: 注視点と無関係な位置にスポーンするアバター）に対しても機能する必要が
+        // あり、そこまで厳密に画面内へ絞ると回帰する（#463 で発生・修正）。
+        if (
+            frustumPlanes &&
+            frustumPlanes.length > 0 &&
+            !exempt &&
+            !(zoom === minZoom && pinnedRootKeys.has(tileKey(zoom, x, y)))
+        ) {
+            const aabb = tileEcefAabb(zoom, x, y, aabbScratch);
+            if (
+                !isAABBInFrustum(
+                    aabb.minX - cameraEcef.x,
+                    aabb.minY - cameraEcef.y,
+                    aabb.minZ - cameraEcef.z,
+                    aabb.maxX - cameraEcef.x,
+                    aabb.maxY - cameraEcef.y,
+                    aabb.maxZ - cameraEcef.z,
+                    frustumPlanes,
+                )
+            ) {
+                return;
+            }
         }
 
         const distance = Vector3.Distance(cameraEcef, tileEcef);
@@ -592,6 +748,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         viewportWidth,
         verticalFov,
         sseThreshold,
+        textureQualityFloorZoom,
     });
     // root シードを traverse 開始点とする。日本被覆域外の root が minZoom(>WORLD_TEXTURE_MAX_ZOOM)
     // で生成されると、それ以上分割しなくても root タイル自体のテクスチャが存在せず(404)白く欠ける。
@@ -604,9 +761,26 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             !tileIntersectsJapan(r.zoom, r.x, r.y)
         ) {
             const dz = r.zoom - WORLD_TEXTURE_MAX_ZOOM;
-            traverse(WORLD_TEXTURE_MAX_ZOOM, r.x >> dz, r.y >> dz);
+            traverse(WORLD_TEXTURE_MAX_ZOOM, r.x >> dz, r.y >> dz, true);
         } else {
-            traverse(r.zoom, r.x, r.y);
+            traverse(r.zoom, r.x, r.y, true);
+        }
+    }
+
+    // pinned地点（center含む）の最粗rootは帯モデルの被覆と無関係に必ず traverse を開始する
+    // （帯が地平線方向へしか伸びず pinned 地点をそもそも種付けしないケースの保険。#463）。
+    // 既に roots 経由で到達済みなら acceptedKeys の重複排除で吸収される。
+    for (const key of pinnedRootKeys) {
+        const [pz, px, py] = key.split("/").map(Number);
+        if (
+            pz > WORLD_TEXTURE_MAX_ZOOM &&
+            maxZoom > WORLD_TEXTURE_MAX_ZOOM &&
+            !tileIntersectsJapan(pz, px, py)
+        ) {
+            const dz = pz - WORLD_TEXTURE_MAX_ZOOM;
+            traverse(WORLD_TEXTURE_MAX_ZOOM, px >> dz, py >> dz);
+        } else {
+            traverse(pz, px, py);
         }
     }
 
