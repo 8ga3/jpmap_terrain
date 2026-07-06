@@ -1317,6 +1317,10 @@ export const createGlobeSceneController = (
 ): DefaultSceneController => {
     const { camera } = gc;
     let currentMapType: MapType = initialMapType;
+    // refreshTerrainWithExternalFrustum の cameraPosition→Vector3 変換用スクラッチ
+    // （gc.setExternalFrustum 側が受け取った Vector3 を即座に永続バッファへコピーするため、
+    // ここでの再利用は安全。Follow モードの高頻度呼び出しでの GC 負荷を避ける、レビュー指摘）。
+    const externalFrustumCameraScratch = new Vector3();
 
     // 公開 overlay manager 互換アダプタ（2b-1）。
     const markerManager = createGlobeMarkerManagerAdapter(
@@ -1983,10 +1987,12 @@ export const createGlobeSceneController = (
             camera.center = geodeticToEcef(lat, lon, elev);
             const bias = typeof lodBias === "number" ? lodBias : 0;
             camera.radius = FOLLOW_TILE_BASE_RADIUS_M * Math.pow(2, -bias);
-            gc.setExternalFrustum(
-                frustumPlanes,
-                new Vector3(cameraPosition.x, cameraPosition.y, cameraPosition.z),
+            externalFrustumCameraScratch.copyFromFloats(
+                cameraPosition.x,
+                cameraPosition.y,
+                cameraPosition.z,
             );
+            gc.setExternalFrustum(frustumPlanes, externalFrustumCameraScratch);
             return Promise.resolve();
         },
         detachTileCamera: () => {
