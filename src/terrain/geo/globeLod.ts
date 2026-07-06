@@ -540,18 +540,20 @@ const tileEcefAabb = (
     let maxX = -Infinity;
     let maxY = -Infinity;
     let maxZ = -Infinity;
-    for (const lat of [latSouth, latNorth]) {
-        for (const lon of [lonWest, lonEast]) {
-            for (const alt of [0, DEFAULT_MAX_ELEVATION]) {
-                geodeticToEcefToRef(lat, lon, alt, scratch);
-                if (scratch.x < minX) minX = scratch.x;
-                if (scratch.x > maxX) maxX = scratch.x;
-                if (scratch.y < minY) minY = scratch.y;
-                if (scratch.y > maxY) maxY = scratch.y;
-                if (scratch.z < minZ) minZ = scratch.z;
-                if (scratch.z > maxZ) maxZ = scratch.z;
-            }
-        }
+    // 8隅（lat×lon×alt の2×2×2）をビット選択の固定回数ループで巡る。selectGlobeTiles の
+    // traverse ホットパスで毎回配列リテラル（[latSouth,latNorth]等）を生成しないための対策
+    // （PR #467 レビュー指摘）。
+    for (let i = 0; i < 8; i++) {
+        const lat = i & 1 ? latNorth : latSouth;
+        const lon = i & 2 ? lonEast : lonWest;
+        const alt = i & 4 ? DEFAULT_MAX_ELEVATION : 0;
+        geodeticToEcefToRef(lat, lon, alt, scratch);
+        if (scratch.x < minX) minX = scratch.x;
+        if (scratch.x > maxX) maxX = scratch.x;
+        if (scratch.y < minY) minY = scratch.y;
+        if (scratch.y > maxY) maxY = scratch.y;
+        if (scratch.z < minZ) minZ = scratch.z;
+        if (scratch.z > maxZ) maxZ = scratch.z;
     }
     return { minX, minY, minZ, maxX, maxY, maxZ };
 };
