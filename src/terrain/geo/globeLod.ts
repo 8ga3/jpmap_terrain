@@ -676,9 +676,11 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         // カリングは「画面に映るタイル」の最適化として正しいが、`terrainElevAt` やモデル接地は
         // 画面外の地点（例: 注視点と無関係な位置にスポーンするアバター）に対しても機能する必要が
         // あり、そこまで厳密に画面内へ絞ると回帰する（#463 で発生・修正）。
+        // 契約は「6平面」。6平面以外（空配列・不完全な配列）だと部分平面での誤カリングや意図せぬ
+        // カリング無効化につながるため、length===6 のときのみ視錐台カリングを適用する。
         if (
             frustumPlanes &&
-            frustumPlanes.length > 0 &&
+            frustumPlanes.length === 6 &&
             !exempt &&
             !(zoom === minZoom && pinnedRootKeys.has(tileKey(zoom, x, y)))
         ) {

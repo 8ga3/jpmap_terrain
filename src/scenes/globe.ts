@@ -2251,8 +2251,14 @@ export class GlobeScene {
             getZoomLevel,
             // 外部カメラ（flight FollowCamera 等）の真の視錐台6平面＋ECEF位置を次回 syncTiles に
             // 反映する（#463）。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
+            // 契約は「6平面」なので枚数を検証し、6平面かつ ECEF 位置が揃うときのみ override を
+            // 有効化する。6平面以外（空配列・不完全な配列）だと selectGlobeTiles 側で視錐台
+            // カリングが暗黙に無効化される／部分平面で誤判定するため、その場合は override を解除する。
             setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcefPos: Vector3 | null) => {
-                externalFrustumOverride = planes && cameraEcefPos ? { planes, cameraEcef: cameraEcefPos } : null;
+                externalFrustumOverride =
+                    planes && planes.length === 6 && cameraEcefPos
+                        ? { planes, cameraEcef: cameraEcefPos }
+                        : null;
             },
             dispose,
         };
