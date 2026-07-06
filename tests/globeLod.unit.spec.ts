@@ -143,10 +143,12 @@ describe("selectGlobeTiles", () => {
             // 視錐台が全タイルを外側と判定しても除外されない。root シード自体は距離・FOV に基づく
             // 球面幾何で慎重に到達距離を計算済みで、frustum の AABB 近似より信頼できるため
             // （地平線際のグレージング角度で誤判定し被覆が縮む回帰を防ぐ、#463 フォローアップ）。
+            // maxZoom: minZoom を明示し「root がそのまま受容される（分割されない）」前提を固定する
+            // （sseThreshold/viewport 設定の変化で意図せず分割される不安定さを避ける, レビュー指摘）。
             const withFrustum = selectGlobeTiles(
-                baseOpts(60000, { frustumPlanes: ALWAYS_OUTSIDE }),
+                baseOpts(60000, { maxZoom: 11, frustumPlanes: ALWAYS_OUTSIDE }),
             );
-            const withoutFrustum = selectGlobeTiles(baseOpts(60000));
+            const withoutFrustum = selectGlobeTiles(baseOpts(60000, { maxZoom: 11 }));
             expect(withFrustum).toEqual(withoutFrustum);
         });
 
