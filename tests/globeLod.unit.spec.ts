@@ -110,6 +110,11 @@ describe("selectGlobeTiles", () => {
         expect(maxZ(a803)).toBeLessThan(maxZ(a200));
         // 低高度（190km 未満）は従来どおり詳細（z8 超）を維持する。
         expect(maxZ(low)).toBeGreaterThan(8);
+        // rootZoomFloor 未指定でも高高度の距離累進は同じ（floorZoom=minZoom で z8 に張り付かず、
+        // 遠方タイルは 8 未満へ粗化される）。
+        const a803NoFloor = selectGlobeTiles(baseOpts(803531, { maxZoom: 15 }));
+        for (const t of a803NoFloor) expect(t.zoom).toBeLessThanOrEqual(8);
+        expect(Math.min(...a803NoFloor.map((t) => t.zoom))).toBeLessThan(8);
     });
 
     it("maxTiles を超えない", () => {

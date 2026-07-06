@@ -413,11 +413,12 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         const highAlt = h >= HIGH_ALT_ZOOM_CAP_M;
         const texFloor = highAlt ? 0 : (textureQualityFloorZoom ?? 0);
         const zCap = highAlt ? HIGH_ALT_MAX_ZOOM : minZoom;
-        // floorZoom（rootZoomFloor 省略時は minZoom）が zCap を上回ると、下の Math.max が
-        // floorZoom で張り付き zStar/distCapZoom の距離累進が効かず z=zCap に平坦化する。
-        // 高高度では floorZoom も zCap まで下げ、対数的粗化を活かす（rootZoomFloor 指定有無で
-        // 挙動が変わらないようにする。本番は rootZoomFloor=2 のため元から効くが、公開 API 一貫性）。
-        const effFloorZoom = highAlt ? Math.min(floorZoom, zCap) : floorZoom;
+        // 高高度では下限を 0 にして zStar/distCapZoom の距離累進（対数的粗化）を活かす。
+        // floorZoom（rootZoomFloor 省略時は minZoom）を下限に残すと、それが zCap を上回るケース
+        // （rootZoomFloor 未指定など）で下の Math.max が張り付き z=zCap(8) に平坦化して 8 未満へ
+        // 粗化できず、rootZoomFloor 指定有無で挙動が変わってしまう。粗化の暴発は distCapZoom
+        // （タイル 1 辺 ≤ カメラ距離）が抑えるため 0 で安全（Copilotレビュー指摘）。
+        const effFloorZoom = highAlt ? 0 : floorZoom;
         return Math.min(
             zCap,
             Math.max(effFloorZoom, texFloor, Math.ceil(zStar), distCapZoom),
