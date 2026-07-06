@@ -1606,10 +1606,11 @@ export const createGlobeTileManager = (
                     return;
                 }
                 if (isBase) {
-                    // #465: base はテクスチャを保持しつつ適用は高度依存。旧 base テクスチャを
-                    // 差し替え、高高度でのみ地図を貼る（低〜中高度は海色のまま）。
+                    // #465: base はテクスチャを保持しつつ適用は高度依存。高高度でのみ地図を貼る
+                    // （低〜中高度は海色のまま）。旧 base テクスチャの dispose は、新テクスチャ/null を
+                    // material へ適用した後に行う（表示中の旧テクスチャを外す前に破棄すると、一瞬
+                    // material が dispose 済み Texture を参照するのを避ける, Copilotレビュー指摘）。
                     const prev = baseTex.get(k);
-                    if (prev && prev !== tex) prev.dispose();
                     baseTex.set(k, tex);
                     if (wantBaseMap()) {
                         mat.diffuseTexture = tex;
@@ -1618,6 +1619,7 @@ export const createGlobeTileManager = (
                         mat.diffuseTexture = null;
                         mat.diffuseColor = BASE_LAYER_OCEAN;
                     }
+                    if (prev && prev !== tex) prev.dispose();
                     return;
                 }
                 mat.diffuseTexture = tex;
