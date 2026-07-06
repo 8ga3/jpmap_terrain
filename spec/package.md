@@ -990,8 +990,8 @@ Follow カメラなど Babylon.js の ArcRotateCamera 以外のカメラで地�
 |---|---|---|---|
 | `lat` | `number` | (必須) | タイル中心の緯度 (度) |
 | `lon` | `number` | (必須) | タイル中心の経度 (度) |
-| `frustumPlanes` | `{ normal: { x, y, z }; d: number }[]` | (必須) | 6 面の視錐台平面（Babylon.js の `Frustum.GetPlanesToRef` 形式） |
-| `cameraPosition` | `{ x: number; y: number; z: number }` | (必須) | カメラ位置（terrain camera target 基準のローカル座標系）。SSE 距離計算に使用 |
+| `frustumPlanes` | `{ normal: { x, y, z }; d: number }[]` | (必須) | 6 面の視錐台平面（Babylon.js の `Frustum.GetPlanesToRef` 形式）。**camera 相対**（原点 = `cameraPosition`、回転のみ・並進なし）で構築すること。外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま projection と合成すると、Float32 演算の桁落ちで画面内の地物を視錐台外と誤判定する。必ず view 行列の並進行を 0 にしてから合成する（利用例参照） |
+| `cameraPosition` | `{ x: number; y: number; z: number }` | (必須) | 外部カメラの真の ECEF 絶対位置（地心 ~6.4e6m スケール）。タイル LOD の SSE 距離計算、および `frustumPlanes` の camera 相対座標を実座標へ戻す際の原点に使用 |
 | `lodBias` | `number` | `0` | タイル LOD レベルを下げるバイアス（0 = 通常、大きいほど粗いタイルを使用） |
 
 ##### 3.3.14.3 利用例
@@ -1009,7 +1009,11 @@ viewer.detachTileCamera();
 viewer.setExternalCompassDegrees(heading);
 
 // 外部カメラの frustum でタイルを更新
-const viewMat = externalCamera.getViewMatrix();
+// 重要: view 行列の並進行（外部カメラの実 ECEF 位置、~6.4e6m スケール）を含めたまま
+// projection と合成すると、Float32 演算の桁落ちで画面内の地物を視錐台外と誤判定する。
+// 並進行を 0 にした「camera 相対（回転のみ）」の行列で平面を作ること。
+const viewMat = externalCamera.getViewMatrix().clone();
+viewMat.setRowFromFloats(3, 0, 0, 0, 1); // 並進行を消し回転のみにする
 const projMat = externalCamera.getProjectionMatrix();
 const transform = viewMat.multiply(projMat);
 const planes = Frustum.GetPlanes(transform);
@@ -1017,6 +1021,7 @@ const frustumPlanes = planes.map(p => ({
   normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
   d: p.d,
 }));
+const cameraPosition = externalCamera.globalPosition; // 真の ECEF 絶対位置
 
 await viewer.refreshTerrainWithExternalFrustum(
   lat, lon, frustumPlanes, cameraPosition, 0

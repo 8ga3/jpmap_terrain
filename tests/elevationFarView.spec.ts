@@ -2,26 +2,40 @@ import { test, expect } from "./tileCache.fixture";
 
 /**
  * Issue #457: 標高タイルの地形表現を遠方まで維持する回帰テスト。
- * 本テストのシナリオは富士山から約50km（実際の東京駅〜富士山は約100.5kmあり、
+ * 本テストのシナリオは富士山から約25km（実際の東京駅〜富士山は約100.5kmあり、
  * 本テストの距離とは異なる。詳細は補足2を参照）。
  *
- * 富士山（山頂）から南東へ約50km（小田原よりやや南、真鶴・湯河原方面）の地点を注視点
+ * 富士山（山頂）から東南東へ約25km（御殿場付近）の地点を注視点
  * （`avatar-controller.html` の `lat`/`lon`、`GeospatialCamera` の center に相当。
  * カメラ自身の位置ではない）に設定し、低空・水平寄りのチルトで遠景を望む視点を作る。
- * **主たる検証はスクリーンショット比較**
+ * azimuth はカメラ→富士山の測地線ベアリング（約285.8°、西北西）を使い、実際に富士山へ
+ * 視線を向ける。**主たる検証はスクリーンショット比較**
  * （富士山の稜線が遠景に破綻なく表示されること）で、`terrainElevAt` による数値検証は
  * 補助的な確認として添える（この距離・視点では zoom>=minZoom が選ばれ、後述の制限に
  * 抵触しないため数値検証も機能する）。
  *
+ * 距離・azimuth の選定について（#463 対応）: 従来は azimuth=0（真北向き）・距離50kmで、
+ * 実機で富士山が視界に入ることを確認していたが、これは旧実装（帯モデル＋地平線カリングのみ、
+ * 真の視錐台判定なし）が実際の視野より広くタイルをカバーしていたための側面効果だった
+ * （真北向きでは富士山は本来の視錐台（水平FOV半角約37°）に対し約69°もズレており、真に
+ * 視界に入っていなかった）。#463 で真の視錐台カリングを追加した結果、真北向きでは富士山の
+ * タイルが（正しく）除外されるようになり、本テストの `terrainElevAt` チェックが失敗するように
+ * なった。本テストの主旨（遠景の山岳地形がチルトアップ時に破綻しないこと）を検証するには、
+ * 実際に富士山へ視線を向ける必要があるため測地線ベアリングへ修正した。ただし50km時点の
+ * ベアリングでは補足1のとおり root zoom が minZoom-1（10）まで下がり、補足2の
+ * `terrainElevAt` 制限に抵触してしまうため、zoom>=minZoom を維持できる約25kmまで距離を
+ * 詰めた（`globeLod.selectGlobeTiles` を実カメラ状態で直接検証して確認済み）。
+ *
  * 補足1（検証で判明した実装上の制約・distCapZoom）: `globeLod.zoomForDist` の
- * `distCapZoom`（「タイル1辺 ≤ カメラ距離」を保証する粗さ下限）により、50km 程度の
- * 距離では root zoom は `minZoom`（既定11）から最大でも1段階（10）しか下がらない。
- * そのため `globeTileManager.buildReadyTiles` の `t.zoom >= minZoom` 判定（#457 の
- * 修正対象）が及ぼす影響は、この距離では「ロード完了直後の一瞬のフラット表示」を
- * 防ぐ程度に限定的で、静止したスクリーンショット比較では修正前後の差が出ない
- * （`terrainElevAt` は `elevCache` の生データを直接参照するため、ビルド分岐の変更とは
- * 無関係に同じ値を返す）。修正の効果自体は `tests/globeTileManager.unit.spec.ts` の
- * 「zoom < minZoom でも近距離なら標高ロード完了を待つ」テストで直接検証済み。
+ * `distCapZoom`（「タイル1辺 ≤ カメラ距離」を保証する粗さ下限）により、root zoom が
+ * `minZoom`（既定11）から下がる距離のしきい値が存在する（このシナリオでは約25km地点で
+ * ちょうど境界に近く、約30km以上では minZoom-1（10）まで下がる）。そのため
+ * `globeTileManager.buildReadyTiles` の `t.zoom >= minZoom` 判定（#457 の修正対象）が
+ * 及ぼす影響は、この距離では「ロード完了直後の一瞬のフラット表示」を防ぐ程度に限定的で、
+ * 静止したスクリーンショット比較では修正前後の差が出ない（`terrainElevAt` は `elevCache` の
+ * 生データを直接参照するため、ビルド分岐の変更とは無関係に同じ値を返す）。修正の効果自体は
+ * `tests/globeTileManager.unit.spec.ts` の「zoom < minZoom でも近距離なら標高ロード完了を
+ * 待つ」テストで直接検証済み。
  *
  * 補足2（`terrainElevAt` 自体の制限、要フォローアップ）: `terrainElevAt` は
  * `gz >= min(minZoom, geomMaxZoom)` の範囲でしか `elevCache` を探索しない
@@ -30,17 +44,13 @@ import { test, expect } from "./tileCache.fixture";
  * `buildReadyTiles` 側は実DEMをロード完了して正しく建築している（root/accepted
  * タイル数・elevCache 件数を計装して確認済み）にもかかわらず、`terrainElevAt` は
  * 常に null を返すことを確認した。これは #457 の対象外の別制限であり、本テストが
- * 「50km・zoom>=minZoom に収まる近距離」を選んでいるのはこの制限を踏まないための
- * 意図的な選択。100km 級（zoom<minZoom）のケースの数値検証や、その距離での
+ * 「zoom>=minZoom に収まる近距離」を選んでいるのはこの制限を踏まないための意図的な
+ * 選択。100km 級（zoom<minZoom）のケースの数値検証や、その距離での
  * ジオメトリ解像度（zoom=10 では起伏表現がかなり粗い）の扱いは別Issueで追う。
  *
- * 本テストは、50km 相当の遠景でも地形の起伏が破綻なく表示され続けることを保証する
+ * 本テストは、遠景でも地形の起伏が破綻なく表示され続けることを保証する
  * 健全性テスト（将来 minZoom や SSE ロジックが変わって本当に破綻した場合の回帰検知）
  * として追加する。
- *
- * カメラの azimuth は理論上の方位角（カメラ→富士山の測地線ベアリング）ではなく、実機で
- * 実測して富士山が確実に視界に入ることを確認した値を使う（root 帯の張り方は方位角の単純な
- * 前後関係だけで決まらないため）。
  */
 
 /** 富士山山頂（`GLOBE_SCENE_DEFAULTS` と同一座標）。 */
@@ -48,20 +58,20 @@ const FUJI_LAT = 35.3606;
 const FUJI_LON = 138.7274;
 
 /**
- * 富士山から南東へ約50km（真鶴・湯河原方面）の地点。カメラ自身の位置ではなく、
+ * 富士山から東南東へ約25km（御殿場付近）の地点。カメラ自身の位置ではなく、
  * `avatar-controller.html` の `lat`/`lon`（= `GeospatialCamera` の注視点/center）に渡す値。
  */
-const CAMERA_LAT = 35.240785;
-const CAMERA_LON = 139.258448;
+const CAMERA_LAT = 35.299823;
+const CAMERA_LON = 138.992724;
 
 /**
  * カメラの向き [deg]（0=北, +=東回り、`GeospatialCamera.yaw` の規約 "0 = north,
- * π/2 = east" に準拠）。実測により富士山が視界に入ることを確認した値。
+ * π/2 = east" に準拠）。カメラ→富士山の測地線ベアリング（初期方位角）。
  * 注: `src/demos/avatar-controller/cameraControl.ts` のコメントは「反時計回り正」と
  * 記載しているが、`GeospatialCamera` 本体のドキュメント（および本テストでの実機確認）
  * とは逆であり、そちらのコメントが実態と食い違っている可能性がある（別課題、本PRの対象外）。
  */
-const CAMERA_AZIMUTH_TO_FUJI = 0;
+const CAMERA_AZIMUTH_TO_FUJI = 285.76;
 
 /** カメラ高度 [m]。地表付近の低空から遠景の富士山を望む構図にする。 */
 const CAMERA_ALTITUDE = 1500;
@@ -154,7 +164,7 @@ async function waitForViewerReady(
     );
 }
 
-test("富士山から南東50km地点から望む地形が海面フラット化せず標高を維持する（#457）", async ({
+test("富士山から東南東25km地点から望む地形が海面フラット化せず標高を維持する（#457）", async ({
     page,
 }, testInfo) => {
     test.setTimeout(SCENE_TEST_TIMEOUT_MS);

@@ -87,6 +87,7 @@ const makeGcWithScene = (
             mockViewMode = m;
         },
         getZoomLevel: () => (mockViewMode === "2d" ? 14.5 : undefined),
+        setExternalFrustum: jest.fn(),
         dispose: () => {
             disposedFlag = true;
         },
@@ -399,13 +400,20 @@ describe("globe external frustum / tile camera 配線", () => {
         expect(camera.center.z).toBeCloseTo(expected.z, 3);
         // FOLLOW_TILE_BASE_RADIUS_M(2000) * 2^-1 = 1000。
         expect(camera.radius).toBeCloseTo(1000, 6);
+        // 渡された frustumPlanes/cameraPosition を gc.setExternalFrustum へそのまま伝搬する（#463）。
+        expect(gc.setExternalFrustum).toHaveBeenCalledWith(
+            planes,
+            expect.objectContaining({ x: 0, y: 0, z: 0 }),
+        );
 
         // lodBias=0 では base 半径そのもの。
         await c.refreshTerrainWithExternalFrustum(36, 140, planes, camPos, 0);
         expect(camera.radius).toBeCloseTo(2000, 6);
 
-        // attach で外部制御を解除すると再び no-op に戻る。
+        // attach で外部制御を解除すると再び no-op に戻り、外部視錐台も解除する。
+        (gc.setExternalFrustum as jest.Mock).mockClear();
         c.attachTileCamera();
+        expect(gc.setExternalFrustum).toHaveBeenCalledWith(null, null);
         const centerAfterAttach = { ...camera.center };
         await c.refreshTerrainWithExternalFrustum(10, 10, planes, camPos, 0);
         expect(camera.center).toEqual(centerAfterAttach);

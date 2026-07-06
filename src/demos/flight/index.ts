@@ -1070,8 +1070,14 @@ const start = async (): Promise<void> => {
                 radiusDelta >= TILE_UPDATE_OFFSET_M;
 
             if (meaningful) {
-                // Follow カメラの view/projection → frustum planes
-                const viewMat = followCamera.getViewMatrix();
+                // Follow カメラの view/projection → frustum planes（camera 相対、#463）。
+                // followCamera.position は真の ECEF 絶対位置（地心 ~6.4e6m スケール）。この並進を
+                // 含んだ view 行列を projection と合成すると、Float32 演算の桁落ちで画面内の地物を
+                // 視錐台外と誤判定する（globe バックエンドで実測確認済み。globeLod.ts の
+                // GlobeLodOptions.frustumPlanes 契約参照）。並進行を 0 にした回転のみの view 行列で
+                // 平面を作り、cameraPosition（真の ECEF 絶対位置）を別途渡して原点を伝える。
+                const viewMat = followCamera.getViewMatrix().clone();
+                viewMat.setRowFromFloats(3, 0, 0, 0, 1);
                 const projMat = followCamera.getProjectionMatrix();
                 const transform = Matrix.Identity();
                 viewMat.multiplyToRef(projMat, transform);
@@ -1082,16 +1088,10 @@ const start = async (): Promise<void> => {
                     d: p.d,
                 }));
 
-                // カメラ位置を terrain camera target 基準のローカル座標系に変換
-                const scene = viewer.__debugScene;
-                const terrainCam = scene?.getCameraByName("terrain-camera");
-                const target = terrainCam && "target" in terrainCam
-                    ? (terrainCam as { target: Vector3 }).target
-                    : Vector3.Zero();
                 const cameraPosition = {
-                    x: followCamera.position.x - target.x,
-                    y: followCamera.position.y - target.y,
-                    z: followCamera.position.z - target.z,
+                    x: followCamera.position.x,
+                    y: followCamera.position.y,
+                    z: followCamera.position.z,
                 };
 
                 lastRefreshLat = pos.lat;
