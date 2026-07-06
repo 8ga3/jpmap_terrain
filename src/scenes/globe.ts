@@ -56,7 +56,7 @@ import {
     type GlobePolygonPickablePoint,
 } from "../terrain/geo/globePolygonManager";
 import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
-import { createGlobeModelManager, type GlobeModelManager, type GlobeModelState } from "../terrain/geo/globeModelManager";
+import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
 import { OVERLAY_REF_DISTANCE_M } from "../terrain/geo/overlayPlacement";
 import { computeSpaceFactor } from "../terrain/skybox";
 
@@ -1942,11 +1942,17 @@ export class GlobeScene {
                 frustumPlanes: override ? override.planes : computeCameraFrustumPlanes(),
                 // 登録済みモデル（avatar等）は注視点と無関係な地点にいる場合があるため、視錐台の
                 // 外でも最粗rootを確保し terrainElevAt/接地が機能するよう保険をかける（#463）。
-                pinnedPoints: modelManager
-                    .list()
-                    .map((id) => modelManager.get(id))
-                    .filter((s): s is GlobeModelState => s !== null)
-                    .map((s) => ({ lat: s.lat, lon: s.lon })),
+                // syncTiles は onBeforeRenderObservable から毎フレーム呼ばれるため、
+                // map().filter().map() の中間配列生成を避け for ループで直接詰める
+                // （レビュー指摘）。
+                pinnedPoints: (() => {
+                    const points: { lat: number; lon: number }[] = [];
+                    for (const id of modelManager.list()) {
+                        const s = modelManager.get(id);
+                        if (s !== null) points.push({ lat: s.lat, lon: s.lon });
+                    }
+                    return points;
+                })(),
                 textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
             });
             if (options.onSyncStats) {
