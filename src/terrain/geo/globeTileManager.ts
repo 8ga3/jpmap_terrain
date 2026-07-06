@@ -91,6 +91,17 @@ const BASE_LAYER_OCEAN = new Color3(0.16, 0.26, 0.36);
 const BASE_LAYER_TEXTURE_TINT = new Color3(1, 1, 1);
 
 /**
+ * ベースレイヤに低ズーム世界地図テクスチャ（GSI std/photo の z2, 緑主体の世界地図スタイル）を
+ * 適用する最小カメラ高度[m]。これ未満（低〜中高度）は海色（BASE_LAYER_OCEAN）のままにする。
+ * 低高度・高チルトで地平線際を見ると、grazing で LOD メッシュが投影されない画素に常時表示の
+ * base が透け、緑の世界地図が日本詳細地図（白＋等高線）と混在して破綻する（#465）。base の
+ * 役割は「背景球（濃紺）の露出防止」の充填であり、低ズーム世界地図の絵を見せることは低〜中高度
+ * では不要（可視域は LOD が覆う）。高高度（全球表示）でのみ地図を適用する。しきい値は globeLod の
+ * 全球モード境界（`GLOBAL_VIEW_EARTH_ANG_RADIUS`≒高度 1,200km）に揃える。
+ */
+const BASE_MAP_MIN_ALT_M = 1_200_000;
+
+/**
  * 標高が視覚的に意味を持つとみなす、固定 minZoom 判定の代替として使うカメラ距離上限 [m]。
  * `globeLod` の SSE 距離累進（`SSE_FALLOFF_RATE`）により、低高度から遠方（例: 東京駅〜富士山
  * 間 ≈100km）を注視すると root zoom が minZoom を下回ることがあるが、この距離帯は実 DEM が
@@ -270,6 +281,15 @@ export const createGlobeTileManager = (
     // 常時表示の粗いベースレイヤのメッシュ（key="z/x/y"）。LOD の loaded とは別管理で
     // sync の選択/解放対象に含めず、マネージャ生存中ずっと保持する（新規回転インタイルの背景）。
     const baseLoaded = new Map<string, Mesh>();
+    // #465: base タイルのロード済みテクスチャ（key="z/x/y"）。高度に応じて地図適用/海色を
+    // 切り替えるため保持する。適用は wantBaseMap()（カメラ高度依存）で判定する。
+    const baseTex = new Map<string, Texture>();
+    // 直近カメラ高度[m]。初回 sync 前は Infinity（＝高高度扱いで従来どおり base 地図を適用）。
+    let lastCamAltMeters = Number.POSITIVE_INFINITY;
+    // 現在 base に地図テクスチャを適用中か（トグル差分検出用）。
+    let baseMapApplied = true;
+    /** カメラ高度に基づき base へ地図テクスチャを適用すべきか（未満は海色充填）。 */
+    const wantBaseMap = (): boolean => lastCamAltMeters >= BASE_MAP_MIN_ALT_M;
     // 各ロード済みタイルがどのクロスレベル coarse-edge 集合で建築されたかの署名。
     // LOD 再評価で隣接関係（同 zoom 隣接 ⇄ 粗タイル隣接）が変わると署名が変化し、
     // ジオメトリを再構築してスナップを更新する（境界の陰影シームを残さないため）。
@@ -1231,6 +1251,13 @@ export const createGlobeTileManager = (
         syncedAtLeastOnce = true;
         // 暫定代表標高の最終フォールバックとして referenceAltitude（カメラ中心地表標高）を保持。
         if (Number.isFinite(params.referenceAltitude)) lastReferenceAltitude = params.referenceAltitude;
+        // #465: カメラ高度で base の見た目（地図テクスチャ/海色）を切り替える。低〜中高度では
+        // 海色にして地平線際の緑（低ズーム世界地図）露出を防ぐ。境界をまたいだときのみ再適用する。
+        lastCamAltMeters = ecefToGeodetic(params.cameraEcef).altMeters;
+        if (wantBaseMap() !== baseMapApplied) {
+            baseMapApplied = wantBaseMap();
+            applyBaseAppearance();
+        }
         // root 探索はカメラの現在の注視点(center)を追従する（パン後もカメラ直下を選択）。
         const camGeo = ecefToGeodetic(params.centerEcef);
         const tiles = selectGlobeTiles({
@@ -1450,10 +1477,15 @@ export const createGlobeTileManager = (
                             tex.dispose();
                             return;
                         }
-                        mat.diffuseTexture = tex;
-                        // 暫定の海色ティントを解除（白に戻す）。さもないと diffuseTexture が乗算で
-                        // 暗く青くティントされ、地図画像が意図どおり発色しない。
-                        mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
+                        // #465: テクスチャは保持しつつ、適用は高度依存。低〜中高度では海色のまま
+                        // にして地平線際の緑（世界地図）露出を防ぐ。高高度でのみ地図を貼る。
+                        baseTex.set(k, tex);
+                        if (wantBaseMap()) {
+                            mat.diffuseTexture = tex;
+                            // 暫定の海色ティントを解除（白に戻す）。さもないと diffuseTexture が乗算で
+                            // 暗く青くティントされ、地図画像が意図どおり発色しない。
+                            mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
+                        }
                     },
                     // onError: 取得失敗時は Texture を破棄し、海色のまま背景として残す。
                     () => tex.dispose(),
@@ -1466,12 +1498,37 @@ export const createGlobeTileManager = (
         }
     };
 
+    /**
+     * #465: カメラ高度に応じて base レイヤの見た目を切り替える。高高度（全球表示）では
+     * 保持済みの地図テクスチャを適用し、低〜中高度では海色（BASE_LAYER_OCEAN）に戻す
+     * （地平線際で LOD が投影されない画素に緑の世界地図が透けるのを防ぐ）。
+     */
+    const applyBaseAppearance = (): void => {
+        const showMap = wantBaseMap();
+        for (const [k, mesh] of baseLoaded) {
+            const mat = mesh.material as StandardMaterial | null;
+            if (!mat) continue;
+            const tex = baseTex.get(k);
+            if (showMap && tex) {
+                mat.diffuseTexture = tex;
+                mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
+            } else {
+                mat.diffuseTexture = null;
+                mat.diffuseColor = BASE_LAYER_OCEAN;
+            }
+        }
+    };
+
     const dispose = (): void => {
         for (const mesh of loaded.values()) mesh.dispose(false, true);
         loaded.clear();
         // 常時表示ベースレイヤもテクスチャごと破棄する。
         for (const mesh of baseLoaded.values()) mesh.dispose(false, true);
         baseLoaded.clear();
+        // #465: 低〜中高度では base テクスチャは material に未アタッチ（diffuseTexture=null）で
+        // baseTex にのみ保持されるため、mesh.dispose では解放されない。明示的に破棄する。
+        for (const tex of baseTex.values()) tex.dispose();
+        baseTex.clear();
         // LOD 遷移中に残した pending タイルのタイマー解除＋メッシュ破棄。
         for (const pending of pendingRelease.values()) {
             clearTimeout(pending.timerId);
@@ -1539,9 +1596,23 @@ export const createGlobeTileManager = (
                     tex.dispose();
                     return;
                 }
+                if (isBase) {
+                    // #465: base はテクスチャを保持しつつ適用は高度依存。旧 base テクスチャを
+                    // 差し替え、高高度でのみ地図を貼る（低〜中高度は海色のまま）。
+                    const prev = baseTex.get(k);
+                    if (prev && prev !== tex) prev.dispose();
+                    baseTex.set(k, tex);
+                    if (wantBaseMap()) {
+                        mat.diffuseTexture = tex;
+                        mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
+                    } else {
+                        mat.diffuseTexture = null;
+                        mat.diffuseColor = BASE_LAYER_OCEAN;
+                    }
+                    return;
+                }
                 mat.diffuseTexture = tex;
-                if (isBase) mat.diffuseColor = BASE_LAYER_TEXTURE_TINT;
-                else markReady();
+                markReady();
                 // 新テクスチャ適用後に旧テクスチャを破棄（GPU リソースリーク防止）。
                 oldTex?.dispose();
             },

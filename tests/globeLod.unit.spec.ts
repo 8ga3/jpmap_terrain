@@ -62,8 +62,11 @@ describe("selectGlobeTiles", () => {
     });
 
     it("minZoom===maxZoom では分割されず全タイルが root ズーム（中心を被覆）", () => {
+        // 高度は HIGH_ALT_ZOOM_CAP_M(190km) 未満にする。以上だと高高度 zoom キャップ(z8)が
+        // 効いて minZoom=maxZoom=11 でも z8 になり、本テストの「root ズームがそのまま出る」意図と
+        // ずれるため（キャップ自体は専用テストで検証）。
         const tiles = selectGlobeTiles(
-            baseOpts(200000, { minZoom: 11, maxZoom: 11, rootSearchRadius: 0 }),
+            baseOpts(60000, { minZoom: 11, maxZoom: 11, rootSearchRadius: 0 }),
         );
         // 分割上限 == root なので全タイル z11。視野フットプリント分の少数タイルで中心を覆う。
         expect(tiles.length).toBeGreaterThan(0);
@@ -87,6 +90,26 @@ describe("selectGlobeTiles", () => {
         const farMax = Math.max(...far.map((t) => t.zoom));
         const nearMax = Math.max(...near.map((t) => t.zoom));
         expect(nearMax).toBeGreaterThan(farMax);
+    });
+
+    it("高高度（190km以上）では root/タイル zoom を z8 以下に抑え、さらに高いほど粗くする（#465 フォロー: 無駄な高レベル・被覆欠けを防ぐ）", () => {
+        // 本番同様 rootZoomFloor を指定（globe.ts は常に 2 を渡す）。maxZoom=15 でも高高度キャップで
+        // z8 以下、かつ距離累進で高度が上がるほど粗くなる（対数的）。
+        const at = (alt: number) =>
+            selectGlobeTiles(baseOpts(alt, { maxZoom: 15, rootZoomFloor: 2 }));
+        const a200 = at(200000);
+        const a803 = at(803531);
+        const low = at(60000);
+        expect(a200.length).toBeGreaterThan(0);
+        // 200km 以上は全タイル z8 以下（地図の字が読めない高度では詳細不要）。
+        for (const t of a200) expect(t.zoom).toBeLessThanOrEqual(8);
+        for (const t of a803) expect(t.zoom).toBeLessThanOrEqual(8);
+        // 803km は 200km よりさらに粗い（floorZoom で張り付かず距離累進が効くこと）。
+        const maxZ = (ts: ReturnType<typeof selectGlobeTiles>) =>
+            Math.max(...ts.map((t) => t.zoom));
+        expect(maxZ(a803)).toBeLessThan(maxZ(a200));
+        // 低高度（190km 未満）は従来どおり詳細（z8 超）を維持する。
+        expect(maxZ(low)).toBeGreaterThan(8);
     });
 
     it("maxTiles を超えない", () => {
@@ -866,5 +889,45 @@ describe("selectGlobeRootTiles", () => {
             expect(s.y).toBeGreaterThanOrEqual(0);
             expect(s.y).toBeLessThan(n);
         }
+    });
+
+    it("高標高の注視点（富士山頂相当）でも前方到達距離が崩壊せず遠方まで種付けする（#465続き）", () => {
+        const DEG = Math.PI / 180;
+        const E = 3776; // 富士山頂標高。seat-on-terrain で注視点が山頂に載る状況を模す。
+        // グレージング視点（tilt70°）でカメラを山頂相当高度へ持ち上げて配置する。
+        const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, E);
+        const lookAt = new Vector3();
+        ComputeLookAtFromYawPitchToRef(20 * DEG, 70 * DEG, centerEcef, true, lookAt);
+        const cam = centerEcef.clone().subtract(lookAt.scale(7919));
+        const nadir = ecefToGeodetic(cam);
+        const reach = (seeds: { x: number; y: number; zoom: number }[]): number => {
+            let max = 0;
+            for (const s of seeds) {
+                const c = tileCenterLatLon(s.x, s.y, s.zoom);
+                const d = Math.hypot(c.lat - nadir.latDeg, c.lon - nadir.lonDeg);
+                if (d > max) max = d;
+            }
+            return max;
+        };
+        // 注視点を実標高で評価（正）→ tilt が水平寄りに正しく出て前方到達距離が伸びる。
+        const withElev = reach(
+            selectGlobeRootTiles(
+                baseRoot(cam, { referenceAltitude: E, rootZoomFloor: 2, maxRootTiles: 384 }),
+            ),
+        );
+        // 注視点を海面(0m)で評価（旧バグ）→ camera→center が急下向きと誤算出され tilt 過小→到達距離短縮。
+        const flat = reach(
+            selectGlobeRootTiles(
+                baseRoot(cam, { referenceAltitude: 0, rootZoomFloor: 2, maxRootTiles: 384 }),
+            ),
+        );
+        expect(withElev).toBeGreaterThan(flat * 1.5);
+        // 負値（海面下）は 0 へ丸め、referenceAltitude=0 と同一挙動（後方互換・異常値ガード）。
+        const negative = reach(
+            selectGlobeRootTiles(
+                baseRoot(cam, { referenceAltitude: -100, rootZoomFloor: 2, maxRootTiles: 384 }),
+            ),
+        );
+        expect(negative).toBe(flat);
     });
 });

@@ -262,6 +262,85 @@ describe("createGlobeTileManager", () => {
         expect(mat0.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
     });
 
+    it("低〜中高度では base に地図テクスチャを適用せず海色のまま（#465 地平線際の緑露出防止）", () => {
+        MeshMock.mockClear();
+        MaterialMock.mockClear();
+        capturedTextures.length = 0;
+        const mgr = createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        const baseMat = MaterialMock.mock.results[0].value as {
+            diffuseColor: { r: number; g: number; b: number };
+            diffuseTexture: unknown;
+        };
+        // 低高度（60km < 1,200km しきい値）で sync → base は海色充填に切り替わる。
+        mgr.sync(syncParams());
+        // base テクスチャが到着しても、低高度では適用されず海色のまま（緑の世界地図を貼らない）。
+        capturedTextures[0].onLoad?.();
+        expect(baseMat.diffuseTexture).toBeNull();
+        expect(baseMat.diffuseColor.r).toBeLessThan(1);
+    });
+
+    it("高高度（全球表示）では base に地図テクスチャを適用する（#465）", () => {
+        MeshMock.mockClear();
+        MaterialMock.mockClear();
+        capturedTextures.length = 0;
+        const mgr = createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        const baseMat = MaterialMock.mock.results[0].value as {
+            diffuseColor: { r: number; g: number; b: number };
+            diffuseTexture: unknown;
+        };
+        // 高高度（3,000km ≥ 1,200km しきい値）で sync → base に地図を適用する。
+        const highCameraEcef = geodeticToEcef(35, 139, 3_000_000);
+        mgr.sync({ ...syncParams(), cameraEcef: highCameraEcef });
+        capturedTextures[0].onLoad?.();
+        expect(baseMat.diffuseTexture).not.toBeNull();
+        expect(baseMat.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
+    });
+
+    it("高度が全球境界を跨ぐと base の見た目を地図↔海色へ再適用する（#465 applyBaseAppearance）", () => {
+        MeshMock.mockClear();
+        MaterialMock.mockClear();
+        capturedTextures.length = 0;
+        const mgr = createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 10,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        const baseMat = MaterialMock.mock.results[0].value as {
+            diffuseColor: { r: number; g: number; b: number };
+            diffuseTexture: unknown;
+        };
+        const highCameraEcef = geodeticToEcef(35, 139, 3_000_000);
+        // 高高度で sync → base テクスチャ到着で地図適用。
+        mgr.sync({ ...syncParams(), cameraEcef: highCameraEcef });
+        capturedTextures[0].onLoad?.();
+        expect(baseMat.diffuseTexture).not.toBeNull();
+        // 低高度へ跨ぐと海色へ戻る（applyBaseAppearance）。
+        mgr.sync(syncParams());
+        expect(baseMat.diffuseTexture).toBeNull();
+        expect(baseMat.diffuseColor.r).toBeLessThan(1);
+        // 再び高高度へ跨ぐと地図が戻る（保持済み baseTex を再適用）。
+        mgr.sync({ ...syncParams(), cameraEcef: highCameraEcef });
+        expect(baseMat.diffuseTexture).not.toBeNull();
+        expect(baseMat.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
+    });
+
     it("dispose でベースレイヤ 16 枚もテクスチャごと破棄する", () => {
         MeshMock.mockClear();
         const mgr = createGlobeTileManager({
