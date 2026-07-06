@@ -770,6 +770,11 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // pinned地点（center含む）の最粗rootは帯モデルの被覆と無関係に必ず traverse を開始する
     // （帯が地平線方向へしか伸びず pinned 地点をそもそも種付けしないケースの保険。#463）。
     // 既に roots 経由で到達済みなら acceptedKeys の重複排除で吸収される。
+    // 開始ノードは roots 側と同様に exempt=true（視錐台カリング免除）で呼ぶ。域外 pinned を
+    // WORLD_TEXTURE_MAX_ZOOM へ丸める分岐では zoom≠minZoom となり traverse 内の pinnedRootKeys
+    // 免除が効かないため、exempt を渡さないと pinned の保険タイル自体が視錐台外判定で除外され、
+    // terrainElevAt/モデル接地の回帰防止という目的を満たせない（開始ノードは effMaxZoom で即
+    // 受容されるため中間ノードのカリング問題は生じない）。
     for (const key of pinnedRootKeys) {
         const [pz, px, py] = key.split("/").map(Number);
         if (
@@ -778,9 +783,9 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             !tileIntersectsJapan(pz, px, py)
         ) {
             const dz = pz - WORLD_TEXTURE_MAX_ZOOM;
-            traverse(WORLD_TEXTURE_MAX_ZOOM, px >> dz, py >> dz);
+            traverse(WORLD_TEXTURE_MAX_ZOOM, px >> dz, py >> dz, true);
         } else {
-            traverse(pz, px, py);
+            traverse(pz, px, py, true);
         }
     }
 
