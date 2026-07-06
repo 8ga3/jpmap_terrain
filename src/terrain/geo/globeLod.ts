@@ -592,7 +592,11 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 視錐台に関わらず必ず最粗root(minZoom)を確保したい地点（centerLat/Lon自体を暗黙に含む）。
     // `terrainElevAt`/モデル接地が必要とする地点はカメラ視界と無関係な場合があるため（#463）。
     const pinnedRootKeys = new Set<string>();
-    for (const p of [{ lat: centerLat, lon: centerLon }, ...(pinnedPoints ?? [])]) {
+    {
+        const t = toTileXY(centerLat, centerLon, minZoom);
+        pinnedRootKeys.add(tileKey(minZoom, t.x, t.y));
+    }
+    for (const p of pinnedPoints ?? []) {
         const t = toTileXY(p.lat, p.lon, minZoom);
         pinnedRootKeys.add(tileKey(minZoom, t.x, t.y));
     }
@@ -690,7 +694,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             frustumPlanes &&
             frustumPlanes.length === 6 &&
             !exempt &&
-            !(zoom === minZoom && pinnedRootKeys.has(tileKey(zoom, x, y)))
+            !(zoom === minZoom && pinnedRootKeys.has(k))
         ) {
             const aabb = tileEcefAabb(zoom, x, y, aabbScratch);
             if (
