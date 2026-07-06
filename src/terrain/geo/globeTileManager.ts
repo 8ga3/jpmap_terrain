@@ -1522,12 +1522,21 @@ export const createGlobeTileManager = (
     const dispose = (): void => {
         for (const mesh of loaded.values()) mesh.dispose(false, true);
         loaded.clear();
-        // 常時表示ベースレイヤもテクスチャごと破棄する。
-        for (const mesh of baseLoaded.values()) mesh.dispose(false, true);
+        // 常時表示ベースレイヤもテクスチャごと破棄する。high-alt でアタッチ中の base テクスチャは
+        // mesh.dispose(false, true) が破棄するため、二重 dispose を避けるべく破棄対象を控える。
+        const disposedBaseTex = new Set<unknown>();
+        for (const mesh of baseLoaded.values()) {
+            const mat = mesh.material as StandardMaterial | null;
+            if (mat?.diffuseTexture) disposedBaseTex.add(mat.diffuseTexture);
+            mesh.dispose(false, true);
+        }
         baseLoaded.clear();
         // #465: 低〜中高度では base テクスチャは material に未アタッチ（diffuseTexture=null）で
-        // baseTex にのみ保持されるため、mesh.dispose では解放されない。明示的に破棄する。
-        for (const tex of baseTex.values()) tex.dispose();
+        // baseTex にのみ保持され mesh.dispose では解放されないため、ここで破棄する。ただし上で
+        // 既に破棄済み（アタッチ中だった）テクスチャは二重 dispose しない。
+        for (const tex of baseTex.values()) {
+            if (!disposedBaseTex.has(tex)) tex.dispose();
+        }
         baseTex.clear();
         // LOD 遷移中に残した pending タイルのタイマー解除＋メッシュ破棄。
         for (const pending of pendingRelease.values()) {
