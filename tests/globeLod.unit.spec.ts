@@ -172,6 +172,30 @@ describe("selectGlobeTiles", () => {
             expect(tiles.some((t) => t.zoom === 11 && t.x === p.x && t.y === p.y)).toBe(true);
         });
 
+        it("日本テクスチャ域外の pinnedPoints も、視錐台が全タイル外側で最粗rootが残る（WORLD_TEXTURE_MAX_ZOOM丸め分岐, PR #466レビュー）", () => {
+            // 域外（例: 太平洋 lat=0/lon=-140）は minZoom(11)>WORLD_TEXTURE_MAX_ZOOM(8) のため
+            // traverse 開始が WORLD_TEXTURE_MAX_ZOOM へ丸められる分岐に入る。この開始ノードに
+            // exempt を渡さないと zoom≠minZoom で pinnedRootKeys 免除も効かず、視錐台外判定で
+            // pinned 保険タイルが除外される（回帰）。丸め先の WORLD_TEXTURE_MAX_ZOOM タイルが
+            // 残ることを確認する。
+            const pinned = { lat: 0, lon: -140 };
+            const tiles = selectGlobeTiles(
+                baseOpts(60000, {
+                    minZoom: 11,
+                    maxZoom: 15,
+                    frustumPlanes: ALWAYS_OUTSIDE,
+                    pinnedPoints: [pinned],
+                }),
+            );
+            const pMin = toTileXY(pinned.lat, pinned.lon, 11);
+            const dz = 11 - 8; // WORLD_TEXTURE_MAX_ZOOM=8 への丸め。
+            expect(
+                tiles.some(
+                    (t) => t.zoom === 8 && t.x === pMin.x >> dz && t.y === pMin.y >> dz,
+                ),
+            ).toBe(true);
+        });
+
         it("視錐台が全タイルを内包するなら frustumPlanes 未指定と同じ結果になる", () => {
             const withFrustum = selectGlobeTiles(
                 baseOpts(60000, { frustumPlanes: ALWAYS_INSIDE }),
