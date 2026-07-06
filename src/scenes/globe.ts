@@ -946,6 +946,10 @@ export class GlobeScene {
         // （外部カメラは camera.yaw/pitch と実際の向きが一致しないため、GeospatialCamera 由来では
         //  正しい frustum を作れない）。`attachTileCamera` / 未指定復帰で null に戻す。
         let externalFrustumOverride: { planes: FrustumPlane[]; cameraEcef: Vector3 } | null = null;
+        // setExternalFrustum で受け取る Vector3 の永続コピー先（呼び出し側がスクラッチバッファを
+        // 再利用して渡してきても、ここで即座に copyFrom すれば安全に保持できる。呼び出し側の
+        // アロケーション回避を許すための設計、レビュー指摘）。
+        const externalFrustumCameraEcef = new Vector3();
 
         /** GeospatialCamera の center/yaw/pitch/radius から真の ECEF 位置を復元する。 */
         const computeCameraEcef = (): Vector3 => {
@@ -2273,10 +2277,14 @@ export class GlobeScene {
             // 有効化する。6平面以外（空配列・不完全な配列）だと selectGlobeTiles 側で視錐台
             // カリングが暗黙に無効化される／部分平面で誤判定するため、その場合は override を解除する。
             setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcefPos: Vector3 | null) => {
-                externalFrustumOverride =
-                    planes && planes.length === 6 && cameraEcefPos
-                        ? { planes, cameraEcef: cameraEcefPos }
-                        : null;
+                if (planes && planes.length === 6 && cameraEcefPos) {
+                    // 呼び出し側のスクラッチを直接保持せず、永続バッファへ即座にコピーする
+                    // （呼び出し側が同じ Vector3 を次回呼び出しで書き換えても安全）。
+                    externalFrustumCameraEcef.copyFrom(cameraEcefPos);
+                    externalFrustumOverride = { planes, cameraEcef: externalFrustumCameraEcef };
+                } else {
+                    externalFrustumOverride = null;
+                }
             },
             dispose,
         };
