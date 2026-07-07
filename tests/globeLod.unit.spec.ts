@@ -648,6 +648,124 @@ describe("selectGlobeTiles", () => {
         expect(hasForeground).toBe(true);
     });
 
+    describe("低高度・高チルト・高 DPI で地平線側の被覆が予算超過で欠けない（#470）", () => {
+        // 富士山頂付近をアップ（低高度・高チルト）にすると、近景の細タイルが maxTiles 予算を
+        // 食い切り、素朴な「距離昇順 slice」では最遠（地平線側）のタイルが丸ごと捨てられて青の
+        // ベースレイヤが露出した（sseThreshold=384 で顕在化。512 では総数が予算未満で露出しなかった）。
+        // 予算超過時は削除ではなく最遠の 4 兄弟を親へ粗化統合して被覆を保つ修正で、地平線側まで
+        // 連続被覆される（nadir から地平線までタイルが途切れず張られる不変条件）。再現 URL:
+        // @35.361947,138.729267,592,299.31,66.17（radius 592m, azimuth 299.31°, tilt 66.17°）。
+        const REPRO_LAT = 35.361947;
+        const REPRO_LON = 138.729267;
+        const DEG = Math.PI / 180;
+        const R = 6371000;
+
+        /** 注視点(REPRO 地点)標高 elev・radius・tilt・az から repro カメラ ECEF を組む。 */
+        const reproCamera = (elev: number, radius: number, tiltDeg: number, azDeg: number): Vector3 => {
+            const centerEcef = geodeticToEcef(REPRO_LAT, REPRO_LON, elev);
+            const lookAt = new Vector3();
+            ComputeLookAtFromYawPitchToRef(azDeg * DEG, tiltDeg * DEG, centerEcef, true, lookAt);
+            return centerEcef.clone().subtract(lookAt.scale(radius));
+        };
+
+        /** 緯度経度がいずれかの選択タイル（その zoom）に含まれるか。 */
+        const covered = (
+            tiles: ReturnType<typeof selectGlobeTiles>,
+            lat: number,
+            lon: number,
+        ): boolean =>
+            tiles.some((t) => {
+                const c = toTileXY(lat, lon, t.zoom);
+                return c.x === t.x && c.y === t.y;
+            });
+
+        /**
+         * nadir から視線方位 az の大円に沿って地表を刻み、被覆が始まってから最後に被覆された
+         * 地表距離[km] と、被覆開始後に最初に現れた穴の距離[km]（無ければ -1）を返す。
+         */
+        const coverageAlongView = (
+            opts: GlobeLodOptions,
+            azDeg: number,
+        ): { lastCoveredKm: number; firstGapKm: number; horizonKm: number } => {
+            const tiles = selectGlobeTiles(opts);
+            const nadir = ecefToGeodetic(opts.cameraEcef);
+            const h = Math.max(0, nadir.altMeters);
+            const horizonArc = R * Math.acos(R / (R + h));
+            const lat1 = nadir.latDeg * DEG;
+            const lon1 = nadir.lonDeg * DEG;
+            const theta = azDeg * DEG;
+            let lastCoveredKm = -1;
+            let firstGapKm = -1;
+            for (let arc = 0; arc <= horizonArc * 0.9; arc += 1000) {
+                const dlt = arc / R;
+                const lat2 = Math.asin(
+                    Math.sin(lat1) * Math.cos(dlt) + Math.cos(lat1) * Math.sin(dlt) * Math.cos(theta),
+                );
+                const lon2 =
+                    lon1 +
+                    Math.atan2(
+                        Math.sin(theta) * Math.sin(dlt) * Math.cos(lat1),
+                        Math.cos(dlt) - Math.sin(lat1) * Math.sin(lat2),
+                    );
+                if (covered(tiles, lat2 / DEG, lon2 / DEG)) lastCoveredKm = arc / 1000;
+                else if (firstGapKm < 0 && lastCoveredKm >= 0) firstGapKm = arc / 1000;
+            }
+            return { lastCoveredKm, firstGapKm, horizonKm: horizonArc / 1000 };
+        };
+
+        // 高標高の注視点（富士山頂相当 3776m）・radius 592m・tilt 66.17°・az 299.31°、
+        // 高 DPI 相当の高い viewportHeight（getRenderHeight はバックバッファ解像度 = DPR 倍）。
+        const elev = 3776;
+        const az = 299.31;
+        const reproOpts = (sse: number): GlobeLodOptions => {
+            const cameraEcef = reproCamera(elev, 592, 66.17, az);
+            const center = geodeticToEcef(REPRO_LAT, REPRO_LON, elev);
+            const cg = ecefToGeodetic(center);
+            return baseOpts(ecefToGeodetic(cameraEcef).altMeters, {
+                cameraEcef,
+                centerLat: cg.latDeg,
+                centerLon: cg.lonDeg,
+                minZoom: GLOBE_SCENE_DEFAULTS.minZoom,
+                maxZoom: GLOBE_SCENE_DEFAULTS.maxZoom,
+                viewportHeight: 1600,
+                viewportWidth: 2560,
+                sseThreshold: sse,
+                maxTiles: GLOBE_SCENE_DEFAULTS.maxTiles,
+                rootSearchRadius: GLOBE_SCENE_DEFAULTS.rootSearchRadius,
+                maxRootTiles: GLOBE_SCENE_DEFAULTS.maxRootTiles,
+                horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
+                rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
+                textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
+                referenceAltitude: elev,
+            });
+        };
+
+        it("sseThreshold=384（本番値）で地平線側までベースレイヤ露出の穴がない", () => {
+            const opts = reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold);
+            const { lastCoveredKm, firstGapKm, horizonKm } = coverageAlongView(opts, az);
+            // 被覆開始後に穴がない（修正前は近景で予算を食い切り最遠が捨てられ数 km 先で穴あき）。
+            expect(firstGapKm).toBe(-1);
+            // 視線方向の地表が可視遠方（地平線の 7 割超）まで連続被覆される。
+            expect(lastCoveredKm).toBeGreaterThan(horizonKm * 0.7);
+        });
+
+        it("予算超過時も maxTiles を超えない（粗化統合で枚数を抑える）", () => {
+            const tiles = selectGlobeTiles(reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold));
+            expect(tiles.length).toBeLessThanOrEqual(GLOBE_SCENE_DEFAULTS.maxTiles);
+        });
+
+        it("粗化統合後も quadtree カットが崩れない（祖先-子孫の二重被覆がない）", () => {
+            const tiles = selectGlobeTiles(reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold));
+            const keys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
+            for (const t of tiles) {
+                for (let z = t.zoom - 1; z >= GLOBE_SCENE_DEFAULTS.rootZoomFloor; z--) {
+                    const dz = t.zoom - z;
+                    expect(keys.has(tileKey(z, t.x >> dz, t.y >> dz))).toBe(false);
+                }
+            }
+        });
+    });
+
     describe("日本被覆域外のテクスチャ上限クランプ", () => {
         // 日本外（米ニューヨーク付近）。GSI テクスチャは z9 以上が存在しないため、
         // 近接カメラでも z8 までしか細分化されないこと。
