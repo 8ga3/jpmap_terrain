@@ -23,6 +23,7 @@ import {
     selectGlobeTiles,
     tileKey,
     viewForwardFromFrustumPlanes,
+    viewForwardFromFrustumPlanesToRef,
     type GlobeLodOptions,
 } from "../src/terrain/geo/globeLod";
 import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
@@ -1132,6 +1133,22 @@ describe("viewForwardFromFrustumPlanes（#475）", () => {
             d: 0,
         }));
         expect(viewForwardFromFrustumPlanes(zero)).toBeNull();
+    });
+
+    it("ToRef 版は ref に書き込み true を返す／退化時は false で ref 未変更（アロケーション回避）", () => {
+        const eye = geodeticToEcef(CENTER_LAT, CENTER_LON, 3000);
+        const target = geodeticToEcef(CENTER_LAT + 0.05, CENTER_LON, 2000);
+        const planes = cameraRelativePlanes(eye, target, eye.clone().normalize());
+        const ref = new Vector3(1, 2, 3);
+        expect(viewForwardFromFrustumPlanesToRef(planes, ref)).toBe(true);
+        expect(ref.length()).toBeCloseTo(1, 6);
+        const trueFwd = target.subtract(eye).normalize();
+        expect(Vector3.Dot(ref, trueFwd)).toBeGreaterThan(0.999);
+
+        // 退化（平面数≠6）: false を返し、ref は元のまま（未変更）。
+        const sentinel = new Vector3(7, 8, 9);
+        expect(viewForwardFromFrustumPlanesToRef([], sentinel)).toBe(false);
+        expect(sentinel.equals(new Vector3(7, 8, 9))).toBe(true);
     });
 });
 

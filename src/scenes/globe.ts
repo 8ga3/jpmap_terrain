@@ -54,7 +54,7 @@ import {
     resolveRecalcCenterSource,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
-import { viewForwardFromFrustumPlanes } from "../terrain/geo/globeLod";
+import { viewForwardFromFrustumPlanesToRef } from "../terrain/geo/globeLod";
 import type { FrustumPlane } from "../terrain/visibleTiles";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import {
@@ -1959,9 +1959,8 @@ export class GlobeScene {
             // 外部 frustum から実視線 forward を導出して LOD の前方到達距離補正に渡す。通常カメラ
             // （override なし）は center が真の注視点なので補正不要＝渡さない（後方互換）。
             let viewForward: Vector3 | undefined;
-            if (override) {
-                const f = viewForwardFromFrustumPlanes(override.planes);
-                if (f) viewForward = externalViewForward.copyFrom(f);
+            if (override && viewForwardFromFrustumPlanesToRef(override.planes, externalViewForward)) {
+                viewForward = externalViewForward;
             }
             const stats = tileManager.sync({
                 cameraEcef: override ? override.cameraEcef : computeCameraEcef(),
