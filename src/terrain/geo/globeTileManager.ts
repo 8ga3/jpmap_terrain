@@ -273,6 +273,12 @@ export const createGlobeTileManager = (
     opts: GlobeTileManagerOptions,
 ): GlobeTileManager => {
     const { scene, minZoom, geomMaxZoom, segments, snapEnabled } = opts;
+    // terrainElevAt の距離ゲート基準かつ buildReadyTiles の elevRelevantGeom 追加基準となる gz。
+    // これ未満の gz（遠景で minZoom を下回る距離適応タイル）だけを距離ゲートの対象にする。
+    // minZoom > geomMaxZoom（例: ?zoom=18）では最も細かい実タイルが gz=geomMaxZoom になるため、
+    // min(minZoom, geomMaxZoom) を基準にして geomMaxZoom を無条件採用する（seat-on-terrain 維持）。
+    // 両所で同じ基準を参照して条件のドリフトを防ぐ。
+    const gateBelowGz = Math.min(minZoom, geomMaxZoom);
     // 地図種別は実行時に切替可能。buildTile / buildBaseLayer のテクスチャ URL は
     // この可変値を参照するため、以降の新規タイルは切替後の mapType を使う。
     let currentMapType: MapType = opts.mapType;
@@ -459,16 +465,15 @@ export const createGlobeTileManager = (
 
     const terrainElevAt = (latDeg: number, lonDeg: number): number | null => {
         // 探索は geomMaxZoom（細）から粗へ下り、elevCache に実在する最も細かい gz を採用する。
-        // gz >= minZoom は従来どおり常に採用。gz < minZoom（遠景で距離適応 root zoom が minZoom を
-        // 下回ったタイル）は、buildReadyTiles が距離 <= ELEVATION_RELEVANT_MAX_DISTANCE_M と判定し
+        // gz >= gateBelowGz は従来どおり常に採用。gz < gateBelowGz（遠景で距離適応 root zoom が minZoom
+        // を下回ったタイル）は、buildReadyTiles が距離 <= ELEVATION_RELEVANT_MAX_DISTANCE_M と判定し
         // elevRelevantGeom に記録したものだけ採用する（#459: 東京駅→富士山 約100.5km/zoom=10 の
-        // ような近〜中距離で標高を返しつつ、全球視点の超粗タイルで誤った標高を返さない）。下限を 0 に
-        // しても elevCache/elevRelevantGeom に無い gz は skip されるだけ。
-        // 距離ゲートの基準 gz は min(minZoom, geomMaxZoom)。minZoom > geomMaxZoom（例: ?zoom=18）では
-        // 最も細かい実タイルが gz=geomMaxZoom(<minZoom) になるため、これを minZoom 未満としてゲート
-        // すると常に null になる。geomMaxZoom までは従来どおり無条件採用する（seat-on-terrain 維持）。
-        const gateBelowGz = Math.min(minZoom, geomMaxZoom);
-        for (let gz = geomMaxZoom; gz >= 0; gz--) {
+        // ような近〜中距離で標高を返しつつ、全球視点の超粗タイルで誤った標高を返さない）。
+        // 通常時（近景で elevRelevantGeom が空）は gz<gateBelowGz を探索しても必ず skip されるため、
+        // 下限を gateBelowGz に切り上げて毎フレーム呼び出しの無駄な toTileXY/tileKey を避ける。
+        // #459 の遠景タイルが登録されている間だけ 0 まで探索する。
+        const searchFloor = elevRelevantGeom.size > 0 ? 0 : gateBelowGz;
+        for (let gz = geomMaxZoom; gz >= searchFloor; gz--) {
             const { x, y } = toTileXY(latDeg, lonDeg, gz);
             const gk = tileKey(gz, x, y);
             if (gz < gateBelowGz && !elevRelevantGeom.has(gk)) continue;
@@ -1046,10 +1051,12 @@ export const createGlobeTileManager = (
             // 「標高が視覚的に無意味」として扱う。
             const isElevationRelevant =
                 t.zoom >= minZoom || t.distance <= ELEVATION_RELEVANT_MAX_DISTANCE_M;
-            // #459: gz<minZoom の距離適応タイルが「標高が意味を持つ」間だけ terrainElevAt の
+            // #459: gz<gateBelowGz の距離適応タイルが「標高が意味を持つ」間だけ terrainElevAt の
             // 採用対象に載せる。距離が離れて無意味化したら外す（terrainElevAt が全球視点の超粗
-            // タイル標高を返さないため）。gz>=minZoom は常に採用対象なので記録不要。
-            if (t.zoom < minZoom) {
+            // タイル標高を返さないため）。gz>=gateBelowGz は常に採用対象なので記録不要。判定基準を
+            // terrainElevAt の距離ゲートと同じ gateBelowGz に揃える（minZoom>geomMaxZoom で
+            // gz=geomMaxZoom を無駄に Set へ追加しない）。
+            if (gz < gateBelowGz) {
                 if (isElevationRelevant) elevRelevantGeom.add(gk);
                 else elevRelevantGeom.delete(gk);
             }
