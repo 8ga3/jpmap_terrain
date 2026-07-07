@@ -275,15 +275,18 @@ const effectiveSseThreshold = (
  */
 /**
  * camera 相対（原点=cameraEcef、回転のみ・並進なし）の視錐台6平面から視線 forward（ECEF 向き
- * 単位ベクトル）を導出する。`FrustumPlane` の法線は内向き（`normal·p + d < 0` で外側,
+ * 単位ベクトル）を `ref` に書き込む。`FrustumPlane` の法線は内向き（`normal·p + d < 0` で外側,
  * `visibleTiles.ts` 規約）で、near/far は forward の逆向き同士＝相殺し、left/right・top/bottom は
  * lateral/vertical 成分が相殺し forward 成分のみ残るため、6平面法線の和は forward に比例する。
- * 平面インデックス順序に依存しない（順序非依存）。零和・非有限は `null`（呼び出し側でフォールバック）。
+ * 平面インデックス順序に依存しない（順序非依存）。導出できたら `true`、平面数≠6・零和・非有限は
+ * `false`（`ref` は未変更、呼び出し側でフォールバック）。毎フレーム呼ぶ経路（`globe.ts` syncTiles）が
+ * Vector3 を新規生成せず再利用できるよう ToRef 形にする。
  */
-export const viewForwardFromFrustumPlanes = (
+export const viewForwardFromFrustumPlanesToRef = (
     planes: readonly FrustumPlane[],
-): Vector3 | null => {
-    if (planes.length !== 6) return null;
+    ref: Vector3,
+): boolean => {
+    if (planes.length !== 6) return false;
     let sx = 0;
     let sy = 0;
     let sz = 0;
@@ -293,9 +296,21 @@ export const viewForwardFromFrustumPlanes = (
         sz += p.normal.z;
     }
     const lenSq = sx * sx + sy * sy + sz * sz;
-    if (!Number.isFinite(lenSq) || lenSq < 1e-12) return null;
+    if (!Number.isFinite(lenSq) || lenSq < 1e-12) return false;
     const inv = 1 / Math.sqrt(lenSq);
-    return new Vector3(sx * inv, sy * inv, sz * inv);
+    ref.set(sx * inv, sy * inv, sz * inv);
+    return true;
+};
+
+/**
+ * `viewForwardFromFrustumPlanesToRef` の Vector3 生成版（新規 Vector3 を返す。導出不能なら `null`）。
+ * 毎フレームでない呼び出し・テスト向け。ホットパスでは ToRef 版を使うこと。
+ */
+export const viewForwardFromFrustumPlanes = (
+    planes: readonly FrustumPlane[],
+): Vector3 | null => {
+    const out = new Vector3();
+    return viewForwardFromFrustumPlanesToRef(planes, out) ? out : null;
 };
 
 export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => {
