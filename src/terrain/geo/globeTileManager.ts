@@ -204,6 +204,11 @@ export interface GlobeTileSyncParams {
      * `GlobeLodOptions.textureQualityFloorZoom` 参照）。省略時は無効。
      */
     textureQualityFloorZoom?: number;
+    /**
+     * 実カメラ視線 forward（ECEF 向きベクトル。`globeLod.ts` の `GlobeLodOptions.viewForward`
+     * 参照）。Follow mode で center と実視線が乖離する経路の前方到達距離補正に使う。省略時は無効。
+     */
+    viewForward?: Vector3;
 }
 
 /** 同期結果の統計。 */
@@ -1313,6 +1318,7 @@ export const createGlobeTileManager = (
             frustumPlanes: params.frustumPlanes,
             pinnedPoints: params.pinnedPoints,
             textureQualityFloorZoom: params.textureQualityFloorZoom,
+            viewForward: params.viewForward,
         });
         desiredKeys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
         // 可視タイルの全祖先キー集合と最大 zoom を構築（カバー判定・zoom 階層判定に使う）。

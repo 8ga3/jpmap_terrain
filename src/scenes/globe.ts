@@ -54,6 +54,7 @@ import {
     resolveRecalcCenterSource,
 } from "../terrain/geo/cameraMapping";
 import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
+import { viewForwardFromFrustumPlanes } from "../terrain/geo/globeLod";
 import type { FrustumPlane } from "../terrain/visibleTiles";
 import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import {
@@ -971,6 +972,9 @@ export class GlobeScene {
             normal: { x: 0, y: 0, z: 0 },
             d: 0,
         }));
+        // 外部 frustum（Follow mode）から導出する視線 forward の永続コピー先（毎フレームの
+        // Vector3 アロケーションを避ける。#475）。
+        const externalViewForward = new Vector3();
 
         /** GeospatialCamera の center/yaw/pitch/radius から真の ECEF 位置を復元する。 */
         const computeCameraEcef = (): Vector3 => {
@@ -1950,6 +1954,15 @@ export class GlobeScene {
 
         const syncTiles = (): void => {
             const override = externalFrustumOverride;
+            // Follow mode（外部 frustum）では center=機体直下地表・実カメラは水平前方視のため、
+            // center 由来の tilt では前方到達距離が過小になり地平線側が未種付けの穴になる（#475）。
+            // 外部 frustum から実視線 forward を導出して LOD の前方到達距離補正に渡す。通常カメラ
+            // （override なし）は center が真の注視点なので補正不要＝渡さない（後方互換）。
+            let viewForward: Vector3 | undefined;
+            if (override) {
+                const f = viewForwardFromFrustumPlanes(override.planes);
+                if (f) viewForward = externalViewForward.copyFrom(f);
+            }
             const stats = tileManager.sync({
                 cameraEcef: override ? override.cameraEcef : computeCameraEcef(),
                 centerEcef: camera.center,
@@ -1979,6 +1992,7 @@ export class GlobeScene {
                     return points;
                 })(),
                 textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
+                viewForward,
             });
             if (options.onSyncStats) {
                 const geo = ecefToGeodetic(camera.center);
