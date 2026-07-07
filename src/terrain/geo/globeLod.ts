@@ -115,6 +115,12 @@ export interface GlobeLodOptions {
      * 省略時は無効（既存の `rootZoomFloor`/SSE のみで判定、後方互換）。
      */
     textureQualityFloorZoom?: number;
+    /**
+     * 実カメラ視線 forward（ECEF 向きベクトル）。前方 swath 到達距離を決める tilt をこの向きから
+     * 求める（`GlobeRootSeedOptions.viewForward` 参照）。`selectGlobeRootTiles` へそのまま転送する。
+     * 省略時は従来どおり camera→center から tilt を算出（後方互換）。
+     */
+    viewForward?: Vector3;
 }
 
 /** タイル中心の ECEF（基準標高 alt）を ref に書き込み、その緯度経度を返す。 */
@@ -187,6 +193,14 @@ export interface GlobeRootSeedOptions {
      * 負値（海面下）と NaN/Infinity は 0（海面）へ丸める。
      */
     referenceAltitude?: number;
+    /**
+     * 実カメラ視線 forward（ECEF 向きベクトル、camera 相対回転で導出可）。指定時、前方到達距離
+     * `forwardReach` を決める tilt（直下=-cameraEcef からの視線角）をこの向きから求める。
+     * Follow mode のように center（=機体直下地表）と実視線が乖離する経路で、center 由来の tilt が
+     * 過小算出され前方（地平線側）が未種付けになる問題（#475）を防ぐ。省略・零ベクトル・非有限は
+     * 従来どおり camera→center から tilt を算出（後方互換）。内部で正規化するため単位でなくてもよい。
+     */
+    viewForward?: Vector3;
 }
 
 /** カメラ↔地表点の弦距離の概算に使う WGS84 平均半径 [m]。 */
@@ -259,6 +273,31 @@ const effectiveSseThreshold = (
  * 帯の被覆過多や裏側は後段の地平線カリング・SSE・maxTiles 打ち切りで間引かれる。直下視
  * （nadir≒center で方向が定まらない）では nadir 中心の対称ボックスにフォールバックする。
  */
+/**
+ * camera 相対（原点=cameraEcef、回転のみ・並進なし）の視錐台6平面から視線 forward（ECEF 向き
+ * 単位ベクトル）を導出する。`FrustumPlane` の法線は内向き（`normal·p + d < 0` で外側,
+ * `visibleTiles.ts` 規約）で、near/far は forward の逆向き同士＝相殺し、left/right・top/bottom は
+ * lateral/vertical 成分が相殺し forward 成分のみ残るため、6平面法線の和は forward に比例する。
+ * 平面インデックス順序に依存しない（順序非依存）。零和・非有限は `null`（呼び出し側でフォールバック）。
+ */
+export const viewForwardFromFrustumPlanes = (
+    planes: readonly FrustumPlane[],
+): Vector3 | null => {
+    if (planes.length !== 6) return null;
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    for (const p of planes) {
+        sx += p.normal.x;
+        sy += p.normal.y;
+        sz += p.normal.z;
+    }
+    const lenSq = sx * sx + sy * sy + sz * sz;
+    if (!Number.isFinite(lenSq) || lenSq < 1e-12) return null;
+    const inv = 1 / Math.sqrt(lenSq);
+    return new Vector3(sx * inv, sy * inv, sz * inv);
+};
+
 export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => {
     const {
         cameraEcef,
@@ -474,10 +513,28 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         Math.max(-1, Vector3.Dot(cameraEcef, centerEcef) / (camLen * centerEcef.length())),
     );
     const dirLenMeters = R * Math.acos(cosPsi);
-    const lookDir = centerEcef.subtract(cameraEcef); // camera→center（このあと未使用なので破棄可）
-    const tilt = Math.acos(
-        Math.min(1, Math.max(-1, -Vector3.Dot(lookDir, cameraEcef) / (lookDir.length() * camLen))),
-    );
+    const lookDir = centerEcef.subtract(cameraEcef); // camera→center
+    // tilt = 視線と直下（−cameraEcef）のなす角。Follow mode では実カメラが機体（高度あり）を見て
+    // ほぼ水平前方を向くのに center=機体直下地表のため、camera→center 由来の tilt が実際より小さく
+    // （下向き寄りに）算出され forwardReach が短縮、前方（地平線側）が未種付けになる（#475）。
+    // viewForward（実視線）が渡された場合はそれで tilt を求め、前方到達距離を実視線に一致させる。
+    // 零ベクトル・非有限は camera→center へフォールバック（後方互換）。
+    const vf = opts.viewForward;
+    const vfLenSq = vf ? vf.lengthSquared() : 0;
+    const tilt =
+        vf && Number.isFinite(vfLenSq) && vfLenSq > 1e-12
+            ? Math.acos(
+                  Math.min(
+                      1,
+                      Math.max(-1, -Vector3.Dot(vf, cameraEcef) / (Math.sqrt(vfLenSq) * camLen)),
+                  ),
+              )
+            : Math.acos(
+                  Math.min(
+                      1,
+                      Math.max(-1, -Vector3.Dot(lookDir, cameraEcef) / (lookDir.length() * camLen)),
+                  ),
+              );
 
     // nadir と center の root を最優先確保（各々の SSE 最適 zoom で）。budget=1 では nadir のみ。
     addAt(t0.x, t0.y, zoomForDist(chordDist(0)));
@@ -632,6 +689,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         frustumPlanes,
         pinnedPoints,
         textureQualityFloorZoom,
+        viewForward,
     } = opts;
 
     if (maxZoom < minZoom) return [];
@@ -814,6 +872,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         sseThreshold,
         textureQualityFloorZoom,
         referenceAltitude,
+        viewForward,
     });
     // root シードを traverse 開始点とする。日本被覆域外の root が minZoom(>WORLD_TEXTURE_MAX_ZOOM)
     // で生成されると、それ以上分割しなくても root タイル自体のテクスチャが存在せず(404)白く欠ける。

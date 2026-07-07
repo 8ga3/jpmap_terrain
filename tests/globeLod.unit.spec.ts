@@ -9,16 +9,20 @@
  */
 
 import { describe, it, expect } from "@jest/globals";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { ComputeLookAtFromYawPitchToRef } from "@babylonjs/core/Cameras/geospatialCamera";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
 import { tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
 import { geodeticToEcef, ecefToGeodetic } from "../src/terrain/geo/ecef";
+import { geographicTangentBasisToRef } from "../src/terrain/geo/cameraMapping";
 import {
     selectGlobeRootTiles,
     selectGlobeTiles,
     tileKey,
+    viewForwardFromFrustumPlanes,
     type GlobeLodOptions,
 } from "../src/terrain/geo/globeLod";
 import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
@@ -1065,5 +1069,246 @@ describe("selectGlobeRootTiles", () => {
         );
         expect(seeds.length).toBeGreaterThan(0);
         for (const s of seeds) expect(s.zoom).toBeLessThanOrEqual(6);
+    });
+});
+
+describe("viewForwardFromFrustumPlanes（#475）", () => {
+    const V_FOV = 0.8;
+    const ASPECT = 1920 / 1080;
+
+    /**
+     * flight/index.ts と同一手順で camera 相対（原点=eye、回転のみ）の視錐台6平面を作る。
+     * FreeCamera は左手系（LookAtLH / PerspectiveFovLH）。view 行列の並進行を 0 にして
+     * projection と合成し、Frustum.GetPlanesToRef で平面を得る。
+     */
+    const cameraRelativePlanes = (
+        eye: Vector3,
+        target: Vector3,
+        up: Vector3,
+    ): FrustumPlane[] => {
+        const viewMat = Matrix.LookAtLH(eye, target, up);
+        viewMat.setRowFromFloats(3, 0, 0, 0, 1); // 並進を 0（camera 相対化）。
+        const projMat = Matrix.PerspectiveFovLH(V_FOV, ASPECT, 1, 400000);
+        const transform = Matrix.Identity();
+        viewMat.multiplyToRef(projMat, transform);
+        const raw: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        Frustum.GetPlanesToRef(transform, raw);
+        return raw.map((p) => ({
+            normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+            d: p.d,
+        }));
+    };
+
+    it("視錐台6平面から実視線 forward を復元する（真の forward と一致）", () => {
+        // 東京付近から北・やや下方を見るカメラ。真の forward = normalize(target - eye)。
+        const eye = geodeticToEcef(CENTER_LAT, CENTER_LON, 3000);
+        const target = geodeticToEcef(CENTER_LAT + 0.05, CENTER_LON, 2000);
+        const up = eye.clone().normalize();
+        const planes = cameraRelativePlanes(eye, target, up);
+        const fwd = viewForwardFromFrustumPlanes(planes);
+        expect(fwd).not.toBeNull();
+        const trueFwd = target.subtract(eye).normalize();
+        expect(Vector3.Dot(fwd as Vector3, trueFwd)).toBeGreaterThan(0.999);
+    });
+
+    it("戻り値は単位ベクトル", () => {
+        const eye = geodeticToEcef(CENTER_LAT, CENTER_LON, 5000);
+        const target = geodeticToEcef(CENTER_LAT + 0.1, CENTER_LON + 0.03, 0);
+        const planes = cameraRelativePlanes(eye, target, eye.clone().normalize());
+        const fwd = viewForwardFromFrustumPlanes(planes) as Vector3;
+        expect(fwd.length()).toBeCloseTo(1, 6);
+    });
+
+    it("平面数が6でなければ null", () => {
+        expect(viewForwardFromFrustumPlanes([])).toBeNull();
+        expect(
+            viewForwardFromFrustumPlanes([{ normal: { x: 1, y: 0, z: 0 }, d: 0 }]),
+        ).toBeNull();
+    });
+
+    it("法線和が零ベクトルなら null（退化）", () => {
+        const zero: FrustumPlane[] = Array.from({ length: 6 }, () => ({
+            normal: { x: 0, y: 0, z: 0 },
+            d: 0,
+        }));
+        expect(viewForwardFromFrustumPlanes(zero)).toBeNull();
+    });
+});
+
+describe("Follow mode 前方到達距離補正（viewForward, #475）", () => {
+    // Follow mode の幾何: 機体（高度 alt）の後方 radius・上方 height に追従カメラを置き、機体を見る。
+    // cameraEcef=追従カメラ位置、center=機体直下地表（本番の flight/index.ts が渡す値）。
+    // 追従カメラはほぼ水平前方を向くのに center=直下地表のため、center 由来 tilt では前方到達距離が
+    // 過小になり地平線側が未種付けの穴になる（#475）。frustum 由来 viewForward で解消する。
+    const V_FOV = 0.8;
+    const ASPECT = 1920 / 1080;
+    const R = 6371000;
+    const DEG = Math.PI / 180;
+
+    /** heading 北・rotationOffset 180（真後ろ）の追従カメラ eye/target/up を組む。 */
+    const followRig = (altM: number, radiusM: number, heightM: number) => {
+        const plane = geodeticToEcef(CENTER_LAT, CENTER_LON, altM);
+        const east = new Vector3();
+        const north = new Vector3();
+        geographicTangentBasisToRef(plane, east, north);
+        const up = plane.clone().normalize();
+        // rot=180° → sin=0, cos=-1 → 真北飛行の真後ろ（南）へ radius。
+        const eye = plane
+            .add(north.scale(-radiusM))
+            .add(up.scale(heightM));
+        return { eye, target: plane.clone(), up };
+    };
+
+    /** flight/index.ts と同手順の camera 相対視錐台平面。 */
+    const followPlanes = (eye: Vector3, target: Vector3, up: Vector3): FrustumPlane[] => {
+        const viewMat = Matrix.LookAtLH(eye, target, up);
+        viewMat.setRowFromFloats(3, 0, 0, 0, 1);
+        const projMat = Matrix.PerspectiveFovLH(V_FOV, ASPECT, 1, 400000);
+        const transform = Matrix.Identity();
+        viewMat.multiplyToRef(projMat, transform);
+        const raw: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        Frustum.GetPlanesToRef(transform, raw);
+        return raw.map((p) => ({
+            normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
+            d: p.d,
+        }));
+    };
+
+    const followOpts = (
+        eye: Vector3,
+        planes: FrustumPlane[],
+        withViewForward: boolean,
+    ): GlobeLodOptions => {
+        const vf = withViewForward
+            ? (viewForwardFromFrustumPlanes(planes) ?? undefined)
+            : undefined;
+        return {
+            cameraEcef: eye,
+            centerLat: CENTER_LAT, // 本番: 機体直下地表点。
+            centerLon: CENTER_LON,
+            minZoom: GLOBE_SCENE_DEFAULTS.minZoom,
+            maxZoom: GLOBE_SCENE_DEFAULTS.maxZoom,
+            viewportHeight: 1080,
+            viewportWidth: 1920,
+            verticalFov: V_FOV,
+            sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
+            maxTiles: GLOBE_SCENE_DEFAULTS.maxTiles,
+            rootSearchRadius: GLOBE_SCENE_DEFAULTS.rootSearchRadius,
+            maxRootTiles: GLOBE_SCENE_DEFAULTS.maxRootTiles,
+            horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
+            referenceAltitude: 0,
+            rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
+            frustumPlanes: planes,
+            textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
+            viewForward: vf,
+        };
+    };
+
+    /** frustum 内の子午線サンプルで最遠被覆距離[km]と最初の穴[km]（無ければ-1）を返す。 */
+    const coverageNorth = (opts: GlobeLodOptions) => {
+        const tiles = selectGlobeTiles(opts);
+        const cam = opts.cameraEcef;
+        const inFrustum = (lat: number, lon: number): boolean => {
+            const p = geodeticToEcef(lat, lon, 0);
+            const rx = p.x - cam.x, ry = p.y - cam.y, rz = p.z - cam.z;
+            for (const pl of opts.frustumPlanes ?? []) {
+                if (pl.normal.x * rx + pl.normal.y * ry + pl.normal.z * rz + pl.d < 0) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const covered = (lat: number, lon: number): boolean =>
+            tiles.some((t) => {
+                const c = toTileXY(lat, lon, t.zoom);
+                return c.x === t.x && c.y === t.y;
+            });
+        const h = Math.max(0, ecefToGeodetic(cam).altMeters);
+        const horizonKm = (R * Math.acos(R / (R + h))) / 1000;
+        let lastCoveredKm = 0;
+        let firstHoleKm = -1;
+        for (let km = 0.5; km <= horizonKm; km += 0.5) {
+            const lat = CENTER_LAT + (km * 1000) / R / DEG; // 北（機体前方）。
+            if (!inFrustum(lat, CENTER_LON)) continue;
+            if (covered(lat, CENTER_LON)) lastCoveredKm = km;
+            else if (firstHoleKm < 0) firstHoleKm = km;
+        }
+        return { tiles, lastCoveredKm, firstHoleKm, horizonKm };
+    };
+
+    // 追従カメラを引き（radius 3000m・height 15m）水平線が見える構図。alt 2000 / 10000。
+    for (const altM of [2000, 10000]) {
+        it(`alt=${altM}m: viewForward 無しでは前方が地平線手前で穴、有りで地平線近くまで連続被覆`, () => {
+            const { eye, target, up } = followRig(altM, 3000, 15);
+            const planes = followPlanes(eye, target, up);
+
+            // 補正なし（現状=バグ）: frustum は地平線まで映すのに被覆が手前で頭打ち→穴が出る。
+            const base = coverageNorth(followOpts(eye, planes, false));
+            expect(base.firstHoleKm).toBeGreaterThan(0); // 穴がある。
+            expect(base.lastCoveredKm).toBeLessThan(base.horizonKm * 0.5);
+
+            // 補正あり（修正）: 前方が地平線の 7 割超まで連続被覆され、穴が消える。
+            const fixed = coverageNorth(followOpts(eye, planes, true));
+            expect(fixed.firstHoleKm).toBe(-1); // 穴なし。
+            expect(fixed.lastCoveredKm).toBeGreaterThan(fixed.horizonKm * 0.7);
+            // タイル数は maxTiles 予算内（暴発しない）。
+            expect(fixed.tiles.length).toBeLessThanOrEqual(GLOBE_SCENE_DEFAULTS.maxTiles);
+        });
+    }
+
+    it("viewForward=undefined は明示指定なしと同一結果（後方互換）", () => {
+        const { eye, target, up } = followRig(2000, 3000, 15);
+        const planes = followPlanes(eye, target, up);
+        const withUndef = selectGlobeTiles(followOpts(eye, planes, false));
+        const optsNoField = followOpts(eye, planes, false);
+        delete optsNoField.viewForward; // フィールド自体を消す。
+        const withoutField = selectGlobeTiles(optsNoField);
+        expect(withUndef).toEqual(withoutField);
+    });
+
+    it("viewForward=normalize(center−camera) は未指定と同一 seed（一致経路で挙動不変）", () => {
+        // ビューアのように視線が camera→center と一致する場合、viewForward を渡しても tilt は
+        // 同値に収束し seed 集合が変わらないこと（退行なしの担保）。
+        const cameraEcef = geodeticToEcef(CENTER_LAT - 0.5, CENTER_LON, 60000);
+        const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, 0);
+        const common = {
+            cameraEcef,
+            centerLat: CENTER_LAT,
+            centerLon: CENTER_LON,
+            minZoom: 11,
+            rootSearchRadius: 2,
+            maxRootTiles: 256,
+            viewportHeight: 1080,
+            viewportWidth: 1920,
+            verticalFov: V_FOV,
+            sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
+            rootZoomFloor: 5,
+        } as const;
+        const seedsNoVf = selectGlobeRootTiles(common);
+        const seedsVf = selectGlobeRootTiles({
+            ...common,
+            viewForward: centerEcef.subtract(cameraEcef).normalize(),
+        });
+        expect(seedsVf).toEqual(seedsNoVf);
+    });
+
+    it("零ベクトル viewForward は camera→center 由来 tilt にフォールバック（例外なし）", () => {
+        const cameraEcef = geodeticToEcef(CENTER_LAT - 0.5, CENTER_LON, 60000);
+        const common = {
+            cameraEcef,
+            centerLat: CENTER_LAT,
+            centerLon: CENTER_LON,
+            minZoom: 11,
+            rootSearchRadius: 2,
+            maxRootTiles: 256,
+            viewportHeight: 1080,
+            viewportWidth: 1920,
+            verticalFov: V_FOV,
+            sseThreshold: GLOBE_SCENE_DEFAULTS.sseThreshold,
+            rootZoomFloor: 5,
+        } as const;
+        const seedsBase = selectGlobeRootTiles(common);
+        const seedsZero = selectGlobeRootTiles({ ...common, viewForward: new Vector3(0, 0, 0) });
+        expect(seedsZero).toEqual(seedsBase);
     });
 });
