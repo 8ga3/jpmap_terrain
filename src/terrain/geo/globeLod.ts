@@ -875,8 +875,90 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
               })
             : accepted;
 
-    dedup.sort((a, b) => a.distance - b.distance);
-    return dedup.slice(0, maxTiles);
+    // maxTiles 予算に収める。素朴に「距離昇順で slice」すると最遠（地平線側）のタイルから捨てられ、
+    // 高 DPI・低高度・高チルトで近景の細タイルが予算を食い切ると地平線側の被覆が丸ごと欠けて
+    // ベースレイヤ（青）が露出する（sseThreshold を下げるほどタイル総数が増えて予算超過が早まり、
+    // この症状が悪化する）。そこで削除ではなく「最遠の完全な 4 兄弟を親へ粗化統合」して枚数を
+    // 減らす。粗化は被覆を保ったままタイル数を 3 減らすため、地平線側の被覆を維持しつつ近景の
+    // 詳細を残せる（遠方から順に粗くする）。粗化しきれない（全タイルが floorZoom で兄弟統合の
+    // 余地がない）縮退ケースのみ、従来どおり距離昇順 slice で強制的に上限を満たす。
+    const budgeted = coarsenToBudget(
+        dedup,
+        maxTiles,
+        floorZoom,
+        cameraEcef,
+        referenceAltitude,
+        tileEcef,
+    );
+    budgeted.sort((a, b) => a.distance - b.distance);
+    return budgeted.length > maxTiles ? budgeted.slice(0, maxTiles) : budgeted;
+};
+
+/**
+ * quadtree カット `tiles`（重なりなしの完全被覆）を、被覆を保ったまま `maxTiles` 枚以内へ粗化する。
+ *
+ * 距離昇順 slice が最遠タイルを削除して地平線側にベースレイヤ露出の穴を空けるのを避けるため、
+ * 「最遠の、4 兄弟がすべて揃った」ノードを親（zoom-1）へ統合する操作を繰り返す。完全な 4 兄弟の
+ * みを統合するので重なり（祖先-子孫の二重被覆）は生じず、被覆は厳密に保たれ、1 回で枚数が 3 減る。
+ * `floorZoom` 未満へは粗化しない。完全な兄弟集合が尽きた時点で打ち切り、呼び出し側の距離昇順
+ * slice が縮退ケースの上限保証を担う（このとき初めて穴が生じ得るが、floorZoom が十分粗ければ
+ * 到達しない）。統合順は「最遠優先」で近景の詳細を温存する。
+ */
+const coarsenToBudget = (
+    tiles: GlobeTile[],
+    maxTiles: number,
+    floorZoom: number,
+    cameraEcef: Vector3,
+    referenceAltitude: number,
+    scratch: Vector3,
+): GlobeTile[] => {
+    if (tiles.length <= maxTiles) return tiles;
+    const byKey = new Map<string, GlobeTile>();
+    for (const t of tiles) byKey.set(tileKey(t.zoom, t.x, t.y), t);
+    // 統合は 1 回で高々 3 枚減り、各統合で zoom 総和が単調減少するため必ず停止する。ガードは保険。
+    let guard = tiles.length * 4 + 64;
+    while (byKey.size > maxTiles && guard-- > 0) {
+        // 4 兄弟がすべて揃い、親が floorZoom 以上になる、最も遠いノードを探す。
+        let bestDist = -1;
+        let bestZoom = -1;
+        let bestPx = 0;
+        let bestPy = 0;
+        for (const t of byKey.values()) {
+            const pz = t.zoom - 1;
+            if (pz < floorZoom) continue;
+            const px = t.x >> 1;
+            const py = t.y >> 1;
+            let complete = true;
+            for (let sy = 0; sy < 2 && complete; sy++) {
+                for (let sx = 0; sx < 2 && complete; sx++) {
+                    if (!byKey.has(tileKey(t.zoom, px * 2 + sx, py * 2 + sy))) complete = false;
+                }
+            }
+            if (!complete) continue;
+            if (t.distance > bestDist) {
+                bestDist = t.distance;
+                bestZoom = t.zoom;
+                bestPx = px;
+                bestPy = py;
+            }
+        }
+        if (bestZoom < 0) break; // 統合可能な完全兄弟集合なし（縮退）。
+        for (let sy = 0; sy < 2; sy++) {
+            for (let sx = 0; sx < 2; sx++) {
+                byKey.delete(tileKey(bestZoom, bestPx * 2 + sx, bestPy * 2 + sy));
+            }
+        }
+        const pz = bestZoom - 1;
+        const { lat } = tileCenterEcefToRef(pz, bestPx, bestPy, referenceAltitude, scratch);
+        byKey.set(tileKey(pz, bestPx, bestPy), {
+            zoom: pz,
+            x: bestPx,
+            y: bestPy,
+            tileSizeMeters: tileEdgeMeters(lat, pz),
+            distance: Vector3.Distance(cameraEcef, scratch),
+        });
+    }
+    return [...byKey.values()];
 };
 
 /** タイル一意キー（"z/x/y"）。 */
