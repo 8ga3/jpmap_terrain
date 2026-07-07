@@ -463,12 +463,15 @@ export const createGlobeTileManager = (
         // 下回ったタイル）は、buildReadyTiles が距離 <= ELEVATION_RELEVANT_MAX_DISTANCE_M と判定し
         // elevRelevantGeom に記録したものだけ採用する（#459: 東京駅→富士山 約100.5km/zoom=10 の
         // ような近〜中距離で標高を返しつつ、全球視点の超粗タイルで誤った標高を返さない）。下限を 0 に
-        // しても elevCache/elevRelevantGeom に無い gz は skip されるだけ。minZoom > geomMaxZoom
-        // （例: ?zoom=18）でもループは gz=geomMaxZoom で最低 1 回回る（seat-on-terrain 維持）。
+        // しても elevCache/elevRelevantGeom に無い gz は skip されるだけ。
+        // 距離ゲートの基準 gz は min(minZoom, geomMaxZoom)。minZoom > geomMaxZoom（例: ?zoom=18）では
+        // 最も細かい実タイルが gz=geomMaxZoom(<minZoom) になるため、これを minZoom 未満としてゲート
+        // すると常に null になる。geomMaxZoom までは従来どおり無条件採用する（seat-on-terrain 維持）。
+        const gateBelowGz = Math.min(minZoom, geomMaxZoom);
         for (let gz = geomMaxZoom; gz >= 0; gz--) {
             const { x, y } = toTileXY(latDeg, lonDeg, gz);
             const gk = tileKey(gz, x, y);
-            if (gz < minZoom && !elevRelevantGeom.has(gk)) continue;
+            if (gz < gateBelowGz && !elevRelevantGeom.has(gk)) continue;
             // 未解決 all-NaN（湖面・no-data）タイルは生 NaN を保持しており bilinear が 0m を返す。
             // これを採用すると湖上で centerElevation→0→referenceAltitude→0 と循環して暫定代表標高
             // まで 0m へ崩れる（湖中央 0m クレーターの一因）。未解決の間はこの zoom を飛ばし、
@@ -1376,11 +1379,16 @@ export const createGlobeTileManager = (
             if (!neededGeom.has(key)) {
                 elevCache.delete(key);
                 allNanGeom.delete(key);
-                elevRelevantGeom.delete(key);
                 coarseSeed.delete(key);
                 coarseSeedPending.delete(key);
                 coarseSeedDone.delete(key);
             }
+        }
+        // elevRelevantGeom は標高未ロード（elevCache 未登録）でも buildReadyTiles で追加され得るため、
+        // elevCache 起点の掃除では取りこぼす。可視タイル（neededGeom）を基準に直接 prune し、セッション
+        // 中の移動で Set が上限なく増え続けないようにする（#472 レビュー対応。loading/failedRetryAt と同型）。
+        for (const key of elevRelevantGeom) {
+            if (!neededGeom.has(key)) elevRelevantGeom.delete(key);
         }
         // 不要になった in-flight ロードを loading から外す。これにより、その後 resolve した
         // 結果は loadTile の then/catch ゲート（loading.has）で無視され、不要な geom が

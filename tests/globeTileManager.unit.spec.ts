@@ -1199,6 +1199,32 @@ describe("createGlobeTileManager", () => {
         expect(mgr.terrainElevAt(35, 139)).toBeNull();
     });
 
+    it("minZoom > geomMaxZoom（?zoom=18 等）では gz=geomMaxZoom を距離ゲート無しで返す（#459 レビュー対応）", async () => {
+        // 最も細かい実タイルは gz=geomMaxZoom(15) で minZoom(18) 未満。これを一律 gz<minZoom として
+        // 距離ゲートで弾くと terrainElevAt が常に null になり seat-on-terrain が壊れる。ゲート基準を
+        // min(minZoom,geomMaxZoom) にして gz=geomMaxZoom は無条件採用する。遠距離(>150km)で
+        // elevRelevantGeom に載らないタイルでも返ることを確認する。
+        const mgr = createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 18,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+        loadElevationTile.mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256).fill(1234)),
+        );
+        selectedTiles = [tile(100, 100, 15, 200_000)]; // gz=geomMaxZoom=15, 200km>150km（非 relevant）
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        expect(elev as number).toBeCloseTo(1234, 3);
+    });
+
     it("取得失敗(404)の湖面タイルを 0m でなく隣接タイルの接線標高で平坦建築する", async () => {
         const mgr = makeManager();
         // 中央 geom タイル(gx=100,gy=100)は全レイヤ 404（決定的未配信）かつ粗ズーム祖先も 404＝本栖湖 z15
