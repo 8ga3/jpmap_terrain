@@ -12,7 +12,11 @@ import { TILE_SIZE, NO_DATA_SENTINEL } from "../src/terrain/gsiTile";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import { pixelToLatLon, totalPixelsForZoom } from "../src/terrain/geo/mapping";
 import { sampleElevBilinear } from "../src/terrain/geo/elevSample";
-import { buildGlobeTileMeshData } from "../src/terrain/geo/globeMesh";
+import {
+    buildGlobeTileMeshData,
+    adaptiveMeshSegments,
+    ADAPTIVE_SEGMENTS_MAX,
+} from "../src/terrain/geo/globeMesh";
 
 describe("sampleElevBilinear", () => {
     it("定数ラスタは定数を返す", () => {
@@ -130,5 +134,56 @@ describe("buildGlobeTileMeshData", () => {
         const last = 8; // (row=2,col=2) のインデックス
         expect(data.uvs[last * 2]).toBeCloseTo(1, 9);
         expect(data.uvs[last * 2 + 1]).toBeCloseTo(0, 9);
+    });
+});
+
+describe("adaptiveMeshSegments (#460)", () => {
+    const BASE = 32; // GLOBE_SCENE_DEFAULTS.segments
+
+    // 富士緯度でのタイル1辺実距離[m]（計測値, tests/farViewGeomResolution.unit.spec.ts）。
+    const EDGE = {
+        z8: 127665,
+        z10: 31916,
+        z11: 15958,
+        z12: 7979,
+        z13: 3990,
+    } as const;
+
+    it("遠方 zoom=10 タイル（≈32km/辺）は 128 分割へ引き上げる（≈250m/頂点=zoom12相当）", () => {
+        // target = round(31916/250)=128, avail=256(gz==zoom), cap=128 → 128。
+        expect(adaptiveMeshSegments(EDGE.z10, 10, 10, BASE)).toBe(ADAPTIVE_SEGMENTS_MAX);
+        expect(ADAPTIVE_SEGMENTS_MAX).toBe(128);
+    });
+
+    it("zoom=11 タイル（≈16km/辺）は 64 分割へ引き上げる", () => {
+        expect(adaptiveMeshSegments(EDGE.z11, 11, 11, BASE)).toBe(64);
+    });
+
+    it("中〜近景 zoom>=12 は既定 segments のまま（target<=base）", () => {
+        expect(adaptiveMeshSegments(EDGE.z12, 12, 12, BASE)).toBe(BASE); // target=32
+        expect(adaptiveMeshSegments(EDGE.z13, 13, 13, BASE)).toBe(BASE); // target=16→floor 32
+    });
+
+    it("最粗の巨大タイル（zoom=8, ≈128km/辺）は上限 128 で頭打ち", () => {
+        // target=round(127665/250)=511 だが cap=128。
+        expect(adaptiveMeshSegments(EDGE.z8, 8, 8, BASE)).toBe(ADAPTIVE_SEGMENTS_MAX);
+    });
+
+    it("近景 z16-18（geomZoom=15 を共有）は DEM 利用可能サンプル数までに抑え既定据え置き", () => {
+        // 表示 z18/geom z15: 覆う DEM 範囲 = 256/2^3 = 32 サンプル。細分しても DEM 情報は増えない。
+        // 小さいタイル（1辺 ~150m）は target=1 でもあり、いずれにせよ base(32) 据え置き。
+        expect(adaptiveMeshSegments(150, 18, 15, BASE)).toBe(BASE);
+    });
+
+    it("DEM 利用可能サンプル数が base と cap の間なら avail でクランプする", () => {
+        // 合成ケース: displayZoom-geomZoom=2 → avail=256/4=64。target を avail 超へ設定しても
+        // 64 に制限される（ロード済み DEM 情報量を超えて詳細を捏造しない）。
+        expect(adaptiveMeshSegments(40000, 17, 15, BASE)).toBe(64);
+    });
+
+    it("結果は常に baseSegments 以上（近景の解像度を下げない）", () => {
+        for (const [edge, z] of [[EDGE.z10, 10], [EDGE.z13, 13], [150, 18]] as const) {
+            expect(adaptiveMeshSegments(edge, z, Math.min(z, 15), BASE)).toBeGreaterThanOrEqual(BASE);
+        }
     });
 });
