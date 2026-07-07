@@ -1135,6 +1135,70 @@ describe("createGlobeTileManager", () => {
         expect(elev).toBeNull();
     });
 
+    // ===== #459: gz<minZoom（遠景の距離適応タイル）の terrainElevAt 距離ゲート =====
+
+    /** minZoom=12 の manager（選択タイル zoom=10 は minZoom 未満になる）。 */
+    const makeFarViewManager = () =>
+        createGlobeTileManager({
+            scene: {} as never,
+            mapType: "std",
+            minZoom: 12,
+            geomMaxZoom: 15,
+            segments: 2,
+            snapEnabled: false,
+        });
+
+    it("gz<minZoom でも近距離(<=150km)でロード済みなら terrainElevAt が標高を返す（#459）", async () => {
+        // 東京駅→富士山 約100.5km 相当。distCapZoom で root zoom が minZoom(12) を下回り zoom=10 が
+        // 選ばれるが、実 DEM はロード完了している。旧実装は探索下限 min(minZoom,geomMaxZoom)=12 の
+        // ため gz=10 を探索できず常に null だった。修正後は距離ゲート付きで採用し標高を返す。
+        const mgr = makeFarViewManager();
+        loadElevationTile.mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256).fill(3000)),
+        );
+        selectedTiles = [tile(100, 100, 10, 100_500)]; // zoom=10 < minZoom=12, 100.5km <= 150km
+        mgr.sync(syncParams());
+        await flush(); // 実標高到着 → elevCache へ格納
+        mgr.sync(syncParams()); // buildReadyTiles が elevRelevantGeom へ登録
+
+        const elev = mgr.terrainElevAt(35, 139);
+        expect(elev).not.toBeNull();
+        expect(elev as number).toBeCloseTo(3000, 3);
+    });
+
+    it("gz<minZoom かつ遠距離(>150km)では terrainElevAt が null を返す（#459 の距離ゲート）", async () => {
+        // 全球視点相当の遠距離。DEM はロードされ elevCache に載るが、標高が視覚的に無意味な距離帯
+        // なので elevRelevantGeom に載らず、terrainElevAt は超粗タイルの誤った標高を返さない。
+        const mgr = makeFarViewManager();
+        loadElevationTile.mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256).fill(3000)),
+        );
+        selectedTiles = [tile(100, 100, 10, 200_000)]; // zoom=10 < minZoom=12, 200km > 150km
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+
+        expect(mgr.terrainElevAt(35, 139)).toBeNull();
+    });
+
+    it("近距離→遠距離へ移動すると terrainElevAt は再び null を返す（距離ゲートの解除, #459）", async () => {
+        // 一度近距離(<=150km)で採用対象になった gz<minZoom タイルが、カメラが離れて無意味化した
+        // 後は採用対象から外れること（elevRelevantGeom の削除経路）を検証する。
+        const mgr = makeFarViewManager();
+        loadElevationTile.mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256).fill(3000)),
+        );
+        selectedTiles = [tile(100, 100, 10, 100_500)]; // 近距離
+        mgr.sync(syncParams());
+        await flush();
+        mgr.sync(syncParams());
+        expect(mgr.terrainElevAt(35, 139)).not.toBeNull();
+
+        selectedTiles = [tile(100, 100, 10, 200_000)]; // 同一タイルが遠距離化
+        mgr.sync(syncParams());
+        expect(mgr.terrainElevAt(35, 139)).toBeNull();
+    });
+
     it("取得失敗(404)の湖面タイルを 0m でなく隣接タイルの接線標高で平坦建築する", async () => {
         const mgr = makeManager();
         // 中央 geom タイル(gx=100,gy=100)は全レイヤ 404（決定的未配信）かつ粗ズーム祖先も 404＝本栖湖 z15

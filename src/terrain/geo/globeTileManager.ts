@@ -301,6 +301,12 @@ export const createGlobeTileManager = (
     // 取得直後は隣接が未ロードでシードが無いため穴埋めできない。隣接の補間結果が揃い次第
     // `refineAllNaNTiles` で同 zoom 隣接からシードして反復補間する。解決したらこの集合から外す。
     const allNanGeom = new Set<string>();
+    // #459: gz<minZoom（遠景で距離適応 root zoom が minZoom を下回ったタイル）のうち、
+    // buildReadyTiles が「標高が視覚的に意味を持つ」（カメラ距離 <=
+    // ELEVATION_RELEVANT_MAX_DISTANCE_M）と判定した geom タイルキーの集合。terrainElevAt は
+    // gz<minZoom の標高を、この集合に載るものだけ採用する（全球視点の超粗タイルで誤った
+    // 標高を返さないための距離ゲート。距離が離れて無意味になれば buildReadyTiles で外す）。
+    const elevRelevantGeom = new Set<string>();
     // all-NaN タイルの粗ズーム祖先 DEM から得た代表標高（湖面標高近似）のキャッシュ。
     // 視界が全面水面で同 zoom に有効タイルが一切無い場合（大きな湖を z15 で接写等）、
     // 同 zoom 縫い合わせも視界内代表標高レスキューも効かない。粗ズーム祖先タイルは
@@ -452,13 +458,17 @@ export const createGlobeTileManager = (
     };
 
     const terrainElevAt = (latDeg: number, lonDeg: number): number | null => {
-        // 探索は geomMaxZoom から下る。minZoom > geomMaxZoom（例: ?zoom=18）でもループが
-        // 1 回は回るよう下限を min(minZoom, geomMaxZoom) とする（さもないと常に null を返し
-        // seat-on-terrain / referenceAltitude が機能しなくなる）。
-        const lowerGz = Math.min(minZoom, geomMaxZoom);
-        for (let gz = geomMaxZoom; gz >= lowerGz; gz--) {
+        // 探索は geomMaxZoom（細）から粗へ下り、elevCache に実在する最も細かい gz を採用する。
+        // gz >= minZoom は従来どおり常に採用。gz < minZoom（遠景で距離適応 root zoom が minZoom を
+        // 下回ったタイル）は、buildReadyTiles が距離 <= ELEVATION_RELEVANT_MAX_DISTANCE_M と判定し
+        // elevRelevantGeom に記録したものだけ採用する（#459: 東京駅→富士山 約100.5km/zoom=10 の
+        // ような近〜中距離で標高を返しつつ、全球視点の超粗タイルで誤った標高を返さない）。下限を 0 に
+        // しても elevCache/elevRelevantGeom に無い gz は skip されるだけ。minZoom > geomMaxZoom
+        // （例: ?zoom=18）でもループは gz=geomMaxZoom で最低 1 回回る（seat-on-terrain 維持）。
+        for (let gz = geomMaxZoom; gz >= 0; gz--) {
             const { x, y } = toTileXY(latDeg, lonDeg, gz);
             const gk = tileKey(gz, x, y);
+            if (gz < minZoom && !elevRelevantGeom.has(gk)) continue;
             // 未解決 all-NaN（湖面・no-data）タイルは生 NaN を保持しており bilinear が 0m を返す。
             // これを採用すると湖上で centerElevation→0→referenceAltitude→0 と循環して暫定代表標高
             // まで 0m へ崩れる（湖中央 0m クレーターの一因）。未解決の間はこの zoom を飛ばし、
@@ -1033,6 +1043,13 @@ export const createGlobeTileManager = (
             // 「標高が視覚的に無意味」として扱う。
             const isElevationRelevant =
                 t.zoom >= minZoom || t.distance <= ELEVATION_RELEVANT_MAX_DISTANCE_M;
+            // #459: gz<minZoom の距離適応タイルが「標高が意味を持つ」間だけ terrainElevAt の
+            // 採用対象に載せる。距離が離れて無意味化したら外す（terrainElevAt が全球視点の超粗
+            // タイル標高を返さないため）。gz>=minZoom は常に採用対象なので記録不要。
+            if (t.zoom < minZoom) {
+                if (isElevationRelevant) elevRelevantGeom.add(gk);
+                else elevRelevantGeom.delete(gk);
+            }
             // 実標高が未取得（ロード中 or 取得失敗でバックオフ中）の場合の暫定値（海面フラット 0m）。
             // ただしフラットで暫定建築するのは「取得失敗でバックオフ中(failedRetryAt)」または
             // 「標高が視覚的に無意味（isElevationRelevant=false）」に限る。それ以外（有意義な
@@ -1359,6 +1376,7 @@ export const createGlobeTileManager = (
             if (!neededGeom.has(key)) {
                 elevCache.delete(key);
                 allNanGeom.delete(key);
+                elevRelevantGeom.delete(key);
                 coarseSeed.delete(key);
                 coarseSeedPending.delete(key);
                 coarseSeedDone.delete(key);
