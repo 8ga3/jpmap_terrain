@@ -67,9 +67,8 @@ const CAMERA_LON = 138.992724;
 /**
  * カメラの向き [deg]（0=北, +=東回り、`GeospatialCamera.yaw` の規約 "0 = north,
  * π/2 = east" に準拠）。カメラ→富士山の測地線ベアリング（初期方位角）。
- * 注: `src/demos/avatar-controller/cameraControl.ts` のコメントは「反時計回り正」と
- * 記載しているが、`GeospatialCamera` 本体のドキュメント（および本テストでの実機確認）
- * とは逆であり、そちらのコメントが実態と食い違っている可能性がある（別課題、本PRの対象外）。
+ * 注: `src/demos/avatar-controller/cameraControl.ts` の azimuth 規約はこの「東回り正
+ * （時計回り正）」に統一済み（#462 で解消）。
  */
 const CAMERA_AZIMUTH_TO_FUJI = 285.76;
 
