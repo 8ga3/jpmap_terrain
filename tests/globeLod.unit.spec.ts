@@ -935,4 +935,17 @@ describe("selectGlobeRootTiles", () => {
         );
         expect(negative).toBe(flat);
     });
+
+    it("高高度キャップは minZoom も超えない（minZoom < z8 でも seed zoom ≤ minZoom, #465続き）", () => {
+        // minZoom=6（< HIGH_ALT_MAX_ZOOM=8）を高高度（300km）で使う。上限が z8 のままだと
+        // seed zoom が minZoom を超え、addAt の f=2**(minZoom-zoom) が負指数(f<1)になり得る。
+        const seeds = selectGlobeRootTiles(
+            baseRoot(geodeticToEcef(CENTER_LAT, CENTER_LON, 300000), {
+                minZoom: 6,
+                rootZoomFloor: 2,
+            }),
+        );
+        expect(seeds.length).toBeGreaterThan(0);
+        for (const s of seeds) expect(s.zoom).toBeLessThanOrEqual(6);
+    });
 });

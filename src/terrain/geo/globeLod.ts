@@ -412,7 +412,10 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         // 可視域全体を被覆する。低〜中高度（未満）は従来どおり詳細＋品質下限を維持する。
         const highAlt = h >= HIGH_ALT_ZOOM_CAP_M;
         const texFloor = highAlt ? 0 : (textureQualityFloorZoom ?? 0);
-        const zCap = highAlt ? HIGH_ALT_MAX_ZOOM : minZoom;
+        // 上限は常に minZoom 以下に収める。minZoom < HIGH_ALT_MAX_ZOOM（URL/デモで minZoom を
+        // 小さく設定）でも seed zoom が minZoom を超えないようにする（超えると addAt の
+        // f=2**(minZoom-zoom) が負指数=f<1 になり不正なタイル座標変換になる, Copilotレビュー指摘）。
+        const zCap = highAlt ? Math.min(minZoom, HIGH_ALT_MAX_ZOOM) : minZoom;
         // 高高度では下限を 0 にして zStar/distCapZoom の距離累進（対数的粗化）を活かす。
         // floorZoom（rootZoomFloor 省略時は minZoom）を下限に残すと、それが zCap を上回るケース
         // （rootZoomFloor 未指定など）で下の Math.max が張り付き z=zCap(8) に平坦化して 8 未満へ
