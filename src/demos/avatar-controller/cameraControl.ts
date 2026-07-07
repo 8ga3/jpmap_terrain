@@ -5,9 +5,12 @@
  * チルト角（tilt）の変化量を計算する純粋関数群。
  *
  * 規約:
- * - 右スティック X 正 → 方位を時計回り（右回転）
+ * - 右スティック X 正 → 方位を時計回り（右回転）＝ azimuth 増加
  * - 右スティック Y 正（前入力）→ チルト減少（真上方向へ）
  * - 2D モード時は tilt 変化を 0 にする
+ *
+ * 方位角（azimuth）規約: viewer.azimuth（globe scene）に合わせ「北=0°・東回り正
+ * （時計回り正）」。GeospatialCamera yaw の "0 = north, π/2 = east" と一致。
  */
 
 import { applyDeadzone, type MoveVector } from "./movement";
@@ -26,7 +29,7 @@ export const TILT_MAX_DEG = 89;
 
 /** カメラ制御の計算結果 */
 export interface CameraControlResult {
-    /** 方位角の変化量（度）。本プロジェクト規約に従い、正=反時計回り */
+    /** 方位角の変化量（度）。viewer.azimuth 規約に従い、正=時計回り（東回り） */
     deltaAzimuth: number;
     /** チルト角の変化量（度）。正=水平方向へ */
     deltaTilt: number;
@@ -53,9 +56,9 @@ export const computeCameraControl = (
     const dz = applyDeadzone(stick);
 
     // 方位: vx 正 → 右回転（時計回り）
-    // 本プロジェクトの azimuth 規約は「北=0°・反時計回り正」なので、
-    // 右スティック右 = 時計回り = azimuth 減少。
-    const deltaAzimuth = dz.vx === 0 ? 0 : -dz.vx * AZIMUTH_SPEED_DPS * dtSec;
+    // viewer.azimuth 規約は「北=0°・東回り正（時計回り正）」なので、
+    // 右スティック右 = 時計回り = azimuth 増加。
+    const deltaAzimuth = dz.vx === 0 ? 0 : dz.vx * AZIMUTH_SPEED_DPS * dtSec;
 
     // チルト: 2D モード時は無効
     let deltaTilt = 0;

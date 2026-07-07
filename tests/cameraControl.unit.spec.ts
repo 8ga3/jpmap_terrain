@@ -15,25 +15,27 @@ import {
 
 describe("computeCameraControl", () => {
     describe("方位角（azimuth）制御", () => {
-        it("右スティック右入力で azimuth が減少する（時計回り）", () => {
+        // viewer.azimuth 規約は「北=0°・東回り正（時計回り正）」なので、
+        // 右スティック右（時計回り）= azimuth 増加、左（反時計回り）= azimuth 減少。
+        it("右スティック右入力で azimuth が増加する（時計回り）", () => {
             const result = computeCameraControl(
                 { vx: 1, vy: 0 },
                 1.0,
                 false,
                 45,
             );
-            expect(result.deltaAzimuth).toBeCloseTo(-AZIMUTH_SPEED_DPS, 1);
+            expect(result.deltaAzimuth).toBeCloseTo(AZIMUTH_SPEED_DPS, 1);
             expect(result.deltaTilt).toBe(0);
         });
 
-        it("右スティック左入力で azimuth が増加する（反時計回り）", () => {
+        it("右スティック左入力で azimuth が減少する（反時計回り）", () => {
             const result = computeCameraControl(
                 { vx: -1, vy: 0 },
                 1.0,
                 false,
                 45,
             );
-            expect(result.deltaAzimuth).toBeCloseTo(AZIMUTH_SPEED_DPS, 1);
+            expect(result.deltaAzimuth).toBeCloseTo(-AZIMUTH_SPEED_DPS, 1);
         });
 
         it("dtSec に比例して変化量が増える", () => {
