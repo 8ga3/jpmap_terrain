@@ -32,6 +32,11 @@ import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
+// GeospatialCamera のポインタ操作（pan/zoom）は内部で scene.pick / createPickingRay を使い、
+// これらは Ray の副作用モジュールに依存する（未 import だと初回クリックで "Ray needs to be
+// imported before ..." が throw される）。この副作用はグローブシーンの生成モジュールで一度
+// 読み込み、ライブラリ利用側（各デモ）が個別に import しなくても動くようにする。
+import "@babylonjs/core/Culling/ray";
 
 import { WORLD_TEXTURE_MAX_ZOOM, type MapType } from "../terrain/gsiTile";
 import { TERRAIN_CLICK_DRAG_THRESHOLD_PX, POLYGON_POINT_DRAG_THRESHOLD_PX } from "../lib/types";
