@@ -38,7 +38,11 @@ import { ecefToGeodetic } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
 import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
 import { selectCoarseEdges, type CoarseEdge } from "./crossLevel";
-import { buildGlobeTileMeshData, type GlobeTileMeshData } from "./globeMesh";
+import {
+    buildGlobeTileMeshData,
+    adaptiveMeshSegments,
+    type GlobeTileMeshData,
+} from "./globeMesh";
 import { sampleElevBilinear } from "./elevSample";
 
 /** タイルマテリアルの鏡面反射（地形なので弱め）。 */
@@ -368,6 +372,7 @@ export const createGlobeTileManager = (
         const d = t.zoom - gz;
         return { gz, gx: t.x >> d, gy: t.y >> d };
     };
+
 
     /**
      * 粗ズーム親 DEM から geom タイル (gz,gx,gy) 領域を最近傍で TILE_SIZE 角に切り出す（globe 版）。
@@ -1043,6 +1048,8 @@ export const createGlobeTileManager = (
             const k = tileKey(t.zoom, t.x, t.y);
             const { gz, gx, gy } = geomCoordOf(t);
             const gk = tileKey(gz, gx, gy);
+            // 遠方の粗 zoom タイルは距離適応でメッシュ分割数を上げ、ロード済み DEM 詳細を活かす（#460）。
+            const segs = adaptiveMeshSegments(t.tileSizeMeters, t.zoom, gz, segments);
             const cachedElev = elevCache.get(gk);
             // 標高が視覚的に意味を持つか。固定 minZoom ではなく、カメラ距離も考慮する
             // （`ELEVATION_RELEVANT_MAX_DISTANCE_M` 参照）。`globeLod` の SSE 距離累進で root zoom
@@ -1174,7 +1181,7 @@ export const createGlobeTileManager = (
                     existing,
                     buildGlobeTileMeshData({
                         zoom: t.zoom, tx: t.x, ty: t.y,
-                        geomElev, geomZoom: gz, geomX: gx, geomY: gy, segments, edges,
+                        geomElev, geomZoom: gz, geomX: gx, geomY: gy, segments: segs, edges,
                     }),
                 );
                 builtEdgeSig.set(k, sig);
@@ -1189,7 +1196,7 @@ export const createGlobeTileManager = (
                 geomZoom: gz,
                 geomX: gx,
                 geomY: gy,
-                segments,
+                segments: segs,
                 edges,
             });
 
