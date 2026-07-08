@@ -39,6 +39,15 @@ describe("checkNoIssueRefs", () => {
             ]);
         });
 
+        it("同一行に同種の参照が複数ある場合は全て検知する", () => {
+            const violations = findViolations("補足: Issue #1, Issue #2, Issue #3\n");
+            expect(violations).toEqual([
+                { line: 1, name: "issue-ref", text: "Issue #1" },
+                { line: 1, name: "issue-ref", text: "Issue #2" },
+                { line: 1, name: "issue-ref", text: "Issue #3" },
+            ]);
+        });
+
         it("16進カラーコードは誤検知しない", () => {
             const violations = findViolations(
                 "既定色 `#ff0000`、壁色 `#000000`（emissive, alpha 0.3）\n",
