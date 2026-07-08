@@ -38,7 +38,7 @@ const TILT_MIN_DEG = (TILT_MIN_RAD * 180) / Math.PI;
 
 /**
  * WGS84 楕円体の長半径 (m)。`@babylonjs/core` の `Wgs84Ellipsoid.semiMajorAxis` と同値。
- * 本モジュールを Babylon 非依存（jest を軽く保つ）に保つため数値として定義する。
+ * 本モジュールを Babylon 非依存（vitest を軽く保つ）に保つため数値として定義する。
  */
 const WGS84_SEMI_MAJOR_AXIS_M = 6_378_137;
 

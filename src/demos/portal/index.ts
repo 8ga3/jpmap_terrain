@@ -187,7 +187,7 @@ export const buildPortalHtml = (
 const start = (): void => {
     const mount = document.getElementById(PORTAL_MOUNT_ID);
     if (!mount) {
-        // テンプレート側で `#root` は常に存在するが、jest 等では存在しないためガードする。
+        // テンプレート側で `#root` は常に存在するが、vitest 等では存在しないためガードする。
         return;
     }
     mount.innerHTML = buildPortalHtml();

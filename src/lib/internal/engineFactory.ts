@@ -6,7 +6,7 @@
  *
  * - パッケージ利用側 (`JpmapTerrain.create`) と既存デモ (`src/index.ts`) の双方から
  *   同じロジックを参照できるように切り出している。
- * - jest 環境では `@babylonjs/core/Engines/*` をモックして本ファイル全体を差し替える前提。
+ * - vitest 環境では `@babylonjs/core/Engines/*` をモックして本ファイル全体を差し替える前提。
  */
 
 import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
