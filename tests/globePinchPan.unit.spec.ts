@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  *
  * タッチ操作の2本指ジェスチャ統合テスト（Issue #424）。
  *
@@ -13,7 +13,7 @@
  * ピンチズーム自体（GeospatialCamera 側）は scene.pick 依存のため本テスト対象外。
  * 3DCG の見た目は別ゲート（HITL）。
  */
-import { describe, it, expect, afterEach } from "@jest/globals";
+import { describe, it, expect, afterEach } from "vitest";
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 

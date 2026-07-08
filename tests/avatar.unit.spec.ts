@@ -3,7 +3,7 @@
  *
  * 円軌道計算のロジック（純粋関数）をテストする。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { circularOrbitPosition, circularOrbitHeading } from "../src/demos/avatar/orbit";
 

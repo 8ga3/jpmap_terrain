@@ -5,7 +5,7 @@
  * （他テストでは Babylon を mock するパターンもあるが、本テストではベクトル成分検証のため実体に依存する）。
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { deriveSunState } from "../src/terrain/sunState";
 import { deriveSkyColor } from "../src/terrain/sunState";

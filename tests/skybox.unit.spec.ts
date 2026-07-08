@@ -3,7 +3,7 @@
  * Babylon.js の Scene/Mesh/SkyMaterial をモックして、生成ロジックを検証する。
  */
 
-import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
@@ -45,12 +45,14 @@ function createFreshSkyMaterial() {
     };
 }
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/boxBuilder", () => ({
-    CreateBox: jest.fn(() => mockMesh),
+vi.mock("@babylonjs/core/Meshes/Builders/boxBuilder", () => ({
+    CreateBox: vi.fn(() => mockMesh),
 }));
 
-jest.unstable_mockModule("@babylonjs/materials/sky/skyMaterial", () => ({
-    SkyMaterial: jest.fn(() => mockSkyMaterialInstance),
+vi.mock("@babylonjs/materials/sky/skyMaterial", () => ({
+    SkyMaterial: vi.fn(function () {
+        return mockSkyMaterialInstance;
+    }),
 }));
 
 const { createSkybox, computeSpaceFactor, SPACE_FADE_START_M, SPACE_FADE_END_M } =
@@ -63,7 +65,7 @@ describe("createSkybox", () => {
     beforeEach(() => {
         mockMesh = createFreshMesh();
         mockSkyMaterialInstance = createFreshSkyMaterial();
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it("CreateBox を呼び出して skybox ハンドルを返す", () => {

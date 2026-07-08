@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest";
 import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../src/terrain/cameraCollision";
 
 describe("resolveTiltCollision", () => {

@@ -7,7 +7,7 @@
  * - 既存 gsiTile.tileCenterLatLon との整合（タイル中心ピクセル → 同じ緯度経度）
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import {
     totalPixelsForZoom,

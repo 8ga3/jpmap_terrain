@@ -7,16 +7,16 @@
  *
  * - `@babylonjs/loaders/glTF` / `OBJ` / `STL` の動的 import をスタブ化する。
  */
-import { jest } from "@jest/globals";
+import { describe, test, expect, vi } from "vitest";
 
 // ---- glTF 動的 import スタブ ----
-jest.unstable_mockModule("@babylonjs/loaders/glTF", () => ({}));
+vi.mock("@babylonjs/loaders/glTF", () => ({}));
 
 // ---- OBJ 動的 import スタブ ----
-jest.unstable_mockModule("@babylonjs/loaders/OBJ", () => ({}));
+vi.mock("@babylonjs/loaders/OBJ", () => ({}));
 
 // ---- STL 動的 import スタブ ----
-jest.unstable_mockModule("@babylonjs/loaders/STL", () => ({}));
+vi.mock("@babylonjs/loaders/STL", () => ({}));
 
 const { importLoaderForUrl } = await import("../src/terrain/modelManager");
 

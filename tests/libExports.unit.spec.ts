@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * パッケージエントリ (`src/lib.ts`) の re-export 検証。
@@ -12,7 +12,7 @@
  * （typecheck が通ればこのテストファイルは成立する）。
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import * as pkg from "../src/lib";
 import type {

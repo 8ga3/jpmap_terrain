@@ -7,7 +7,7 @@
  * - 高度方向（Up）が ECEF 法線（geodeticToEcef の差分）と一致することを確認
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "@jest/globals";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Matrix } from "@babylonjs/core/Maths/math.vector";

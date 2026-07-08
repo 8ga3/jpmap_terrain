@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * 3D ビューアデモエントリ (`src/demos/viewer/index.ts`) の純粋関数 export ユニットテスト。
@@ -11,7 +11,7 @@
  * jsdom 環境でも副作用なく `resolveEngine` / `resolveLatLon` だけを検証できる。
  */
 
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, vi } from "vitest";
 
 import {
     resolveEngine,
@@ -80,7 +80,7 @@ describe("resolveDateTime", () => {
     });
 
     it("Invalid Date 文字列 → undefined（silent ignore、警告のみ）", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
             expect(resolveDateTime("?dateTime=not-a-date")).toBeUndefined();
             expect(warn).toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe("resolveDateTime", () => {
     });
 
     it("不正値ログは制御文字 (CR/LF/ESC) を `?` に置換し 64 文字に制限する（ログ汚染対策）", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
             // CR/LF/ESC + 100 文字程度の長文
             const payload = `evil\r\n\x1B[31mFAKE\x1B[0m${"A".repeat(100)}`;
@@ -150,7 +150,7 @@ describe("resolveDateTime", () => {
     });
 
     it("不正な `%` エンコードは undefined を返し、警告を出す (PR #144 review)", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
             // `%ZZ` は decodeURIComponent で URIError を投げる不正シーケンス
             expect(resolveDateTime("?dateTime=%ZZ")).toBeUndefined();

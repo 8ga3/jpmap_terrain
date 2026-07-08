@@ -10,51 +10,53 @@
  * - テクスチャ onError でテクスチャを dispose する
  * - 選択が不変なら既存メッシュを再構築しない
  */
-import { jest, describe, it, expect, beforeEach } from "@jest/globals";
+import { describe, it, expect, beforeEach, vi, Mock } from "vitest";
 
 // ---- Babylon GPU 系モック（GL コンテキスト不要にする） ----
-jest.unstable_mockModule("@babylonjs/core/scene", () => ({ Scene: class {} }));
+vi.mock("@babylonjs/core/scene", () => ({ Scene: class {} }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
-    Mesh: jest.fn<(name: string) => unknown>().mockImplementation((name) => {
+vi.mock("@babylonjs/core/Meshes/mesh", () => ({
+    Mesh: vi.fn<(name: string) => unknown>().mockImplementation(function (name) {
         let disposed = false;
         let enabled = true;
         return {
             name,
-            position: { copyFrom: jest.fn() },
+            position: { copyFrom: vi.fn() },
             material: null as unknown,
             isDisposed: () => disposed,
             isEnabled: () => enabled,
-            setEnabled: jest.fn((v: boolean) => { enabled = v; }),
-            dispose: jest.fn(() => {
+            setEnabled: vi.fn((v: boolean) => { enabled = v; }),
+            dispose: vi.fn(() => {
                 disposed = true;
             }),
         };
     }),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/mesh.vertexData", () => ({
+vi.mock("@babylonjs/core/Meshes/mesh.vertexData", () => ({
     VertexData: class {
         positions: number[] = [];
         indices: number[] = [];
         normals: number[] = [];
         uvs: number[] = [];
-        applyToMesh = jest.fn();
-        static ComputeNormals: jest.Mock = jest.fn();
+        applyToMesh = vi.fn();
+        static ComputeNormals: Mock = vi.fn();
     },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
-    StandardMaterial: jest.fn().mockImplementation(() => ({
-        diffuseTexture: null as unknown,
-        specularColor: null as unknown,
-        backFaceCulling: true,
-        dispose: jest.fn(),
-    })),
+vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
+    StandardMaterial: vi.fn().mockImplementation(function () {
+        return {
+            diffuseTexture: null as unknown,
+            specularColor: null as unknown,
+            backFaceCulling: true,
+            dispose: vi.fn(),
+        };
+    }),
 }));
 
 interface CapturedTexture {
-    dispose: jest.Mock;
+    dispose: Mock;
     wrapU: number;
     wrapV: number;
     onLoad?: () => void;
@@ -62,12 +64,12 @@ interface CapturedTexture {
 }
 const capturedTextures: CapturedTexture[] = [];
 
-jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
-    const TextureMock = jest
+vi.mock("@babylonjs/core/Materials/Textures/texture", () => {
+    const TextureMock = vi
         .fn()
-        .mockImplementation((...args: unknown[]) => {
+        .mockImplementation(function (...args: unknown[]) {
             const inst: CapturedTexture = {
-                dispose: jest.fn(),
+                dispose: vi.fn(),
                 wrapU: 0,
                 wrapV: 0,
                 onLoad: args[5] as (() => void) | undefined,
@@ -75,35 +77,37 @@ jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => {
             };
             capturedTextures.push(inst);
             return inst;
-        }) as jest.Mock & { CLAMP_ADDRESSMODE: number; TRILINEAR_SAMPLINGMODE: number };
+        }) as Mock & { CLAMP_ADDRESSMODE: number; TRILINEAR_SAMPLINGMODE: number };
     TextureMock.CLAMP_ADDRESSMODE = 0;
     TextureMock.TRILINEAR_SAMPLINGMODE = 3;
     return { Texture: TextureMock };
 });
 
-jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
-    Color3: jest
+vi.mock("@babylonjs/core/Maths/math.color", () => ({
+    Color3: vi
         .fn<(r: number, g: number, b: number) => unknown>()
-        .mockImplementation((r, g, b) => ({ r, g, b })),
+        .mockImplementation(function (r, g, b) {
+            return { r, g, b };
+        }),
 }));
 
 // ---- gsiTile モック（座標は単純な決定的実装、loadElevationTile は制御可能に） ----
 // 注: ecef / mapping / math.geospatial.functions / math.vector は実物のまま使う。
 // 穴埋め系の純関数（isAllNaN / fillInvalidPixels / isInvalidElev / NO_DATA_SENTINEL 等）や
-// 座標定数は本実装をそのまま再利用し（jest.requireActual）、テストで差し替えたい DOM 依存・
+// 座標定数は本実装をそのまま再利用し（vi.importActual）、テストで差し替えたい DOM 依存・
 // 制御対象（loadElevationTile / toTileXY など）だけを最小限モックする。本実装を再実装すると
 // 実装変更時にテスト側が取り残されて偽陽性/偽陰性になりやすいため。
-jest.unstable_mockModule("../src/terrain/gsiTile", () => {
-    const actual = jest.requireActual(
+vi.mock("../src/terrain/gsiTile", async () => {
+    const actual = await vi.importActual(
         "../src/terrain/gsiTile",
     ) as typeof import("../src/terrain/gsiTile");
     return {
         ...actual,
-        toTileXY: jest.fn(() => ({ x: 100, y: 100 })),
-        tileCenterLatLon: jest.fn(() => ({ lat: 35, lon: 139 })),
-        tileEdgeMeters: jest.fn(() => 1000),
-        textureUrl: jest.fn(() => "https://example.com/tile.png"),
-        loadElevationTile: jest.fn(() => Promise.resolve(new Float32Array(256 * 256))),
+        toTileXY: vi.fn(() => ({ x: 100, y: 100 })),
+        tileCenterLatLon: vi.fn(() => ({ lat: 35, lon: 139 })),
+        tileEdgeMeters: vi.fn(() => 1000),
+        textureUrl: vi.fn(() => "https://example.com/tile.png"),
+        loadElevationTile: vi.fn(() => Promise.resolve(new Float32Array(256 * 256))),
     };
 });
 
@@ -126,8 +130,8 @@ const tile = (x: number, y: number, zoom = 10, distance = 60000): SelTile => ({
     distance,
 });
 let selectedTiles: SelTile[] = [tile(100, 100)];
-jest.unstable_mockModule("../src/terrain/geo/globeLod", () => ({
-    selectGlobeTiles: jest.fn(() => selectedTiles),
+vi.mock("../src/terrain/geo/globeLod", () => ({
+    selectGlobeTiles: vi.fn(() => selectedTiles),
     tileKey: (z: number, x: number, y: number) => `${z}/${x}/${y}`,
 }));
 
@@ -136,13 +140,13 @@ jest.unstable_mockModule("../src/terrain/geo/globeLod", () => ({
 // 観測する。terrainElevAt は elevCache を参照するため、elevCache に載らない 404 タイルの
 // 建築標高はメッシュ生成入力（geomElev）でしか検証できない。
 const capturedBuilds: { tx: number; ty: number; geomElev: Float32Array }[] = [];
-jest.unstable_mockModule("../src/terrain/geo/globeMesh", () => {
-    const actual = jest.requireActual(
+vi.mock("../src/terrain/geo/globeMesh", async () => {
+    const actual = await vi.importActual(
         "../src/terrain/geo/globeMesh",
     ) as typeof import("../src/terrain/geo/globeMesh");
     return {
         ...actual,
-        buildGlobeTileMeshData: jest.fn(
+        buildGlobeTileMeshData: vi.fn(
             (params: Parameters<typeof actual.buildGlobeTileMeshData>[0]) => {
                 capturedBuilds.push({ tx: params.tx, ty: params.ty, geomElev: params.geomElev });
                 return actual.buildGlobeTileMeshData(params);
@@ -157,11 +161,11 @@ const gsiMock = await import("../src/terrain/gsiTile");
 const { Mesh } = await import("@babylonjs/core/Meshes/mesh");
 const { StandardMaterial } = await import("@babylonjs/core/Materials/standardMaterial");
 
-const loadElevationTile = gsiMock.loadElevationTile as jest.Mock;
-const toTileXY = gsiMock.toTileXY as jest.Mock;
+const loadElevationTile = gsiMock.loadElevationTile as Mock;
+const toTileXY = gsiMock.toTileXY as Mock;
 const { TileFetchError } = gsiMock;
-const MeshMock = Mesh as unknown as jest.Mock;
-const MaterialMock = StandardMaterial as unknown as jest.Mock;
+const MeshMock = Mesh as unknown as Mock;
+const MaterialMock = StandardMaterial as unknown as Mock;
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -353,7 +357,7 @@ describe("createGlobeTileManager", () => {
         });
         const baseMeshes = MeshMock.mock.results
             .slice(0, 16)
-            .map((r) => r.value as { dispose: jest.Mock });
+            .map((r) => r.value as { dispose: Mock });
         mgr.dispose();
         baseMeshes.forEach((m) => expect(m.dispose).toHaveBeenCalledWith(false, true));
     });
@@ -378,7 +382,7 @@ describe("createGlobeTileManager", () => {
         const mesh = MeshMock.mock.results[0].value as {
             material: { diffuseTexture: unknown };
             isEnabled: () => boolean;
-            setEnabled: jest.Mock;
+            setEnabled: Mock;
         };
         expect(mesh.material.diffuseTexture).toBeNull();
         expect(mesh.isEnabled()).toBe(false);
@@ -409,7 +413,7 @@ describe("createGlobeTileManager", () => {
     });
 
     it("setMapType は実行時にロード済み LOD・ベースレイヤを新 mapType で再テクスチャする", async () => {
-        const textureUrlMock = gsiMock.textureUrl as jest.Mock;
+        const textureUrlMock = gsiMock.textureUrl as Mock;
         const mgr = makeManager();
         expect(mgr.getMapType()).toBe("std");
 
@@ -549,7 +553,7 @@ describe("createGlobeTileManager", () => {
         mgr.sync(syncParams());
         await flush();
         mgr.sync(syncParams()); // メッシュ A 生成
-        const meshA = MeshMock.mock.results[0].value as { dispose: jest.Mock };
+        const meshA = MeshMock.mock.results[0].value as { dispose: Mock };
         expect(MeshMock).toHaveBeenCalledTimes(1);
 
         // 別タイルへ移動 → A は不要に。
@@ -698,7 +702,7 @@ describe("createGlobeTileManager", () => {
         const tex = capturedTextures[0];
         const mesh = MeshMock.mock.results[0].value as {
             isEnabled: () => boolean;
-            setEnabled: jest.Mock;
+            setEnabled: Mock;
         };
         expect(mesh.isEnabled()).toBe(false); // onLoad/onError 前は非表示
         tex.onError?.("load error");
@@ -746,7 +750,7 @@ describe("createGlobeTileManager", () => {
         mgr.sync(syncParams());
         await flush();
         mgr.sync(syncParams());
-        const mesh = MeshMock.mock.results[0].value as { dispose: jest.Mock };
+        const mesh = MeshMock.mock.results[0].value as { dispose: Mock };
         mgr.dispose();
         expect(mesh.dispose).toHaveBeenCalledWith(false, true);
     });
@@ -765,7 +769,7 @@ describe("createGlobeTileManager", () => {
         mgr.sync(syncParams()); // 子 4 枚を建築
         expect(MeshMock).toHaveBeenCalledTimes(4);
         const childMeshes = [0, 1, 2, 3].map(
-            (i) => MeshMock.mock.results[i].value as { isEnabled: () => boolean; dispose: jest.Mock },
+            (i) => MeshMock.mock.results[i].value as { isEnabled: () => boolean; dispose: Mock },
         );
         // 子のテクスチャ到着 → 表示。
         capturedTextures.slice(0, 4).forEach((t) => t.onLoad?.());
@@ -797,7 +801,7 @@ describe("createGlobeTileManager", () => {
         await flush();
         mgr.sync(syncParams()); // 親 1 枚を建築
         expect(MeshMock).toHaveBeenCalledTimes(1);
-        const parent = MeshMock.mock.results[0].value as { isEnabled: () => boolean; dispose: jest.Mock };
+        const parent = MeshMock.mock.results[0].value as { isEnabled: () => boolean; dispose: Mock };
         capturedTextures[0].onLoad?.();
         expect(parent.isEnabled()).toBe(true);
 
@@ -841,7 +845,7 @@ describe("createGlobeTileManager", () => {
         mgr.sync(syncParams());
         const parent = MeshMock.mock.results[0].value as {
             isEnabled: () => boolean;
-            dispose: jest.Mock;
+            dispose: Mock;
         };
         capturedTextures[0].onLoad?.();
         expect(parent.isEnabled()).toBe(true);
@@ -880,7 +884,7 @@ describe("createGlobeTileManager", () => {
         expect(MeshMock).toHaveBeenCalledTimes(1);
         const parent = MeshMock.mock.results[0].value as {
             isEnabled: () => boolean;
-            dispose: jest.Mock;
+            dispose: Mock;
         };
         capturedTextures[0].onLoad?.();
         expect(parent.isEnabled()).toBe(true);
@@ -917,7 +921,7 @@ describe("createGlobeTileManager", () => {
         mgr.sync(syncParams());
         await flush();
         mgr.sync(syncParams());
-        const meshA = MeshMock.mock.results[0].value as { dispose: jest.Mock };
+        const meshA = MeshMock.mock.results[0].value as { dispose: Mock };
         capturedTextures[0].onLoad?.(); // 表示・描画可能に
 
         // 同 zoom の無関係タイルへ横パン → 即破棄（フレーム落ち対策）。

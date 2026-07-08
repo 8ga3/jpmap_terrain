@@ -6,7 +6,7 @@
  *   アンカー相対の小さな頂点座標、UV の北端 v=1、法線本数
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { TILE_SIZE, NO_DATA_SENTINEL } from "../src/terrain/gsiTile";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";

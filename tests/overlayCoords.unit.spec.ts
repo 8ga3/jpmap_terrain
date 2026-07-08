@@ -5,7 +5,7 @@
  * - assertLatLonInBounds: bounds 外で throw、prefix がメッセージに含まれる
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { assertLatLonInBounds } from "../src/terrain/overlayCoords";
 

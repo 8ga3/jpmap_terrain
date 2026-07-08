@@ -8,7 +8,7 @@
  * 純関数テストは globeAfterburner.unit.spec.ts が Babylon をモックして担当するため、
  * 実描画モジュールを使うこのテストは別ファイルに分離する。
  */
-import { describe, it, expect, afterEach } from "@jest/globals";
+import { describe, it, expect, afterEach } from "vitest";
 
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Scene } from "@babylonjs/core/scene";

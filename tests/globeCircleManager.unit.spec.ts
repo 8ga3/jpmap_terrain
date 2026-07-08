@@ -5,7 +5,7 @@
  * center（中心 1 点・点＋ラベル）の 2 ノードへ委譲されること、半径/分割数の検証、
  * CRUD/update/dispose の委譲を検証する。
  */
-import { jest } from "@jest/globals";
+import { vi } from "vitest";
 
 interface AddCall {
     points: { lat: number; lon: number }[];
@@ -24,7 +24,7 @@ const setFlattenCalls: boolean[] = [];
 let updateCount = 0;
 let disposeCount = 0;
 
-jest.unstable_mockModule("../src/terrain/geo/globePolygonManager", () => ({
+vi.mock("../src/terrain/geo/globePolygonManager", () => ({
     createGlobePolygonManager: () => ({
         add: (opts: AddCall) => {
             addCalls.push(opts);
@@ -45,7 +45,7 @@ jest.unstable_mockModule("../src/terrain/geo/globePolygonManager", () => ({
 const { createGlobeCircleManager } = await import(
     "../src/terrain/geo/globeCircleManager"
 );
-const { describe, it, expect, beforeEach } = await import("@jest/globals");
+const { describe, it, expect, beforeEach } = await import("vitest");
 
 const makeManager = () =>
     createGlobeCircleManager({ scene: {} as never, terrainElevAt: () => 0 });

@@ -4,10 +4,10 @@
  * AudioV2 API (CreateAudioEngineAsync / CreateSoundAsync) と
  * .mp3 import をモックして、初期化成功/失敗・SE 再生・停止・dispose を検証する。
  *
- * ESM + jest.unstable_mockModule で完全にモジュールを分離して
+ * ESM + vi.mock で完全にモジュールを分離して
  * 他テストとのキャッシュ衝突を回避する。
  */
-import { describe, it, expect, jest, beforeEach } from "@jest/globals";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // SoundState の数値定数（実装と一致させる）
 const SoundState = {
@@ -21,8 +21,8 @@ const SoundState = {
 
 // ─── モック ──────────────────────────────────────────────
 
-const mockEngineDispose = jest.fn();
-const mockUnlockAsync = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockEngineDispose = vi.fn();
+const mockUnlockAsync = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
 const mockEngine = {
     unlockAsync: mockUnlockAsync,
     dispose: mockEngineDispose,
@@ -30,26 +30,26 @@ const mockEngine = {
 
 const makeSound = (initialState: number = SoundState.Stopped) => ({
     state: initialState,
-    play: jest.fn(),
-    stop: jest.fn(),
-    dispose: jest.fn(),
+    play: vi.fn(),
+    stop: vi.fn(),
+    dispose: vi.fn(),
 });
 
-const mockCreateAudioEngineAsync = jest.fn<() => Promise<typeof mockEngine>>()
+const mockCreateAudioEngineAsync = vi.fn<() => Promise<typeof mockEngine>>()
     .mockResolvedValue(mockEngine);
 
 type MockSound = ReturnType<typeof makeSound>;
-const mockCreateSoundAsync = jest.fn<() => Promise<MockSound>>();
+const mockCreateSoundAsync = vi.fn<() => Promise<MockSound>>();
 
-jest.unstable_mockModule("@babylonjs/core/AudioV2/webAudio/webAudioEngine", () => ({
+vi.mock("@babylonjs/core/AudioV2/webAudio/webAudioEngine", () => ({
     CreateAudioEngineAsync: mockCreateAudioEngineAsync,
 }));
 
-jest.unstable_mockModule("@babylonjs/core/AudioV2/abstractAudio/audioEngineV2", () => ({
+vi.mock("@babylonjs/core/AudioV2/abstractAudio/audioEngineV2", () => ({
     CreateSoundAsync: mockCreateSoundAsync,
 }));
 
-jest.unstable_mockModule("@babylonjs/core/AudioV2/soundState", () => ({
+vi.mock("@babylonjs/core/AudioV2/soundState", () => ({
     SoundState,
 }));
 
@@ -59,7 +59,7 @@ describe("createFlightAudio", () => {
     let createFlightAudio: typeof import("../src/demos/flight/flightAudio").createFlightAudio;
 
     beforeEach(async () => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         mockUnlockAsync.mockResolvedValue(undefined);
         mockCreateAudioEngineAsync.mockResolvedValue(mockEngine);
         mockCreateSoundAsync.mockResolvedValue(makeSound());

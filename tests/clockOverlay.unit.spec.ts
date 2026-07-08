@@ -1,10 +1,10 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * `src/demos/timelapse/clockOverlay.ts` の純粋関数と DOM マウントの unit test。
  */
-import { describe, it, expect, beforeEach } from "@jest/globals";
+import { describe, it, expect, beforeEach } from "vitest";
 
 import {
     computeClockAngles,

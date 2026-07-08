@@ -3,6 +3,7 @@
  *
  * 弾道計算 (ballistics.ts) とゲームロジック (gameLogic.ts) の純粋関数テスト。
  */
+import { describe, it, expect } from "vitest";
 import {
     degToRad,
     radToDeg,

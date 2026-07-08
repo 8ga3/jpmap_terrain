@@ -1,4 +1,4 @@
-import { jest } from "@jest/globals";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
     TILE_SIZE,
     JAPAN_BOUNDS,
@@ -399,20 +399,20 @@ const makeImageGrid = (
 /** loadImageData 内部で使われるブラウザ API をモックするセットアップ */
 const setupLoadImageMocks = (imageData: ImageData) => {
     const mockCtx = {
-        drawImage: jest.fn(),
-        getImageData: jest.fn(() => imageData),
+        drawImage: vi.fn(),
+        getImageData: vi.fn(() => imageData),
     };
     const mockCanvas = {
         width: 0,
         height: 0,
-        getContext: jest.fn(() => mockCtx),
+        getContext: vi.fn(() => mockCtx),
     };
     // node 環境では document が存在しない場合があるため globalThis にセット
     (globalThis as Record<string, unknown>).document = {
-        createElement: jest.fn(() => mockCanvas),
+        createElement: vi.fn(() => mockCanvas),
     };
-    (globalThis as Record<string, unknown>).createImageBitmap = jest.fn(() =>
-        Promise.resolve({ width: imageData.width, height: imageData.height, close: jest.fn() })
+    (globalThis as Record<string, unknown>).createImageBitmap = vi.fn(() =>
+        Promise.resolve({ width: imageData.width, height: imageData.height, close: vi.fn() })
     );
 };
 
@@ -424,9 +424,9 @@ const setupLoadImageSequenceMocks = (sequence: readonly ImageData[]) => {
     let i = 0;
     const cur = () => sequence[Math.min(i, sequence.length - 1)];
     const mockCtx = {
-        drawImage: jest.fn(),
+        drawImage: vi.fn(),
         // getImageData は loadImageData の最終ステップ。ここで次の要素へ進める。
-        getImageData: jest.fn(() => {
+        getImageData: vi.fn(() => {
             const data = cur();
             i++;
             return data;
@@ -435,14 +435,14 @@ const setupLoadImageSequenceMocks = (sequence: readonly ImageData[]) => {
     const mockCanvas = {
         width: 0,
         height: 0,
-        getContext: jest.fn(() => mockCtx),
+        getContext: vi.fn(() => mockCtx),
     };
     (globalThis as Record<string, unknown>).document = {
-        createElement: jest.fn(() => mockCanvas),
+        createElement: vi.fn(() => mockCanvas),
     };
-    (globalThis as Record<string, unknown>).createImageBitmap = jest.fn(() => {
+    (globalThis as Record<string, unknown>).createImageBitmap = vi.fn(() => {
         const data = cur();
-        return Promise.resolve({ width: data.width, height: data.height, close: jest.fn() });
+        return Promise.resolve({ width: data.width, height: data.height, close: vi.fn() });
     });
 };
 
@@ -455,7 +455,7 @@ describe("loadElevationTile", () => {
         globalThis.fetch = originalFetch;
         (globalThis as Record<string, unknown>).createImageBitmap = originalCreateImageBitmap;
         (globalThis as Record<string, unknown>).document = originalDocument;
-        jest.restoreAllMocks();
+        vi.restoreAllMocks();
     });
 
     it("dem5a が完全カバー（有効値）なら下位レイヤーを取得しない", async () => {
@@ -463,7 +463,7 @@ describe("loadElevationTile", () => {
         const validImageData = makeImageDataResult(0, 100, 0);
         setupLoadImageMocks(validImageData);
 
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
             Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
         );
         globalThis.fetch = fetchMock;
@@ -488,7 +488,7 @@ describe("loadElevationTile", () => {
         setupLoadImageSequenceMocks([demHoles, demFull]);
 
         let callCount = 0;
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
             callCount++;
             // dem5b (2 回目) のみ 404、それ以外は成功
             if (callCount === 2) return Promise.resolve({ ok: false, status: 404 } as Response);
@@ -517,7 +517,7 @@ describe("loadElevationTile", () => {
         const coarseFull = makeImageGrid(2, 0); // 粗ズーム dem_png: 全有効(256.0)
         setupLoadImageSequenceMocks([allNoData, coarseFull]);
 
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             // dem5b(z15) は 404。dem5a(z15) と 粗ズーム dem_png(z14) は成功。dem_png(z15) は呼ばれない。
             const url = String(input);
             if (url.includes("dem5b_png")) {
@@ -547,7 +547,7 @@ describe("loadElevationTile", () => {
         const minorHoles = makeImageGrid(4, 1);
         setupLoadImageMocks(minorHoles);
 
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
             Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
         );
         globalThis.fetch = fetchMock;
@@ -570,7 +570,7 @@ describe("loadElevationTile", () => {
         const coarseFull = makeImageGrid(4, 0); // 粗ズーム dem_png: 全有効(256.0)
         setupLoadImageSequenceMocks([partialHoles, coarseFull]);
 
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             const url = String(input);
             // dem5b（同一ズーム z15）は 404。粗ズーム dem_png(z14) は成功。dem_png(z15) は呼ばれない。
             if (url.includes("dem5b_png")) {
@@ -598,7 +598,7 @@ describe("loadElevationTile", () => {
         const allNoData = makeImageGrid(2, 4);
         setupLoadImageMocks(allNoData);
 
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             const url = String(input);
             // dem5a(z15) のみ 200。それ以外（dem5b/粗ズーム dem_png）は全て 404。
             if (url.includes("dem5a_png")) {
@@ -621,7 +621,7 @@ describe("loadElevationTile", () => {
         const allNoData = makeImageGrid(2, 4);
         setupLoadImageMocks(allNoData);
 
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             const url = String(input);
             if (url.includes("dem5a_png")) {
                 return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
@@ -645,7 +645,7 @@ describe("loadElevationTile", () => {
         setupLoadImageMocks(validImageData);
 
         let callCount = 0;
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
             callCount++;
             if (callCount === 1) {
                 // dem5a: HTTP 失敗
@@ -669,7 +669,7 @@ describe("loadElevationTile", () => {
     });
 
     it("全レイヤー HTTP 失敗時はエラーを投げる", async () => {
-        const fetchMock = jest.fn(() =>
+        const fetchMock = vi.fn(() =>
             Promise.resolve({ ok: false, status: 404 } as Response)
         );
         globalThis.fetch = fetchMock;
@@ -684,7 +684,7 @@ describe("loadElevationTile", () => {
     });
 
     it("全レイヤー 404（決定的未配信）なら TileFetchError.status=404 を投げる", async () => {
-        const fetchMock = jest.fn(() =>
+        const fetchMock = vi.fn(() =>
             Promise.resolve({ ok: false, status: 404 } as Response)
         );
         globalThis.fetch = fetchMock;
@@ -697,7 +697,7 @@ describe("loadElevationTile", () => {
     });
 
     it("一時的な取得失敗が混じる場合は TileFetchError.status=undefined を投げる", async () => {
-        const fetchMock = jest.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
             const url = String(input);
             // dem5a はネットワーク障害（reject）、それ以外は 404。一時障害が混じるため決定的 404 ではない。
             if (url.includes("dem5a_png")) return Promise.reject(new Error("network down"));

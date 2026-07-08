@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * `JpmapTerrain` クラス公開 API のユニットテスト
@@ -12,11 +12,11 @@
  * - dispose で canvas が除去されること
  *
  * Babylon.js Engine / Scene は jsdom で動かないためモックする。
- * Jest は ESM/VM Modules モードで起動しているため
- * `jest.unstable_mockModule` + 動的 import でモックを適用する。
+ * `vi.mock` + 動的 import でモックを適用する
+ * （Vitest 移行前の Jest ESM 実装の構造を維持）。
  */
 
-import { jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
 import type { CircleManager } from "../src/terrain/circleManager";
 import type { MarkerManager } from "../src/terrain/markerManager";
 import type { ModelManager } from "../src/terrain/modelManager";
@@ -48,25 +48,25 @@ import {
 
 // Engine / Scene 生成はテスト対象外（Babylon.js に委譲）。
 // jsdom では WebGPU/WebGL2 を提供できないため、最低限のスタブで差し替える。
-const engineDispose = jest.fn();
+const engineDispose = vi.fn();
 // engine.resize 呼び出し回数をテストで検証できるよう、最後に作った engine の resize を保持する。
-let lastEngineResize: jest.Mock = jest.fn();
+let lastEngineResize: Mock = vi.fn();
 // 実際の `createBabylonEngine(canvas, preferred, options)` のシグネチャに合わせる。
 // 関数本体では未使用だが、`createEngineMock.mock.calls[i][1]`（engine 種別）や
 // `[i][2]`（high precision matrix オプション）を検証する用途があるため、可変引数ではなく
 // 明示的なパラメータとして宣言する。
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const createEngineMock = jest.fn(async (_canvas: unknown, _preferred?: "webgpu" | "webgl2", _options?: { highPrecisionMatrix?: boolean }) => {
-    const resize = jest.fn();
+const createEngineMock = vi.fn(async (_canvas: unknown, _preferred?: "webgpu" | "webgl2", _options?: { highPrecisionMatrix?: boolean }) => {
+    const resize = vi.fn();
     lastEngineResize = resize;
     return {
-        runRenderLoop: jest.fn(),
+        runRenderLoop: vi.fn(),
         resize,
         dispose: engineDispose,
     };
 });
 
-jest.unstable_mockModule("../src/lib/internal/engineFactory", () => ({
+vi.mock("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
 }));
 
@@ -76,13 +76,13 @@ type RoCallback = (entries: unknown[], observer: unknown) => void;
 const resizeObservers: Array<{
     callback: RoCallback;
     targets: Set<Element>;
-    disconnect: jest.Mock;
+    disconnect: Mock;
 }> = [];
 class TestResizeObserver {
-    public disconnect: jest.Mock;
+    public disconnect: Mock;
     private targets: Set<Element> = new Set();
     constructor(callback: RoCallback) {
-        this.disconnect = jest.fn(() => {
+        this.disconnect = vi.fn(() => {
             this.targets.clear();
         });
         resizeObservers.push({
@@ -687,7 +687,7 @@ const createModelManagerStub = (): ModelManager => {
     };
 };
 
-jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
+vi.mock("../src/scenes/globeSceneController", () => {
     // モック内で refreshTerrain 相当の呼び出し回数を記録し、
     // テストから検証できるよう getter を export する（バッチ refresh 検証用）。
     let refreshCallCount = 0;
@@ -828,7 +828,7 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
         tilt?: number;
     };
     class GlobeSceneAdapter {
-        createScene = jest.fn(
+        createScene = vi.fn(
             async (
                 _engine: unknown,
                 _canvas: unknown,
@@ -971,8 +971,8 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
                     },
                 });
                 return {
-                    render: jest.fn(),
-                    dispose: jest.fn(),
+                    render: vi.fn(),
+                    dispose: vi.fn(),
                     onBeforeRenderObservable: createSceneObservable(),
                     onAfterRenderObservable: createSceneObservable(),
                 };
@@ -1079,7 +1079,8 @@ jest.unstable_mockModule("../src/scenes/globeSceneController", () => {
     };
 });
 
-// jest.unstable_mockModule は hoist されないため、モック登録後に動的 import する。
+// vi.mock はファイル先頭へ自動 hoist されるため import 順を問わないが、
+// Jest からの移植構造を維持し、モック登録後に動的 import する。
 const { JpmapTerrain } = await import("../src/lib/jpmapTerrain");
 type UiTarget =
     | "compass"
@@ -1804,7 +1805,7 @@ describe("JpmapTerrain (skeleton)", () => {
     describe("onCameraChange", () => {
         it("初回登録時には即時発火しない", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
 
             viewer.onCameraChange(listener);
 
@@ -1819,7 +1820,7 @@ describe("JpmapTerrain (skeleton)", () => {
                 azimuth: 0,
                 tilt: 30,
             });
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onCameraChange(listener);
 
             // 1 度目の発火: 値未変更だが初回スナップショット作成のみ。
@@ -1844,7 +1845,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("値が変化しなければ発火しない（連続 render でも 1 回のみ）", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onCameraChange(listener);
             sceneMockModule.__triggerSceneRender(); // snapshot 初期化
 
@@ -1858,7 +1859,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("unsubscribe 後は呼ばれず、複数回呼んでも安全", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             const unsubscribe = viewer.onCameraChange(listener);
             sceneMockModule.__triggerSceneRender(); // snapshot 初期化
 
@@ -1876,7 +1877,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("同一リスナーを複数回登録した場合は登録回数だけ呼ばれる", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onCameraChange(listener);
             viewer.onCameraChange(listener);
             sceneMockModule.__triggerSceneRender();
@@ -1889,13 +1890,13 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("リスナーが throw しても他リスナーへの伝播が継続する", async () => {
             const viewer = await create(createMountElement());
-            const errorSpy = jest
+            const errorSpy = vi
                 .spyOn(console, "error")
                 .mockImplementation(() => {});
-            const failing = jest.fn(() => {
+            const failing = vi.fn(() => {
                 throw new Error("listener failure");
             });
-            const ok = jest.fn();
+            const ok = vi.fn();
             viewer.onCameraChange(failing);
             viewer.onCameraChange(ok);
             sceneMockModule.__triggerSceneRender();
@@ -1914,7 +1915,7 @@ describe("JpmapTerrain (skeleton)", () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
 
-            const listener = jest.fn();
+            const listener = vi.fn();
             const unsubscribe = viewer.onCameraChange(listener);
 
             expect(typeof unsubscribe).toBe("function");
@@ -1925,7 +1926,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("dispose 後はリスナーも発火しない（既登録ぶん）", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onCameraChange(listener);
             sceneMockModule.__triggerSceneRender();
             viewer.dispose();
@@ -1942,7 +1943,7 @@ describe("JpmapTerrain (skeleton)", () => {
                 lon: 139,
                 altitude: 1000,
             });
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onCameraChange(listener);
             sceneMockModule.__triggerSceneRender(); // snapshot 初期化
 
@@ -1970,7 +1971,7 @@ describe("JpmapTerrain (skeleton)", () => {
                 lon: 139,
                 altitude: 1000,
             });
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onCameraChange(listener);
             sceneMockModule.__triggerSceneRender(); // snapshot 初期化
 
@@ -1994,14 +1995,14 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("初回登録時には即時発火しない", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onMapTypeChange(listener);
             expect(listener).not.toHaveBeenCalled();
         });
 
         it("mapType setter で値が変化したらリスナーが呼ばれる", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onMapTypeChange(listener);
 
             viewer.mapType = "photo";
@@ -2012,7 +2013,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("同値再 set では発火しない", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onMapTypeChange(listener);
 
             viewer.mapType = "standard"; // 既定値と同値
@@ -2025,7 +2026,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("unsubscribe 後は呼ばれず、複数回呼んでも安全", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             const unsubscribe = viewer.onMapTypeChange(listener);
 
             viewer.mapType = "photo";
@@ -2040,8 +2041,8 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("複数リスナーを登録すると全て呼ばれる", async () => {
             const viewer = await create(createMountElement());
-            const a = jest.fn();
-            const b = jest.fn();
+            const a = vi.fn();
+            const b = vi.fn();
             viewer.onMapTypeChange(a);
             viewer.onMapTypeChange(b);
 
@@ -2053,13 +2054,13 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("リスナーが throw しても他リスナーへの伝播が継続する", async () => {
             const viewer = await create(createMountElement());
-            const errorSpy = jest
+            const errorSpy = vi
                 .spyOn(console, "error")
                 .mockImplementation(() => {});
-            const failing = jest.fn(() => {
+            const failing = vi.fn(() => {
                 throw new Error("listener failure");
             });
-            const ok = jest.fn();
+            const ok = vi.fn();
             viewer.onMapTypeChange(failing);
             viewer.onMapTypeChange(ok);
 
@@ -2076,7 +2077,7 @@ describe("JpmapTerrain (skeleton)", () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
 
-            const listener = jest.fn();
+            const listener = vi.fn();
             const unsubscribe = viewer.onMapTypeChange(listener);
 
             expect(typeof unsubscribe).toBe("function");
@@ -2090,7 +2091,7 @@ describe("JpmapTerrain (skeleton)", () => {
             const viewer = await create(createMountElement(), {
                 mapType: "photo",
             });
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onMapTypeChange(listener);
 
             // 初期 photo に同値再 set → 発火しない
@@ -2168,7 +2169,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("onViewModeChange は値変化時のみ発火、同値 set は no-op", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             viewer.onViewModeChange(listener);
 
             viewer.viewMode = "3d"; // 同値
@@ -2187,7 +2188,7 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("onViewModeChange unsubscribe は冪等で、解除後は呼ばれない", async () => {
             const viewer = await create(createMountElement());
-            const listener = jest.fn();
+            const listener = vi.fn();
             const unsubscribe = viewer.onViewModeChange(listener);
             viewer.viewMode = "2d";
             expect(listener).toHaveBeenCalledTimes(1);
@@ -2199,13 +2200,13 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("リスナーが throw しても他リスナーへ伝播し console.error が記録される", async () => {
             const viewer = await create(createMountElement());
-            const errorSpy = jest
+            const errorSpy = vi
                 .spyOn(console, "error")
                 .mockImplementation(() => {});
-            const failing = jest.fn(() => {
+            const failing = vi.fn(() => {
                 throw new Error("vm listener failure");
             });
-            const ok = jest.fn();
+            const ok = vi.fn();
             viewer.onViewModeChange(failing);
             viewer.onViewModeChange(ok);
 
@@ -2220,7 +2221,7 @@ describe("JpmapTerrain (skeleton)", () => {
         it("dispose 後の onViewModeChange は no-op の unsubscribe を返す", async () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
-            const listener = jest.fn();
+            const listener = vi.fn();
             const unsubscribe = viewer.onViewModeChange(listener);
             expect(typeof unsubscribe).toBe("function");
             expect(() => unsubscribe()).not.toThrow();
@@ -2287,22 +2288,22 @@ describe("JpmapTerrain (skeleton)", () => {
         });
 
         it("autoSunPosition=true 中は 60 秒経過ごとに setSunState が呼ばれる", async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 const viewer = await create(createMountElement(), {
                     autoSunPosition: true,
                 });
                 sceneMockModule.__resetSunStateCalls();
-                jest.advanceTimersByTime(60_000);
+                vi.advanceTimersByTime(60_000);
                 expect(sceneMockModule.__getSunStateCalls().length).toBe(1);
-                jest.advanceTimersByTime(60_000);
+                vi.advanceTimersByTime(60_000);
                 expect(sceneMockModule.__getSunStateCalls().length).toBe(2);
                 viewer.dispose();
                 // dispose 後はタイマーが解放され、それ以上呼ばれない
-                jest.advanceTimersByTime(60_000 * 5);
+                vi.advanceTimersByTime(60_000 * 5);
                 expect(sceneMockModule.__getSunStateCalls().length).toBe(2);
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
@@ -2348,24 +2349,24 @@ describe("JpmapTerrain (skeleton)", () => {
         });
 
         it("dateTime getter は auto モード中に最後に内部反映した実時刻を返す", async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 const viewer = await create(createMountElement(), {
                     autoSunPosition: true,
                 });
                 const first = viewer.dateTime;
                 expect(first).toBeInstanceOf(Date);
-                jest.advanceTimersByTime(60_000);
+                vi.advanceTimersByTime(60_000);
                 const second = viewer.dateTime;
                 expect(second).toBeInstanceOf(Date);
                 expect(second!.getTime()).toBeGreaterThanOrEqual(first!.getTime());
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it("Invalid Date を options.dateTime に渡すと console.warn のうえ null フォールバック", async () => {
-            const warnSpy = jest
+            const warnSpy = vi
                 .spyOn(console, "warn")
                 .mockImplementation(() => undefined);
             try {
@@ -2386,7 +2387,7 @@ describe("JpmapTerrain (skeleton)", () => {
             const viewer = await create(createMountElement(), {
                 autoSunPosition: false,
             });
-            const warnSpy = jest
+            const warnSpy = vi
                 .spyOn(console, "warn")
                 .mockImplementation(() => undefined);
             try {
@@ -2399,22 +2400,22 @@ describe("JpmapTerrain (skeleton)", () => {
         });
 
         it("dispose 後の自動更新タイマーは停止しており setSunState は呼ばれない", async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 const viewer = await create(createMountElement(), {
                     autoSunPosition: true,
                 });
                 viewer.dispose();
                 sceneMockModule.__resetSunStateCalls();
-                jest.advanceTimersByTime(60_000 * 10);
+                vi.advanceTimersByTime(60_000 * 10);
                 expect(sceneMockModule.__getSunStateCalls().length).toBe(0);
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
 
         it("dispose 後の autoSunPosition setter / dateTime setter はタイマーを再起動しない（リーク防止）", async () => {
-            jest.useFakeTimers();
+            vi.useFakeTimers();
             try {
                 const viewer = await create(createMountElement(), {
                     autoSunPosition: false,
@@ -2424,10 +2425,10 @@ describe("JpmapTerrain (skeleton)", () => {
                 // dispose 後に setter を呼んでも setInterval は新規起動されない
                 viewer.autoSunPosition = true;
                 viewer.dateTime = new Date("2025-06-21T03:00:00Z");
-                jest.advanceTimersByTime(60_000 * 10);
+                vi.advanceTimersByTime(60_000 * 10);
                 expect(sceneMockModule.__getSunStateCalls().length).toBe(0);
             } finally {
-                jest.useRealTimers();
+                vi.useRealTimers();
             }
         });
     });

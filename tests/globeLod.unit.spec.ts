@@ -8,7 +8,7 @@
  * - 地平線カリング: しきい値を上げると裏側タイルが除外され件数が減る
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Plane } from "@babylonjs/core/Maths/math.plane";

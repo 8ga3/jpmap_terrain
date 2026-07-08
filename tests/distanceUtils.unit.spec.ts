@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * 距離計測デモの純粋関数ユニットテスト。
@@ -9,7 +9,7 @@
  * - formatAltitudeDelta: 符号付き整形と 0 m 周辺
  * - formatPointLabel / formatEdgeLabel: 改行区切りの文字列構造
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import {
     DEFAULT_DISTANCE_DEMO_MODE,

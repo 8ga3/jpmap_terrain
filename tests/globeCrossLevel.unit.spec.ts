@@ -5,7 +5,7 @@
  * - snapEdgeElevation: 境界辺で粗メッシュ表面値を返し、辺以外は null
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { TILE_SIZE } from "../src/terrain/gsiTile";
 import {

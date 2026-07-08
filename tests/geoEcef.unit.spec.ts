@@ -6,7 +6,7 @@
  * - geodeticToEcefToRef が ref を書き換えて返す（アロケーション回避）ことを確認
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";

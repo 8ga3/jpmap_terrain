@@ -1,10 +1,10 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * `src/demos/portal/index.ts` の純粋関数 unit test。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { buildPortalHtml } from "../src/demos/portal/index";
 

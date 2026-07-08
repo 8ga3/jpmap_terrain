@@ -7,7 +7,7 @@
  * 地形の深度を継承できなくなり、山などに正しく隠れなくなる。
  * 実際の見た目（山の裏に隠れるか）は 3DCG のため別ゲート（HITL）。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { RENDERING_GROUP_ID as MARKER_RENDERING_GROUP_ID } from "../src/terrain/marker";
 

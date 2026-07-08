@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * `src/demos/timelapse/index.ts` の純粋関数 export ユニットテスト。
@@ -9,7 +9,7 @@
  *   - 部分指定 (@lat,lon や ?lat=&lon=): lat/lon/altitude のみ（azimuth/tilt は返さない）
  *   - 完全指定 (@lat,lon,altitude,azimuth,tilt): 全フィールドを返す
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { resolveCameraInit, resolveEngine, resolveShowSunShadows } from "../src/demos/timelapse/index";
 
 describe("resolveCameraInit", () => {

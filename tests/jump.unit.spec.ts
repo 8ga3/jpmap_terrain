@@ -3,7 +3,7 @@
  *
  * ジャンプ物理: startJump / tickJump / 着地判定 / 方向ロックを検証する。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import {
     DEFAULT_GRAVITY,

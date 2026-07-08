@@ -5,7 +5,7 @@
  * 差し替え、CRUD / enabled / update（再ドレープ）/ dispose 後ガード / 2 点未満の検証 /
  * 非 hex 色フォールバックを検証する（buildDrapedPolygonPaths は実物）。
  */
-import { jest } from "@jest/globals";
+import { vi } from "vitest";
 
 interface StubMesh {
     name: string;
@@ -67,11 +67,11 @@ const stub = (name: string, bucket: StubMesh[]): StubMesh => {
     return m;
 };
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/sphereBuilder", () => ({
+vi.mock("@babylonjs/core/Meshes/Builders/sphereBuilder", () => ({
     CreateSphere: (name: string) => stub(name, createdPoints),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/tubeBuilder", () => ({
+vi.mock("@babylonjs/core/Meshes/Builders/tubeBuilder", () => ({
     CreateTube: (name: string, opts: { instance?: StubMesh }) => {
         if (opts.instance) {
             if (name.includes("outline")) lineInstanceUpdates.push(1);
@@ -83,15 +83,15 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/tubeBuilder", () => ({
     },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/planeBuilder", () => ({
+vi.mock("@babylonjs/core/Meshes/Builders/planeBuilder", () => ({
     CreatePlane: (name: string) => stub(name, createdPlanes),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/abstractMesh", () => ({
+vi.mock("@babylonjs/core/Meshes/abstractMesh", () => ({
     AbstractMesh: { BILLBOARDMODE_ALL: 7 },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => ({
+vi.mock("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => ({
     CreateRibbon: (name: string, opts: { instance?: StubMesh }) => {
         if (opts.instance) {
             ribbonInstanceUpdates.push(1);
@@ -101,7 +101,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => 
     },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
+vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
     StandardMaterial: class {
         emissiveColor: unknown = null;
         alpha = 1;
@@ -118,7 +118,7 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
     },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/Textures/dynamicTexture", () => ({
+vi.mock("@babylonjs/core/Materials/Textures/dynamicTexture", () => ({
     DynamicTexture: class {
         hasAlpha = false;
         vScale = 1;
@@ -164,7 +164,7 @@ jest.unstable_mockModule("@babylonjs/core/Materials/Textures/dynamicTexture", ()
 }));
 
 // Mesh.DOUBLESIDE 定数のみ使用するため軽量スタブ。
-jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
+vi.mock("@babylonjs/core/Meshes/mesh", () => ({
     Mesh: { DOUBLESIDE: 2, NO_CAP: 0 },
 }));
 
@@ -172,7 +172,7 @@ const { createGlobePolygonManager } = await import(
     "../src/terrain/geo/globePolygonManager"
 );
 const { geodeticToEcef } = await import("../src/terrain/geo/ecef");
-const { describe, it, expect, beforeEach } = await import("@jest/globals");
+const { describe, it, expect, beforeEach } = await import("vitest");
 
 const pts3 = [
     { lat: 35.3, lon: 138.7 },
@@ -181,7 +181,7 @@ const pts3 = [
 ];
 
 const makeManager = () => {
-    const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(() => 1000);
+    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => 1000);
     const mgr = createGlobePolygonManager({ scene: {} as never, terrainElevAt });
     return { mgr, terrainElevAt };
 };
@@ -243,7 +243,7 @@ describe("add / CRUD", () => {
 
     it("remove 未存在 id は warn + no-op", () => {
         const { mgr } = makeManager();
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         expect(() => mgr.remove("nope")).not.toThrow();
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
         warn.mockRestore();
@@ -306,7 +306,7 @@ describe("update", () => {
     });
 
     it("terrain 標高未解決なら全要素を非表示にする", () => {
-        const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(() => null);
+        const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => null);
         const mgr = createGlobePolygonManager({ scene: {} as never, terrainElevAt });
         mgr.add({ points: pts3 });
         expect(createdPoints.every((m) => !m.enabled)).toBe(true);
@@ -381,7 +381,7 @@ describe("setFlatten", () => {
 
     it("setFlatten(true) は flat 進入時に全頂点の terrainElevAt を引いて elevs を terrain 基準へ正規化する", () => {
         // 3D で absolute 高度を使っていたポリゴンの elevs(=絶対高度) を 2D へ持ち越さないことを担保する。
-        const terrainElevAt = jest.fn<(lat: number, lon: number) => number | null>(
+        const terrainElevAt = vi.fn<(lat: number, lon: number) => number | null>(
             () => null,
         );
         const mgr = createGlobePolygonManager({

@@ -5,7 +5,7 @@
  * - dispose / scene.dispose で Observer 解除と保留タイマーのクリアが行われる
  */
 
-import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
 
 import {
     attachResizeRefresh,
@@ -16,8 +16,8 @@ type Listener = () => void;
 
 interface FakeObservable {
     listeners: Listener[];
-    add: jest.Mock<(cb: Listener) => Listener>;
-    remove: jest.Mock<(cb: Listener) => boolean>;
+    add: Mock<(cb: Listener) => Listener>;
+    remove: Mock<(cb: Listener) => boolean>;
     /** テスト用: 登録済み listener を全て呼ぶ */
     notify: () => void;
 }
@@ -26,11 +26,11 @@ const createFakeObservable = (): FakeObservable => {
     const listeners: Listener[] = [];
     const obs: FakeObservable = {
         listeners,
-        add: jest.fn((cb: Listener) => {
+        add: vi.fn((cb: Listener) => {
             listeners.push(cb);
             return cb;
         }),
-        remove: jest.fn((cb: Listener) => {
+        remove: vi.fn((cb: Listener) => {
             const idx = listeners.indexOf(cb);
             if (idx >= 0) {
                 listeners.splice(idx, 1);
@@ -47,18 +47,18 @@ const createFakeObservable = (): FakeObservable => {
 
 describe("attachResizeRefresh", () => {
     beforeEach(() => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
     });
 
     afterEach(() => {
-        jest.useRealTimers();
-        jest.clearAllMocks();
+        vi.useRealTimers();
+        vi.clearAllMocks();
     });
 
     it("デフォルト debounce 後に refresh が 1 回呼ばれる", () => {
         const onResize = createFakeObservable();
         const onDispose = createFakeObservable();
-        const refresh = jest.fn<() => void>();
+        const refresh = vi.fn<() => void>();
 
         attachResizeRefresh(
             { onResizeObservable: onResize } as never,
@@ -69,14 +69,14 @@ describe("attachResizeRefresh", () => {
         onResize.notify();
         expect(refresh).not.toHaveBeenCalled();
 
-        jest.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS);
+        vi.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS);
         expect(refresh).toHaveBeenCalledTimes(1);
     });
 
     it("連続リサイズは debounce され、最後の発火から debounceMs 後に 1 回だけ呼ばれる", () => {
         const onResize = createFakeObservable();
         const onDispose = createFakeObservable();
-        const refresh = jest.fn<() => void>();
+        const refresh = vi.fn<() => void>();
 
         attachResizeRefresh(
             { onResizeObservable: onResize } as never,
@@ -86,22 +86,22 @@ describe("attachResizeRefresh", () => {
         );
 
         onResize.notify();
-        jest.advanceTimersByTime(30);
+        vi.advanceTimersByTime(30);
         onResize.notify();
-        jest.advanceTimersByTime(30);
+        vi.advanceTimersByTime(30);
         onResize.notify();
 
         // ここまでは debounce 内で再スケジュールされるため呼ばれていない
         expect(refresh).not.toHaveBeenCalled();
 
-        jest.advanceTimersByTime(50);
+        vi.advanceTimersByTime(50);
         expect(refresh).toHaveBeenCalledTimes(1);
     });
 
     it("dispose 後はリサイズが来ても refresh が呼ばれず、Observer も解除される", () => {
         const onResize = createFakeObservable();
         const onDispose = createFakeObservable();
-        const refresh = jest.fn<() => void>();
+        const refresh = vi.fn<() => void>();
 
         const handle = attachResizeRefresh(
             { onResizeObservable: onResize } as never,
@@ -115,14 +115,14 @@ describe("attachResizeRefresh", () => {
         expect(onResize.listeners.length).toBe(0);
 
         onResize.notify();
-        jest.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS);
+        vi.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS);
         expect(refresh).not.toHaveBeenCalled();
     });
 
     it("保留中タイマーは dispose でキャンセルされる", () => {
         const onResize = createFakeObservable();
         const onDispose = createFakeObservable();
-        const refresh = jest.fn<() => void>();
+        const refresh = vi.fn<() => void>();
 
         const handle = attachResizeRefresh(
             { onResizeObservable: onResize } as never,
@@ -133,7 +133,7 @@ describe("attachResizeRefresh", () => {
         onResize.notify();
         // debounce 経過前に dispose
         handle.dispose();
-        jest.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS * 2);
+        vi.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS * 2);
 
         expect(refresh).not.toHaveBeenCalled();
     });
@@ -141,7 +141,7 @@ describe("attachResizeRefresh", () => {
     it("scene.onDisposeObservable 発火で自動的に dispose される", () => {
         const onResize = createFakeObservable();
         const onDispose = createFakeObservable();
-        const refresh = jest.fn<() => void>();
+        const refresh = vi.fn<() => void>();
 
         attachResizeRefresh(
             { onResizeObservable: onResize } as never,
@@ -155,14 +155,14 @@ describe("attachResizeRefresh", () => {
         expect(onResize.remove).toHaveBeenCalledTimes(1);
 
         onResize.notify();
-        jest.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS);
+        vi.advanceTimersByTime(DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS);
         expect(refresh).not.toHaveBeenCalled();
     });
 
     it("dispose を複数回呼んでも安全（remove は 1 回のみ）", () => {
         const onResize = createFakeObservable();
         const onDispose = createFakeObservable();
-        const refresh = jest.fn<() => void>();
+        const refresh = vi.fn<() => void>();
 
         const handle = attachResizeRefresh(
             { onResizeObservable: onResize } as never,

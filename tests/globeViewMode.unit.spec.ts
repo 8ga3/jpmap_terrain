@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  *
  * globe バックエンドの 2D/3D 視点モード 統合テスト。
  *
@@ -8,7 +8,7 @@
  * zoomLevel 整合・3D⇄2D 往復での lat/lon/azimuth 保存・onViewModeChange の発火条件・
  * タイルマネージャ共有（同一インスタンス維持）を検証する。3DCG の見た目は別ゲート（HITL）。
  */
-import { describe, it, expect, jest, afterEach } from "@jest/globals";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Camera } from "@babylonjs/core/Cameras/camera";
 
@@ -129,7 +129,7 @@ describe("globe 視点モード 2D/3D", () => {
     });
 
     it("onViewModeChange は実変化時のみ発火する", () => {
-        const onViewModeChange = jest.fn();
+        const onViewModeChange = vi.fn();
         const { gc, teardown } = build({ onViewModeChange });
         // 同値（3d→3d）は発火しない。
         gc.setViewMode("3d");
@@ -180,7 +180,7 @@ describe("globe 視点モード 2D/3D", () => {
     });
 
     it("初期 viewMode='2d' でも onViewModeChange は初期化では発火しない（silent）", () => {
-        const onViewModeChange = jest.fn();
+        const onViewModeChange = vi.fn();
         const { gc, teardown } = build({ viewMode: "2d", onViewModeChange });
         expect(gc.getViewMode()).toBe("2d");
         expect(onViewModeChange).not.toHaveBeenCalled();

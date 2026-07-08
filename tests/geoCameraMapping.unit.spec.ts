@@ -8,7 +8,7 @@
  * - clampRadiusForGroundClearance: 潜り込み補正・既クリアランス・水平視の発散回避
  */
 
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, vi } from "vitest";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
@@ -519,7 +519,7 @@ describe("resolveTerrainClickElevationToRef", () => {
         // 実装側の one-shot 警告（narrow terrain may be missed）が発火する。想定内の警告
         // でテストログを汚さないよう抑止する。expect失敗時もリークしないよう try/finally で
         // 必ず restore する。
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
             // 標高0面到達距離（tFar）を平地で1回解いて幾何を確定し、第1段の粗サンプル格子を再現する。
             const flatHit = new Vector3();

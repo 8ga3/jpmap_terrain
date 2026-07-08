@@ -3,7 +3,7 @@
  *
  * 入力ベクトル合成・デッドゾーン・移動・方位計算の純粋関数を検証する。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import {
     applyDeadzone,

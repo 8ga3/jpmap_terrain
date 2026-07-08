@@ -1,7 +1,7 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
-import { jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { snapScale, pickScaleWithin, formatScale, SCALE_STEPS, createControlPanel, showToast } from "../src/terrain/controlPanel";
 
 function cleanupDOM(): void {
@@ -246,12 +246,12 @@ describe("formatScale", () => {
 
 describe("showToast", () => {
     beforeEach(() => {
-        jest.useFakeTimers();
+        vi.useFakeTimers();
         document.body.innerHTML = "";
     });
 
     afterEach(() => {
-        jest.useRealTimers();
+        vi.useRealTimers();
         cleanupDOM();
     });
 
@@ -271,14 +271,14 @@ describe("showToast", () => {
     it("指定時間後に opacity が 0 になる", () => {
         showToast("テスト", 2000);
         const toast = document.querySelector("[role='status']") as HTMLElement;
-        jest.advanceTimersByTime(2000);
+        vi.advanceTimersByTime(2000);
         expect(toast.style.opacity).toBe("0");
     });
 
     it("transitionend 発火後に要素が DOM から除去される", () => {
         showToast("テスト", 1000);
         const toast = document.querySelector("[role='status']") as HTMLElement;
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         toast.dispatchEvent(new Event("transitionend"));
         expect(document.querySelector("[role='status']")).toBeNull();
     });
@@ -293,10 +293,10 @@ describe("showToast", () => {
 
     it("置き換え時に古いタイマーが発火しない", () => {
         showToast("古い", 1000);
-        jest.advanceTimersByTime(500);
+        vi.advanceTimersByTime(500);
         showToast("新しい", 1000);
         // 古い setTimeout の残り 500ms を経過させても新しいトーストは残る
-        jest.advanceTimersByTime(500);
+        vi.advanceTimersByTime(500);
         const current = document.querySelector("[role='status']") as HTMLElement;
         expect(current.textContent).toBe("新しい");
         expect(current.style.opacity).toBe("1");
@@ -306,10 +306,10 @@ describe("showToast", () => {
         showToast("テスト", 1000);
         const toast = document.querySelector("[role='status']") as HTMLElement;
         // フェードアウト開始
-        jest.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(1000);
         expect(toast.style.opacity).toBe("0");
         // transitionend を発火させず、フォールバック 500ms を経過
-        jest.advanceTimersByTime(500);
+        vi.advanceTimersByTime(500);
         expect(document.querySelector("[role='status']")).toBeNull();
     });
 });

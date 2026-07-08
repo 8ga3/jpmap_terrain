@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * `createBabylonEngine` の WebGPU/WebGL2 フォールバック分岐テスト
@@ -11,12 +11,12 @@
  * Babylon.js Engine 実装は jsdom で動かないためモック化する。
  */
 
-import { jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // --- モック実装 -------------------------------------------------------------
-const webgpuConstructor = jest.fn();
-const webgpuInitAsync = jest.fn(async () => undefined);
-const engineConstructor = jest.fn();
+const webgpuConstructor = vi.fn();
+const webgpuInitAsync = vi.fn(async () => undefined);
+const engineConstructor = vi.fn();
 let webgpuSupported = true;
 
 class MockWebGPUEngine {
@@ -37,16 +37,16 @@ class MockEngine {
     }
 }
 
-jest.unstable_mockModule("@babylonjs/core/Engines/webgpuEngine", () => ({
+vi.mock("@babylonjs/core/Engines/webgpuEngine", () => ({
     WebGPUEngine: MockWebGPUEngine,
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Engines/engine", () => ({
+vi.mock("@babylonjs/core/Engines/engine", () => ({
     Engine: MockEngine,
 }));
 
 // WebGPU Extensions の dynamic import を中和
-jest.unstable_mockModule("@babylonjs/core/Engines/WebGPU/Extensions/", () => ({}));
+vi.mock("@babylonjs/core/Engines/WebGPU/Extensions/", () => ({}));
 
 const { createBabylonEngine } = await import("../src/lib/internal/engineFactory");
 

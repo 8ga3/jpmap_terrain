@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from "@jest/globals";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
     parseLatLonFromUrl,
     parseCameraStateFromUrl,
@@ -134,13 +134,13 @@ describe("urlState", () => {
         const originalLocation = globalThis.location;
 
         beforeEach(() => {
-            jest.useFakeTimers();
-            globalThis.history = { replaceState: jest.fn() } as unknown as History;
+            vi.useFakeTimers();
+            globalThis.history = { replaceState: vi.fn() } as unknown as History;
             globalThis.location = { pathname: "/", search: "" } as unknown as Location;
         });
 
         afterEach(() => {
-            jest.useRealTimers();
+            vi.useRealTimers();
             globalThis.history = originalHistory;
             globalThis.location = originalLocation;
         });
@@ -157,7 +157,7 @@ describe("urlState", () => {
 
             expect(history.replaceState).not.toHaveBeenCalled();
 
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
 
             expect(history.replaceState).toHaveBeenCalledTimes(1);
             expect(history.replaceState).toHaveBeenCalledWith(
@@ -178,7 +178,7 @@ describe("urlState", () => {
                 tilt: CAMERA_URL_DEFAULTS.tilt,
             });
 
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
 
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
@@ -198,7 +198,7 @@ describe("urlState", () => {
             updater({ lat: 36.0, lon: 140.0, ...base });
             updater({ lat: 37.0, lon: 141.0, ...base });
 
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
 
             expect(history.replaceState).toHaveBeenCalledTimes(1);
             expect(history.replaceState).toHaveBeenCalledWith(
@@ -218,7 +218,7 @@ describe("urlState", () => {
                 tilt: 60,
             });
 
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
 
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
@@ -237,7 +237,7 @@ describe("urlState", () => {
                 azimuth: CAMERA_URL_DEFAULTS.azimuth,
                 tilt: CAMERA_URL_DEFAULTS.tilt,
             });
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
@@ -255,7 +255,7 @@ describe("urlState", () => {
                 azimuth: CAMERA_URL_DEFAULTS.azimuth,
                 tilt: CAMERA_URL_DEFAULTS.tilt,
             });
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
@@ -276,7 +276,7 @@ describe("urlState", () => {
                 azimuth: 90,
                 tilt: 60,
             });
-            jest.advanceTimersByTime(200);
+            vi.advanceTimersByTime(200);
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
@@ -626,7 +626,7 @@ describe("urlState", () => {
         });
 
         it("history.replaceState を呼び、?mapType=<value> を含む URL を渡す", () => {
-            const replaceSpy = jest.fn();
+            const replaceSpy = vi.fn();
             (globalThis as { window?: unknown }).window = {
                 history: { replaceState: replaceSpy },
                 location: { href: "http://localhost/?engine=webgl" },
@@ -642,7 +642,7 @@ describe("urlState", () => {
         });
 
         it("既存の mapType を上書きする", () => {
-            const replaceSpy = jest.fn();
+            const replaceSpy = vi.fn();
             (globalThis as { window?: unknown }).window = {
                 history: { replaceState: replaceSpy },
                 location: { href: "http://localhost/?mapType=standard" },
@@ -726,7 +726,7 @@ describe("urlState", () => {
 
         it("updateViewModeInUrl は history.replaceState に渡す", () => {
             const originalWindow = (globalThis as { window?: unknown }).window;
-            const replaceSpy = jest.fn();
+            const replaceSpy = vi.fn();
             (globalThis as { window?: unknown }).window = {
                 history: { replaceState: replaceSpy },
                 location: { href: "http://localhost/?engine=webgl" },
