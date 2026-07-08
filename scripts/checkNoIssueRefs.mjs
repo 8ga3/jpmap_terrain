@@ -37,9 +37,11 @@ export function findViolations(content) {
     lines.forEach((line, idx) => {
         for (const { name, regex } of PATTERNS) {
             regex.lastIndex = 0;
-            const match = regex.exec(line);
-            if (match) {
+            let match;
+            while ((match = regex.exec(line)) !== null) {
                 violations.push({ line: idx + 1, name, text: match[0] });
+                // 空文字マッチによる無限ループを防止する（本パターン群では通常発生しないが念のため）。
+                if (match.index === regex.lastIndex) regex.lastIndex++;
             }
         }
     });
