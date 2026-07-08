@@ -872,7 +872,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const isTestEnv =
         typeof process !== "undefined" &&
         typeof (process as { env?: Record<string, string | undefined> }).env !== "undefined" &&
-        (process as { env: Record<string, string | undefined> }).env.VITEST !== undefined;
+        (process as { env: Record<string, string | undefined> }).env.VITEST === "true";
     // Babylon の onAfterRenderObservable に同期して、現在フレームの
      // 描画完了後にタイル sync を再開する。これにより
      // 「飛行機の位置反映 → render → タイル sync」の順番が保証され、

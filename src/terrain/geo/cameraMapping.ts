@@ -1,17 +1,17 @@
 /**
  * グローブカメラの UI/URL ⇄ `GeospatialCamera` マッピングと、
- * floating origin 下で `scene.pick` に依存しないパン（地表接線移動）・カメラ地形衝突の純関数群。
+ * floating origin 下で `scene.pick` に依存しないパン（地表接線移動）・カメラ地形衝突の関数群。
  *
  * 既存（平面版）の UI / URL 共有は `azimuth`(方位) / `tilt`(チルト) / `altitude`(高度) を用いる。
  * これを `GeospatialCamera` の `yaw` / `pitch` / `radius` / `center`(ECEF) と相互変換する。
- * PoC の純関数を本体共有モジュールへ昇格したもの。
+ * PoC の関数群を本体共有モジュールへ昇格したもの。
  *
  * 対応関係:
  * - azimuth[deg] ⇄ yaw[rad]   （どちらも 0 = 北、+ = 東回り）
  * - tilt[deg]    ⇄ pitch[rad] （0 = 直下、90 = 水平。既存 UI の「地面からの傾き」と同義）
  *
  * 本モジュールは `GeospatialCamera` を直接 import しない（Babylon の実行時オブジェクトに
- * 依存させず、DOM/WebGL 環境が無くても実行できる純関数として保つため）。`yaw`/`pitch`
+ * 依存させず、DOM/WebGL 環境が無くても実行できるようにするため）。`yaw`/`pitch`
  * から視線（lookAt）を組む処理は Babylon の `ComputeLookAtFromYawPitchToRef` を呼ぶ
  * 呼び出し側（`scenes/globe.ts`）が担い、本モジュールには算出済みのベクトルを渡す。
  */

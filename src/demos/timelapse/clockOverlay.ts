@@ -136,7 +136,7 @@ export interface ClockHandle {
 /**
  * 既存の `<svg>` 要素に時計盤と針を構築し、更新ハンドルを返す。
  * - 同じ要素に対して再マウントしないこと（再マウント時は `update` を使う）。
- * - DOM が無い環境（Vitest の jsdom 以外）では呼び出さない。
+ * - DOM が無い環境（SSR 等）では呼び出さない。
  */
 export const mountClock = (
     svg: SVGSVGElement,
