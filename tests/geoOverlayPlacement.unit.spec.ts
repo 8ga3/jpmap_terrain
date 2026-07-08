@@ -128,7 +128,7 @@ describe("computeOverlayPointDiameter", () => {
     it("距離比例スケールを反映する（クランプ範囲内）", () => {
         expect(computeOverlayPointDiameter(20, 2)).toBeCloseTo(40, 6);
     });
-    it("100m を超えると上限クランプ（地形貫通抑制、Issue #451）", () => {
+    it("100m を超えると上限クランプ（地形貫通抑制）", () => {
         expect(computeOverlayPointDiameter(20, 1000)).toBe(100); // 20*1000=20000 → 上限 100
     });
     it("baseDiameterM が 0 以下でも下限 0.001 を使う", () => {

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * タッチ操作の2本指ジェスチャ統合テスト（Issue #424）。
+ * タッチ操作の2本指ジェスチャ統合テスト。
  *
  * NullEngine + jsdom で `GlobeScene.createSceneWithController` を実体構築し、canvas へ
  * PointerEvent 相当を dispatch して以下を検証する:
@@ -89,7 +89,7 @@ const dispatchPointer = (
 
 const centerOf = (gc: GlobeSceneController): Vector3 => gc.camera.center.clone();
 
-describe("globe タッチ 2本指ジェスチャ (#424)", () => {
+describe("globe タッチ 2本指ジェスチャ", () => {
     it("1本指タッチのドラッグで center が動く", () => {
         const { gc, canvas, teardown } = build();
         const before = centerOf(gc);

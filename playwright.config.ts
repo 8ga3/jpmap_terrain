@@ -24,7 +24,7 @@ export default defineConfig({
   /*
    * Quadtree + SSE ベースのタイル取得は 1 シーンで大量の HTTP リクエストを dev-server に
    * 送るため、ローカルでも並列実行するとワーカー間で Chromium の screencast が落ちる事象が
-   * 発生する。安定性を優先し、CI/ローカルともに単一ワーカーで実行する（Issue #109）。
+   * 発生する。安定性を優先し、CI/ローカルともに単一ワーカーで実行する。
    */
   workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */

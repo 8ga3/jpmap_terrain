@@ -96,7 +96,7 @@ describe("createControlPanel pointerEvents 透過", () => {
     });
 });
 
-describe("createControlPanel レスポンシブ対応 (#424)", () => {
+describe("createControlPanel レスポンシブ対応", () => {
     afterEach(cleanupDOM);
 
     it("coarse pointer 用のレスポンシブスタイルが head に注入される", () => {

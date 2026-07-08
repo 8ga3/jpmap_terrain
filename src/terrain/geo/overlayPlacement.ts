@@ -35,7 +35,7 @@ const LINE_HEIGHT_MAX = 10000;
 /**
  * 頂点球のワールド直径上限 [m]。距離比例スケール（`computeOverlayDistanceScale`）を無制限に
  * 掛けると、遠距離では球が地形の起伏より大きくなり、深度テストが正しくても手前側の一部が
- * 山を貫通してはみ出て見える（Issue #451）。地形の一般的な起伏より十分小さい値に抑える。
+ * 山を貫通してはみ出て見えるため、地形の一般的な起伏より十分小さい値に抑える。
  */
 const POINT_DIAMETER_MAX_M = 100;
 
@@ -101,7 +101,7 @@ export const computeOverlayLineHeight = (distanceM: number): number => {
 
 /**
  * 頂点球のワールド直径 [m]。距離比例スケール（distScale）を掛けて画面上の見かけ大きさを
- * 保ちつつ、{@link POINT_DIAMETER_MAX_M} で上限クランプし地形貫通を抑える（Issue #451）。
+ * 保ちつつ、{@link POINT_DIAMETER_MAX_M} で上限クランプし地形貫通を抑える。
  */
 export const computeOverlayPointDiameter = (
     baseDiameterM: number,

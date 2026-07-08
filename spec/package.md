@@ -493,13 +493,13 @@ interface PolygonOptions {
 
 - `points` の各点に対し、`altitudeMode === "absolute"` なら `altitude` をそのまま Y に採用する。`"terrain"` ならタイル標高 (m) を Y に採用し、`altitude` が指定されている場合は地表からのオフセットとして加算する。
 - `terrain` モードで 1 点でも標高未解決の間は **ポリゴン全体を hide** し、`onTerrainUpdated` 後に自動表示する（例外は投げない）。
-- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、地表メッシュと同じ `renderingGroupId = 0` で描画し地形に正しくオクルードされる）。スケールはカメラ距離に応じて screen-stable に動的更新されるが、ワールド直径は 100m を上限にクランプする（無制限に拡大すると遠距離で球が地形を貫通し手前側がはみ出て見えるため、Issue #451）。
+- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、地表メッシュと同じ `renderingGroupId = 0` で描画し地形に正しくオクルードされる）。スケールはカメラ距離に応じて screen-stable に動的更新されるが、ワールド直径は 100m を上限にクランプする（無制限に拡大すると遠距離で球が地形を貫通し手前側がはみ出て見えるため）。
 - 隣接点間を **CreateTube**（`updatable: true`、半径 `style.lineWidth`）で結ぶ。`closed = true` のとき末尾→先頭も結ぶ。
 - JAPAN_BOUNDS 外の点・`points.length < 1`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。`points.length === 1` のときは辺（線 / 壁 / 辺ラベル）は存在せず、点・垂線・点ラベルのみ描画される。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
 - **垂線・ラベルの仕様**: 各点から Y=0（グリッド原点面）まで伸びる垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画する。垂線は地表を貫通して下るため、高高度点の接地を常に可視化できる。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
-- **壁表示の仕様**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。壁・垂線・球・ポリライン（アウトライン）・ラベルは全て地表メッシュと同じ `renderingGroupId=0` で描画し、地表の深度バッファに対する深度テストで地中部分・地形より奥の部分を自然にオクルードする（以前はポリライン・ラベルを別グループにして常に地表より手前にしていたが、山などに正しく隠れてほしいという要望により撤回し、地形と同じ深度で扱う方式に統一した。Issue #451）。
+- **壁表示の仕様**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。壁・垂線・球・ポリライン（アウトライン）・ラベルは全て地表メッシュと同じ `renderingGroupId=0` で描画し、地表の深度バッファに対する深度テストで地中部分・地形より奥の部分を自然にオクルードする（以前はポリライン・ラベルを別グループにして常に地表より手前にしていたが、山などに正しく隠れてほしいという要望により撤回し、地形と同じ深度で扱う方式に統一した）。
 - **辺ラベルの仕様**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
 - **点編集 API の後日実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
@@ -661,7 +661,7 @@ interface CircleHandle {
 - 円周点列は world 座標で `P_i = center + (radius × cos θ_i, 0, radius × sin θ_i)` として `segments` 等分に生成する（Mercator 楕円化回避）。
 - `terrain` モードでは中心点の地表標高のみ解決し、その値 + `center.altitude` を全円周点に均一適用する（平面円）。標高未解決の間は全体を非表示にし、`onTerrainUpdated` 後に自動表示する。
 - `absolute` モードでは `center.altitude` をそのまま Y に採用する。
-- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベル / 壁 Ribbon は全て `0`（地表と同グループで正しくオクルード。Issue #451）。`wallOpacity < 1`（半透明）の場合のみ `needDepthPrePass=true` で z-fight を緩和する。中心球はポリゴン頂点球と同じ実装（globePolygonManager 経由）のため、ワールド直径は 100m を上限にクランプする。
+- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベル / 壁 Ribbon は全て `0`（地表と同グループで正しくオクルード）。`wallOpacity < 1`（半透明）の場合のみ `needDepthPrePass=true` で z-fight を緩和する。中心球はポリゴン頂点球と同じ実装（globePolygonManager 経由）のため、ワールド直径は 100m を上限にクランプする。
 - `dispose()` で全 Circle リソース（Mesh / Material / TransformNode）を解放する。
 
 **差分更新の保証範囲（updateCircle）:**

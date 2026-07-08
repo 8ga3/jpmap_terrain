@@ -1,5 +1,5 @@
 /**
- * マーカーが地形（山など）に正しくオクルードされることの回帰テスト（Issue #451）。
+ * マーカーが地形（山など）に正しくオクルードされることの回帰テスト。
  *
  * マーカー用 `RENDERING_GROUP_ID` が地形タイルの既定 renderingGroupId（0）と一致することを
  * 検証する。異なるグループにすると、Babylon.js は renderingGroup 間で既定で深度バッファを
@@ -13,7 +13,7 @@ import { RENDERING_GROUP_ID as MARKER_RENDERING_GROUP_ID } from "../src/terrain/
 
 const TERRAIN_RENDERING_GROUP_ID = 0;
 
-describe("マーカーの renderingGroupId（Issue #451）", () => {
+describe("マーカーの renderingGroupId", () => {
     it("地形タイルの既定 renderingGroupId=0 と一致する", () => {
         expect(MARKER_RENDERING_GROUP_ID).toBe(TERRAIN_RENDERING_GROUP_ID);
     });

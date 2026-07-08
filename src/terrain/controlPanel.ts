@@ -104,7 +104,7 @@ const createCompass = (): HTMLDivElement => {
         style.id = "cp-focus-style";
         style.textContent = [
             // touch-action: manipulation で iOS Safari のダブルタップズーム等のブラウザ既定
-            // ジェスチャを抑止しつつ、タップ（クリック）は従来どおり機能させる（Issue #424）。
+            // ジェスチャを抑止しつつ、タップ（クリック）は従来どおり機能させる。
             ".cp-compass, .cp-btn { outline: none; touch-action: manipulation; }",
             ".cp-compass:focus, .cp-btn:focus { box-shadow: 0 0 0 2px #90caf9; }",
             ".cp-compass:focus:not(:focus-visible), .cp-btn:focus:not(:focus-visible) { box-shadow: none; }",

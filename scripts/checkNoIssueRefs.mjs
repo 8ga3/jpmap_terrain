@@ -1,0 +1,94 @@
+#!/usr/bin/env node
+/**
+ * Git管理下のソース/ドキュメントに issue 番号・phase 番号の参照
+ * （例: `Issue #123` / `(#123)` / `Phase 1` / `P4-0` / `Slice 2a`）が
+ * 含まれていないかを検知するスクリプト。
+ *
+ * agent instruction（30_coder.md 等）に「参照を書かない」ルールを
+ * 追記するだけでは遵守されない実績があったため、機械的な検知で
+ * 補強する（`npm run lint` から実行される）。
+ */
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const TARGET_EXTENSIONS = [".ts", ".tsx", ".md"];
+
+// このスクリプト自身とそのUnit testは、検知対象パターンの実例を
+// 文字列として保持する必要があるため、スキャン対象から除外する。
+const SELF_EXCLUDE = new Set([
+    "scripts/checkNoIssueRefs.mjs",
+    "tests/checkNoIssueRefs.unit.spec.ts",
+]);
+
+export const PATTERNS = [
+    { name: "issue-ref", regex: /\bissue\s*#\d+/gi },
+    { name: "paren-issue-ref", regex: /\(#\d+\)/g },
+    { name: "phase-ref", regex: /\bphase\s*#?\d+\b/gi },
+    { name: "phase-slice-code", regex: /\bp\d+-\d+[a-z]?\b/gi },
+    { name: "slice-ref", regex: /\bslice\s*\d+[a-z]?\b/gi },
+];
+
+/**
+ * 1ファイル分のテキストから違反箇所（行番号・種別・一致文字列）を抽出する。
+ */
+export function findViolations(content) {
+    const violations = [];
+    const lines = content.split(/\r?\n/);
+    lines.forEach((line, idx) => {
+        for (const { name, regex } of PATTERNS) {
+            regex.lastIndex = 0;
+            const match = regex.exec(line);
+            if (match) {
+                violations.push({ line: idx + 1, name, text: match[0] });
+            }
+        }
+    });
+    return violations;
+}
+
+/**
+ * `git ls-files` でGit管理下のファイル一覧を取得する
+ * （node_modules/dist/.tmp 等の未追跡ディレクトリは自動的に除外される）。
+ */
+export function listTrackedFiles() {
+    const output = execFileSync("git", ["ls-files"], { encoding: "utf8" });
+    return output.split("\n").filter(Boolean);
+}
+
+export function collectAllViolations(files, readFile = readFileSync) {
+    const results = [];
+    for (const file of files) {
+        if (SELF_EXCLUDE.has(file)) continue;
+        if (!TARGET_EXTENSIONS.some((ext) => file.endsWith(ext))) continue;
+        let content;
+        try {
+            content = readFile(file, "utf8");
+        } catch {
+            // シンボリックリンク切れ等は読み飛ばす
+            continue;
+        }
+        for (const violation of findViolations(content)) {
+            results.push({ file, ...violation });
+        }
+    }
+    return results;
+}
+
+function main() {
+    const files = listTrackedFiles();
+    const violations = collectAllViolations(files);
+    if (violations.length > 0) {
+        for (const v of violations) {
+            console.error(`[check-no-issue-refs] ${v.file}:${v.line}: "${v.text}" (${v.name})`);
+        }
+        console.error(
+            "[check-no-issue-refs] found issue/phase number references. Summarize the background instead of referencing issue/phase numbers.",
+        );
+        process.exitCode = 1;
+    }
+}
+
+// このファイルが直接実行された場合のみチェックを走らせる（Unit testからのimport時は実行しない）。
+if (process.argv[1] && process.argv[1].endsWith("checkNoIssueRefs.mjs")) {
+    main();
+}
