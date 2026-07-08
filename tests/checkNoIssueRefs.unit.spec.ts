@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { collectAllViolations, findViolations } from "../scripts/checkNoIssueRefs.mjs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { collectAllViolations, findViolations, listTrackedFiles } from "../scripts/checkNoIssueRefs.mjs";
+import { execFileSync } from "node:child_process";
+
+vi.mock("node:child_process", () => ({
+    execFileSync: vi.fn(),
+}));
 
 describe("checkNoIssueRefs", () => {
     describe("findViolations", () => {
@@ -95,13 +100,37 @@ describe("checkNoIssueRefs", () => {
             expect(violations).toEqual([]);
         });
 
-        it("読み込みに失敗したファイルは読み飛ばす", () => {
+        it("読み込みに失敗したファイルは読み飛ばし、警告を出す", () => {
+            const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
             const files = ["src/broken.ts"];
             const readFile = () => {
                 throw new Error("ENOENT");
             };
             expect(() => collectAllViolations(files, readFile)).not.toThrow();
             expect(collectAllViolations(files, readFile)).toEqual([]);
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining("src/broken.ts"),
+            );
+            warnSpy.mockRestore();
+        });
+    });
+
+    describe("listTrackedFiles", () => {
+        afterEach(() => {
+            vi.mocked(execFileSync).mockReset();
+        });
+
+        it("git ls-files の出力をファイル一覧として返す", () => {
+            vi.mocked(execFileSync).mockReturnValue("a.ts\nb.md\n");
+            expect(listTrackedFiles()).toEqual(["a.ts", "b.md"]);
+        });
+
+        it("git コマンドが失敗した場合、原因を含む分かりやすいエラーを投げる", () => {
+            vi.mocked(execFileSync).mockImplementation(() => {
+                throw new Error("not a git repository");
+            });
+            expect(() => listTrackedFiles()).toThrow(/failed to list git-tracked files/);
+            expect(() => listTrackedFiles()).toThrow(/not a git repository/);
         });
     });
 });
