@@ -69,7 +69,8 @@ Issueを作成する際は、以下のオプションを必ず付与する。
 
 - `--assignee "@me"` を指定する。
 - 内容に応じた適切な `--label` を1つ以上付与する。
-- Parent Issueが指定されている場合は、`gh sub-issue` 拡張で親子関係を設定する（後述）。
+
+必要に応じて任意で `--parent` オプションによりParent Issueを設定できる（後述）。明記は必須ではない。
 
 ## 利用可能なlabel
 最新のlabel一覧は以下で取得する。
@@ -99,13 +100,11 @@ gh issue create \
   --label "<label>"
 ```
 
-## 親子Issueの設定（gh sub-issue）
-`yahsan2/gh-sub-issue` 拡張を利用して親子関係を設定する。
+## 親子Issueの設定（--parent オプション）
+GitHub CLIの `--parent` オプションを利用して、Issue作成時に任意でParent Issueを設定できる。
 ```shell
-# gh sub-issue add <親イシュー番号> <子イシュー番号>
-gh sub-issue add <parent> <child>
+gh issue create --title "TITLE" --body "ISSUE-DESCRIPTION" --parent PARENT-ISSUE-NUMBER
 ```
-Issue本文の `Parent: #<n>` 記載だけでなく、上記コマンドで明示的に親子関係を登録すること。
 
 # PR作成ルール
 PRを作成する際は、以下のオプションを必ず付与する。
