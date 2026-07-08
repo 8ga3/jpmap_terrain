@@ -101,9 +101,14 @@ gh issue create \
 ```
 
 ## 親子Issueの設定（--parent オプション）
-GitHub CLIの `--parent` オプションを利用して、Issue作成時に任意でParent Issueを設定できる。
+GitHub CLIの `--parent` オプションを利用して、Issue作成時に任意でParent Issueを設定できる。上記の必須オプション（`--assignee` / `--label` 等）に追加して指定する。
 ```shell
-gh issue create --title "TITLE" --body "ISSUE-DESCRIPTION" --parent PARENT-ISSUE-NUMBER
+gh issue create \
+  --title "<title>" \
+  --body-file <path> \
+  --assignee "@me" \
+  --label "<label>" \
+  --parent <PARENT-ISSUE-NUMBER>
 ```
 
 # PR作成ルール
