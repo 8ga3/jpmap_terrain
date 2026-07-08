@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * Plan Viewer デモの純粋関数ユニットテスト。
@@ -7,7 +7,7 @@
  * - parsePlan: QGC plan JSON のパースとフィルタリング
  * - formatWaypointLabel / formatWaypointEdgeLabel / formatRallyPointLabel
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { parsePlan, WAYPOINT_COMMANDS } from "../src/demos/plan/parsePlan";
 import {

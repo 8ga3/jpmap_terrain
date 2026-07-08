@@ -3,31 +3,33 @@
  * Babylon.js の Scene/Mesh をモックして、acquire/release のロジックを検証する。
  */
 
-import { jest, describe, it, expect } from "@jest/globals";
+import { describe, it, expect, vi } from "vitest";
 
 const createMockMesh = () => ({
     material: null as unknown,
-    setEnabled: jest.fn(),
-    dispose: jest.fn(),
+    setEnabled: vi.fn(),
+    dispose: vi.fn(),
     scaling: { x: 1, y: 1, z: 1 },
     position: { x: 0, y: 0, z: 0 },
 });
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/groundBuilder", () => ({
-    CreateGround: jest.fn(() => createMockMesh()),
+vi.mock("@babylonjs/core/Meshes/Builders/groundBuilder", () => ({
+    CreateGround: vi.fn(() => createMockMesh()),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
-    StandardMaterial: jest.fn().mockImplementation(() => ({
-        specularColor: null,
-        diffuseTexture: null,
-        dispose: jest.fn(),
-    })),
+vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
+    StandardMaterial: vi.fn().mockImplementation(function () {
+        return {
+            specularColor: null,
+            diffuseTexture: null,
+            dispose: vi.fn(),
+        };
+    }),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
+vi.mock("@babylonjs/core/Maths/math.color", () => ({
     Color3: {
-        Black: jest.fn(() => ({ r: 0, g: 0, b: 0 })),
+        Black: vi.fn(() => ({ r: 0, g: 0, b: 0 })),
     },
 }));
 
@@ -116,8 +118,8 @@ describe("createMeshPool", () => {
             subdivisions: 128,
             tileSize: 100,
         });
-        const onAcquire = jest.fn();
-        const onRelease = jest.fn();
+        const onAcquire = vi.fn();
+        const onRelease = vi.fn();
         pool.setShadowHooks({ onAcquire, onRelease });
 
         const mesh = pool.acquire();
@@ -136,8 +138,8 @@ describe("createMeshPool", () => {
             subdivisions: 128,
             tileSize: 100,
         });
-        const onAcquire = jest.fn();
-        const onRelease = jest.fn();
+        const onAcquire = vi.fn();
+        const onRelease = vi.fn();
         pool.setShadowHooks({ onAcquire, onRelease });
         pool.setShadowHooks(null);
 

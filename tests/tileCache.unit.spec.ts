@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest";
 import { createTileCache } from "../src/terrain/tileCache";
 import type { TileKey, TileCoord } from "../src/terrain/tileTypes";
 

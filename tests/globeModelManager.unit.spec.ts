@@ -5,7 +5,7 @@
  * スタブ化し、ロード完了→接地・起立、ロード前は配置しない、dispose 中のロード結果破棄、
  * CRUD / dispose 後ガードを検証する（Vector3/Quaternion/overlayPlacement は実物）。
  */
-import { jest } from "@jest/globals";
+import { vi } from "vitest";
 
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 
@@ -21,7 +21,7 @@ interface StubNode {
 }
 const createdRoots: StubNode[] = [];
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/transformNode", () => ({
+vi.mock("@babylonjs/core/Meshes/transformNode", () => ({
     TransformNode: class {
         position = new Vector3();
         rotationQuaternion: Quaternion | null = null;
@@ -45,27 +45,27 @@ type StubAg = { name?: string; stop: () => void; play?: (loop?: boolean) => void
 let resolveImport:
     | ((meshes: { parent: unknown; dispose: () => void }[], ags?: StubAg[]) => void)
     | null = null;
-const importMeshAsync = jest.fn(
+const importMeshAsync = vi.fn(
     () =>
         new Promise((res) => {
             resolveImport = (meshes, ags = []) => res({ meshes, animationGroups: ags });
         }),
 );
-jest.unstable_mockModule("@babylonjs/core/Loading/sceneLoader", () => ({
+vi.mock("@babylonjs/core/Loading/sceneLoader", () => ({
     ImportMeshAsync: importMeshAsync,
 }));
-jest.unstable_mockModule("@babylonjs/loaders/glTF/glTFFileLoader", () => ({
+vi.mock("@babylonjs/loaders/glTF/glTFFileLoader", () => ({
     GLTFLoaderAnimationStartMode: { NONE: 0, FIRST: 1, ALL: 2 },
 }));
 
-const importLoaderForUrl = jest.fn(async () => {});
-jest.unstable_mockModule("../src/terrain/modelManager", () => ({ importLoaderForUrl }));
+const importLoaderForUrl = vi.fn(async () => {});
+vi.mock("../src/terrain/modelManager", () => ({ importLoaderForUrl }));
 
 const { createGlobeModelManager } = await import("../src/terrain/geo/globeModelManager");
-const { describe, it, expect, beforeEach } = await import("@jest/globals");
+const { describe, it, expect, beforeEach } = await import("vitest");
 
 const makeManager = () => {
-    const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(() => 1000);
+    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => 1000);
     const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
     return { mgr, terrainElevAt };
 };
@@ -75,7 +75,7 @@ const completeLoad = async (): Promise<void> => {
     // loadModel は先に await importLoaderForUrl → その後 ImportMeshAsync を呼ぶため、
     // resolveImport がセットされるまで 1 ティック待ってから解決する。
     await new Promise((r) => setTimeout(r, 0));
-    const mesh = { parent: null as unknown, dispose: jest.fn() };
+    const mesh = { parent: null as unknown, dispose: vi.fn() };
     resolveImport?.([mesh]);
     await new Promise((r) => setTimeout(r, 0));
 };
@@ -113,8 +113,8 @@ describe("add / load", () => {
         const { mgr } = makeManager();
         mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await new Promise((r) => setTimeout(r, 0));
-        const ag = { stop: jest.fn(), dispose: jest.fn() };
-        const mesh = { parent: null as unknown, dispose: jest.fn() };
+        const ag = { stop: vi.fn(), dispose: vi.fn() };
+        const mesh = { parent: null as unknown, dispose: vi.fn() };
         resolveImport?.([mesh], [ag]);
         await new Promise((r) => setTimeout(r, 0));
         expect(ag.stop).toHaveBeenCalled();
@@ -129,7 +129,7 @@ describe("ライフサイクル", () => {
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         mgr.remove(id); // cancelled
         await new Promise((r) => setTimeout(r, 0)); // importLoaderForUrl 解決 → ImportMeshAsync 呼び出し待ち
-        const mesh = { parent: null as unknown, dispose: jest.fn() };
+        const mesh = { parent: null as unknown, dispose: vi.fn() };
         resolveImport?.([mesh]);
         await new Promise((r) => setTimeout(r, 0));
         expect(mesh.dispose).toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe("ライフサイクル", () => {
 
     it("remove 未存在 id は warn + no-op、setEnabled 未存在は throw", () => {
         const { mgr } = makeManager();
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         expect(() => mgr.remove("nope")).not.toThrow();
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
         warn.mockRestore();
@@ -191,7 +191,7 @@ describe("in-place update / get / list", () => {
 
 describe("altitude / 接地", () => {
     it("absolute モードは地形標高に依らず配置し elevationResolved=true", async () => {
-        const terrainElevAt = jest.fn(() => null as number | null);
+        const terrainElevAt = vi.fn(() => null as number | null);
         const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
         const id = mgr.add({
             url: "x.glb",
@@ -206,7 +206,7 @@ describe("altitude / 接地", () => {
     });
 
     it("terrain+gravity で標高未解決のあいだは非表示（elevationResolved=false）", async () => {
-        const terrainElevAt = jest.fn(() => null as number | null);
+        const terrainElevAt = vi.fn(() => null as number | null);
         const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await completeLoad();
@@ -239,8 +239,8 @@ describe("animation", () => {
         const { mgr } = makeManager();
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await new Promise((r) => setTimeout(r, 0));
-        const ag = { name: "walk", stop: jest.fn(), play: jest.fn(), dispose: jest.fn() };
-        const mesh = { parent: null as unknown, dispose: jest.fn() };
+        const ag = { name: "walk", stop: vi.fn(), play: vi.fn(), dispose: vi.fn() };
+        const mesh = { parent: null as unknown, dispose: vi.fn() };
         resolveImport?.([mesh], [ag as unknown as StubAg]);
         await new Promise((r) => setTimeout(r, 0));
         expect(mgr.get(id)?.animationNames).toEqual(["walk"]);

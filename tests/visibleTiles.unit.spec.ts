@@ -3,7 +3,7 @@
  * Quadtree 探索 + SSE による LOD 判定と視錐台カリングの挙動を検証する。
  */
 
-import { jest, describe, it, expect } from "@jest/globals";
+import { describe, it, expect, vi } from "vitest";
 import { computeQuadtreeTiles, isAABBInFrustum } from "../src/terrain/visibleTiles";
 import type { FrustumPlane, QuadtreeTilesOptions } from "../src/terrain/visibleTiles";
 import type { TileCoord } from "../src/terrain/tileTypes";
@@ -283,7 +283,7 @@ describe("computeQuadtreeTiles", () => {
     });
 
     it("maxVisited 超過時に console.warn が出力される", () => {
-        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
             computeQuadtreeTiles({
                 ...baseOpts,
@@ -301,7 +301,7 @@ describe("computeQuadtreeTiles", () => {
     });
 
     it("maxVisited に達しない通常ケースでは console.warn が出ない", () => {
-        const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
             computeQuadtreeTiles({
                 ...baseOpts,

@@ -4,7 +4,7 @@
  * pagehide / popstate による中断遷移、onAbort コールバックの同期実行、
  * dispose 後の監視解除を検証する。
  */
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, vi } from "vitest";
 import { createInitCancellation } from "../src/demos/artillery/initCancellation";
 
 describe("createInitCancellation", () => {
@@ -32,7 +32,7 @@ describe("createInitCancellation", () => {
 
     it("中断時に onAbort を同期実行する", () => {
         const target = new EventTarget();
-        const onAbort = jest.fn();
+        const onAbort = vi.fn();
         createInitCancellation(onAbort, target);
         expect(onAbort).not.toHaveBeenCalled();
         target.dispatchEvent(new Event("popstate"));
@@ -41,7 +41,7 @@ describe("createInitCancellation", () => {
 
     it("複数イベントが続けて発火しても onAbort は一度だけ実行する", () => {
         const target = new EventTarget();
-        const onAbort = jest.fn();
+        const onAbort = vi.fn();
         createInitCancellation(onAbort, target);
         target.dispatchEvent(new Event("pagehide"));
         target.dispatchEvent(new Event("popstate"));
@@ -50,7 +50,7 @@ describe("createInitCancellation", () => {
 
     it("onAbort が例外を投げても中断状態は確定する", () => {
         const target = new EventTarget();
-        const onAbort = jest.fn(() => {
+        const onAbort = vi.fn(() => {
             throw new Error("boom");
         });
         const cancel = createInitCancellation(onAbort, target);
@@ -60,7 +60,7 @@ describe("createInitCancellation", () => {
 
     it("dispose 後はイベントが発火しても中断せず onAbort も呼ばれない", () => {
         const target = new EventTarget();
-        const onAbort = jest.fn();
+        const onAbort = vi.fn();
         const cancel = createInitCancellation(onAbort, target);
         cancel.dispose();
         target.dispatchEvent(new Event("pagehide"));

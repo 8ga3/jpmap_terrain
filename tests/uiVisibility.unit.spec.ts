@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @vitest-environment jsdom
  */
 /**
  * UI visibility controller のユニットテスト。
@@ -9,7 +9,7 @@
  * このテストでは「初期 display を保持しているか」「false → true で元の値に戻るか」を検証する。
  */
 
-import { describe, it, expect, beforeEach } from "@jest/globals";
+import { describe, it, expect, beforeEach } from "vitest";
 
 import {
     createUiVisibilityController,

@@ -6,28 +6,28 @@
  * - computeFlameColor: トレイル位置 → 炎カラー(RGBA)
  *
  * Babylon の重い描画モジュール（GlowLayer/StandardMaterial/CreateRibbon 等）は
- * unstable_mockModule で分離する（純関数は Vector3/Color4 などの math のみ実体を使う）。
+ * vi.mock で分離する（純関数は Vector3/Color4 などの math のみ実体を使う）。
  */
-import { describe, it, expect, jest, beforeAll } from "@jest/globals";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 
-jest.unstable_mockModule("@babylonjs/core/Layers/glowLayer", () => ({
+vi.mock("@babylonjs/core/Layers/glowLayer", () => ({
     GlowLayer: class {},
 }));
-jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
+vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
     StandardMaterial: class {},
 }));
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => ({
-    CreateRibbon: jest.fn(),
+vi.mock("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => ({
+    CreateRibbon: vi.fn(),
 }));
-jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
+vi.mock("@babylonjs/core/Meshes/mesh", () => ({
     Mesh: class {
         static DOUBLESIDE = 2;
     },
 }));
-jest.unstable_mockModule("@babylonjs/core/Buffers/buffer", () => ({
+vi.mock("@babylonjs/core/Buffers/buffer", () => ({
     VertexBuffer: { ColorKind: "color" },
 }));
-jest.unstable_mockModule("@babylonjs/core/Engines/constants", () => ({
+vi.mock("@babylonjs/core/Engines/constants", () => ({
     Constants: { ALPHA_ADD: 1 },
 }));
 

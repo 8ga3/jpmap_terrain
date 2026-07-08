@@ -5,10 +5,10 @@
  * 差し替え、ECEF 変換（`geo/ecef`）と yaw/pitch ↔ azimuth/tilt（`geo/cameraMapping`）は実物で
  * 往復精度を確認する。overlay 未対応・viewMode "3d" 固定・mapType 切替の暫定挙動もあわせて検証する。
  */
+import { describe, it, expect, vi, Mock } from "vitest";
+
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-
-import { jest } from "@jest/globals";
 
 import { createGlobeSceneController } from "../src/scenes/globeSceneController";
 import {
@@ -106,22 +106,22 @@ const makeStub = (
         sunMesh: {
             position: new Vector3(),
             scaling: new Vector3(1, 1, 1),
-            setEnabled: jest.fn(),
+            setEnabled: vi.fn(),
         },
         // 時刻連動の背景基調色。applyGlobeSunState が copyFrom で更新する。
         skyBaseColor: new Color3(0.75, 0.86, 0.95),
         // 太陽メッシュの毎フレーム再配置オブザーバ登録/解除に必要な最小 scene スタブ。
         scene: {
             onBeforeRenderObservable: {
-                add: jest.fn(() => ({})),
-                remove: jest.fn(),
+                add: vi.fn(() => ({})),
+                remove: vi.fn(),
             },
         },
         // isTerrainIdle / marker アダプタ / mapType 切替が参照する tileManager スタブ。
         tileManager: {
             isIdle: () => idle,
             terrainElevAt: () => null,
-            setMapType: jest.fn(),
+            setMapType: vi.fn(),
         },
         subscribeTerrainClick: (listener: GlobeTerrainClickListener) => {
             clickListeners.push(listener);
@@ -260,9 +260,9 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
     it("setMapType は実行時切替を tileManager に委譲し getMapType に反映、onMapTypeChange を発火する", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const setMapTypeSpy = (
-            gc.tileManager as unknown as { setMapType: jest.Mock }
+            gc.tileManager as unknown as { setMapType: Mock }
         ).setMapType;
-        const onMapTypeChange = jest.fn();
+        const onMapTypeChange = vi.fn();
         const c = createGlobeSceneController(gc, "std", { onMapTypeChange });
         c.setMapType("photo");
         expect(setMapTypeSpy).toHaveBeenCalledWith("photo");
@@ -275,7 +275,7 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
     });
 
     it("subscribeTerrainClick は関数を返し、未実装の購読/設定メソッドは例外を投げない", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(gc, "std");
         expect(typeof c.subscribeTerrainClick(() => {})).toBe("function");
@@ -564,7 +564,7 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const sunLight = (gc as unknown as { sunLight: { direction: Vector3; intensity: number } }).sunLight;
         const hemiLight = (gc as unknown as { hemiLight: { intensity: number } }).hemiLight;
-        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: jest.Mock } }).sunMesh;
+        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: Mock } }).sunMesh;
         const c = createGlobeSceneController(gc, "std");
         c.setSunState(null);
         // null フォールバックでも太陽計算が走り、ライト強度が一定値へ更新される（早期 return しない）。
@@ -768,7 +768,7 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
     });
 
     it("remove は委譲し、未知 id では warn のみで throw しない", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const stub = makeGlobeMarkerStub();
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 0);
         m.add("p1", { ...BASE });
@@ -960,7 +960,7 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
             });
 
             it("remove/list/dispose とエラー条件", () => {
-                const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+                const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
                 const stub = makeGlobePolygonStub();
                 const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
                 expect(() => m.add("bad", { points: [] })).toThrow(/at least 1/);
@@ -1120,7 +1120,7 @@ describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
     });
 
     it("setEnabled は委譲し、remove/dispose は内部マネージャを破棄しない", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const stub = makeGlobeCircleStub();
         const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
         m.add("c", { center: CENTER, radius: 100 });
@@ -1316,7 +1316,7 @@ describe("createGlobeModelManagerAdapter (model overlay)", () => {
     });
 
     it("setEnabled は委譲し、remove/dispose は内部マネージャを破棄しない", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
         m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon });
@@ -1336,7 +1336,7 @@ describe("createGlobeModelManagerAdapter (model overlay)", () => {
     });
 
     it("playAnimation は公開 id・[jpmap-terrain] prefix で warn し、条件を満たすときのみ委譲する", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
         m.add("human", { url: "a.glb", lat: POS.lat, lon: POS.lon });
@@ -1365,7 +1365,7 @@ describe("createGlobeModelManagerAdapter (model overlay)", () => {
     });
 
     it("stopAnimation は未ロード/名前不一致では委譲せず warn もしない", () => {
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
         m.add("human", { url: "a.glb", lat: POS.lat, lon: POS.lon });

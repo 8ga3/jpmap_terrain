@@ -12,7 +12,7 @@
  *
  * 注: 見た目（silhouette）の最終確認はビジュアル回帰 tests/elevationFarView.spec.ts で行う。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { ComputeLookAtFromYawPitchToRef } from "@babylonjs/core/Cameras/geospatialCamera";
 

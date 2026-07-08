@@ -5,7 +5,7 @@
  * orbit.ts 自体のテストは `tests/avatar.unit.spec.ts` で網羅済みのため、
  * ここではフライトデモ固有のパラメータ（大半径・高高度）での動作を確認する。
  */
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { circularOrbitPosition, circularOrbitHeading } from "../src/demos/avatar/orbit";
 

@@ -4,96 +4,100 @@
  * ウェイポイント管理ロジック（arcDistance 等）をテストする。
  * Babylon.js の Scene/Mesh 依存部分はモック化。
  *
- * ESM + jest.unstable_mockModule で完全にモジュールを分離して
+ * ESM + vi.mock で完全にモジュールを分離して
  * 他テストとのキャッシュ衝突を回避する。
  */
-import { describe, it, expect, jest, beforeAll } from "@jest/globals";
+import { describe, it, expect, beforeAll, vi, Mock } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 
-// ESM環境のモック: jest.unstable_mockModule を使い、動的 import でテスト対象を取得
+// ESM環境のモック: vi.mock を使い、動的 import でテスト対象を取得
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/Builders/discBuilder", () => ({
-    CreateDisc: jest.fn(() => {
+vi.mock("@babylonjs/core/Meshes/Builders/discBuilder", () => ({
+    CreateDisc: vi.fn(() => {
         const scaling = { x: 1, y: 1, z: 1, set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; } };
         return {
             material: null,
             isPickable: false,
             alwaysSelectAsActiveMesh: false,
             rotation: { x: 0, y: 0, z: 0 },
-            position: { x: 0, y: 0, z: 0, set: jest.fn(), copyFrom: jest.fn(), clone: jest.fn(() => ({ x: 0, y: 0, z: 0 })) },
+            position: { x: 0, y: 0, z: 0, set: vi.fn(), copyFrom: vi.fn(), clone: vi.fn(() => ({ x: 0, y: 0, z: 0 })) },
             visibility: 1,
             scaling,
             enabled: true,
-            dispose: jest.fn(),
+            dispose: vi.fn(),
             setEnabled(v: boolean) { this.enabled = v; },
         };
     }),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/mesh", () => ({
+vi.mock("@babylonjs/core/Meshes/mesh", () => ({
     Mesh: class {},
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/shaderMaterial", () => ({
-    ShaderMaterial: jest.fn(() => ({
-        setFloat: jest.fn(), dispose: jest.fn(), backFaceCulling: false, alpha: 1,
+vi.mock("@babylonjs/core/Materials/shaderMaterial", () => ({
+    ShaderMaterial: vi.fn(() => ({
+        setFloat: vi.fn(), dispose: vi.fn(), backFaceCulling: false, alpha: 1,
     })),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/effect", () => ({
+vi.mock("@babylonjs/core/Materials/effect", () => ({
     Effect: { ShadersStore: {} },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Particles/particleSystem", () => ({
-    ParticleSystem: jest.fn(() => ({
+vi.mock("@babylonjs/core/Particles/particleSystem", () => ({
+    ParticleSystem: vi.fn(() => ({
         particleTexture: null, emitter: null,
         minEmitBox: null, maxEmitBox: null,
         color1: null, color2: null, colorDead: null,
         minSize: 0, maxSize: 0, minLifeTime: 0, maxLifeTime: 0,
         minEmitPower: 0, maxEmitPower: 0, emitRate: 0,
         gravity: null, targetStopDuration: 0, disposeOnStop: false,
-        start: jest.fn(),
+        start: vi.fn(),
     })),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Maths/math.color", () => ({
-    Color4: jest.fn(),
+vi.mock("@babylonjs/core/Maths/math.color", () => ({
+    Color4: vi.fn(),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Maths/math.vector", () => ({
-    Vector3: jest.fn((x = 0, y = 0, z = 0) => ({ x, y, z })),
-    Quaternion: jest.fn(() => ({ copyFrom: jest.fn(), clone: jest.fn(() => ({ _quat: true, copyFrom: jest.fn() })) })),
+vi.mock("@babylonjs/core/Maths/math.vector", () => ({
+    Vector3: vi.fn(function (x = 0, y = 0, z = 0) {
+        return { x, y, z };
+    }),
+    Quaternion: vi.fn(function () {
+        return { copyFrom: vi.fn(), clone: vi.fn(() => ({ _quat: true, copyFrom: vi.fn() })) };
+    }),
 }));
 
-jest.unstable_mockModule("../src/terrain/geo/ecef", () => ({
-    geodeticToEcefToRef: jest.fn(),
+vi.mock("../src/terrain/geo/ecef", () => ({
+    geodeticToEcefToRef: vi.fn(),
     DEG2RAD: Math.PI / 180,
 }));
 
-jest.unstable_mockModule("../src/terrain/geo/overlayPlacement", () => ({
-    surfaceOrientationToRef: jest.fn(() => false),
+vi.mock("../src/terrain/geo/overlayPlacement", () => ({
+    surfaceOrientationToRef: vi.fn(() => false),
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/Textures/texture", () => ({
-    Texture: jest.fn(),
+vi.mock("@babylonjs/core/Materials/Textures/texture", () => ({
+    Texture: vi.fn(),
 }));
 
-jest.unstable_mockModule("../src/demos/flight/waypointShader", () => ({
-    createWaypointMaterial: jest.fn(() => ({
-        setFloat: jest.fn(), dispose: jest.fn(), backFaceCulling: false, alpha: 1,
+vi.mock("../src/demos/flight/waypointShader", () => ({
+    createWaypointMaterial: vi.fn(() => ({
+        setFloat: vi.fn(), dispose: vi.fn(), backFaceCulling: false, alpha: 1,
     })),
-    updateWaypointMaterialTime: jest.fn(),
+    updateWaypointMaterialTime: vi.fn(),
 }));
 
-jest.unstable_mockModule("../src/demos/flight/waypointEffect", () => ({
-    createPassEffect: jest.fn(),
+vi.mock("../src/demos/flight/waypointEffect", () => ({
+    createPassEffect: vi.fn(),
 }));
 
 const createMockScene = (): Scene => ({
-    getTransformNodeByName: jest.fn((): unknown => ({
-        getChildMeshes: jest.fn(() => [
+    getTransformNodeByName: vi.fn((): unknown => ({
+        getChildMeshes: vi.fn(() => [
             {
-                computeWorldMatrix: jest.fn(),
+                computeWorldMatrix: vi.fn(),
                 absolutePosition: { x: 0, y: 100, z: 0 },
             },
         ]),
@@ -102,22 +106,22 @@ const createMockScene = (): Scene => ({
 
 describe("createWaypointManager", () => {
     let createWaypointManager: typeof import("../src/demos/flight/waypoints").createWaypointManager;
-    let CreateDiscMock: jest.Mock;
-    let geodeticToEcefToRefMock: jest.Mock;
-    let surfaceOrientationToRefMock: jest.Mock;
+    let CreateDiscMock: Mock;
+    let geodeticToEcefToRefMock: Mock;
+    let surfaceOrientationToRefMock: Mock;
 
     beforeAll(async () => {
         const waypoints = await import("../src/demos/flight/waypoints");
         createWaypointManager = waypoints.createWaypointManager;
 
         const discModule = await import("@babylonjs/core/Meshes/Builders/discBuilder");
-        CreateDiscMock = discModule.CreateDisc as unknown as jest.Mock;
+        CreateDiscMock = discModule.CreateDisc as unknown as Mock;
 
         const ecefModule = await import("../src/terrain/geo/ecef");
-        geodeticToEcefToRefMock = ecefModule.geodeticToEcefToRef as unknown as jest.Mock;
+        geodeticToEcefToRefMock = ecefModule.geodeticToEcefToRef as unknown as Mock;
 
         const overlayModule = await import("../src/terrain/geo/overlayPlacement");
-        surfaceOrientationToRefMock = overlayModule.surfaceOrientationToRef as unknown as jest.Mock;
+        surfaceOrientationToRefMock = overlayModule.surfaceOrientationToRef as unknown as Mock;
     });
 
     it("creates a WaypointManager with update/reset/dispose", () => {
@@ -178,7 +182,7 @@ describe("createWaypointManager", () => {
 
     it("update does not throw when no model node found", () => {
         const scene = createMockScene();
-        scene.getTransformNodeByName = jest.fn(() => null);
+        scene.getTransformNodeByName = vi.fn(() => null);
         const mgr = createWaypointManager(scene);
         mgr.reset({
             centerLat: 35.68,
@@ -265,7 +269,7 @@ describe("createWaypointManager", () => {
     it("calls onPass callback when waypoint is passed", () => {
         CreateDiscMock.mockClear();
         const scene = createMockScene();
-        const onPass = jest.fn();
+        const onPass = vi.fn();
         const mgr = createWaypointManager(scene, { onPass });
         const radiusM = 2000;
         mgr.reset({
@@ -303,7 +307,7 @@ describe("createWaypointManager", () => {
 
         const scene = createMockScene();
         // globe 経路は機体ノードを参照しないため、ノード未取得でも配置されることを保証する。
-        scene.getTransformNodeByName = jest.fn(() => null);
+        scene.getTransformNodeByName = vi.fn(() => null);
         const mgr = createWaypointManager(scene);
         mgr.reset({
             centerLat: 35.68,
@@ -314,7 +318,7 @@ describe("createWaypointManager", () => {
         });
 
         const firstMesh = CreateDiscMock.mock.results[0].value as {
-            position: { copyFrom: jest.Mock };
+            position: { copyFrom: Mock };
             rotationQuaternion?: unknown;
         };
 
@@ -344,7 +348,7 @@ describe("createWaypointManager", () => {
         surfaceOrientationToRefMock.mockReturnValue(false);
 
         const scene = createMockScene();
-        scene.getTransformNodeByName = jest.fn(() => null);
+        scene.getTransformNodeByName = vi.fn(() => null);
         const mgr = createWaypointManager(scene);
         mgr.reset({
             centerLat: 35.68,

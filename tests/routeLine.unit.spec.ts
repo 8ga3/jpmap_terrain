@@ -5,7 +5,7 @@
  * 一致していること（= sideOrientation の DOUBLESIDE による頂点倍化が起きていないこと）を
  * 検証する。倍化すると複製側が未着色のまま白く描画され、リボンが正しく表示されなくなる。
  */
-import { describe, it, expect, afterEach } from "@jest/globals";
+import { describe, it, expect, afterEach } from "vitest";
 
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Scene } from "@babylonjs/core/scene";

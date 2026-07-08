@@ -1,3 +1,4 @@
+import { describe, it, expect } from "vitest";
 import { toTileKey, tileOffsetToWorld, worldToTileOffset, convertTileZoom, isChildOf, computeSubTileOffset } from "../src/terrain/tileTypes";
 import type { TileCoord } from "../src/terrain/tileTypes";
 

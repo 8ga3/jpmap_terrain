@@ -5,7 +5,7 @@
  * （Architect が示した ±1.5° 目安を、実装の実測値に対し若干上回る幅で許容）。
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { computeSunPosition } from "../src/terrain/sunPosition";
 

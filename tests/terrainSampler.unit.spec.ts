@@ -4,6 +4,7 @@
  * `createDirectTerrainSampler` の座標変換往復・null フォールバック・地球曲率の
  * 反映を、Scene 非依存の純粋な ENU↔ECEF 変換で検証する。
  */
+import { describe, it, expect } from "vitest";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import { createDirectTerrainSampler, type StageTransform } from "../src/demos/artillery/terrainSampler";

@@ -7,7 +7,7 @@
  * - computeOverlayPointDiameter: 距離比例・上限クランプ（地形貫通抑制）
  */
 
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect } from "vitest";
 
 import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 

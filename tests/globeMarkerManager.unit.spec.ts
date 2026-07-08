@@ -5,7 +5,7 @@
  * CRUD / enable / update / dispose 後ガード / validateIconUrl 投げ直し /
  * 非 hex 線色フォールバックを検証する（Vector3 / Quaternion / Color3 / overlayPlacement は実物）。
  */
-import { jest } from "@jest/globals";
+import { vi } from "vitest";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
@@ -46,7 +46,7 @@ const createStubMesh = (name: string): StubMesh => {
     return m;
 };
 
-jest.unstable_mockModule("@babylonjs/core/Meshes/meshBuilder", () => ({
+vi.mock("@babylonjs/core/Meshes/meshBuilder", () => ({
     MeshBuilder: {
         CreateCylinder: (name: string): StubMesh => {
             const m = createStubMesh(name);
@@ -56,7 +56,7 @@ jest.unstable_mockModule("@babylonjs/core/Meshes/meshBuilder", () => ({
     },
 }));
 
-jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
+vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
     StandardMaterial: class {
         emissiveColor: unknown = null;
         disableLighting = false;
@@ -68,7 +68,7 @@ jest.unstable_mockModule("@babylonjs/core/Materials/standardMaterial", () => ({
     },
 }));
 
-const validateIconUrl = jest.fn((url: string) => {
+const validateIconUrl = vi.fn((url: string) => {
     if (/^javascript:/i.test(url.trim())) {
         throw new Error("addMarker: icon.url has disallowed scheme: javascript:");
     }
@@ -78,7 +78,7 @@ const createdIconTexts: {
     mesh: { enabled: boolean; isPickable: boolean; position: Vector3; scaling: Vector3 };
     disposed: boolean;
 }[] = [];
-jest.unstable_mockModule("../src/terrain/marker", () => ({
+vi.mock("../src/terrain/marker", () => ({
     RENDERING_GROUP_ID: 0,
     validateIconUrl,
     resolveIcon: (icon?: { url: string }) =>
@@ -114,11 +114,11 @@ jest.unstable_mockModule("../src/terrain/marker", () => ({
 const { createGlobeMarkerManager } = await import(
     "../src/terrain/geo/globeMarkerManager"
 );
-const { describe, it, expect, beforeEach } = await import("@jest/globals");
+const { describe, it, expect, beforeEach } = await import("vitest");
 
 const makeManager = () => {
     // 2 引数型の変数として宣言し（toHaveBeenCalledWith(lat,lon) のため）、本体は引数未使用の mock。
-    const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(() => 1000);
+    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => 1000);
     const mgr = createGlobeMarkerManager({ scene: {} as never, terrainElevAt });
     return { mgr, terrainElevAt };
 };
@@ -170,7 +170,7 @@ describe("CRUD", () => {
 
     it("remove は未存在 id で warn + no-op（throw しない）", () => {
         const { mgr } = makeManager();
-        const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         expect(() => mgr.remove("nope")).not.toThrow();
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
         warn.mockRestore();
@@ -209,7 +209,7 @@ describe("update", () => {
     it("terrainElevAt が null のときは直前標高を保持する（楕円体へ落とさない）", () => {
         // 標高 5000m → 途中で null（前景タイル未ロード相当）に変化させる。
         let elevReturn: number | null = 5000;
-        const terrainElevAt: (lat: number, lon: number) => number | null = jest.fn(
+        const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(
             () => elevReturn,
         );
         const mgr = createGlobeMarkerManager({ scene: {} as never, terrainElevAt });
