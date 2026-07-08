@@ -13,7 +13,7 @@
         "sourceMap": true,
         "rootDir": "./",
         "esModuleInterop": true,
-        "types": ["node", "jest"],
+        "types": ["node"],
         "skipLibCheck": true,         // node_modules内の型エラーで止まらないために必須
         "isolatedModules": true       // 他のトランスパイラとの互換性を確保
     },
@@ -22,5 +22,5 @@
         "playwright.config.ts",
         "tests/**/*.ts"
     ],
-    "exclude": ["node_modules/**", "dist/**", "vite.*"]
+    "exclude": ["node_modules/**", "dist/**", "vite.*", "vitest.config.ts"]
 }

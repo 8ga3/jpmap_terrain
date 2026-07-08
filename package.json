@@ -40,20 +40,17 @@
     "@babylonjs/loaders": "^9.15.0",
     "@babylonjs/materials": "^9.15.0",
     "@playwright/test": "^1.61.1",
-    "@types/jest": "^30.0.0",
     "@types/node": "^26.1.0",
     "@typescript-eslint/eslint-plugin": "^8.62.1",
     "@typescript-eslint/parser": "^8.62",
-    "cross-env": "^10.1.0",
     "eslint": "^10.6.0",
     "husky": "^9.1.7",
-    "jest": "^30.4.2",
-    "jest-environment-jsdom": "^30.4.1",
+    "jsdom": "^29.1.1",
     "lint-staged": "^17.0.8",
-    "ts-jest": "^29.4.11",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vite": "^8.1.3"
+    "vite": "^8.1.3",
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "start": "vite",
@@ -66,7 +63,7 @@
     "typecheck": "tsc --noEmit",
     "test:visuals": "npx playwright test",
     "test:visuals:update": "npx playwright test --update-snapshots=all",
-    "test:unit": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest",
+    "test:unit": "vitest run",
     "prepare": "husky"
   },
   "lint-staged": {
