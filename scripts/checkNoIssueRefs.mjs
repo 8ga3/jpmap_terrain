@@ -51,10 +51,17 @@ export function findViolations(content) {
 /**
  * `git ls-files` でGit管理下のファイル一覧を取得する
  * （node_modules/dist/.tmp 等の未追跡ディレクトリは自動的に除外される）。
+ * git コマンド自体が失敗する場合（未インストール・Git管理外ディレクトリ等）は、
+ * 生の例外ではなく原因を含む分かりやすいエラーで失敗させる。
  */
 export function listTrackedFiles() {
-    const output = execFileSync("git", ["ls-files"], { encoding: "utf8" });
-    return output.split("\n").filter(Boolean);
+    try {
+        const output = execFileSync("git", ["ls-files"], { encoding: "utf8" });
+        return output.split("\n").filter(Boolean);
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`[check-no-issue-refs] failed to list git-tracked files: ${reason}`);
+    }
 }
 
 export function collectAllViolations(files, readFile = readFileSync) {
@@ -65,8 +72,11 @@ export function collectAllViolations(files, readFile = readFileSync) {
         let content;
         try {
             content = readFile(file, "utf8");
-        } catch {
-            // シンボリックリンク切れ等は読み飛ばす
+        } catch (error) {
+            // シンボリックリンク切れ等で読めないファイルはスキップするが、チェックが
+            // 部分的にしか行われていないことに気づけるよう警告は必ず出す。
+            const reason = error instanceof Error ? error.message : String(error);
+            console.warn(`[check-no-issue-refs] failed to read file, skipped: ${file} (${reason})`);
             continue;
         }
         for (const violation of findViolations(content)) {
@@ -77,7 +87,14 @@ export function collectAllViolations(files, readFile = readFileSync) {
 }
 
 function main() {
-    const files = listTrackedFiles();
+    let files;
+    try {
+        files = listTrackedFiles();
+    } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+        return;
+    }
     const violations = collectAllViolations(files);
     if (violations.length > 0) {
         for (const v of violations) {
