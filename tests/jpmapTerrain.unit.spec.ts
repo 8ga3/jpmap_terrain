@@ -12,8 +12,10 @@
  * - dispose で canvas が除去されること
  *
  * Babylon.js Engine / Scene は jsdom で動かないためモックする。
- * `vi.mock` + 動的 import でモックを適用する
- * （Vitest 移行前の Jest ESM 実装の構造を維持）。
+ * `engineFactory` の `vi.mock` ファクトリはトップレベルの `createEngineMock` を
+ * 参照するため、対象モジュールは `vi.mock` 登録後（＝ここまでの const 初期化後）に
+ * 動的 import で読み込む。静的 import に変えると、ホイストされた `vi.mock` が
+ * 他の import 解決時に先走って実行され、`createEngineMock` の TDZ エラーになる。
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
@@ -1079,9 +1081,11 @@ vi.mock("../src/scenes/globeSceneController", () => {
     };
 });
 
-// vi.mock はファイル先頭へ自動 hoist されるため import 順を問わないが、
-// Jest からの移植構造を維持し、モック登録後に動的 import する。
+// `vi.mock` はファイル先頭へ自動 hoist されるが、上記ファクトリが参照する
+// `createEngineMock` はここまでの const 宣言で初期化されるため、
+// 対象モジュールはここで動的 import する。
 const { JpmapTerrain } = await import("../src/lib/jpmapTerrain");
+
 type UiTarget =
     | "compass"
     | "zoomButtons"

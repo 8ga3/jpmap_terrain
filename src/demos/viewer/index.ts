@@ -276,7 +276,7 @@ const start = async (): Promise<void> => {
     }
 };
 
-// テスト環境（jest）では副作用としてのデモ起動をスキップする。
+// テスト環境（Vitest jsdom 等）では副作用としてのデモ起動をスキップする。
 // jsdom 環境でも `#root` が無ければ `start()` 内で例外になるため、明示的にガードする。
 if (
     typeof document !== "undefined" &&
