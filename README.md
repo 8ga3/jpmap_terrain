@@ -5,7 +5,7 @@
 ## 概要
 
 - 目的: 標高タイルを使った地形可視化の実装と検証
-- 技術スタック: TypeScript / Babylon.js / Vite（デモ）/ tsup（ライブラリ）/ Playwright / Jest
+- 技術スタック: TypeScript / Babylon.js / Vite（デモ）/ tsup（ライブラリ）/ Playwright / Vitest
 - バージョン: 0.2.1
 
 ## npm パッケージとしての利用
@@ -205,7 +205,7 @@ npm start
 | `npm run typecheck` | TypeScript 型チェック |
 | `npm run test:visuals` | Visual Regression Test 実行 |
 | `npm run test:visuals:update` | Visual テスト基準画像の強制更新（画面表示変更時のみ） |
-| `npm run test:unit` | ユニットテスト（Jest） |
+| `npm run test:unit` | ユニットテスト（Vitest） |
 
 ### デバッグ
 

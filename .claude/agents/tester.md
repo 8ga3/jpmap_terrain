@@ -11,13 +11,13 @@ model: sonnet
 ## Unit test 作成ルール
 
 ### フレームワーク・構成
-- Jest + ts-jest（ESM mode）
+- Vitest
 - 実行コマンド: `npm run test:unit`
-- 設定ファイル: `jest.config.js`（preset: `ts-jest/presets/default-esm`）
+- 設定ファイル: `vitest.config.ts`（`vite.config.ts` を継承）
 
 ### ファイル配置・命名
 - テストファイルは `tests/` ディレクトリに配置する
-- 命名規約（Jest/Unit）: `<対象モジュール名>.unit.spec.ts`（例: `tileCache.unit.spec.ts`）
+- 命名規約（Unit）: `<対象モジュール名>.unit.spec.ts`（例: `tileCache.unit.spec.ts`）
 - 命名規約（Playwright/E2E・Visual）: `<対象シナリオ>.spec.ts`（例: `atPathReload.spec.ts`）— `.unit.` を付けない
 - 対象ソースとテストファイルは 1:1 で対応させる
 
@@ -27,8 +27,9 @@ model: sonnet
 - 各 `it` は 1 つの振る舞いのみを検証する
 
 ### モックパターン
-- Babylon.js など外部依存は `jest.unstable_mockModule` でモックする
-- モックは各テストファイルのトップレベルで定義し、`await import(...)` で対象モジュールを動的インポートする
+- Babylon.js など外部依存は `vi.mock` でモックする
+- `vi.mock` はファイル先頭へ自動 hoist されるため、ファクトリが外部のトップレベル変数を参照しない場合は対象モジュールを通常の static import で読み込める
+- ファクトリがトップレベルの `const`/`let`（例: 呼び出し記録用の `vi.fn()`）を参照する場合は、`vi.mock` 自体は hoist されても参照先の初期化はされないため、対象モジュールはその変数を定義した後に `await import(...)` で動的に読み込む（先に静的 import すると TDZ エラーになる）
 - 純粋関数は直接 import してテストする（モック不要）
 
 ### テスト観点

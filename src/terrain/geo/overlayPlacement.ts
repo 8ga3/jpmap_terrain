@@ -4,7 +4,8 @@
  * 平面版（`overlayCoords.ts`）は wx/wz と +Y up を前提とするが、グローブでは位置ごとに up
  * （地心方向）が変わる。本モジュールは「緯度経度＋標高 → ECEF 位置と地心 up」「カメラ距離に
  * 応じたスクリーン定スケール」「ドロップ線高さ」を ECEF ベースで提供する。平面オーバーレイ
- * とは独立（並行構築）で、`GeospatialCamera` を直接 import しない（jest 環境を軽く保つ）。
+ * とは独立（並行構築）で、`GeospatialCamera` を直接 import しない（Babylon の実行時
+ * オブジェクトに依存させず、DOM/WebGL 環境が無くても実行できる純関数として保つため）。
  */
 import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 

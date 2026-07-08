@@ -2,7 +2,7 @@ import { mergeConfig, defineConfig } from "vitest/config";
 import baseConfig from "./vite.config";
 
 /**
- * Vitest 設定（Jest から移行）。
+ * Vitest 設定。
  *
  * `vite.config.ts` を `mergeConfig` で継承し、dev/build と同じ変換パイプライン
  * （TypeScript/ESM 変換・アセット解決）を単体テストでも利用する。
@@ -17,7 +17,7 @@ export default mergeConfig(
         test: {
             include: ["tests/**/*.unit.spec.ts"],
             // 既定値は node。`@vitest-environment jsdom` pragma を付与した
-            // ファイルのみ jsdom で実行する（Jest の `@jest-environment` 相当）。
+            // ファイルのみ jsdom で実行する。
             environment: "node",
             globals: false,
         },

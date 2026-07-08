@@ -2,7 +2,7 @@
  * 標高計算用 Web Worker プール。
  *
  * - Worker をラウンドロビンで使い回し、メインスレッドの sync 処理を分散する
- * - Worker API が利用不能な環境（Jest / SSR / 古いブラウザ）では同期 fallback
+ * - Worker API が利用不能な環境（Vitest / SSR / 古いブラウザ）では同期 fallback
  * - Transferable な ArrayBuffer でメモリコピーを最小化
  *
  * tileManager の `applyElevationDataToMesh` がメインスレッドで実行していた

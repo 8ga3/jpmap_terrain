@@ -866,13 +866,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * Babylon のレンダーループ（VSync 同期）が必ず間に走るようにする。
      * テスト環境など rAF が無い場合は setTimeout(0) にフォールバック。
      */
-    // テスト環境（Jest）では rAF が setTimeout(16) に近い挙動になり、
+    // テスト環境（Vitest）では rAF が setTimeout(16) に近い挙動になり、
     // タイル数が多いと sync 完了までに 5s 以上かかってタイムアウトするため
     // 即時 resolve にして直列化のみ維持する。
     const isTestEnv =
         typeof process !== "undefined" &&
         typeof (process as { env?: Record<string, string | undefined> }).env !== "undefined" &&
-        (process as { env: Record<string, string | undefined> }).env.JEST_WORKER_ID !== undefined;
+        (process as { env: Record<string, string | undefined> }).env.VITEST !== undefined;
     // Babylon の onAfterRenderObservable に同期して、現在フレームの
      // 描画完了後にタイル sync を再開する。これにより
      // 「飛行機の位置反映 → render → タイル sync」の順番が保証され、
