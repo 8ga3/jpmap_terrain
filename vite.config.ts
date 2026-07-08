@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import { demoRewritePlugin } from "./vite.rewrites";
 
 /**
- * Vite 設定（Issue #298）。
+ * Vite 設定。
  */
 
 /**
@@ -14,7 +14,7 @@ import { demoRewritePlugin } from "./vite.rewrites";
 const PAGES_DIR = "public";
 
 /**
- * 多エントリ構成 (Issue #147 / #298)。
+ * 多エントリ構成。
  * - portal は `/`（public/index.html）として配信する。
  * - その他のデモは `<name>.html` として配信する。
  * 各 HTML は `<script type="module" src="/src/demos/<name>/index.ts">` を読み込む

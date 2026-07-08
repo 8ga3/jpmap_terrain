@@ -13,6 +13,7 @@ model: opus
 - 入力検証・例外処理・ログ方針を明示
 - 機密情報（トークン/PII）を出力・ログに含めない
 - コード内のコメント・JSDoc に issue 番号やフェーズ番号（例: `Issue #NNN` / `(#NNN)` / `Phase N` / `PN-N`）を参照として書かない。背景情報が必要な場合は、参照ではなく内容を簡潔に要約して記載する。
+  - このルールは instruction のみでは遵守が徹底されない実績があるため、`npm run check:no-issue-refs`（`npm run lint` に組み込み済み、`scripts/checkNoIssueRefs.mjs`）で機械的に検知する。実装完了前に必ず `npm run lint` を実行し、検知された場合は参照を削除・要約に置き換えてから再実行すること。
 
 # Unit test ルール
 - 新規の関数・モジュールを追加する場合、対応するUnit testを同時に作成する

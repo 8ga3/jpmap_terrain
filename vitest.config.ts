@@ -2,7 +2,7 @@ import { mergeConfig, defineConfig } from "vitest/config";
 import baseConfig from "./vite.config";
 
 /**
- * Vitest 設定（Issue #477: Jest → Vitest 移行）。
+ * Vitest 設定（Jest から移行）。
  *
  * `vite.config.ts` を `mergeConfig` で継承し、dev/build と同じ変換パイプライン
  * （TypeScript/ESM 変換・アセット解決）を単体テストでも利用する。

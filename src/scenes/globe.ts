@@ -693,7 +693,7 @@ export class GlobeScene {
             camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
         };
 
-        // ---- 2本指ジェスチャ（タッチ）パラメータ（Issue #424）----
+        // ---- 2本指ジェスチャ（タッチ）パラメータ ----
         // 指の間隔がこの値[px]未満なら「近い」とみなしチルト、以上なら移動＋回転に切り替える。
         const TWO_FINGER_TILT_SPREAD_PX = 160;
         // 重心の縦移動[px] → pitch[rad] 係数（チルト感度）。

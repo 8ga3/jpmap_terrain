@@ -1,7 +1,7 @@
 import type { Connect, Plugin } from "vite";
 
 /**
- * SPA fallback ルーティング定義 (Issue #157 / #298)。
+ * SPA fallback ルーティング定義。
  *
  * デモ識別子付きパス（/viewer/@..., /timelapse/@...）を該当 HTML へ書き換える
  * dev サーバーミドルウェア。dev (`vite.config.ts`) と E2E テスト

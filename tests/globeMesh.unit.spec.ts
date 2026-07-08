@@ -137,7 +137,7 @@ describe("buildGlobeTileMeshData", () => {
     });
 });
 
-describe("adaptiveMeshSegments (#460)", () => {
+describe("adaptiveMeshSegments", () => {
     const BASE = 32; // GLOBE_SCENE_DEFAULTS.segments
 
     // 富士緯度でのタイル1辺実距離[m]（計測値, tests/farViewGeomResolution.unit.spec.ts）。
