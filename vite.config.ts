@@ -92,7 +92,18 @@ export default defineConfig({
         outDir: "../dist",
         // outDir が root 外のため明示的に許可する。
         emptyOutDir: true,
-        sourcemap: true,
+        // 公開デモサイト（`dist/`）の配信サイズを抑えるため、既定（本番ビルド）では
+        // sourcemap を無効化する（`babylonBundle` の map は単体で JS 本体の約4倍あり、
+        // 公開OSSでソース隠蔽のメリットもないため）。ローカルのデバッグ用ビルド
+        // （`npm run build:dev`）では `VITE_SOURCEMAP=true` を介して明示的に有効化する。
+        // （`defineConfig` のコールバック形式は `mergeConfig`（vitest.config.ts 等）と
+        // 互換しないため、mode ではなく環境変数で分岐する）。
+        sourcemap: process.env.VITE_SOURCEMAP === "true",
+        // `babylonBundle`（Babylon.js コア本体）は圧縮後 3MB 弱あり、既定の
+        // 500kB 警告閾値を常に超える。3D エンジン本体のサイズが原因で
+        // sourcemap の有無とは無関係（分割してもデモ1件あたりの総ダウンロード量は
+        // 変わらない）ため、実態に合わせて閾値を引き上げノイズを抑える。
+        chunkSizeWarningLimit: 3000,
         // 8192B 以下のアセットはインライン化（Base64 data URI）する。
         // ただし OBJ/MTL/STL は OBJ ローダーが mtllib を rootUrl 相対で取得するため、
         // data URI 化すると解決できない。常にファイルとして出力する。

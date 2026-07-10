@@ -1,4 +1,5 @@
 import type { Connect, Plugin } from "vite";
+import type { ServerResponse } from "node:http";
 
 /**
  * SPA fallback ルーティング定義。
@@ -13,7 +14,7 @@ export interface DemoRewrite {
 }
 
 /** rewrite 対象のデモ名一覧（portal は `/` = index.html のため対象外）。 */
-const DEMO_NAMES = [
+export const DEMO_NAMES = [
     "viewer",
     "timelapse",
     "polygon",
@@ -34,10 +35,59 @@ export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.map((name) => ({
     to: `/${name}.html`,
 }));
 
+/** 生成する静的リダイレクト定義ファイル名（Netlify / Cloudflare Pages 共通書式）。 */
+export const STATIC_REDIRECTS_FILENAME = "_redirects";
+
 /**
- * `demoAtPathRewrites` を Vite dev サーバーのミドルウェアとして適用するプラグイン。
+ * Netlify / Cloudflare Pages が読む `_redirects` ファイルの内容を生成する。
+ *
+ * `demoAtPathRewrites` と同じ「デモ識別子付きパス → `<name>.html`」の対応を、
+ * サーバーサイド実行環境を持たない静的 CDN 配信でも再現するために使う。
+ * ビルド成果物（`dist/_redirects`）に含め、`vite dev`/`vite preview` と
+ * 同じ URL 規約を Netlify・Cloudflare Pages 上でも成立させる。
+ *
+ * 各デモ名につき2行出力する。
+ * - `/<name>` 単体（末尾スラッシュや `/@...` を伴わないアクセス）
+ * - `/<name>/*` （`/<name>/@lat,lon,...` 等、配下のパスすべて）
+ */
+export const buildStaticRedirectsFile = (
+    demoNames: readonly string[] = DEMO_NAMES,
+): string =>
+    demoNames
+        .flatMap((name) => [
+            `/${name} /${name}.html 200`,
+            `/${name}/* /${name}.html 200`,
+        ])
+        .join("\n") + "\n";
+
+/** リクエスト URL をデモ識別子付きパスから該当 HTML パスへ書き換える共通ハンドラ。 */
+function rewriteMiddleware(
+    req: Connect.IncomingMessage,
+    _res: ServerResponse,
+    next: Connect.NextFunction,
+): void {
+    if (!req.url) {
+        next();
+        return;
+    }
+    // クエリ・ハッシュを除いたパス部分のみを照合対象にする。
+    const [pathname, rest] = splitUrl(req.url);
+    const matched = demoAtPathRewrites.find((r) => r.from.test(pathname));
+    if (matched) {
+        req.url = matched.to + (rest ?? "");
+    }
+    next();
+}
+
+/**
+ * `demoAtPathRewrites` を Vite の dev サーバー / preview サーバーの
+ * ミドルウェアとして適用するプラグイン。
  * Vite 標準の HTML/transform ミドルウェアより前に挿入し、リクエスト URL を
  * 該当 HTML に書き換える。
+ *
+ * `dist/` を静的サーバーで配信する場合（`vite preview` 以外）は、ここで
+ * 定義したリライトルールと同等の設定をホスティング側（Nginx/リバースプロキシ等）
+ * にも用意する必要がある。
  */
 export function demoRewritePlugin(): Plugin {
     return {
@@ -46,18 +96,22 @@ export function demoRewritePlugin(): Plugin {
             // URL 書き換えは Vite 標準の HTML 変換・SPA fallback より「前」に
             // 実行する必要があるため、pre ミドルウェアとして登録する
             // （`return () => {}` で登録すると post になり書き換えが間に合わない）。
-            server.middlewares.use((req: Connect.IncomingMessage, _res, next) => {
-                if (!req.url) {
-                    next();
-                    return;
-                }
-                // クエリ・ハッシュを除いたパス部分のみを照合対象にする。
-                const [pathname, rest] = splitUrl(req.url);
-                const matched = demoAtPathRewrites.find((r) => r.from.test(pathname));
-                if (matched) {
-                    req.url = matched.to + (rest ?? "");
-                }
-                next();
+            server.middlewares.use(rewriteMiddleware);
+        },
+        configurePreviewServer(server) {
+            // `vite preview`（`dist/` のビルド成果物配信）でも dev と同じ
+            // リライトを適用し、`npm run build` → `npm run preview` で
+            // `/viewer` 等の短縮 URL が 404 にならないようにする。
+            server.middlewares.use(rewriteMiddleware);
+        },
+        generateBundle() {
+            // `vite build` の成果物（`dist/`）に Netlify / Cloudflare Pages 互換の
+            // `_redirects` を同梱し、サーバーサイド実行環境がない静的 CDN 配信でも
+            // 同じ URL 規約を成立させる（他プラットフォームは spec/demos.md 参照）。
+            this.emitFile({
+                type: "asset",
+                fileName: STATIC_REDIRECTS_FILENAME,
+                source: buildStaticRedirectsFile(),
             });
         },
     };

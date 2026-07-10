@@ -1,0 +1,9 @@
+services:
+  demo:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: jpmap-terrain-demo:local
+    ports:
+      - "8080:80"
+    restart: unless-stopped
