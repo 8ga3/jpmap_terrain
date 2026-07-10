@@ -95,7 +95,9 @@ export default defineConfig({
         // 公開デモサイト（`dist/`）の配信サイズを抑えるため、既定（本番ビルド）では
         // sourcemap を無効化する（`babylonBundle` の map は単体で JS 本体の約4倍あり、
         // 公開OSSでソース隠蔽のメリットもないため）。ローカルのデバッグ用ビルド
-        // （`npm run build:dev`）では `VITE_SOURCEMAP=true` を介して明示的に有効化する。
+        // （`npm run build:dev`）では `cross-env VITE_SOURCEMAP=true` を介して
+        // 明示的に有効化する（`cross-env` は Windows でも同じスクリプトが動くように
+        // するため。素の `VITE_SOURCEMAP=true cmd` は POSIX シェル専用の構文）。
         // （`defineConfig` のコールバック形式は `mergeConfig`（vitest.config.ts 等）と
         // 互換しないため、mode ではなく環境変数で分岐する）。
         sourcemap: process.env.VITE_SOURCEMAP === "true",

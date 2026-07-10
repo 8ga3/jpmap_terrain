@@ -13,7 +13,8 @@ export interface DemoRewrite {
     to: string;
 }
 
-/** rewrite 対象のデモ名一覧（portal は `/` = index.html のため対象外）。 */
+/** rewrite 対象のデモ名一覧（portal は `/` = index.html のため対象外）。
+ * 単一の正本として外部からの不意な変更（push 等）を防ぐため `as const` で固定化する。 */
 export const DEMO_NAMES = [
     "viewer",
     "timelapse",
@@ -28,10 +29,13 @@ export const DEMO_NAMES = [
     "flight",
     "artillery",
     "geospatial",
-];
+] as const;
 
 export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.map((name) => ({
-    from: new RegExp(`^/${name}(?:/@.*)?/?$`),
+    // `/<name>` 単体、または `/<name>/` 以降の任意のパス（`/<name>/@...` を含む）にマッチさせる。
+    // `buildStaticRedirectsFile()` が生成する `/<name>/*`（任意の配下パス）と同等の振る舞いにし、
+    // vite preview と静的 CDN で挙動が一致するようにする（例: `/viewer/foo` も両方で 200）。
+    from: new RegExp(`^/${name}(?:/.*)?$`),
     to: `/${name}.html`,
 }));
 
