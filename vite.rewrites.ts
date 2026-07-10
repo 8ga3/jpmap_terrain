@@ -14,7 +14,9 @@ export interface DemoRewrite {
 }
 
 /** rewrite 対象のデモ名一覧（portal は `/` = index.html のため対象外）。
- * 単一の正本として外部からの不意な変更（push 等）を防ぐため `as const` で固定化する。 */
+ * 単一の正本として扱うため `as const` で型を `readonly` タプルにする。
+ * ただし `as const` は型レベルの保護のみで、実行時の変更（`push` 等を
+ * type-unsafe に呼び出した場合）までは防げない点に注意。 */
 export const DEMO_NAMES = [
     "viewer",
     "timelapse",
