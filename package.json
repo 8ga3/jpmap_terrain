@@ -55,10 +55,11 @@
   "scripts": {
     "start": "vite",
     "start:test": "vite --config vite.tests.config.ts",
-    "build:dev": "npm run typecheck && vite build --mode development",
+    "build:dev": "npm run typecheck && VITE_SOURCEMAP=true vite build --mode development",
     "build:lib": "tsup",
     "clean:lib": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
     "lint": "npx eslint . --ext .ts,.tsx && npm run check:no-issue-refs",
     "check:no-issue-refs": "node scripts/checkNoIssueRefs.mjs",
     "typecheck": "tsc --noEmit",

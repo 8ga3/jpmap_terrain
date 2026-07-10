@@ -28,7 +28,73 @@
   - 例外: `geospatial` デモのみ、グローブ地形コア `scenes/globe.ts` の `GlobeScene` を直接起動する低レベル診断デモであり、公開 API では露出しない内部状態（floatingOrigin / LOD / タイル数）の確認を目的とする。同じ `GlobeScene` は `JpmapTerrain` も `GlobeSceneAdapter` 経由で利用するため、エンジン実装の重複はない。
 - 各デモは独立した Vite エントリ。`public/<name>.html` を追加し、`vite.config.ts` の `HTML_ENTRIES` に登録すればビルド対象になる（エントリ HTML は `root` = `public/` に集約）。
 - デモ間で共通する Babylon.js 部分は `manualChunks` の `babylonBundle` / `webgpu-shaders` / `webgl-shaders` 等に分割され、複数デモで共有される。
+
+## URL リライトと dist 配信時の注意
+
+- 上表の URL（`/viewer.html` 等）は `dist/` に実体として出力される静的ファイル名であり、常にこの形式でアクセスできる。
+- ポータルのカードや `createUrlUpdater`（`src/terrain/urlState.ts`）が生成する `/<name>` や `/<name>/@lat,lon,...` という拡張子なしの見た目の URL は、静的ファイルとしては存在しない。これらは `vite.rewrites.ts` の `demoRewritePlugin`（`demoAtPathRewrites`）が担うサーバー側リライトによって `/<name>.html` へ書き換えられて初めて解決する。
+- このリライトは以下の場合のみ有効になる。
+  - `npm run start` / `npm run start:test`（Vite dev サーバー、`configureServer` フック）
+  - `npm run preview`（`vite preview`。`dist/` のビルド成果物を配信する際は必ずこちらを使う。`configurePreviewServer` フック）
+- `dist/` を `vite preview` 以外の静的サーバー（Nginx、他の `serve` 系ツール等）で配信する場合、上記リライトは適用されない。拡張子なしの短縮 URL（例: `/viewer`）へ直接遷移すると 404 になる（`/viewer.html` は直接開ける）。この場合は `vite.rewrites.ts` の `demoAtPathRewrites` と同等の書き換えルールをホスティング側の設定（リバースプロキシ／リライトルール）に追加すること。
 - ポータルは Babylon.js を読み込まない軽量ページ。バンドルサイズ最小化のため `JpmapTerrain` を import しない。
+
+### 静的 CDN へのデプロイ（サーバー実行環境なし）
+
+`npm run start` / `npm run preview` の Node ミドルウェアによるリライトは、サーバー実行環境を持たない静的 CDN（Netlify / Cloudflare Pages 等）にはそのまま持ち込めない。そのため `vite build` 時に `vite.rewrites.ts` の `demoRewritePlugin`（`generateBundle` フック）が **Netlify / Cloudflare Pages 共通書式の `dist/_redirects`** を自動生成し、`demoAtPathRewrites` と同じ「`/<name>` および `/<name>/*` → `/<name>.html`」の対応をビルド成果物に同梱する。
+
+- 生成ロジック: `buildStaticRedirectsFile()`（`vite.rewrites.ts`）。`DEMO_NAMES` を単一の正本とし、dev/preview のリライトと内容が乖離しないようにしている。
+- **Netlify / Cloudflare Pages**: `dist/` をそのままデプロイするだけで `_redirects` が有効になる。追加設定不要。
+- **Vercel**: `_redirects` を解釈しないため、同等のルールを `vercel.json` の `rewrites` として別途用意する必要がある。
+- **AWS S3 + CloudFront**: オブジェクトストレージ単体ではパス書き換えができないため、CloudFront Function（viewer request）等のエッジ側の軽量処理で同等のリライトを行う必要がある。
+- **GitHub Pages**: リライト機能自体がなく `_redirects` は効果を持たない。`404.html` を使ったクライアント側リダイレクトのハック以外に手段がなく非推奨。
+- **自前 Apache/Nginx**: `_redirects` は使えないため、`.htaccess` の `RewriteRule` や `nginx.conf` の `rewrite` ディレクティブで `demoAtPathRewrites` と同じルールを個別に用意する（設定例は下記）。
+
+#### 自前 Nginx / Apache の設定例
+
+`vite.rewrites.ts` の `DEMO_NAMES`（2026-05 時点で以下13件）と対応させる。デモを追加/削除した場合は、この設定例も合わせて更新すること（静的設定ファイルのため自動生成されない）。
+
+```
+viewer, timelapse, polygon, distance, circle, plan, model,
+avatar, avatar-controller, boids, flight, artillery, geospatial
+```
+
+**Nginx**（`server` ブロック内、`root` は `dist/` を指す。Docker上の `nginx:alpine` + 実際の `dist/` で動作確認済み）:
+
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /path/to/dist;
+    index index.html;
+
+    location / {
+        # デモ識別子付きパス（/viewer, /viewer/@lat,lon,...）を実体HTMLへ書き換える。
+        # demoAtPathRewrites（vite.rewrites.ts）と同じデモ名一覧を維持すること。
+        # ※ location の正規表現キャプチャ（外側の $1）を rewrite 側でそのまま
+        #   参照すると空になるケースがあるため、rewrite 自体に捕捉グループを
+        #   持たせる（location / 直下にまとめて置く）。
+        rewrite ^/(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial)(?:/.*)?$ /$1.html last;
+        try_files $uri $uri/ =404;
+    }
+}
+```
+
+**Apache**（`.htaccess` または `<Directory>` 内、`mod_rewrite` 有効化が前提。Docker上の `httpd:alpine` + 実際の `dist/` で動作確認済み）:
+
+```apacheconf
+RewriteEngine On
+RewriteBase /
+
+# 実ファイル（<name>.html 本体やアセット）は書き換えず素通しする。
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+# デモ識別子付きパス（/viewer, /viewer/@lat,lon,...）を実体HTMLへ書き換える。
+# demoAtPathRewrites（vite.rewrites.ts）と同じデモ名一覧を維持すること。
+RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial)(/.*)?$ /$1.html [L]
+```
+
+すぐ試せる Docker 構成（上記 Nginx 設定を組み込んだ `Dockerfile` / `compose.yaml`）を [docker/README.md](../docker/README.md) に用意している。Raspberry Pi 5（arm64）等の自宅サーバーで動かす手順もそちらに記載している。
 
 ### レスポンシブ / タッチ操作対応
 

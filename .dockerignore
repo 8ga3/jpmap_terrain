@@ -1,0 +1,8 @@
+node_modules
+.git
+.tile-cache
+.tmp
+test-results
+playwright-report
+*.log
+.DS_Store
