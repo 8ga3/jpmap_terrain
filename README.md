@@ -78,8 +78,19 @@ npm start
 |---|---|---|
 | 3D 地形ビューア | `/viewer` | 既存の地理院タイル 3D ビューア。緯度経度・カメラ向き・地図種別を URL で指定可能。 |
 | タイムラプス | `/timelapse` | 24 時間を 1 分に圧縮し、太陽位置・陰影をアニメーション表示（アナログ時計オーバーレイ付き）。 |
+| ポリゴン | `/polygon` | ポリゴン公開 API（terrain / absolute / closed）の動作確認。 |
+| サークル | `/circle` | サークル公開 API（terrain / absolute / custom-segments）の動作確認。 |
+| 距離計測 | `/distance` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示。 |
+| Plan Viewer | `/plan` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。 |
+| 3D モデル | `/model` | 地面クリックで 3D モデルを配置・移動する Model API の動作確認。 |
+| アバターアニメーション #01 | `/avatar` | 3D アバターが地形に沿って円軌道を移動するアニメーション。 |
+| アバターアニメーション #02 | `/avatar-controller` | キーボード・Game Controller・Virtual Joystick でアバターを操作。 |
+| Boids フロッキング | `/boids` | 分離・整列・結合による群衆シミュレーション。 |
+| フライトデモ | `/flight` | 飛行機が円軌道で旋回し、Follow カメラで追跡。 |
+| Artillery Game | `/artillery` | ターン制対戦ゲーム（Havok 物理で砲弾を再現）。 |
+| Geospatial Globe | `/geospatial` | グローブ地形コアを直接起動する低レベル診断デモ（開発者向け）。 |
 
-デモ追加方針は [spec/demos.md](spec/demos.md) を参照してください。
+各デモの詳細仕様・追加方針は [spec/demos.md](spec/demos.md) を参照してください。
 
 ## 実行モード（WebGPU / WebGL2）
 
@@ -172,22 +183,24 @@ npm start
 ### エントリポイント
 
 - デモポータル: `src/demos/portal/index.ts`
-- 3D 地形ビューアデモ: `src/demos/viewer/index.ts`
-- タイムラプスデモ: `src/demos/timelapse/index.ts`
-- シーン生成インターフェース: `src/createScene.ts`
-- 既定シーン実装: `src/scenes/default.ts`
+- 各デモエントリ: `src/demos/<デモ名>/index.ts`（全13デモの一覧は [デモポータル](#デモポータル) 参照）
+- シーン境界契約（インターフェース）: `src/scenes/sceneContract.ts`
+- グローブ地形シーン実装: `src/scenes/globe.ts`
 
 ### 主要ディレクトリ
 
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse）
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、全13件）
 │  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
 │  ├─ terrain/           # 地形・UI 実装
-│  ├─ createScene.ts     # シーン生成インターフェース
-│  └─ scenes/default.ts  # デフォルトシーン
-├─ public/               # Vite のエントリ HTML（root。index=portal / viewer / timelapse ...）
+│  └─ scenes/            # シーン境界契約とグローブ地形シーン実装
+├─ public/               # Vite のエントリ HTML（root。デモごとの *.html）
+├─ assets/               # デモ用の3Dモデル・音声等の静的アセット
+├─ examples/             # サンプルデータ（.plan ファイル等）
+├─ scripts/              # 開発補助スクリプト（checkNoIssueRefs 等）
+├─ docker/               # デモサイト配信用 Docker 構成（docker/README.md 参照）
 ├─ tests/                # Playwright の Visual Regression Test と Unit テスト
 ├─ spec/                 # 仕様・開発フロー文書（demos.md を含む）
 └─ vite.config.ts        # ビルド設定（vite.tests.config.ts / vite.rewrites.ts）
@@ -198,14 +211,29 @@ npm start
 | コマンド | 説明 |
 | --- | --- |
 | `npm start` | 開発サーバー起動（ホットリロード） |
+| `npm run start:test` | Playwright 用の開発サーバー起動（`vite.tests.config.ts` 使用） |
 | `npm run build:dev` | 開発ビルド（typecheck 実行後に bundle） |
 | `npm run build` | 本番ビルド（typecheck 実行後に最適化 build） |
 | `npm run build:lib` | ライブラリビルド（`dist/` に ESM + `.d.ts` 出力） |
-| `npm run lint` | ESLint 実行 |
+| `npm run clean:lib` | ライブラリビルド成果物（`dist/`）の削除 |
+| `npm run preview` | 本番ビルド成果物（`dist/`）のローカルプレビュー配信 |
+| `npm run lint` | ESLint 実行（Issue番号直書きチェックを含む） |
 | `npm run typecheck` | TypeScript 型チェック |
 | `npm run test:visuals` | Visual Regression Test 実行 |
 | `npm run test:visuals:update` | Visual テスト基準画像の強制更新（画面表示変更時のみ） |
 | `npm run test:unit` | ユニットテスト（Vitest） |
+
+### Docker（デモサイト配信）
+
+`docker/` に、`npm run build` の成果物 `dist/` を Nginx コンテナで配信するための Docker 構成があります。
+
+```shell
+npm run build
+cd docker
+docker compose up -d --build
+```
+
+`http://localhost:8080/` でデモポータルにアクセスできます。Raspberry Pi 5（arm64）での運用やデモ追加時の注意点など詳細は [docker/README.md](docker/README.md) を参照してください。
 
 ### デバッグ
 
@@ -260,6 +288,7 @@ npm run test:unit
 - 機能仕様入口: `spec/README.md`
 - 開発フロー: `spec/development.md`
 - 運用ガイド: `AGENTS.md`
+- Docker配信ガイド: `docker/README.md`
 
 ## ライセンス
 
