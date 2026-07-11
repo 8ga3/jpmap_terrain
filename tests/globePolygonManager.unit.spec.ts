@@ -106,6 +106,7 @@ vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
         emissiveColor: unknown = null;
         alpha = 1;
         needDepthPrePass = false;
+        separateCullingPass = false;
         disableLighting = false;
         backFaceCulling = true;
         useAlphaFromDiffuseTexture = false;

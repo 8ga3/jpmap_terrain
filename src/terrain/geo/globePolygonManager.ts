@@ -253,7 +253,16 @@ const createMaterial = (
     mat.backFaceCulling = false;
     mat.emissiveColor = toColor3(color, fallbackHex);
     mat.alpha = alpha;
-    if (alpha < 1) mat.needDepthPrePass = true;
+    // 両面描画（backFaceCulling=false）の半透明メッシュは、自己の前後面が同一パスで
+    // 描画されると重なり順が不定になり見た目が破綻する（自己透過アーティファクト）。
+    // これを避けるため以前は needDepthPrePass を使っていたが、depth pre-pass は
+    // 不透明メッシュより前の専用パスで深度バッファへ実深度を書き込むため、後段の
+    // 半透明マーカー/ラベル（アイコン・テキスト）がこの壁の深度に対して不透明物のように
+    // 深度テストで弾かれ、透けて見えるべき壁の奥のマーカーが隠れてしまう。
+    // separateCullingPass は背面→前面の 2 パス描画で同じ自己透過問題を
+    // 解決しつつ、深度バッファへは半透明パス通常の書き込み（オフ）のままなので、
+    // 他の半透明メッシュの深度テストを汚染しない。
+    if (alpha < 1) mat.separateCullingPass = true;
     return mat;
 };
 
