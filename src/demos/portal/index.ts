@@ -96,6 +96,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "GeospatialCamera + ECEF 楕円体 + floating origin のグローブ地形コア（GlobeScene）を JpmapTerrain を介さず直接起動する診断デモ。floatingOrigin/LOD/タイル数の表示や ?snap=off 比較など内部状態の実機確認に使います。右ドラッグ=回転 / ホイール=ズーム。",
         href: "geospatial",
     },
+    {
+        title: "ズームループ（プロモーション用）",
+        description:
+            "指定した2地点間をカメラがクォータニオンで滑らかに往復ズームし続けるデモ。片道約60秒・両端3秒静止。写真ボタン以外の画面操作は無効です。",
+        href: "zoomloop",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
