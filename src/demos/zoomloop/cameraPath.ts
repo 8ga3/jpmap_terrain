@@ -276,6 +276,22 @@ export const advanceZoomLoop = (
     let phase = state.phase;
     let elapsedInPhaseMs = state.elapsedInPhaseMs + Math.max(0, deltaMs);
 
+    // 全フェーズ（holdZoomIn/toZoomOut/holdZoomOut/toZoomIn）の合計時間 = 1周期。
+    // 4フェーズ進めば必ず開始フェーズへ戻り、その間に消費する時間は開始フェーズに
+    // 依らず常に cycleMs になる。極端に大きな deltaMs（長時間タブ非アクティブ等）
+    // でも MAX_ITER 内に収まるよう、丸ごとスキップできる周期数を先に差し引く。
+    const cycleMs =
+        phaseDurationMs("holdZoomIn", config) +
+        phaseDurationMs("toZoomOut", config) +
+        phaseDurationMs("holdZoomOut", config) +
+        phaseDurationMs("toZoomIn", config);
+    if (cycleMs > 0) {
+        const fullCycles = Math.floor(elapsedInPhaseMs / cycleMs);
+        if (fullCycles > 0) {
+            elapsedInPhaseMs -= fullCycles * cycleMs;
+        }
+    }
+
     // 無限ループ防止のための安全弁（全フェーズ長が 0 のような異常設定時に抜ける）。
     const MAX_ITER = 1000;
     for (let i = 0; i < MAX_ITER; i++) {
