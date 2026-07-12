@@ -1264,4 +1264,194 @@ describe("createGlobeTileManager", () => {
         const mean = built.reduce((a, b) => a + b, 0) / built.length;
         expect(mean).toBeCloseTo(900, 0);
     });
+
+    describe("continuous モード / drainBuildQueue（#501: 連続カメラ移動時のフレーム分散）", () => {
+        it("continuous 未指定（既定）では従来通り sync 内で即座に実ビルドする", async () => {
+            const mgr = makeManager();
+            mgr.sync(syncParams());
+            await flush(); // 標高到着
+            mgr.sync(syncParams());
+            // continuous を渡していないので、sync 呼び出し内で同期的にビルドされる。
+            expect(MeshMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("continuous: true では実ビルドを sync 内で行わず、drainBuildQueue で消化するまで遅延する", async () => {
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush(); // 標高到着
+
+            mgr.sync({ ...syncParams(), continuous: true });
+            // 判定は済んでいるが実ビルドはキューへ積まれるのみ → まだ Mesh は作られない。
+            expect(MeshMock).toHaveBeenCalledTimes(0);
+            // pendingBuilds が残っている間は idle にならない。
+            expect(mgr.isIdle()).toBe(false);
+
+            mgr.drainBuildQueue();
+            expect(MeshMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("drainBuildQueue は実測時間予算(既定4ms)を超えたら打ち切り、残りは次回へ持ち越す", async () => {
+            const mgr = makeManager();
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(100, 99, 10),
+                tile(100, 101, 10),
+                tile(99, 100, 10),
+                tile(101, 100, 10),
+                tile(102, 100, 10),
+            ];
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush(); // 標高到着（全タイル共通の決定的モックで到着）
+
+            mgr.sync({ ...syncParams(), continuous: true });
+            expect(MeshMock).toHaveBeenCalledTimes(0);
+
+            // performance.now() を決定的にモックし、4件目のビルド後に予算(4ms)超過となるよう
+            // 制御する（固定件数ではなく実測時間で打ち切ることを検証するため）。
+            let callCount = 0;
+            const perfSpy = vi
+                .spyOn(performance, "now")
+                .mockImplementation(() => ++callCount);
+            try {
+                mgr.drainBuildQueue();
+                expect(MeshMock).toHaveBeenCalledTimes(4); // 予算超過で打ち切り
+                expect(mgr.isIdle()).toBe(false); // まだ 2 件残っている
+
+                mgr.drainBuildQueue();
+                expect(MeshMock).toHaveBeenCalledTimes(6); // 残り2件を消化
+            } finally {
+                perfSpy.mockRestore();
+            }
+        });
+
+        it("1件目のビルド直後に予算超過が判明しても、そのフレームで最低1件は必ず処理する（進捗保証）", async () => {
+            const mgr = makeManager();
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(100, 99, 10),
+                tile(100, 101, 10),
+            ];
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush();
+            mgr.sync({ ...syncParams(), continuous: true });
+
+            // 1 件目のビルド後、時刻が大きく飛んで即座に予算超過となるケースでも、
+            // 0 件のまま停止（＝キューが永遠に進まない）ことがないことを検証する。
+            let callCount = 0;
+            const perfSpy = vi
+                .spyOn(performance, "now")
+                .mockImplementation(() => (++callCount === 1 ? 0 : 1000));
+            try {
+                mgr.drainBuildQueue();
+                expect(MeshMock).toHaveBeenCalledTimes(1);
+            } finally {
+                perfSpy.mockRestore();
+            }
+        });
+
+        it("drainBuildQueue 消化前に選択から外れたタイルはビルドされずキューから捨てられる", async () => {
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush(); // 標高到着
+
+            mgr.sync({ ...syncParams(), continuous: true }); // キューへ積むのみ
+
+            // ドレイン前にカメラが移動し、当該タイルが選択から外れたケースを模す。
+            // desiredKeys は sync() 呼び出し時にのみ更新されるため、再 sync してから drain する。
+            selectedTiles = [tile(200, 200, 10)];
+            mgr.sync({ ...syncParams(), continuous: true });
+
+            mgr.drainBuildQueue();
+            // 既に不要になったタイルは無視してビルドしない（無駄な GPU リソース生成を避ける）。
+            expect(MeshMock).toHaveBeenCalledTimes(0);
+        });
+
+        it("continuous: true でも空のキューに対する drainBuildQueue は何もしない（コスト最小）", () => {
+            const mgr = makeManager();
+            expect(() => mgr.drainBuildQueue()).not.toThrow();
+            expect(MeshMock).toHaveBeenCalledTimes(0);
+        });
+    });
+
+    describe("continuous モード / geom 標高フェッチの同時実行数制限（#501: Japan/GSI タイル同時完了によるガタつき対策）", () => {
+        it("continuous: true では geom 標高フェッチの同時実行数を上限（既定4）に制限し、超過分は完了ごとに繰り上げて起動する", async () => {
+            const resolvers: Array<(v: Float32Array) => void> = [];
+            loadElevationTile.mockImplementation(
+                () => new Promise<Float32Array>((resolve) => { resolvers.push(resolve); }),
+            );
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(101, 100, 10),
+                tile(102, 100, 10),
+                tile(103, 100, 10),
+                tile(104, 100, 10),
+                tile(105, 100, 10),
+            ];
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+
+            // 6 タイル desired でも、同時実行数上限（4）までしかフェッチを開始しない。
+            expect(loadElevationTile).toHaveBeenCalledTimes(4);
+
+            // 1 件 resolve すると、待機中の 5 件目が繰り上がって起動する。
+            resolvers[0](new Float32Array(256 * 256));
+            await flush();
+            expect(loadElevationTile).toHaveBeenCalledTimes(5);
+
+            resolvers[1](new Float32Array(256 * 256));
+            await flush();
+            expect(loadElevationTile).toHaveBeenCalledTimes(6);
+        });
+
+        it("continuous 未指定（既定）では同時実行数を制限せず、選択タイル全件を即座にフェッチする", () => {
+            const resolvers: Array<(v: Float32Array) => void> = [];
+            loadElevationTile.mockImplementation(
+                () => new Promise<Float32Array>((resolve) => { resolvers.push(resolve); }),
+            );
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(101, 100, 10),
+                tile(102, 100, 10),
+                tile(103, 100, 10),
+                tile(104, 100, 10),
+                tile(105, 100, 10),
+            ];
+            const mgr = makeManager();
+            mgr.sync(syncParams()); // continuous 未指定 → 従来通り無制限に即時フェッチ
+
+            expect(loadElevationTile).toHaveBeenCalledTimes(6);
+        });
+
+        it("待機キューに積まれた後、視界外化して不要になったタイルは繰り上げ時にフェッチせず捨てられる", async () => {
+            const resolvers: Array<(v: Float32Array) => void> = [];
+            loadElevationTile.mockImplementation(
+                () => new Promise<Float32Array>((resolve) => { resolvers.push(resolve); }),
+            );
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(101, 100, 10),
+                tile(102, 100, 10),
+                tile(103, 100, 10),
+                tile(104, 100, 10), // 上限超過で待機キュー行き
+            ];
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            expect(loadElevationTile).toHaveBeenCalledTimes(4);
+
+            // カメラが移動し、待機中だった 5 件目のタイルが選択から外れたケースを模す。
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(101, 100, 10),
+                tile(102, 100, 10),
+                tile(103, 100, 10),
+            ];
+            mgr.sync({ ...syncParams(), continuous: true });
+
+            // 実行中の 1 件が完了しても、不要になった待機タイルは起動されない
+            // （新たな loadElevationTile 呼び出しが発生しない）。
+            resolvers[0](new Float32Array(256 * 256));
+            await flush();
+            expect(loadElevationTile).toHaveBeenCalledTimes(4);
+        });
+    });
 });
