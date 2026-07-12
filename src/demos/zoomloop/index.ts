@@ -21,7 +21,7 @@ import {
 
 const DEMO_MOUNT_ID = "root";
 
-/** ズームイン側（プロモーション用に指定された座標: `@35.345984,138.732388,2570,0.35,68.74`）。 */
+/** ズームイン側 */
 const ZOOM_IN: CameraEndpoint = {
     lat: 35.358152,
     lon: 138.732405,
@@ -30,7 +30,7 @@ const ZOOM_IN: CameraEndpoint = {
     tilt: 35,
 };
 
-/** ズームアウト側（プロモーション用に指定された座標: `@33.169094,134.931644,3176946,359.83,41.13`）。 */
+/** ズームアウト側 */
 const ZOOM_OUT: CameraEndpoint = {
     lat: 35.075275,
     lon: -96.293408,
