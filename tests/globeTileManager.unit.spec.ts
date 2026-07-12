@@ -1265,7 +1265,7 @@ describe("createGlobeTileManager", () => {
         expect(mean).toBeCloseTo(900, 0);
     });
 
-    describe("continuous モード / drainBuildQueue（#501: 連続カメラ移動時のフレーム分散）", () => {
+    describe("continuous モード / drainBuildQueue（連続カメラ移動時のフレーム分散）", () => {
         it("continuous 未指定（既定）では従来通り sync 内で即座に実ビルドする", async () => {
             const mgr = makeManager();
             mgr.sync(syncParams());
@@ -1373,7 +1373,7 @@ describe("createGlobeTileManager", () => {
         });
     });
 
-    describe("continuous モード / geom 標高フェッチの同時実行数制限（#501: Japan/GSI タイル同時完了によるガタつき対策）", () => {
+    describe("continuous モード / geom 標高フェッチの同時実行数制限（Japan/GSI タイル同時完了によるガタつき対策）", () => {
         it("continuous: true では geom 標高フェッチの同時実行数を上限（既定4）に制限し、超過分は完了ごとに繰り上げて起動する", async () => {
             const resolvers: Array<(v: Float32Array) => void> = [];
             loadElevationTile.mockImplementation(

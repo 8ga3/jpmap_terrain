@@ -1993,7 +1993,7 @@ export class GlobeScene {
                 textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
                 viewForward,
                 // ズーム速度に関わらず実ビルドのフレーム集中によるガタつきを避けるため、
-                // globe バックエンドは常にキュー分散モードで同期する（#501）。実ビルドの消化は
+                // globe バックエンドは常にキュー分散モードで同期する。実ビルドの消化は
                 // 毎フレーム呼ぶ drainBuildQueue() が担う（syncTiles 自体は間引き実行のまま）。
                 continuous: true,
             });
@@ -2234,7 +2234,7 @@ export class GlobeScene {
             modelManager.tick();
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             // 実ビルド（Mesh/Geometry/Texture 生成）を複数フレームへ分散するため、syncTiles の
-            // 間引き周期とは独立して毎フレーム消化する（#501）。キューが空なら早期 return で
+            // 間引き周期とは独立して毎フレーム消化する。キューが空なら早期 return で
             // コストはごく小さい。
             tileManager.drainBuildQueue();
             frame++;

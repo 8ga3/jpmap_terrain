@@ -210,7 +210,7 @@ export interface GlobeTileSyncParams {
      */
     viewForward?: Vector3;
     /**
-     * ズームループ等、カメラを毎フレーム連続的に動かし続けるシナリオ向けのフラグ（#501）。
+     * ズームループ等、カメラを毎フレーム連続的に動かし続けるシナリオ向けのフラグ。
      * `true` の場合、新規/変化タイルの実ビルド（Mesh/Geometry/Texture 生成）を即座に行わず
      * `pendingBuilds` へ積む。呼び出し側は `drainBuildQueue` を毎フレーム呼んでキューを消化する
      * こと。省略時（既定）は従来通り `sync` 呼び出し内で同期的に全件ビルドする。
@@ -256,8 +256,8 @@ export interface GlobeTileManager {
     /** カメラ状態に応じて可視タイルを再選択し、ロード/ビルド判定/破棄する。 */
     sync: (params: GlobeTileSyncParams) => GlobeTileSyncStats;
     /**
-     * `sync` に `continuous: true` を渡した際に積まれるビルドキューを高々数件だけ消化する
-     * （#501）。`sync` とは独立に**毎フレーム**呼ぶことを想定しており、ズーム速度上昇時に発生
+     * `sync` に `continuous: true` を渡した際に積まれるビルドキューを高々数件だけ消化する。
+     * `sync` とは独立に**毎フレーム**呼ぶことを想定しており、ズーム速度上昇時に発生
      * する大量 LOD 切替の実ビルド（Mesh/Geometry/Texture 生成）を複数フレームへ分散し、
      * 1 フレームへの処理集中によるガタつきを防ぐ。キューが空なら何もしないため、
      * `continuous` を使わない既存デモで毎フレーム呼んでもコストはごく小さい。
@@ -367,13 +367,13 @@ export const createGlobeTileManager = (
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
 
-    // --- ビルド予算キュー（#501対策） ---
+    // --- ビルド予算キュー ---
     // `buildReadyTiles` は「判定（sig比較・穴埋め・縫合入力の準備）」と「実ビルド（Mesh/Geometry/
     // Texture生成）」を分離する。判定は毎 sync（`syncIntervalFrames` 毎）で全 tiles に対して行うが
     // 軽量。実ビルドは重い（GPU リソース生成を伴う）ため、`drainBuildQueue` で 1 回の呼び出しあたり
     // `TILE_BUILD_TIME_BUDGET_MS` の実測時間予算内だけ処理し、残りは次回以降の呼び出しへ持ち越す。
     // `globe.ts` はこれを毎フレーム呼ぶことで、ズーム速度上昇時に発生する大量 LOD 切替を
-    // 複数フレームへ分散し、1 フレームに同期処理が集中してガタつくのを防ぐ（#501）。
+    // 複数フレームへ分散し、1 フレームに同期処理が集中してガタつくのを防ぐ。
     interface BuildJob {
         tile: GlobeTile;
         /** 縫合・暫定平坦化まで適用済みの、建築に使う最終標高配列。 */
@@ -390,7 +390,7 @@ export const createGlobeTileManager = (
     /** 予算内でも際限なく処理し続けないための安全上限件数（極端に軽いタイルが大量にある場合の保険）。 */
     const TILE_BUILDS_MAX_PER_DRAIN = 16;
 
-    // --- geom 標高ロード同時実行数制限（#501対策） ---
+    // --- geom 標高ロード同時実行数制限 ---
     // 平面版 tileManager.ts の loadTilesInQueue（DEFAULT_MAX_CONCURRENT）と同じ問題が globe 版にもある:
     // 連続カメラ移動で多数の新規タイルが一度に desired になると、それらの標高フェッチ完了
     // （デコード・レイヤー合成・穴埋め = decodeGsiElevation / fillHolesFromCoarseDem /
@@ -622,7 +622,7 @@ export const createGlobeTileManager = (
     /**
      * 標高取得（geom タイル単位）はキャッシュに溜めるだけ。z16-18 は z15 を共有しデデュプ。
      *
-     * `continuous`（#501）時は同時フェッチ数を `GEOM_LOAD_MAX_CONCURRENT` に制限する。連続カメラ
+     * `continuous` 時は同時フェッチ数を `GEOM_LOAD_MAX_CONCURRENT` に制限する。連続カメラ
      * 移動では多数の新規タイルが一度に desired になり得るが、無制限に同時フェッチすると
      * デコード・穴埋め処理の完了が同一フレームに集中してガタつく（平面版 tileManager.ts の
      * loadTilesInQueue と同種の対策）。超過分は `geomLoadQueue` に積み、空きが出次第起動する。
@@ -1147,7 +1147,7 @@ export const createGlobeTileManager = (
      *
      * `continuous=false`（既定・従来動作）: 判定後ただちに `executeBuildJob` で実ビルドする
      * （sync 呼び出し内で同期完了、テスト・既存デモの前提を変えない）。
-     * `continuous=true`（連続カメラアニメーション向け・#501）: 実ビルドを `pendingBuilds` へ
+     * `continuous=true`（連続カメラアニメーション向け）: 実ビルドを `pendingBuilds` へ
      * 積み、`drainBuildQueue` が毎フレーム高々数件ずつ消化することでバーストを分散する。
      */
     const buildReadyTiles = (tiles: readonly GlobeTile[], continuous: boolean): void => {
@@ -1287,7 +1287,7 @@ export const createGlobeTileManager = (
 
             if (continuous) {
                 // 実ビルド（Mesh/Geometry/Texture 生成）は重いため、この場では行わずキューへ積む。
-                // `drainBuildQueue` がフレーム毎に時間予算内だけ処理する（#501）。
+                // `drainBuildQueue` がフレーム毎に時間予算内だけ処理する。
                 // 同キー再登録は最新の判定結果（新しい geomElev/edges/sig）で上書きする。
                 pendingBuilds.set(k, { tile: t, geomElev, segs, edges, sig });
             } else {
@@ -1419,8 +1419,8 @@ export const createGlobeTileManager = (
 
     /**
      * ビルドキューを実測時間予算 `TILE_BUILD_TIME_BUDGET_MS` 内で消化する。`globe.ts` から毎
-     * フレーム呼ばれる想定（#501: 重い実ビルドを複数フレームへ分散し、バーストによるガタつきを
-     * 防ぐ）。地表付近（細かい zoom）ほど 1 件あたりの実ビルドコストが増えるため、固定件数では
+     * フレーム呼ばれる想定で、重い実ビルドを複数フレームへ分散し、バーストによるガタつきを
+     * 防ぐ。地表付近（細かい zoom）ほど 1 件あたりの実ビルドコストが増えるため、固定件数では
      * 予算オーバーを防ぎきれない。実測時間で打ち切ることでタイル複雑度・実行環境の速度差に
      * 自動適応する（固定4件/回だと近接ズームでガタつきが残ることを確認したための見直し）。
      * 進捗保証のため最低 1 件は必ず処理し、`TILE_BUILDS_MAX_PER_DRAIN` を安全上限として設ける。
@@ -1868,7 +1868,7 @@ export const createGlobeTileManager = (
 
     const isIdle = (): boolean => {
         if (!syncedAtLeastOnce) return false;
-        // 標高ロード中・LOD 遷移の残置タイル・ビルドキュー滞留（#501）がある間は安定とみなさない。
+        // 標高ロード中・LOD 遷移の残置タイル・ビルドキュー滞留がある間は安定とみなさない。
         // pendingBuilds は既存メッシュのジオメトリ更新（縫合差し替え等）だけを積む場合もあり、
         // その場合 loaded/readyMeshes の判定だけでは反映前を検知できないため個別にチェックする。
         if (loading.size > 0 || pendingRelease.size > 0 || pendingBuilds.size > 0) return false;
