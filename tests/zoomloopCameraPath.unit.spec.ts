@@ -176,4 +176,24 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
         expect(frame.altitude).toBeGreaterThan(ZOOM_IN.altitude);
         expect(frame.altitude).toBeLessThan(ZOOM_OUT.altitude);
     });
+
+    it("holdDurationMs=0の場合、deltaMs=0でも静止フェーズを即座にスキップする", () => {
+        const zeroHoldConfig: ZoomLoopConfig = { ...config, holdDurationMs: 0 };
+        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const next = advanceZoomLoop(state, 0, zeroHoldConfig);
+        expect(next.phase).toBe("toZoomOut");
+        expect(next.elapsedInPhaseMs).toBe(0);
+    });
+
+    it("全フェーズが0長の異常設定でもMAX_ITERの安全弁で無限ループにならず終了する", () => {
+        const allZeroConfig: ZoomLoopConfig = {
+            ...config,
+            moveDurationMs: 0,
+            holdDurationMs: 0,
+        };
+        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        expect(() => advanceZoomLoop(state, 0, allZeroConfig)).not.toThrow();
+        const next = advanceZoomLoop(state, 0, allZeroConfig);
+        expect(next.elapsedInPhaseMs).toBe(0);
+    });
 });
