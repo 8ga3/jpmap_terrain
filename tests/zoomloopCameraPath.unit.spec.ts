@@ -228,6 +228,19 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
         expect(next.elapsedInPhaseMs).toBeCloseTo(30_000, 6);
     });
 
+    it("MAX_ITER(1000)を超える周期数分の巨大なdeltaMsでも正しい位相に収束する（周期での剰余最適化）", () => {
+        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const cycleMs =
+            config.holdDurationMs * 2 + config.moveDurationMs * 2; // 126_000ms
+        // 1周期 = 4フェーズなので、MAX_ITER=1000 の素朴な実装では 250 周期分
+        // （1000 フェーズ遷移）までしか進められない。10,000 周期分 + 96s の
+        // 端数を与え、剰余最適化が無いと辿り着けない位相まで正しく進むことを確認する。
+        const deltaMs = cycleMs * 10_000 + 96_000;
+        const next = advanceZoomLoop(state, deltaMs, config);
+        expect(next.phase).toBe("toZoomIn");
+        expect(next.elapsedInPhaseMs).toBeCloseTo(30_000, 6);
+    });
+
     it("移動中(toZoomOut)の途中経過は0..1の範囲でズームイン→ズームアウトへ補間される", () => {
         let state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
         state = advanceZoomLoop(state, 3_000, config); // -> toZoomOut, elapsed=0
