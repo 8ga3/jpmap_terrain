@@ -37,7 +37,7 @@ export interface TerrainColliderOptions {
  * しないため、半幅 3000m（`areaSize=6000`, 余裕 250m）でプレイエリア全域を覆う。
  *
  * `subdivisions=200` でセル ≈ 30m を維持（近接弾のバウンド精度を保つ）。標高ダイレクト
- * 参照（#436）によりサンプリングは安価なため、頂点数増（40,401）でも数十ms以下で構築
+ * 参照によりサンプリングは安価なため、頂点数増（40,401）でも数十ms以下で構築
  * できる。
  */
 export const DEFAULT_COLLIDER_OPTIONS: TerrainColliderOptions = {

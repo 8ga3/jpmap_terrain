@@ -104,7 +104,7 @@ export interface GlobeLodOptions {
      * 視錐台に関わらず必ず最粗root（minZoom）を確保したい地点（緯度経度）。
      * 通常のroot帯（nadir→center→地平線）は画面表示用の候補選定であり、`terrainElevAt`や
      * モデル接地（`addModel`のavatar等）が必要とする地点は注視点(center)やカメラ視界と
-     * 無関係な場所にありうる。真の視錐台カリング導入（#463）により、これらの地点が画面外だと
+     * 無関係な場所にありうる。真の視錐台カリング導入により、これらの地点が画面外だと
      * `terrainElevAt`が永久にnullを返す回帰が生じた（例: avatar-controllerデモでアバターが
      * 常に固定地点にスポーンし、カメラ注視点と無関係な場合）。centerLat/centerLon自体も
      * 暗黙に対象に含む。省略時は空。
@@ -177,7 +177,7 @@ export interface GlobeRootSeedOptions {
      * 世界全域の低解像度ベースマップ、それ以上（日本周辺）は高解像度の実データに切り替わり、
      * ソース画像の見た目が大きく変わる。低〜中高度・高チルトで地平線付近を見るとき、距離累進
      * SSE だけに任せるとこの境界を跨いだ混在（低解像度と高解像度が同一画面に混在する見た目の
-     * 破綻）が生じうる（#463 フォローアップ）。`rootZoomFloor`（全球モード用の効率優先の下限）
+     * 破綻）が生じうる（フォローアップ）。`rootZoomFloor`（全球モード用の効率優先の下限）
      * とは独立に効かせるため別オプションとする。予算（`maxRootTiles`/`maxTiles`）が逼迫した場合は
      * 既存の「前景優先で奥を捨てる」挙動により地平線側の被覆が狭まる形で吸収される
      * （破綻するのではなく、覆う範囲が狭まる）。全球モード（`GLOBAL_VIEW_EARTH_ANG_RADIUS` 分岐）
@@ -189,7 +189,7 @@ export interface GlobeRootSeedOptions {
      * 実ベクトルから求める際に使う。省略時 0（海面）だが、高標高地（富士山頂等）を注視点にすると
      * seat-on-terrain でカメラが山頂相当高度へ持ち上がり、center を海面(0m)扱いすると camera→center
      * が実際より急な下向きと誤算出され、tilt 過小→前方到達距離が極端に短縮→遠方（例: 50km 先）が
-     * 未種付けになる。center を実標高で評価すると正しい tilt になり遠方まで帯が伸びる（#465 続き）。
+     * 未種付けになる。center を実標高で評価すると正しい tilt になり遠方まで帯が伸びる。
      * 負値（海面下）と NaN/Infinity は 0（海面）へ丸める。
      */
     referenceAltitude?: number;
@@ -197,7 +197,7 @@ export interface GlobeRootSeedOptions {
      * 実カメラ視線 forward（ECEF 向きベクトル、camera 相対回転で導出可）。指定時、前方到達距離
      * `forwardReach` を決める tilt（直下=-cameraEcef からの視線角）をこの向きから求める。
      * Follow mode のように center（=機体直下地表）と実視線が乖離する経路で、center 由来の tilt が
-     * 過小算出され前方（地平線側）が未種付けになる問題（#475）を防ぐ。省略・零ベクトル・非有限は
+     * 過小算出され前方（地平線側）が未種付けになる問題を防ぐ。省略・零ベクトル・非有限は
      * 従来どおり camera→center から tilt を算出（後方互換）。内部で正規化するため単位でなくてもよい。
      */
     viewForward?: Vector3;
@@ -531,7 +531,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     const lookDir = centerEcef.subtract(cameraEcef); // camera→center
     // tilt = 視線と直下（−cameraEcef）のなす角。Follow mode では実カメラが機体（高度あり）を見て
     // ほぼ水平前方を向くのに center=機体直下地表のため、camera→center 由来の tilt が実際より小さく
-    // （下向き寄りに）算出され forwardReach が短縮、前方（地平線側）が未種付けになる（#475）。
+    // （下向き寄りに）算出され forwardReach が短縮、前方（地平線側）が未種付けになる。
     // viewForward（実視線）が渡された場合はそれで tilt を求め、前方到達距離を実視線に一致させる。
     // 零ベクトル・非有限は camera→center へフォールバック（後方互換）。
     const vf = opts.viewForward;
@@ -713,7 +713,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     if (maxZoom < minZoom) return [];
 
     // 視錐台に関わらず必ず最粗root(minZoom)を確保したい地点（centerLat/Lon自体を暗黙に含む）。
-    // `terrainElevAt`/モデル接地が必要とする地点はカメラ視界と無関係な場合があるため（#463）。
+    // `terrainElevAt`/モデル接地が必要とする地点はカメラ視界と無関係な場合があるため。
     const pinnedRootKeys = new Set<string>();
     {
         const t = toTileXY(centerLat, centerLon, minZoom);
@@ -796,7 +796,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             if (centerAngle - nodeAngRadius > capAngle) return;
         }
 
-        // 視錐台カリング（#463）: 実カメラ frustum が渡されていれば、タイルの AABB
+        // 視錐台カリング: 実カメラ frustum が渡されていれば、タイルの AABB
         // （水平フットプリント×標高範囲）が完全に外側の場合は除外する。帯モデル・地平線カリングは
         // 「裏側/概形」のみ見て真の視錐台を見ないため、チルトアップ時に画面外の地表も鉛直高度基準の
         // 距離累進でレベルが決まり、maxTiles 予算を浪費して真に見えている山（起伏で近い）が
@@ -814,7 +814,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         // ただし center / pinnedPoints の最粗root（minZoom）はこのカリングを免除する。真の視錐台
         // カリングは「画面に映るタイル」の最適化として正しいが、`terrainElevAt` やモデル接地は
         // 画面外の地点（例: 注視点と無関係な位置にスポーンするアバター）に対しても機能する必要が
-        // あり、そこまで厳密に画面内へ絞ると回帰する（#463 で発生・修正）。
+        // あり、そこまで厳密に画面内へ絞ると回帰したことがある（対応済み）。
         // 契約は「6平面」。6平面以外（空配列・不完全な配列）だと部分平面での誤カリングや意図せぬ
         // カリング無効化につながるため、length===6 のときのみ視錐台カリングを適用する。
         if (
@@ -921,7 +921,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const [pz, px, py] = key.split("/").map(Number);
         // pinned は minZoom(z11) 固定で開始するが、開始ノードは effMaxZoom で即受容されるため、
         // 高高度キャップ（effectiveMaxZoom）や域外 WORLD_TEXTURE_MAX_ZOOM 丸めを開始 zoom にも
-        // 適用しないと、キャップ下でも center の z11 タイル 1 枚が残ってしまう（#465 フォロー）。
+        // 適用しないと、キャップ下でも center の z11 タイル 1 枚が残ってしまう（追加対応）。
         const outOfJapan =
             pz > WORLD_TEXTURE_MAX_ZOOM &&
             maxZoom > WORLD_TEXTURE_MAX_ZOOM &&

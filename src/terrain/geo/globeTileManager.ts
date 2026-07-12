@@ -98,7 +98,6 @@ const BASE_LAYER_TEXTURE_TINT = new Color3(1, 1, 1);
  * ベースレイヤに低ズーム世界地図テクスチャ（GSI std/photo の z2, 緑主体の世界地図スタイル）を
  * 適用する最小カメラ高度[m]。これ未満（低〜中高度）は海色（BASE_LAYER_OCEAN）のままにする。
  * 低高度・高チルトで地平線際を見ると、grazing で LOD メッシュが投影されない画素に常時表示の
- * base が透け、緑の世界地図が日本詳細地図（白＋等高線）と混在して破綻する（#465）。base の
  * 役割は「背景球（濃紺）の露出防止」の充填であり、低ズーム世界地図の絵を見せることは低〜中高度
  * では不要（可視域は LOD が覆う）。高高度（全球表示）でのみ地図を適用する。しきい値は globeLod の
  * 全球モード境界（`GLOBAL_VIEW_EARTH_ANG_RADIUS`≒高度 1,200km）に揃える。
@@ -109,7 +108,7 @@ const BASE_MAP_MIN_ALT_M = 1_200_000;
  * 標高が視覚的に意味を持つとみなす、固定 minZoom 判定の代替として使うカメラ距離上限 [m]。
  * `globeLod` の SSE 距離累進（`SSE_FALLOFF_RATE`）により、低高度から遠方（例: 東京駅〜富士山
  * 間 ≈100km）を注視すると root zoom が minZoom を下回ることがあるが、この距離帯は実 DEM が
- * あれば地形表現が重要（#457）。東京駅（丸の内）〜富士山山頂の実距離は約100.5km あり、
+ * あれば地形表現が重要である。東京駅（丸の内）〜富士山山頂の実距離は約100.5km あり、
  * これを確実に含むよう 150km（100.5km に対し十分な安全マージンを確保した値）を選んでいる。
  * 全球視点（`GLOBAL_VIEW_EARTH_ANG_RADIUS` 相当、高度 ≳1,200km で発生する distance）には
  * 影響しないよう、全球距離とは一桁近く離れた値に設定する。
@@ -190,7 +189,7 @@ export interface GlobeTileSyncParams {
     /**
      * カメラの真の視錐台6平面。**camera 相対**（原点 = `cameraEcef`、回転のみ・並進なし）で
      * 定義すること（`globeLod.ts` の `GlobeLodOptions.frustumPlanes` 参照。ECEF 原点基準で渡すと
-     * Float32 行列の桁落ちで誤カリングする）。指定時、視錐台外タイルの探索を打ち切る（#463）。
+     * Float32 行列の桁落ちで誤カリングする）。指定時、視錐台外タイルの探索を打ち切る。
      * 省略時は従来通り帯モデル＋地平線カリングのみで判定する。
      */
     frustumPlanes?: readonly FrustumPlane[];
@@ -1195,13 +1194,13 @@ export const createGlobeTileManager = (
             const k = tileKey(t.zoom, t.x, t.y);
             const { gz, gx, gy } = geomCoordOf(t);
             const gk = tileKey(gz, gx, gy);
-            // 遠方の粗 zoom タイルは距離適応でメッシュ分割数を上げ、ロード済み DEM 詳細を活かす（#460）。
+            // 遠方の粗 zoom タイルは距離適応でメッシュ分割数を上げ、ロード済み DEM 詳細を活かす。
             const segs = adaptiveMeshSegments(t.tileSizeMeters, t.zoom, gz, segments);
             const cachedElev = elevCache.get(gk);
             // 標高が視覚的に意味を持つか。固定 minZoom ではなく、カメラ距離も考慮する
             // （`ELEVATION_RELEVANT_MAX_DISTANCE_M` 参照）。`globeLod` の SSE 距離累進で root zoom
             // が minZoom を下回っても、東京駅〜富士山間（≈100.5km）のような近距離では実 DEM があれば
-            // 地形表現を維持したい（#457）。全球視点（distance が極めて大きい）は従来どおり
+            // 地形表現を維持したい。全球視点（distance が極めて大きい）は従来どおり
             // 「標高が視覚的に無意味」として扱う。
             const isElevationRelevant =
                 t.zoom >= minZoom || t.distance <= ELEVATION_RELEVANT_MAX_DISTANCE_M;
@@ -1641,7 +1640,7 @@ export const createGlobeTileManager = (
         }
         // elevRelevantGeom は標高未ロード（elevCache 未登録）でも buildReadyTiles で追加され得るため、
         // elevCache 起点の掃除では取りこぼす。可視タイル（neededGeom）を基準に直接 prune し、セッション
-        // 中の移動で Set が上限なく増え続けないようにする（#472 レビュー対応。loading/failedRetryAt と同型）。
+        // 中の移動で Set が上限なく増え続けないようにする（loading/failedRetryAt と同型）。
         for (const key of elevRelevantGeom) {
             if (!neededGeom.has(key)) elevRelevantGeom.delete(key);
         }

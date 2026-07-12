@@ -20,6 +20,29 @@ describe("checkNoIssueRefs", () => {
             ]);
         });
 
+        it("（#NNN） 全角括弧形式の参照を検知する", () => {
+            const violations = findViolations("// 補足（#456）\n");
+            expect(violations).toEqual([
+                { line: 1, name: "paren-issue-ref", text: "（#456）" },
+            ]);
+        });
+
+        it("全角括弧内で番号の後に説明文が続く参照を検知する", () => {
+            const violations = findViolations(
+                "// 標高ダイレクト参照サンプラ（#435 案A）のユニットテスト\n",
+            );
+            expect(violations).toEqual([
+                { line: 1, name: "paren-issue-ref", text: "（#435 案A）" },
+            ]);
+        });
+
+        it("半角括弧内で複数のIssue番号が並ぶ参照を1件としてまとめて検知する", () => {
+            const violations = findViolations("// 対応 (#298 / #317)\n");
+            expect(violations).toEqual([
+                { line: 1, name: "paren-issue-ref", text: "(#298 / #317)" },
+            ]);
+        });
+
         it("Phase N 形式の参照を検知する", () => {
             const violations = findViolations("// Phase 2 で対応予定\n");
             expect(violations).toEqual([{ line: 1, name: "phase-ref", text: "Phase 2" }]);

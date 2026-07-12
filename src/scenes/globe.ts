@@ -84,13 +84,13 @@ export const GLOBE_SCENE_DEFAULTS = {
     /** チルト[deg]（0=直下, 90=水平）→ pitch。 */
     tilt: 60,
     /**
-     * SSE 採用しきい値 [px]。小さいほど近〜中景でレベルダウン距離が遠くなり高解像度を維持する
-     * （#456）。従来 512(256*2.0) は近中景のレベルダウンが早く体感解像度が低かったため 384(256*1.5)
+     * SSE 採用しきい値 [px]。小さいほど近〜中景でレベルダウン距離が遠くなり高解像度を維持する。
+     * 従来 512(256*2.0) は近中景のレベルダウンが早く体感解像度が低かったため 384(256*1.5)
      * へ引き下げた。遠景（120km〜）は距離累進（SSE_FALLOFF_RATE）と maxTiles 予算が頭打ちにするため
      * 引き下げてもタイル数はほぼ増えず、余剰解像度は近中景へ回る（計測: tilt=60 でも far-field は
      * maxTiles 未達）。320(256*1.25) までは下げず 384 に留めるのは、384 未満だと帯の前方 reach 余白
      * （`globeLod.ts` の fFar）が sse 依存で縮み、高チルト時に地平線側 root 帯へ連続被覆の穴が生じる
-     * ため（#335 連続被覆の不変条件）。
+     * ため（連続被覆の不変条件）。
      */
     sseThreshold: 256 * 1.5,
     /**
@@ -120,7 +120,7 @@ export const GLOBE_SCENE_DEFAULTS = {
      * 全球モードには適用されない。`globeLod.ts` の `GlobeLodOptions.textureQualityFloorZoom`
      * 参照）。地理院タイルは `WORLD_TEXTURE_MAX_ZOOM`（=8）を境にソース画像の解像度が大きく
      * 変わるため、低〜中高度・高チルトで地平線付近を見る際にこの境界を跨いだ混在（見た目の
-     * 破綻）を避ける（#463 フォローアップ）。予算逼迫時は前景優先で地平線側の被覆が狭まる形で
+     * 破綻）を避ける（フォローアップ）。予算逼迫時は前景優先で地平線側の被覆が狭まる形で
      * 吸収される。
      */
     textureQualityFloorZoom: WORLD_TEXTURE_MAX_ZOOM + 1,
@@ -428,7 +428,7 @@ export interface GlobeSceneController {
     getZoomLevel: () => number | undefined;
     /**
      * 外部カメラ（flight FollowCamera 等）の真の視錐台6平面＋ECEF位置を次回 syncTiles に
-     * 反映する（#463）。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
+     * 反映する。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
      */
     setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcef: Vector3 | null) => void;
     dispose: () => void;
@@ -956,7 +956,7 @@ export class GlobeScene {
         const seatLerp = new Vector3();
         // SSE 距離評価の基準標高（中心付近の地形標高）。前 sync の値を次 sync で使う。
         let centerElevation = 0;
-        // 外部カメラ（flight FollowCamera 等）から供給された真の視錐台6平面＋ECEFカメラ位置（#463）。
+        // 外部カメラ（flight FollowCamera 等）から供給された真の視錐台6平面＋ECEFカメラ位置。
         // 非 null の間、通常カメラ（GeospatialCamera）から算出する frustum/cameraEcef の代わりに使う
         // （外部カメラは camera.yaw/pitch と実際の向きが一致しないため、GeospatialCamera 由来では
         //  正しい frustum を作れない）。`attachTileCamera` / 未指定復帰で null に戻す。
@@ -1007,7 +1007,7 @@ export class GlobeScene {
             d: 0,
         }));
         /**
-         * GeospatialCamera の実 view/projection から真の視錐台6平面を求める（#463）。
+         * GeospatialCamera の実 view/projection から真の視錐台6平面を求める。
          * 結果は **camera 相対**（原点 = cameraEcef、回転のみ）で返す（`globeLod.ts` の
          * `GlobeLodOptions.frustumPlanes` 契約）。ECEF 原点基準（eye=真のカメラ位置 ~6.4e6m）の
          * view 行列をそのまま使うと、view*proj 合成やそこからの平面抽出を Babylon の Float32 演算が
@@ -1955,7 +1955,7 @@ export class GlobeScene {
         const syncTiles = (): void => {
             const override = externalFrustumOverride;
             // Follow mode（外部 frustum）では center=機体直下地表・実カメラは水平前方視のため、
-            // center 由来の tilt では前方到達距離が過小になり地平線側が未種付けの穴になる（#475）。
+            // center 由来の tilt では前方到達距離が過小になり地平線側が未種付けの穴になる。
             // 外部 frustum から実視線 forward を導出して LOD の前方到達距離補正に渡す。通常カメラ
             // （override なし）は center が真の注視点なので補正不要＝渡さない（後方互換）。
             let viewForward: Vector3 | undefined;
@@ -1978,7 +1978,7 @@ export class GlobeScene {
                 rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
                 frustumPlanes: override ? override.planes : computeCameraFrustumPlanes(),
                 // 登録済みモデル（avatar等）は注視点と無関係な地点にいる場合があるため、視錐台の
-                // 外でも最粗rootを確保し terrainElevAt/接地が機能するよう保険をかける（#463）。
+                // 外でも最粗rootを確保し terrainElevAt/接地が機能するよう保険をかける。
                 // syncTiles は onBeforeRenderObservable から毎フレーム呼ばれるため、
                 // map().filter().map() の中間配列生成を避け for ループで直接詰める
                 // （レビュー指摘）。
@@ -2332,7 +2332,7 @@ export class GlobeScene {
             setViewMode: (mode: ViewMode) => applyViewModeInternal(mode),
             getZoomLevel,
             // 外部カメラ（flight FollowCamera 等）の真の視錐台6平面＋ECEF位置を次回 syncTiles に
-            // 反映する（#463）。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
+            // 反映する。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
             // 契約は「6平面」なので枚数を検証し、6平面かつ ECEF 位置が揃うときのみ override を
             // 有効化する。6平面以外（空配列・不完全な配列）だと selectGlobeTiles 側で視錐台
             // カリングが暗黙に無効化される／部分平面で誤判定するため、その場合は override を解除する。

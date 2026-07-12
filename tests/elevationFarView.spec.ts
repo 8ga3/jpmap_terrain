@@ -14,7 +14,7 @@ import { test, expect } from "./tileCache.fixture";
  * 補助的な確認として添える（この距離・視点では zoom>=minZoom が選ばれ、後述の制限に
  * 抵触しないため数値検証も機能する）。
  *
- * 距離・azimuth の選定について（#463 対応）: 従来は azimuth=0（真北向き）・距離50kmで、
+ * 距離・azimuth の選定について: 従来は azimuth=0（真北向き）・距離50kmで、
  * 実機で富士山が視界に入ることを確認していたが、これは旧実装（帯モデル＋地平線カリングのみ、
  * 真の視錐台判定なし）が実際の視野より広くタイルをカバーしていたための側面効果だった
  * （真北向きでは富士山は本来の視錐台（水平FOV半角約37°）に対し約69°もズレており、真に
@@ -30,7 +30,7 @@ import { test, expect } from "./tileCache.fixture";
  * `distCapZoom`（「タイル1辺 ≤ カメラ距離」を保証する粗さ下限）により、root zoom が
  * `minZoom`（既定11）から下がる距離のしきい値が存在する（このシナリオでは約25km地点で
  * ちょうど境界に近く、約30km以上では minZoom-1（10）まで下がる）。そのため
- * `globeTileManager.buildReadyTiles` の `t.zoom >= minZoom` 判定（#457 の修正対象）が
+ * `globeTileManager.buildReadyTiles` の `t.zoom >= minZoom` 判定が
  * 及ぼす影響は、この距離では「ロード完了直後の一瞬のフラット表示」を防ぐ程度に限定的で、
  * 静止したスクリーンショット比較では修正前後の差が出ない（`terrainElevAt` は `elevCache` の
  * 生データを直接参照するため、ビルド分岐の変更とは無関係に同じ値を返す）。修正の効果自体は
@@ -68,7 +68,7 @@ const CAMERA_LON = 138.992724;
  * カメラの向き [deg]（0=北, +=東回り、`GeospatialCamera.yaw` の規約 "0 = north,
  * π/2 = east" に準拠）。カメラ→富士山の測地線ベアリング（初期方位角）。
  * 注: `src/demos/avatar-controller/cameraControl.ts` の azimuth 規約はこの「東回り正
- * （時計回り正）」に統一済み（#462 で解消）。
+ * （時計回り正）」に統一済み（表記ゆれ解消済み）。
  */
 const CAMERA_AZIMUTH_TO_FUJI = 285.76;
 
@@ -163,7 +163,7 @@ async function waitForViewerReady(
     );
 }
 
-test("富士山から東南東25km地点から望む地形が海面フラット化せず標高を維持する（#457）", async ({
+test("富士山から東南東25km地点から望む地形が海面フラット化せず標高を維持する", async ({
     page,
 }, testInfo) => {
     test.setTimeout(SCENE_TEST_TIMEOUT_MS);

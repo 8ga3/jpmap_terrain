@@ -55,7 +55,7 @@ describe("formatUtcOffsetLabel", () => {
         );
     });
 
-    it("ほぼ 0 の負値は UTC+0 に正規化する（#370 レビュー対応）", () => {
+    it("ほぼ 0 の負値は UTC+0 に正規化する（境界値レビュー対応）", () => {
         expect(formatUtcOffsetLabel(-1)).toBe("UTC+0");
         expect(formatUtcOffsetLabel(-29999)).toBe("UTC+0");
     });
