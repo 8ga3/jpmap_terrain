@@ -23,6 +23,10 @@ import {
     type ZoomLoopState,
 } from "../src/demos/zoomloop/cameraPath";
 
+/** 大気圏（カルマン線目安）より十分低い/高い高度。位置固定しきい値のテスト用。 */
+const LOW_ALTITUDE = 1_000;
+const HIGH_ALTITUDE = 1_000_000;
+
 const ZOOM_IN: CameraEndpoint = {
     lat: 35.345984,
     lon: 138.732388,
@@ -40,12 +44,39 @@ const ZOOM_OUT: CameraEndpoint = {
 };
 
 describe("interpolatePosition", () => {
-    it("t=0/0.5/1 で始点・中点・終点を返す", () => {
-        const start = { lat: 10, lon: 20 };
-        const end = { lat: 30, lon: 40 };
-        expect(interpolatePosition(start, end, 0)).toEqual({ lat: 10, lon: 20 });
-        expect(interpolatePosition(start, end, 0.5)).toEqual({ lat: 20, lon: 30 });
-        expect(interpolatePosition(start, end, 1)).toEqual({ lat: 30, lon: 40 });
+    const start = { lat: 10, lon: 20 };
+    const end = { lat: 30, lon: 40 };
+
+    it("t=0/1 で始点・終点を返す", () => {
+        const at0 = interpolatePosition(start, end, 0);
+        const at1 = interpolatePosition(start, end, 1);
+        expect(at0.lat).toBeCloseTo(10, 5);
+        expect(at0.lon).toBeCloseTo(20, 5);
+        expect(at1.lat).toBeCloseTo(30, 5);
+        expect(at1.lon).toBeCloseTo(40, 5);
+    });
+
+    it("t=0.5 は大圏（球面上の最短測地線）上の中点になる（緯度経度の単純な算術平均とは異なる）", () => {
+        // クォータニオン補間なので、算術平均 {lat:20, lon:30} ではなく
+        // 大圏上の中点（球面幾何で決まる値）になる。
+        const mid = interpolatePosition(start, end, 0.5);
+        expect(mid.lat).toBeCloseTo(20.282367, 5);
+        expect(mid.lon).toBeCloseTo(29.351653, 5);
+    });
+
+    it("extraTurnsを指定しても t=1 では終点に一致する（丸ごとの周回は最終到達点に影響しない）", () => {
+        const withoutTurns = interpolatePosition(start, end, 1, 0);
+        const withTurns = interpolatePosition(start, end, 1, 2);
+        expect(withTurns.lat).toBeCloseTo(withoutTurns.lat, 6);
+        expect(withTurns.lon).toBeCloseTo(withoutTurns.lon, 6);
+        expect(withoutTurns.lat).toBeCloseTo(30, 5);
+        expect(withoutTurns.lon).toBeCloseTo(40, 5);
+    });
+
+    it("extraTurnsを指定すると途中経過（t=0.5）が周回無しの場合と異なる経路になる", () => {
+        const midWithoutTurns = interpolatePosition(start, end, 0.5, 0);
+        const midWithTurns = interpolatePosition(start, end, 0.5, 1);
+        expect(Math.abs(midWithTurns.lat - midWithoutTurns.lat)).toBeGreaterThan(1);
     });
 });
 
@@ -120,6 +151,35 @@ describe("computeCameraFrame", () => {
         const above = computeCameraFrame(ZOOM_IN, ZOOM_OUT, 2);
         expect(below.lat).toBeCloseTo(ZOOM_IN.lat, 6);
         expect(above.lat).toBeCloseTo(ZOOM_OUT.lat, 6);
+    });
+
+    describe("positionHoldAltitude（位置移動の固定/移動しきい値）", () => {
+        const holdAltitude = 100_000;
+
+        it("ズームアウト（上昇）：しきい値高度に達するまで位置はstartに固定される", () => {
+            const start: CameraEndpoint = { lat: 0, lon: 0, altitude: LOW_ALTITUDE, azimuth: 0, tilt: 0 };
+            const end: CameraEndpoint = { lat: 30, lon: 30, altitude: HIGH_ALTITUDE, azimuth: 0, tilt: 0 };
+            // しきい値高度に達する前（低progress）は位置が動いていないはず。
+            const before = computeCameraFrame(start, end, 0.1, 0, holdAltitude);
+            expect(before.lat).toBeCloseTo(start.lat, 6);
+            expect(before.lon).toBeCloseTo(start.lon, 6);
+            // 十分進んだ後（高progress）は終点付近まで移動しているはず。
+            const after = computeCameraFrame(start, end, 0.99, 0, holdAltitude);
+            expect(after.lat).toBeCloseTo(end.lat, 1);
+            expect(after.lon).toBeCloseTo(end.lon, 1);
+        });
+
+        it("ズームイン（下降）：開始直後から位置が動き、しきい値高度を下回ったらendに固定される", () => {
+            const start: CameraEndpoint = { lat: 0, lon: 0, altitude: HIGH_ALTITUDE, azimuth: 0, tilt: 0 };
+            const end: CameraEndpoint = { lat: 30, lon: 30, altitude: LOW_ALTITUDE, azimuth: 0, tilt: 0 };
+            // 開始直後（低progress）でも位置移動が始まっているはず（startに固定されない）。
+            const early = computeCameraFrame(start, end, 0.05, 0, holdAltitude);
+            expect(Math.abs(early.lat - start.lat)).toBeGreaterThan(0.01);
+            // しきい値高度を下回った後（高progress）は終点に固定されるはず。
+            const after = computeCameraFrame(start, end, 0.99, 0, holdAltitude);
+            expect(after.lat).toBeCloseTo(end.lat, 3);
+            expect(after.lon).toBeCloseTo(end.lon, 3);
+        });
     });
 });
 
