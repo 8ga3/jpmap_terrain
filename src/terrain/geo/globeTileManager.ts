@@ -14,7 +14,7 @@
  */
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { FrustumPlane } from "../visibleTiles";
+import { isAABBInFrustum, type FrustumPlane } from "../visibleTiles";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -36,7 +36,7 @@ import {
 import { stitchTileEdges, type StitchNeighbors } from "../tileStitching";
 import { ecefToGeodetic } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
-import { selectGlobeTiles, tileKey, type GlobeTile } from "./globeLod";
+import { selectGlobeTiles, tileEcefAabb, tileKey, type GlobeTile } from "./globeLod";
 import { selectCoarseEdges, type CoarseEdge } from "./crossLevel";
 import {
     buildGlobeTileMeshData,
@@ -261,8 +261,16 @@ export interface GlobeTileManager {
      * する大量 LOD 切替の実ビルド（Mesh/Geometry/Texture 生成）を複数フレームへ分散し、
      * 1 フレームへの処理集中によるガタつきを防ぐ。キューが空なら何もしないため、
      * `continuous` を使わない既存デモで毎フレーム呼んでもコストはごく小さい。
+     *
+     * `desiredKeys` は `sync`（`syncIntervalFrames` 毎に間引き実行）でしか更新されないため、
+     * 連続カメラ移動中は最大 `syncIntervalFrames` フレーム分、視界外へ移ったタイルのビルドが
+     * 素通りし得る。`freshFrustum`（毎フレーム安価に取得できる真の視錐台6平面。camera 相対、
+     * `GlobeLodOptions.frustumPlanes` と同じ契約）と `cameraEcef` を渡すと、`selectGlobeTiles`
+     * 本体は再実行せずに（そちらは 1 回で数千ノードを辿り得て毎フレームには重すぎる）、
+     * 消化対象タイルだけ AABB で視錐台内かを安価に再チェックし、外れていれば `desiredKeys` の
+     * 更新を待たずに破棄する。省略時は従来どおり `desiredKeys` のみで判定する。
      */
-    drainBuildQueue: () => void;
+    drainBuildQueue: (freshFrustum?: { frustumPlanes: readonly FrustumPlane[]; cameraEcef: Vector3 }) => void;
     /**
      * 緯度経度の地形標高[m]を、ロード済みの最も詳細な geom タイルから bilinear 取得。
      * geomMaxZoom→minZoom を探索し最初に見つかったものを使う（無ければ null）。
@@ -410,6 +418,14 @@ export const createGlobeTileManager = (
     const geomLoadQueue: GeomLoadQueueEntry[] = [];
     /** geom 標高ロードの同時実行数上限（continuous モードのみ適用）。 */
     const GEOM_LOAD_MAX_CONCURRENT = 4;
+    /**
+     * dispose() 済みか。dispose() は in-flight な loadGeomElevation を中断できず、
+     * 後から settle した Promise の finally が activeGeomLoads-- を実行し得る。dispose() で
+     * カウンタを 0 にリセットした後にこれが走ると負数になり、以降 pumpGeomLoadQueue の
+     * while 条件が常に真になって状態が破綻するため、dispose 後は finally 側の
+     * デクリメント・pump を丸ごとスキップする。
+     */
+    let managerDisposed = false;
 
     // --- LOD シームレス遷移（平面版同等） ---
     // LOD 切替で不要になった旧タイルを即破棄せず、新タイルが描画可能になるまで画面に残す。
@@ -602,6 +618,8 @@ export const createGlobeTileManager = (
                 newlyFailed.push(gk);
             })
             .finally(() => {
+                // dispose 後の遅延 settle はカウンタを操作しない（負数化・pump 誤起動を防ぐ）。
+                if (managerDisposed) return;
                 activeGeomLoads--;
                 pumpGeomLoadQueue();
             });
@@ -1417,6 +1435,34 @@ export const createGlobeTileManager = (
         builtEdgeSig.set(k, sig);
     };
 
+    // `drainBuildQueue` の「まだ視界内か」再チェック用スクラッチ（毎回の Vector3 生成を避ける）。
+    const drainAabbScratch = new Vector3();
+
+    /**
+     * 消化直前のジョブについて、渡された（毎フレーム安価に取れる）真の視錐台と現在のカメラ
+     * ECEF から AABB カリングだけを再実行し、まだ視界内と言えるかを判定する。`selectGlobeTiles`
+     * 本体（SSE 判定込みの quadtree 探索、数千ノードを辿り得る）は再実行しない軽量版であり、
+     * 「明らかに視界外へ出た」ケースだけを拾う安全網。root 相当（zoom<=minZoom）のタイルは
+     * `terrainElevAt`/接地判定など画面外からも参照され得るため対象外とする。
+     */
+    const isStillInFreshFrustum = (
+        tile: GlobeTile,
+        freshFrustum: { frustumPlanes: readonly FrustumPlane[]; cameraEcef: Vector3 },
+    ): boolean => {
+        if (tile.zoom <= minZoom) return true;
+        const aabb = tileEcefAabb(tile.zoom, tile.x, tile.y, drainAabbScratch);
+        const { cameraEcef } = freshFrustum;
+        return isAABBInFrustum(
+            aabb.minX - cameraEcef.x,
+            aabb.minY - cameraEcef.y,
+            aabb.minZ - cameraEcef.z,
+            aabb.maxX - cameraEcef.x,
+            aabb.maxY - cameraEcef.y,
+            aabb.maxZ - cameraEcef.z,
+            freshFrustum.frustumPlanes,
+        );
+    };
+
     /**
      * ビルドキューを実測時間予算 `TILE_BUILD_TIME_BUDGET_MS` 内で消化する。`globe.ts` から毎
      * フレーム呼ばれる想定で、重い実ビルドを複数フレームへ分散し、バーストによるガタつきを
@@ -1425,8 +1471,15 @@ export const createGlobeTileManager = (
      * 自動適応する（固定4件/回だと近接ズームでガタつきが残ることを確認したための見直し）。
      * 進捗保証のため最低 1 件は必ず処理し、`TILE_BUILDS_MAX_PER_DRAIN` を安全上限として設ける。
      * 消化時点で可視から外れていた（`desiredKeys` に無い）ジョブは構築せず破棄する。
+     *
+     * `desiredKeys` は `sync`（`syncIntervalFrames` 毎の間引き実行）でしか更新されないため、
+     * 連続カメラ移動中はそれだけでは判定が古びる。`freshFrustum` が渡されれば
+     * `isStillInFreshFrustum` による安価な追加チェックで、視界外へ出たジョブを
+     * `desiredKeys` の更新を待たずに破棄する。
      */
-    const drainBuildQueue = (): void => {
+    const drainBuildQueue = (
+        freshFrustum?: { frustumPlanes: readonly FrustumPlane[]; cameraEcef: Vector3 },
+    ): void => {
         if (pendingBuilds.size === 0) return;
         const start = performance.now();
         let n = 0;
@@ -1441,6 +1494,7 @@ export const createGlobeTileManager = (
             pendingBuilds.delete(k);
             n++;
             if (!desiredKeys.has(k)) continue;
+            if (freshFrustum && !isStillInFreshFrustum(job.tile, freshFrustum)) continue;
             executeBuildJob(k, job);
         }
     };
@@ -1768,6 +1822,7 @@ export const createGlobeTileManager = (
         pendingBuilds.clear();
         geomLoadQueue.length = 0;
         activeGeomLoads = 0;
+        managerDisposed = true;
     };
 
     const getMapType = (): MapType => currentMapType;

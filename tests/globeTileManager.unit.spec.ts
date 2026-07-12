@@ -130,10 +130,17 @@ const tile = (x: number, y: number, zoom = 10, distance = 60000): SelTile => ({
     distance,
 });
 let selectedTiles: SelTile[] = [tile(100, 100)];
-vi.mock("../src/terrain/geo/globeLod", () => ({
-    selectGlobeTiles: vi.fn(() => selectedTiles),
-    tileKey: (z: number, x: number, y: number) => `${z}/${x}/${y}`,
-}));
+vi.mock("../src/terrain/geo/globeLod", async () => {
+    const actual = await vi.importActual(
+        "../src/terrain/geo/globeLod",
+    ) as typeof import("../src/terrain/geo/globeLod");
+    return {
+        selectGlobeTiles: vi.fn(() => selectedTiles),
+        tileKey: (z: number, x: number, y: number) => `${z}/${x}/${y}`,
+        // 実物の座標変換をそのまま使い、drainBuildQueue の「まだ視界内か」再チェックを実座標で検証可能にする。
+        tileEcefAabb: actual.tileEcefAabb,
+    };
+});
 
 // ---- globeMesh スパイ（建築時に渡される geomElev を捕捉して建築標高を検証可能にする） ----
 // 実装（純粋関数）はそのまま動かしつつ、404/all-NaN タイルがどの代表標高で平坦建築されたかを
@@ -1371,6 +1378,71 @@ describe("createGlobeTileManager", () => {
             expect(() => mgr.drainBuildQueue()).not.toThrow();
             expect(MeshMock).toHaveBeenCalledTimes(0);
         });
+
+        // desiredKeys は sync（syncIntervalFrames 毎の間引き実行）でしか更新されないため、連続
+        // カメラ移動中は視界外へ出たジョブが最大 syncIntervalFrames フレーム分そのまま残り得る
+        // （PR レビュー指摘）。drainBuildQueue に毎フレーム安価に取れる真の視錐台6平面と
+        // cameraEcef を渡すと、desiredKeys の更新を待たずに AABB で追加チェックできることを検証する。
+        const allVisibleFrustum = Array.from({ length: 6 }, () => ({
+            normal: { x: 0, y: 0, z: 0 },
+            d: 1,
+        }));
+        const allCulledFrustum = Array.from({ length: 6 }, () => ({
+            normal: { x: 0, y: 0, z: 0 },
+            d: -1,
+        }));
+
+        it("freshFrustum で視界外と判定されたジョブは、desiredKeys がまだ古いままでもビルドせず破棄する", async () => {
+            selectedTiles = [tile(100, 100, 12)]; // minZoom(10) より細かい非 root タイル
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush(); // 標高到着
+
+            mgr.sync({ ...syncParams(), continuous: true }); // pendingBuilds へ積むのみ
+            // desiredKeys は更新済み（このタイルを含む）だが、freshFrustum 側で「視界外」と
+            // 判定されるケースを模す（カメラが素早く回転し、次の sync より前に画面外へ出た想定）。
+            mgr.drainBuildQueue({ frustumPlanes: allCulledFrustum, cameraEcef });
+
+            expect(MeshMock).toHaveBeenCalledTimes(0);
+        });
+
+        it("freshFrustum で視界内と判定されたジョブは、従来通りビルドされる", async () => {
+            selectedTiles = [tile(100, 100, 12)];
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush();
+
+            mgr.sync({ ...syncParams(), continuous: true });
+            mgr.drainBuildQueue({ frustumPlanes: allVisibleFrustum, cameraEcef });
+
+            expect(MeshMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("freshFrustum 省略時は従来通り desiredKeys のみで判定する（後方互換）", async () => {
+            selectedTiles = [tile(100, 100, 12)];
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush();
+
+            mgr.sync({ ...syncParams(), continuous: true });
+            mgr.drainBuildQueue(); // freshFrustum なし
+
+            expect(MeshMock).toHaveBeenCalledTimes(1);
+        });
+
+        it("root 相当タイル（zoom<=minZoom）は freshFrustum が視界外と判定しても対象外とし、通常通りビルドする", async () => {
+            selectedTiles = [tile(100, 100, 10)]; // minZoom と同じ zoom = root 相当
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            await flush();
+
+            mgr.sync({ ...syncParams(), continuous: true });
+            // root 相当タイルは terrainElevAt/接地判定で画面外からも参照され得るため、
+            // freshFrustum による追加カリングの対象外とする。
+            mgr.drainBuildQueue({ frustumPlanes: allCulledFrustum, cameraEcef });
+
+            expect(MeshMock).toHaveBeenCalledTimes(1);
+        });
     });
 
     describe("continuous モード / geom 標高フェッチの同時実行数制限（Japan/GSI タイル同時完了によるガタつき対策）", () => {
@@ -1451,6 +1523,41 @@ describe("createGlobeTileManager", () => {
             // （新たな loadElevationTile 呼び出しが発生しない）。
             resolvers[0](new Float32Array(256 * 256));
             await flush();
+            expect(loadElevationTile).toHaveBeenCalledTimes(4);
+        });
+
+        it("dispose 後に進行中の geom ロードが遅延 settle しても例外を投げず、以後のロードを誤って起動しない", async () => {
+            // dispose() は activeGeomLoads を 0 にリセットし geomLoadQueue をクリアするが、
+            // 既に発行済みの loadElevationTile promise はキャンセルできない。それが dispose 後に
+            // 遅れて settle した際、.finally() のカウンタ操作（activeGeomLoads--）が無条件に走ると
+            // 負数化し、以後 pumpGeomLoadQueue の while 条件が常に真になり得る（PR レビュー指摘）。
+            const resolvers: Array<(v: Float32Array) => void> = [];
+            loadElevationTile.mockImplementation(
+                () => new Promise<Float32Array>((resolve) => { resolvers.push(resolve); }),
+            );
+            selectedTiles = [
+                tile(100, 100, 10),
+                tile(101, 100, 10),
+                tile(102, 100, 10),
+                tile(103, 100, 10),
+                tile(104, 100, 10), // 上限超過で待機キュー行き
+                tile(105, 100, 10), // 同上
+            ];
+            const mgr = makeManager();
+            mgr.sync({ ...syncParams(), continuous: true });
+            expect(loadElevationTile).toHaveBeenCalledTimes(4); // 4件実行中・2件待機
+
+            expect(() => mgr.dispose()).not.toThrow();
+
+            // dispose 後に、進行中だった（キャンセル不可能な）4件のうち複数が遅れて settle する。
+            expect(() => {
+                resolvers[0](new Float32Array(256 * 256));
+                resolvers[1](new Float32Array(256 * 256));
+            }).not.toThrow();
+            await flush();
+
+            // dispose 済みなので、遅延 settle をきっかけに待機キュー（既にクリア済み）から
+            // 繰り上げロードが誤って起動されることはない。
             expect(loadElevationTile).toHaveBeenCalledTimes(4);
         });
     });

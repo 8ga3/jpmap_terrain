@@ -646,7 +646,12 @@ const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
  * 標高範囲は実測ではなく固定上限（日本の最高標高+マージン、平面版 `visibleTiles.ts` と同じ定数）
  * を使う保守的な近似。実測より広め＝カリングは「完全に外側」の場合のみ働く安全側の近似となる。
  */
-const tileEcefAabb = (
+/**
+ * タイルの ECEF AABB（8隅の外接直方体）を返す。`selectGlobeTiles` の視錐台カリングで使うほか、
+ * ビルドキューの消化時点での「まだ視界内か」の軽量な再判定にも流用できる（呼び出し側で
+ * cameraEcef 分の並進を引いてから `isAABBInFrustum` へ渡すこと）。
+ */
+export const tileEcefAabb = (
     zoom: number,
     x: number,
     y: number,
