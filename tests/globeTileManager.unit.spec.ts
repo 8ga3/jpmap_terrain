@@ -542,7 +542,7 @@ describe("createGlobeTileManager", () => {
         expect(baseMat.diffuseTexture).toBeNull();
     });
 
-    it("前景タイルを非ピッカブルにする（内蔵パンとの二重操作=ガタつきを防ぐ, #337）", async () => {
+    it("前景タイルを非ピッカブルにする（内蔵パンとの二重操作=ガタつきを防ぐ）", async () => {
         const mgr = makeManager();
         mgr.sync(syncParams());
         await flush(); // 標高到着
@@ -1130,7 +1130,7 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(100, 3);
     });
 
-    it("未解決 all-NaN タイル上では terrainElevAt が 0m でなく null を返す（代表標高の循環崩壊防止, #339）", async () => {
+    it("未解決 all-NaN タイル上では terrainElevAt が 0m でなく null を返す（代表標高の循環崩壊防止）", async () => {
         const mgr = makeManager();
         // 全タイル全面 no-data（all-NaN）。粗ズーム祖先取得が完了するまで未解決状態が続く。
         loadElevationTile.mockImplementation(() =>
@@ -1192,7 +1192,7 @@ describe("createGlobeTileManager", () => {
         expect(mgr.terrainElevAt(35, 139)).toBeNull();
     });
 
-    it("近距離→遠距離へ移動すると terrainElevAt は再び null を返す（距離ゲートの解除, #459）", async () => {
+    it("近距離→遠距離へ移動すると terrainElevAt は再び null を返す（距離ゲートの解除）", async () => {
         // 一度近距離(<=150km)で採用対象になった gz<minZoom タイルが、カメラが離れて無意味化した
         // 後は採用対象から外れること（elevRelevantGeom の削除経路）を検証する。
         const mgr = makeFarViewManager();

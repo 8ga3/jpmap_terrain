@@ -47,7 +47,7 @@ function computeCameraEcef(centerEcef: Vector3): Vector3 {
     return centerEcef.subtract(lookAt.scale(RADIUS_M)); // center - lookAt * radius
 }
 
-describe("#460 farViewGeomResolution", () => {
+describe("farViewGeomResolution", () => {
     const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, TOKYO_ELEV_M);
     const cameraEcef = computeCameraEcef(centerEcef);
 

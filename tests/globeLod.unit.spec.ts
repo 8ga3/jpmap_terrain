@@ -159,7 +159,7 @@ describe("selectGlobeTiles", () => {
         for (const t of tiles) expect(t.tileSizeMeters).toBeGreaterThan(0);
     });
 
-    describe("視錐台カリング（frustumPlanes, #463）", () => {
+    describe("視錐台カリング（frustumPlanes）", () => {
         // 「normal·p + d < 0 なら外側」の判定式を使い、ECEF スケール(~6.4e6)を無視できる
         // 巨大な d で「常に外側」「常に内側」の半空間を作る（実カメラ幾何は使わず判定式のみ検証）。
         const ALWAYS_OUTSIDE: FrustumPlane[] = Array.from({ length: 6 }, () => ({
@@ -175,7 +175,7 @@ describe("selectGlobeTiles", () => {
             // root（帯モデルが選ぶ traverse 開始点）は SSE がそのまま受容（分割不要）すれば
             // 視錐台が全タイルを外側と判定しても除外されない。root シード自体は距離・FOV に基づく
             // 球面幾何で慎重に到達距離を計算済みで、frustum の AABB 近似より信頼できるため
-            // （地平線際のグレージング角度で誤判定し被覆が縮む回帰を防ぐ、#463 フォローアップ）。
+            // （地平線際のグレージング角度で誤判定し被覆が縮む回帰を防ぐ、フォローアップ）。
             // maxZoom: minZoom を明示し「root がそのまま受容される（分割されない）」前提を固定する
             // （sseThreshold/viewport 設定の変化で意図せず分割される不安定さを避ける, レビュー指摘）。
             const withFrustum = selectGlobeTiles(
@@ -207,7 +207,7 @@ describe("selectGlobeTiles", () => {
             expect(tiles.some((t) => t.zoom === 11 && t.x === p.x && t.y === p.y)).toBe(true);
         });
 
-        it("日本テクスチャ域外の pinnedPoints も、視錐台が全タイル外側で最粗rootが残る（WORLD_TEXTURE_MAX_ZOOM丸め分岐, #463 レビュー指摘）", () => {
+        it("日本テクスチャ域外の pinnedPoints も、視錐台が全タイル外側で最粗rootが残る（WORLD_TEXTURE_MAX_ZOOM丸め分岐, レビュー指摘）", () => {
             // 域外（例: 太平洋 lat=0/lon=-140）は minZoom(11)>WORLD_TEXTURE_MAX_ZOOM(8) のため
             // traverse 開始が WORLD_TEXTURE_MAX_ZOOM へ丸められる分岐に入る。この開始ノードに
             // exempt を渡さないと zoom≠minZoom で pinnedRootKeys 免除も効かず、視錐台外判定で
@@ -516,7 +516,7 @@ describe("selectGlobeTiles", () => {
         expect(Math.min(...lons)).toBeLessThan(CENTER_LON - 0.1);
     });
 
-    it("高チルト＋低高度でも近景の詳細が保たれる（過粗化で潰れない, #335）", () => {
+    it("高チルト＋低高度でも近景の詳細が保たれる（過粗化で潰れない）", () => {
         // nadir を注視点の南 1°（≒111km）・高度 8km＝高チルト(~86°)。遠景は粗く張るが、巨大な
         // 遠景タイルが近景を内包して quadtree 整形で近景を消す「全面潰れ」が起きないこと。
         const tiles = selectGlobeTiles(
@@ -565,7 +565,7 @@ describe("selectGlobeTiles", () => {
         expect(maxNorthKm).toBeGreaterThan(horizonKm * 0.8);
     });
 
-    it("選択結果は正しい quadtree カット（祖先-子孫の重なりがない, #335）", () => {
+    it("選択結果は正しい quadtree カット（祖先-子孫の重なりがない）", () => {
         // 高高度＋チルトで root の zoom が位置ごとに変わり、遷移の継ぎ目で粗タイルと
         // その子孫（細タイル）が二重に重なりやすいケース。整形後は重なりが無いこと。
         const tiles = selectGlobeTiles(
@@ -845,7 +845,7 @@ describe("selectGlobeRootTiles", () => {
         expect(isCovered(seeds, CENTER_LAT, CENTER_LON)).toBe(true);
     });
 
-    it("高高度ほど root ズームが粗くなる（高度適応, #335）", () => {
+    it("高高度ほど root ズームが粗くなる（高度適応）", () => {
         const low = selectGlobeRootTiles(
             baseRoot(geodeticToEcef(CENTER_LAT, CENTER_LON, 60000), { rootZoomFloor: 5 }),
         );
@@ -968,7 +968,7 @@ describe("selectGlobeRootTiles", () => {
         expect(isCovered(seeds, CENTER_LAT, -179.9)).toBe(true);
     });
 
-    it("高チルトで遠景は近景より粗い root ズームになる（距離適応, #335）", () => {
+    it("高チルトで遠景は近景より粗い root ズームになる（距離適応）", () => {
         const seeds = selectGlobeRootTiles(
             baseRoot(geodeticToEcef(CENTER_LAT - 3, CENTER_LON, 60000), {
                 rootZoomFloor: 5,
@@ -1059,7 +1059,7 @@ describe("selectGlobeRootTiles", () => {
         expect(negative).toBe(flat);
     });
 
-    it("高高度キャップは minZoom も超えない（minZoom < z8 でも seed zoom ≤ minZoom, #465続き）", () => {
+    it("高高度キャップは minZoom も超えない（minZoom < z8 でも seed zoom ≤ minZoom）", () => {
         // minZoom=6（< HIGH_ALT_MAX_ZOOM=8）を高高度（300km）で使う。上限が z8 のままだと
         // seed zoom が minZoom を超え、addAt の f=2**(minZoom-zoom) が負指数(f<1)になり得る。
         const seeds = selectGlobeRootTiles(
@@ -1152,7 +1152,7 @@ describe("viewForwardFromFrustumPlanes", () => {
     });
 });
 
-describe("Follow mode 前方到達距離補正（viewForward, #475）", () => {
+describe("Follow mode 前方到達距離補正（viewForward）", () => {
     // Follow mode の幾何: 機体（高度 alt）の後方 radius・上方 height に追従カメラを置き、機体を見る。
     // cameraEcef=追従カメラ位置、center=機体直下地表（本番の flight/index.ts が渡す値）。
     // 追従カメラはほぼ水平前方を向くのに center=直下地表のため、center 由来 tilt では前方到達距離が

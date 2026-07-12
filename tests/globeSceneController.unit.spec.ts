@@ -560,7 +560,7 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
         expect(disposed()).toBe(true);
     });
 
-    it("setSunState(null) は決定的フォールバック日時で太陽を反映する（planar と挙動一致, #370 レビュー対応）", () => {
+    it("setSunState(null) は決定的フォールバック日時で太陽を反映する（planar と挙動一致, レビュー対応）", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const sunLight = (gc as unknown as { sunLight: { direction: Vector3; intensity: number } }).sunLight;
         const hemiLight = (gc as unknown as { hemiLight: { intensity: number } }).hemiLight;

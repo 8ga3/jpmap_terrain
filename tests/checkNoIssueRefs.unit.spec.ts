@@ -43,6 +43,15 @@ describe("checkNoIssueRefs", () => {
             ]);
         });
 
+        it("括弧に直接隣接する全桁数値（hexカラー等）は既知のトレードオフとして検知される", () => {
+            // バッククォート等で区切らずhexカラーを括弧に直接隣接させると、issue番号参照との
+            // 区別がつかないため誤検知し得る（PATTERNS のコメント参照）。この仕様を固定する。
+            const violations = findViolations("// 背景色（#003366）\n");
+            expect(violations).toEqual([
+                { line: 1, name: "paren-issue-ref", text: "（#003366）" },
+            ]);
+        });
+
         it("Phase N 形式の参照を検知する", () => {
             const violations = findViolations("// Phase 2 で対応予定\n");
             expect(violations).toEqual([{ line: 1, name: "phase-ref", text: "Phase 2" }]);

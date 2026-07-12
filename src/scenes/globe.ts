@@ -973,7 +973,7 @@ export class GlobeScene {
             d: 0,
         }));
         // 外部 frustum（Follow mode）から導出する視線 forward の永続コピー先（毎フレームの
-        // Vector3 アロケーションを避ける。#475）。
+        // Vector3 アロケーションを避ける）。
         const externalViewForward = new Vector3();
 
         /** GeospatialCamera の center/yaw/pitch/radius から真の ECEF 位置を復元する。 */
@@ -1012,7 +1012,7 @@ export class GlobeScene {
          * `GlobeLodOptions.frustumPlanes` 契約）。ECEF 原点基準（eye=真のカメラ位置 ~6.4e6m）の
          * view 行列をそのまま使うと、view*proj 合成やそこからの平面抽出を Babylon の Float32 演算が
          * 行う際に巨大並進が桁落ちし、実際に画面内の遠方地物（例: 50km 先の富士山）を「視錐台外」と
-         * 誤判定する（回帰確認済み: #457 elevationFarView.spec.ts で検出）。
+         * 誤判定する（回帰確認済み: elevationFarView.spec.ts で検出）。
          * yaw/pitch から view 行列を独自に再構築する手も検討したが、GeospatialCamera 実体の
          * 向き（up ベクトルの補正等）と厳密には一致せず、境界付近のタイルで実レンダリングと不一致が
          * 生じた（デバッグで実測）。そこで **実 view 行列**（`camera.getViewMatrix()`、回転は

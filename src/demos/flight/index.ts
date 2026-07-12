@@ -1070,7 +1070,7 @@ const start = async (): Promise<void> => {
                 radiusDelta >= TILE_UPDATE_OFFSET_M;
 
             if (meaningful) {
-                // Follow カメラの view/projection → frustum planes（camera 相対、#463）。
+                // Follow カメラの view/projection → frustum planes（camera 相対）。
                 // followCamera.position は真の ECEF 絶対位置（地心 ~6.4e6m スケール）。この並進を
                 // 含んだ view 行列を projection と合成すると、Float32 演算の桁落ちで画面内の地物を
                 // 視錐台外と誤判定する（globe バックエンドで実測確認済み。globeLod.ts の
