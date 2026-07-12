@@ -574,7 +574,7 @@ export const createGlobeTileManager = (
         // 探索は geomMaxZoom（細）から粗へ下り、elevCache に実在する最も細かい gz を採用する。
         // gz >= gateBelowGz は従来どおり常に採用。gz < gateBelowGz（遠景で距離適応 root zoom が minZoom
         // を下回ったタイル）は、buildReadyTiles が距離 <= ELEVATION_RELEVANT_MAX_DISTANCE_M と判定し
-        // elevRelevantGeom に記録したものだけ採用する（#459: 東京駅→富士山 約100.5km/zoom=10 の
+        // elevRelevantGeom に記録したものだけ採用する（東京駅→富士山 約100.5km/zoom=10 の
         // ような近〜中距離で標高を返しつつ、全球視点の超粗タイルで誤った標高を返さない）。
         // 通常時（近景で elevRelevantGeom が空）は gz<gateBelowGz を探索しても必ず skip されるため、
         // 下限を gateBelowGz に切り上げて毎フレーム呼び出しの無駄な toTileXY/tileKey を避ける。

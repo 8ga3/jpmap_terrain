@@ -90,7 +90,7 @@ export interface GlobeLodOptions {
      * カメラの真の視錐台6平面。**camera 相対**（原点 = `cameraEcef`、回転のみ・並進なし）で
      * 定義すること。ECEF 原点基準（ワールド座標そのもの）で構築した平面を渡すと、Babylon の
      * Float32 行列演算が ~6.4e6m の巨大並進を含むことで桁落ちし、実際に画面内の遠方地物を
-     * 「視錐台外」と誤判定する（#463 で発生した回帰。呼び出し側は eye=原点・target=視線方向の
+     * 「視錐台外」と誤判定する（真の視錐台判定導入前の回帰。呼び出し側は eye=原点・target=視線方向の
      * 回転のみの view 行列で平面を作ること。`globe.ts` の `computeCameraFrustumPlanes` 参照）。
      * 指定時、各ノードのAABB（水平フットプリント×標高範囲[0, DEFAULT_MAX_ELEVATION]、
      * cameraEcef 分平行移動して camera 相対化）が完全に視錐台外なら早期除外する
@@ -759,7 +759,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
      * （地平線際のグレージング角度で誤判定しやすい, フォローアップ）より信頼できる。
      * 遠方の root は通常 SSE が「粗いまま受容（分割不要）」を選ぶため、この免除で
      * 地平線際の被覆が frustum 誤判定で縮む回帰を防げる。一方、子孫（SSE 細分化で生じる
-     * より高精細なタイル）には免除を継承しない＝画面外への過剰な精細化（#463 が解消した
+     * より高精細なタイル）には免除を継承しない＝画面外への過剰な精細化（視錐台カリングが解消した
      * 本来の無駄）は引き続き frustum で防ぐ。
      */
     const traverse = (zoom: number, x: number, y: number, exempt = false): void => {
@@ -807,7 +807,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         // 契約（呼び出し側は cameraEcef を原点とみなした frustum を渡す）。ECEF は原点からカメラまで
         // ~6.4e6m の巨大な並進を持ち、これを含む行列を Babylon の Float32 演算で作ると、view*proj の
         // 合成やそこからの平面抽出で桁落ち（catastrophic cancellation）し、実際に画面内の遠方地物
-        // （例: 50km 先の富士山）が「視錐台外」と誤判定される（#463 回帰: 本ファイル参照元
+        // （例: 50km 先の富士山）が「視錐台外」と誤判定される（本ファイル参照元
         // `globe.ts` の zoom-to-cursor 精度ワークアラウンドと同種の精度要因）。そこで AABB 側を
         // ここで cameraEcef 分だけ平行移動（JS 倍精度の単純な減算）してから camera 相対平面へ渡す。
         //
