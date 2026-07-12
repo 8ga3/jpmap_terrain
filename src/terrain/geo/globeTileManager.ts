@@ -414,8 +414,30 @@ export const createGlobeTileManager = (
     }
     /** 同時実行中の geom 標高ロード数。 */
     let activeGeomLoads = 0;
-    /** 同時実行数の上限を超えた継続モードのロード要求を待たせる FIFO キュー。 */
+    /**
+     * 同時実行数の上限を超えた継続モードのロード要求を待たせる FIFO キューの実体。
+     * 先頭からの取り出しは `geomLoadQueueHead` を進めるだけで行い（`Array.shift()` は要素数
+     * 分の詰め直しが発生し、キューが大きいと消化処理全体が O(n^2) になり得るため使わない。
+     * PR レビュー指摘）、末尾への追加は通常の `push`。取り出し側は `dequeueGeomLoad` を使うこと。
+     */
     const geomLoadQueue: GeomLoadQueueEntry[] = [];
+    /** `geomLoadQueue` の先頭インデックス（この位置より前は取り出し済み）。 */
+    let geomLoadQueueHead = 0;
+    /**
+     * `geomLoadQueue` の先頭を O(1) で取り出す（無ければ `undefined`）。取り出し済み領域が
+     * 一定量たまったら配列を詰め直し、メモリが際限なく増え続けるのを防ぐ。
+     */
+    const dequeueGeomLoad = (): GeomLoadQueueEntry | undefined => {
+        if (geomLoadQueueHead >= geomLoadQueue.length) return undefined;
+        const entry = geomLoadQueue[geomLoadQueueHead];
+        geomLoadQueue[geomLoadQueueHead] = undefined as unknown as GeomLoadQueueEntry;
+        geomLoadQueueHead++;
+        if (geomLoadQueueHead > 64 && geomLoadQueueHead * 2 >= geomLoadQueue.length) {
+            geomLoadQueue.splice(0, geomLoadQueueHead);
+            geomLoadQueueHead = 0;
+        }
+        return entry;
+    };
     /** geom 標高ロードの同時実行数上限（continuous モードのみ適用）。 */
     const GEOM_LOAD_MAX_CONCURRENT = 4;
     /**
@@ -628,7 +650,7 @@ export const createGlobeTileManager = (
     /** continuous モードの待機キューから、同時実行数に空きがある分だけ geom ロードを開始する。 */
     const pumpGeomLoadQueue = (): void => {
         while (activeGeomLoads < GEOM_LOAD_MAX_CONCURRENT) {
-            const next = geomLoadQueue.shift();
+            const next = dequeueGeomLoad();
             if (!next) return;
             // 待機中に他経路（loading クリア・dispose・sync の視界外プルーン）で不要化した
             // エントリはロードを起動せず破棄する。
@@ -1821,6 +1843,7 @@ export const createGlobeTileManager = (
         desiredKeys = new Set<string>();
         pendingBuilds.clear();
         geomLoadQueue.length = 0;
+        geomLoadQueueHead = 0;
         activeGeomLoads = 0;
         managerDisposed = true;
     };

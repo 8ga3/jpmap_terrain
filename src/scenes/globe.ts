@@ -2240,10 +2240,19 @@ export class GlobeScene {
             // 遅れて破棄される。真の視錐台6平面の算出（computeCameraFrustumPlanes）は行列演算
             // のみで毎フレーム呼んでも軽いため、camEcef と併せて渡し、キュー消化側で AABB による
             // 安価な追加チェックを行わせる（selectGlobeTiles 本体の再実行は避けたまま鮮度を上げる）。
-            const freshFrustumPlanes = computeCameraFrustumPlanes();
+            // Follow mode（externalFrustumOverride）中は syncTiles と同じく override 側の
+            // frustum/cameraEcef を使う必要がある。desiredKeys は override 基準で計算されて
+            // おり、drain 側だけ実カメラ（GeospatialCamera）基準の frustum で追加カリングすると
+            // 両者の視点がズレて、まだ必要な pendingBuilds を誤って破棄しタイル欠け/ちらつきを
+            // 起こし得るため（レビュー指摘）。
+            const overrideForDrain = externalFrustumOverride;
+            const freshFrustumPlanes = overrideForDrain
+                ? overrideForDrain.planes
+                : computeCameraFrustumPlanes();
+            const freshCameraEcef = overrideForDrain ? overrideForDrain.cameraEcef : camEcef;
             tileManager.drainBuildQueue(
                 freshFrustumPlanes
-                    ? { frustumPlanes: freshFrustumPlanes, cameraEcef: camEcef }
+                    ? { frustumPlanes: freshFrustumPlanes, cameraEcef: freshCameraEcef }
                     : undefined,
             );
             frame++;
