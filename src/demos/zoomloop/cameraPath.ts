@@ -160,8 +160,8 @@ export const advanceZoomLoop = (
     for (let i = 0; i < MAX_ITER; i++) {
         const duration = phaseDurationMs(phase, config);
         if (duration <= 0) {
-            // 長さ 0 のフェーズは即座に次へ（1回だけ進めて無限ループを避ける）。
-            if (elapsedInPhaseMs <= 0) break;
+            // 長さ 0 のフェーズは deltaMs=0 の呼び出しでも必ず1段階進める。
+            // 全フェーズが 0 の異常設定時は MAX_ITER で抜ける。
             phase = nextPhase(phase);
             elapsedInPhaseMs = 0;
             continue;
