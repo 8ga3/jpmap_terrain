@@ -209,6 +209,13 @@ export interface GlobeTileSyncParams {
      * 参照）。Follow mode で center と実視線が乖離する経路の前方到達距離補正に使う。省略時は無効。
      */
     viewForward?: Vector3;
+    /**
+     * ズームループ等、カメラを毎フレーム連続的に動かし続けるシナリオ向けのフラグ（#501）。
+     * `true` の場合、新規/変化タイルの実ビルド（Mesh/Geometry/Texture 生成）を即座に行わず
+     * `pendingBuilds` へ積む。呼び出し側は `drainBuildQueue` を毎フレーム呼んでキューを消化する
+     * こと。省略時（既定）は従来通り `sync` 呼び出し内で同期的に全件ビルドする。
+     */
+    continuous?: boolean;
 }
 
 /** 同期結果の統計。 */
@@ -246,8 +253,16 @@ interface PendingTile {
 }
 
 export interface GlobeTileManager {
-    /** カメラ状態に応じて可視タイルを再選択し、ロード/ビルド/破棄する。 */
+    /** カメラ状態に応じて可視タイルを再選択し、ロード/ビルド判定/破棄する。 */
     sync: (params: GlobeTileSyncParams) => GlobeTileSyncStats;
+    /**
+     * `sync` に `continuous: true` を渡した際に積まれるビルドキューを高々数件だけ消化する
+     * （#501）。`sync` とは独立に**毎フレーム**呼ぶことを想定しており、ズーム速度上昇時に発生
+     * する大量 LOD 切替の実ビルド（Mesh/Geometry/Texture 生成）を複数フレームへ分散し、
+     * 1 フレームへの処理集中によるガタつきを防ぐ。キューが空なら何もしないため、
+     * `continuous` を使わない既存デモで毎フレーム呼んでもコストはごく小さい。
+     */
+    drainBuildQueue: () => void;
     /**
      * 緯度経度の地形標高[m]を、ロード済みの最も詳細な geom タイルから bilinear 取得。
      * geomMaxZoom→minZoom を探索し最初に見つかったものを使う（無ければ null）。
@@ -351,6 +366,50 @@ export const createGlobeTileManager = (
     const newlyFailed: string[] = [];
     // 直近の LOD 選択キー集合（取得完了時に「まだ必要か」を判定するために参照する）。
     let desiredKeys = new Set<string>();
+
+    // --- ビルド予算キュー（#501対策） ---
+    // `buildReadyTiles` は「判定（sig比較・穴埋め・縫合入力の準備）」と「実ビルド（Mesh/Geometry/
+    // Texture生成）」を分離する。判定は毎 sync（`syncIntervalFrames` 毎）で全 tiles に対して行うが
+    // 軽量。実ビルドは重い（GPU リソース生成を伴う）ため、`drainBuildQueue` で 1 回の呼び出しあたり
+    // `TILE_BUILD_TIME_BUDGET_MS` の実測時間予算内だけ処理し、残りは次回以降の呼び出しへ持ち越す。
+    // `globe.ts` はこれを毎フレーム呼ぶことで、ズーム速度上昇時に発生する大量 LOD 切替を
+    // 複数フレームへ分散し、1 フレームに同期処理が集中してガタつくのを防ぐ（#501）。
+    interface BuildJob {
+        tile: GlobeTile;
+        /** 縫合・暫定平坦化まで適用済みの、建築に使う最終標高配列。 */
+        geomElev: Float32Array;
+        segs: number;
+        edges: readonly CoarseEdge[];
+        sig: string;
+    }
+    /** 実ビルド待ちのジョブ（key="z/x/y" → job）。同キー再登録は最新の判定結果で上書きする。 */
+    const pendingBuilds = new Map<string, BuildJob>();
+    /** `drainBuildQueue` 1 回あたりの目標処理時間予算[ms]。フレーム予算(60fps=約16.6ms)の
+     * 一部のみを割り当て、他の描画・更新処理の余地を残す。 */
+    const TILE_BUILD_TIME_BUDGET_MS = 4;
+    /** 予算内でも際限なく処理し続けないための安全上限件数（極端に軽いタイルが大量にある場合の保険）。 */
+    const TILE_BUILDS_MAX_PER_DRAIN = 16;
+
+    // --- geom 標高ロード同時実行数制限（#501対策） ---
+    // 平面版 tileManager.ts の loadTilesInQueue（DEFAULT_MAX_CONCURRENT）と同じ問題が globe 版にもある:
+    // 連続カメラ移動で多数の新規タイルが一度に desired になると、それらの標高フェッチ完了
+    // （デコード・レイヤー合成・穴埋め = decodeGsiElevation / fillHolesFromCoarseDem /
+    // fillInvalidPixels）がほぼ同時に揃い、1 フレームに集中してガタつく。地理院タイルが実配信
+    // されている領域（日本近海）は複数レイヤー合成＋穴埋めが走り重いため、この集中が特に
+    // 顕著に現れる（非対応領域は 404 で即フォールバックし軽いため目立たない）。continuous
+    // モード時のみ、平面版と同じ発想で同時フェッチ数を制限し、完了タイミングを分散させる。
+    interface GeomLoadQueueEntry {
+        gz: number;
+        gx: number;
+        gy: number;
+        gk: string;
+    }
+    /** 同時実行中の geom 標高ロード数。 */
+    let activeGeomLoads = 0;
+    /** 同時実行数の上限を超えた継続モードのロード要求を待たせる FIFO キュー。 */
+    const geomLoadQueue: GeomLoadQueueEntry[] = [];
+    /** geom 標高ロードの同時実行数上限（continuous モードのみ適用）。 */
+    const GEOM_LOAD_MAX_CONCURRENT = 4;
 
     // --- LOD シームレス遷移（平面版同等） ---
     // LOD 切替で不要になった旧タイルを即破棄せず、新タイルが描画可能になるまで画面に残す。
@@ -501,15 +560,12 @@ export const createGlobeTileManager = (
         return null;
     };
 
-    /** 標高取得（geom タイル単位）はキャッシュに溜めるだけ。z16-18 は z15 を共有しデデュプ。 */
-    const loadTile = (t: GlobeTile): void => {
-        const { gz, gx, gy } = geomCoordOf(t);
-        const gk = tileKey(gz, gx, gy);
-        if (elevCache.has(gk) || loading.has(gk)) return;
-        // 過去に失敗していてもバックオフ経過後は再試行する（一時障害からの回復）。
-        const prevFail = failedRetryAt.get(gk);
-        if (prevFail !== undefined && Date.now() < prevFail.retryAt) return;
-        loading.add(gk);
+    /**
+     * geom タイル 1 件分の標高フェッチを開始する（旧 `loadTile` 本体）。完了/失敗のいずれでも
+     * `activeGeomLoads` を解放し、待機キューがあれば次のロードを起動する。
+     */
+    const startGeomLoad = (gz: number, gx: number, gy: number, gk: string): void => {
+        activeGeomLoads++;
         loadGeomElevation(gz, gx, gy)
             .then((elev) => {
                 // dispose() や sync() で loading から外された後の遅延 resolve は無視する
@@ -544,7 +600,46 @@ export const createGlobeTileManager = (
                 });
                 // per-tile では警告せず、sync 時にまとめて間引いて出力する。
                 newlyFailed.push(gk);
+            })
+            .finally(() => {
+                activeGeomLoads--;
+                pumpGeomLoadQueue();
             });
+    };
+
+    /** continuous モードの待機キューから、同時実行数に空きがある分だけ geom ロードを開始する。 */
+    const pumpGeomLoadQueue = (): void => {
+        while (activeGeomLoads < GEOM_LOAD_MAX_CONCURRENT) {
+            const next = geomLoadQueue.shift();
+            if (!next) return;
+            // 待機中に他経路（loading クリア・dispose・sync の視界外プルーン）で不要化した
+            // エントリはロードを起動せず破棄する。
+            if (!loading.has(next.gk)) continue;
+            startGeomLoad(next.gz, next.gx, next.gy, next.gk);
+        }
+    };
+
+    /**
+     * 標高取得（geom タイル単位）はキャッシュに溜めるだけ。z16-18 は z15 を共有しデデュプ。
+     *
+     * `continuous`（#501）時は同時フェッチ数を `GEOM_LOAD_MAX_CONCURRENT` に制限する。連続カメラ
+     * 移動では多数の新規タイルが一度に desired になり得るが、無制限に同時フェッチすると
+     * デコード・穴埋め処理の完了が同一フレームに集中してガタつく（平面版 tileManager.ts の
+     * loadTilesInQueue と同種の対策）。超過分は `geomLoadQueue` に積み、空きが出次第起動する。
+     */
+    const loadTile = (t: GlobeTile, continuous: boolean): void => {
+        const { gz, gx, gy } = geomCoordOf(t);
+        const gk = tileKey(gz, gx, gy);
+        if (elevCache.has(gk) || loading.has(gk)) return;
+        // 過去に失敗していてもバックオフ経過後は再試行する（一時障害からの回復）。
+        const prevFail = failedRetryAt.get(gk);
+        if (prevFail !== undefined && Date.now() < prevFail.retryAt) return;
+        loading.add(gk);
+        if (continuous && activeGeomLoads >= GEOM_LOAD_MAX_CONCURRENT) {
+            geomLoadQueue.push({ gz, gx, gy, gk });
+            return;
+        }
+        startGeomLoad(gz, gx, gy, gk);
     };
 
     /** geom タイル全面を単一標高 v[m] で埋めた Float32Array を生成する（湖面平坦化用）。 */
@@ -1047,8 +1142,15 @@ export const createGlobeTileManager = (
         return { neighbors, sig: present.sort().join(",") };
     };
 
-    /** geom 標高が揃った desired タイルをメッシュ化する。 */
-    const buildReadyTiles = (tiles: readonly GlobeTile[]): void => {
+    /**
+     * geom 標高が揃った desired タイルについて再構築要否を判定する。
+     *
+     * `continuous=false`（既定・従来動作）: 判定後ただちに `executeBuildJob` で実ビルドする
+     * （sync 呼び出し内で同期完了、テスト・既存デモの前提を変えない）。
+     * `continuous=true`（連続カメラアニメーション向け・#501）: 実ビルドを `pendingBuilds` へ
+     * 積み、`drainBuildQueue` が毎フレーム高々数件ずつ消化することでバーストを分散する。
+     */
+    const buildReadyTiles = (tiles: readonly GlobeTile[], continuous: boolean): void => {
         for (const t of tiles) {
             const k = tileKey(t.zoom, t.x, t.y);
             const { gz, gx, gy } = geomCoordOf(t);
@@ -1174,115 +1276,172 @@ export const createGlobeTileManager = (
             // sig 一致（再建築不要）ならコピー＋縫合に入る前に早期スキップする（レビュー指摘）。
             if (existing && builtEdgeSig.get(k) === sig) continue;
 
-            // 再建築が確定したのでここで初めて同一ズーム縫合を適用する（原本 elevCache は非破壊）。
+            // 同一ズーム縫合はここで一度だけ適用する（原本 elevCache は非破壊）。以降このジョブが
+            // 実ビルドされるまでの間、対象 geom タイルの elevCache が更新されても本ジョブの入力は
+            // 変化しない（次の sync で sig 差分が出れば新しいジョブに上書きされ再度この処理を通る）。
             if (stitchNeighbors) {
                 const copy = Float32Array.from(geomElev);
                 stitchTileEdges(copy, stitchNeighbors, TILE_SIZE);
                 geomElev = copy;
             }
 
-            if (existing) {
-                applyGeometry(
-                    existing,
-                    buildGlobeTileMeshData({
-                        zoom: t.zoom, tx: t.x, ty: t.y,
-                        geomElev, geomZoom: gz, geomX: gx, geomY: gy, segments: segs, edges,
-                    }),
-                );
-                builtEdgeSig.set(k, sig);
-                continue;
+            if (continuous) {
+                // 実ビルド（Mesh/Geometry/Texture 生成）は重いため、この場では行わずキューへ積む。
+                // `drainBuildQueue` がフレーム毎に時間予算内だけ処理する（#501）。
+                // 同キー再登録は最新の判定結果（新しい geomElev/edges/sig）で上書きする。
+                pendingBuilds.set(k, { tile: t, geomElev, segs, edges, sig });
+            } else {
+                // 既定（非連続カメラ）: 従来通り即座に実ビルドする。
+                executeBuildJob(k, { tile: t, geomElev, segs, edges, sig });
             }
+        }
+    };
 
-            const data = buildGlobeTileMeshData({
-                zoom: t.zoom,
-                tx: t.x,
-                ty: t.y,
-                geomElev,
-                geomZoom: gz,
-                geomX: gx,
-                geomY: gy,
-                segments: segs,
-                edges,
-            });
+    /**
+     * キューに積まれた1件のビルドジョブを実行し、Mesh/Geometry/Texture を生成・適用する。
+     *
+     * `existing`（既存メッシュの有無）と `hiddenChild`（祖先の pendingRelease 状態）は、
+     * enqueue 時点ではなくここ（実行時点）の最新状態で判定する。enqueue から実行までの間に
+     * pendingRelease からの復帰や新規解放が起こり得るため。
+     */
+    const executeBuildJob = (k: string, job: BuildJob): void => {
+        const { tile: t, geomElev, segs, edges, sig } = job;
+        const { gz, gx, gy } = geomCoordOf(t);
 
-            const mesh = new Mesh(`tile-${k}`, scene);
-            applyGeometry(mesh, data);
-            // 前景タイルも非ピッカブルにする。ピッカブルだと `GeospatialCamera` 内蔵パン
-            // の `scene.pick` がこのメッシュにヒットし、独自パン（scenes/globe.ts の onPointerMove）
-            // と二重にカメラを動かして水平方向にガタつく。基準タイル（base-tile）と挙動を揃える。
-            mesh.isPickable = false;
+        // 実行時点で再度 sig 一致を確認する（enqueue 後に他経路で同キーが同じ内容へ既に
+        // 再構築されていた場合の二重ビルドを防ぐ安全網）。
+        const existing = loaded.get(k);
+        if (existing && builtEdgeSig.get(k) === sig) return;
 
-            // 地理院タイル画像を diffuseTexture として適用（同一 z/x/y）。タイルごとに専有し、
-            // アンロード時に mesh.dispose(_, true) でテクスチャごと破棄する。
-            const mat = new StandardMaterial(`tile-mat-${k}`, scene);
-            mat.specularColor = TILE_SPECULAR;
-            // 巻き順を外向きに揃えたので片面描画。スカート壁は両面三角形で culling 下でも見える。
-            mat.backFaceCulling = true;
-            mesh.material = mat;
-
-            // テクスチャ未ロード中は白色メッシュが見えるので非表示にする。
-            // onLoad / onError 到着時に表示する（背景球が代わりに見える）。
-            mesh.setEnabled(false);
-
-            // 祖先タイルが pendingRelease 中なら、この子タイルは非表示待機として登録する。
-            // テクスチャ onLoad での表示を抑止し、旧粗タイル解放と同時に一斉表示して原子的に
-            // スワップする（レベルの違うタイルの重なりちらつきを防ぐ）。多段 zoom も全祖先を確認。
-            let isHiddenChild = false;
-            for (let az = t.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
-                const diff = t.zoom - az;
-                if (pendingRelease.has(tileKey(az, t.x >> diff, t.y >> diff))) {
-                    isHiddenChild = true;
-                    break;
-                }
-            }
-            if (isHiddenChild) hiddenChildTiles.add(k);
-
-            // GPU テクスチャが確実に生成された onLoad 内で diffuseTexture を設定する
-            // （WebGPU の "null gpu texture bind" を避ける。平面版 tileManager と同様）。
-            // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
-            // 孤立テクスチャを破棄する。ロードは非同期なので、ロード中に setMapType で地図種別が
-            // 変わった場合は、この（旧種別の）テクスチャを適用すると誤表示になる。生成時の種別を
-            // 捕捉し、完了時に currentMapType と一致する場合のみ適用する（不一致なら破棄。描画可能化は
-            // setMapType が起動した再テクスチャ側 onLoad/onError が担う）。
-            const builtFor = currentMapType;
-            const tex = new Texture(
-                textureUrl(currentMapType, t.zoom, t.x, t.y),
-                scene,
-                false,
-                true,
-                Texture.TRILINEAR_SAMPLINGMODE,
-                () => {
-                    if (mesh.isDisposed() || currentMapType !== builtFor) {
-                        tex.dispose();
-                        return;
-                    }
-                    mat.diffuseTexture = tex;
-                    // 描画可能になったことを記録（isAreaCovered / カバー判定で参照）。
-                    readyMeshes.add(mesh);
-                    // 非表示待機中（祖先が pendingRelease 中）の子タイルは表示しない。
-                    if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
-                    // このタイルでカバーされた旧 pending タイルを解放する。
-                    checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
-                },
-                // onError: ロード失敗（404/ネットワーク断等）時は Texture を破棄してリークを防ぐ。
-                // テクスチャなし（白）でもホールより良いので描画可能扱いにする。ただし祖先が
-                // pendingRelease 中の hiddenChild は即表示しない（onLoad と同様）。即表示すると
-                // 親と子が同時に見えて原子スワップ（重なりちらつき防止）が壊れる。readyMeshes に
-                // 登録するのでカバー判定が成立し、enableDescendants 経由でスワップ時に表示される。
-                // 種別不一致（ロード中に setMapType）の場合は再テクスチャ側に委ねる。
-                () => {
-                    tex.dispose();
-                    if (mesh.isDisposed() || currentMapType !== builtFor) return;
-                    readyMeshes.add(mesh);
-                    if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
-                    checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
-                },
+        if (existing) {
+            applyGeometry(
+                existing,
+                buildGlobeTileMeshData({
+                    zoom: t.zoom, tx: t.x, ty: t.y,
+                    geomElev, geomZoom: gz, geomX: gx, geomY: gy, segments: segs, edges,
+                }),
             );
-            tex.wrapU = Texture.CLAMP_ADDRESSMODE;
-            tex.wrapV = Texture.CLAMP_ADDRESSMODE;
-
-            loaded.set(k, mesh);
             builtEdgeSig.set(k, sig);
+            return;
+        }
+
+        const data = buildGlobeTileMeshData({
+            zoom: t.zoom,
+            tx: t.x,
+            ty: t.y,
+            geomElev,
+            geomZoom: gz,
+            geomX: gx,
+            geomY: gy,
+            segments: segs,
+            edges,
+        });
+
+        const mesh = new Mesh(`tile-${k}`, scene);
+        applyGeometry(mesh, data);
+        // 前景タイルも非ピッカブルにする。ピッカブルだと `GeospatialCamera` 内蔵パン
+        // の `scene.pick` がこのメッシュにヒットし、独自パン（scenes/globe.ts の onPointerMove）
+        // と二重にカメラを動かして水平方向にガタつく。基準タイル（base-tile）と挙動を揃える。
+        mesh.isPickable = false;
+
+        // 地理院タイル画像を diffuseTexture として適用（同一 z/x/y）。タイルごとに専有し、
+        // アンロード時に mesh.dispose(_, true) でテクスチャごと破棄する。
+        const mat = new StandardMaterial(`tile-mat-${k}`, scene);
+        mat.specularColor = TILE_SPECULAR;
+        // 巻き順を外向きに揃えたので片面描画。スカート壁は両面三角形で culling 下でも見える。
+        mat.backFaceCulling = true;
+        mesh.material = mat;
+
+        // テクスチャ未ロード中は白色メッシュが見えるので非表示にする。
+        // onLoad / onError 到着時に表示する（背景球が代わりに見える）。
+        mesh.setEnabled(false);
+
+        // 祖先タイルが pendingRelease 中なら、この子タイルは非表示待機として登録する。
+        // テクスチャ onLoad での表示を抑止し、旧粗タイル解放と同時に一斉表示して原子的に
+        // スワップする（レベルの違うタイルの重なりちらつきを防ぐ）。多段 zoom も全祖先を確認。
+        let isHiddenChild = false;
+        for (let az = t.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+            const diff = t.zoom - az;
+            if (pendingRelease.has(tileKey(az, t.x >> diff, t.y >> diff))) {
+                isHiddenChild = true;
+                break;
+            }
+        }
+        if (isHiddenChild) hiddenChildTiles.add(k);
+
+        // GPU テクスチャが確実に生成された onLoad 内で diffuseTexture を設定する
+        // （WebGPU の "null gpu texture bind" を避ける。平面版 tileManager と同様）。
+        // invertY=true は UV（v=1 が北端）の前提に必要。ロード前に mesh が破棄されていれば
+        // 孤立テクスチャを破棄する。ロードは非同期なので、ロード中に setMapType で地図種別が
+        // 変わった場合は、この（旧種別の）テクスチャを適用すると誤表示になる。生成時の種別を
+        // 捕捉し、完了時に currentMapType と一致する場合のみ適用する（不一致なら破棄。描画可能化は
+        // setMapType が起動した再テクスチャ側 onLoad/onError が担う）。
+        const builtFor = currentMapType;
+        const tex = new Texture(
+            textureUrl(currentMapType, t.zoom, t.x, t.y),
+            scene,
+            false,
+            true,
+            Texture.TRILINEAR_SAMPLINGMODE,
+            () => {
+                if (mesh.isDisposed() || currentMapType !== builtFor) {
+                    tex.dispose();
+                    return;
+                }
+                mat.diffuseTexture = tex;
+                // 描画可能になったことを記録（isAreaCovered / カバー判定で参照）。
+                readyMeshes.add(mesh);
+                // 非表示待機中（祖先が pendingRelease 中）の子タイルは表示しない。
+                if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
+                // このタイルでカバーされた旧 pending タイルを解放する。
+                checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
+            },
+            // onError: ロード失敗（404/ネットワーク断等）時は Texture を破棄してリークを防ぐ。
+            // テクスチャなし（白）でもホールより良いので描画可能扱いにする。ただし祖先が
+            // pendingRelease 中の hiddenChild は即表示しない（onLoad と同様）。即表示すると
+            // 親と子が同時に見えて原子スワップ（重なりちらつき防止）が壊れる。readyMeshes に
+            // 登録するのでカバー判定が成立し、enableDescendants 経由でスワップ時に表示される。
+            // 種別不一致（ロード中に setMapType）の場合は再テクスチャ側に委ねる。
+            () => {
+                tex.dispose();
+                if (mesh.isDisposed() || currentMapType !== builtFor) return;
+                readyMeshes.add(mesh);
+                if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
+                checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
+            },
+        );
+        tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+        tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+
+        loaded.set(k, mesh);
+        builtEdgeSig.set(k, sig);
+    };
+
+    /**
+     * ビルドキューを実測時間予算 `TILE_BUILD_TIME_BUDGET_MS` 内で消化する。`globe.ts` から毎
+     * フレーム呼ばれる想定（#501: 重い実ビルドを複数フレームへ分散し、バーストによるガタつきを
+     * 防ぐ）。地表付近（細かい zoom）ほど 1 件あたりの実ビルドコストが増えるため、固定件数では
+     * 予算オーバーを防ぎきれない。実測時間で打ち切ることでタイル複雑度・実行環境の速度差に
+     * 自動適応する（固定4件/回だと近接ズームでガタつきが残ることを確認したための見直し）。
+     * 進捗保証のため最低 1 件は必ず処理し、`TILE_BUILDS_MAX_PER_DRAIN` を安全上限として設ける。
+     * 消化時点で可視から外れていた（`desiredKeys` に無い）ジョブは構築せず破棄する。
+     */
+    const drainBuildQueue = (): void => {
+        if (pendingBuilds.size === 0) return;
+        const start = performance.now();
+        let n = 0;
+        for (const [k, job] of pendingBuilds) {
+            if (
+                n > 0 &&
+                (n >= TILE_BUILDS_MAX_PER_DRAIN ||
+                    performance.now() - start >= TILE_BUILD_TIME_BUDGET_MS)
+            ) {
+                break;
+            }
+            pendingBuilds.delete(k);
+            n++;
+            if (!desiredKeys.has(k)) continue;
+            executeBuildJob(k, job);
         }
     };
 
@@ -1422,10 +1581,11 @@ export const createGlobeTileManager = (
             if (!neededGeom.has(key)) failedRetryAt.delete(key);
         }
         // 新規タイルをロードし、標高が揃ったものを（クロスレベルスナップ付きで）建築。
-        for (const t of tiles) loadTile(t);
+        const continuous = params.continuous === true;
+        for (const t of tiles) loadTile(t, continuous);
         // 隣接が揃った all-NaN タイルを補間してから建築。
         refineAllNaNTiles();
-        buildReadyTiles(tiles);
+        buildReadyTiles(tiles, continuous);
 
         // 新規ロードが発生しない再 sync（同一可視集合での再評価など）では loadTile 経路の
         // checkAndReleaseCoveredTiles が呼ばれず、既に祖先/子孫が揃った pending が
@@ -1605,6 +1765,9 @@ export const createGlobeTileManager = (
         failedRetryAt.clear();
         newlyFailed.length = 0;
         desiredKeys = new Set<string>();
+        pendingBuilds.clear();
+        geomLoadQueue.length = 0;
+        activeGeomLoads = 0;
     };
 
     const getMapType = (): MapType => currentMapType;
@@ -1705,8 +1868,10 @@ export const createGlobeTileManager = (
 
     const isIdle = (): boolean => {
         if (!syncedAtLeastOnce) return false;
-        // 標高ロード中・LOD 遷移の残置タイルがある間は安定とみなさない。
-        if (loading.size > 0 || pendingRelease.size > 0) return false;
+        // 標高ロード中・LOD 遷移の残置タイル・ビルドキュー滞留（#501）がある間は安定とみなさない。
+        // pendingBuilds は既存メッシュのジオメトリ更新（縫合差し替え等）だけを積む場合もあり、
+        // その場合 loaded/readyMeshes の判定だけでは反映前を検知できないため個別にチェックする。
+        if (loading.size > 0 || pendingRelease.size > 0 || pendingBuilds.size > 0) return false;
         // さらに、現在の希望タイル(desiredKeys)がすべて loaded かつテクスチャ適用済み(readyMeshes)で
         // あることを要求する。loading/pendingRelease だけでは、メッシュ生成済みでもテクスチャの
         // onLoad/onError 到達前（白メッシュ）に「安定」と誤判定しうるため（ビジュアル回帰の
@@ -1721,5 +1886,5 @@ export const createGlobeTileManager = (
     // 常時表示の粗いベースレイヤを一度だけ構築する。
     buildBaseLayer();
 
-    return { sync, terrainElevAt, isIdle, getMapType, setMapType, dispose };
+    return { sync, drainBuildQueue, terrainElevAt, isIdle, getMapType, setMapType, dispose };
 };
