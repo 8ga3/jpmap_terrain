@@ -35,6 +35,7 @@ const HTML_ENTRIES = [
     "flight",
     "artillery",
     "geospatial",
+    "zoomloop",
 ];
 
 const input = Object.fromEntries(
