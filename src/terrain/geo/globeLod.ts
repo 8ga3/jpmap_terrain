@@ -664,7 +664,7 @@ export const tileEcefAabb = (
     let maxZ = -Infinity;
     // 8隅（lat×lon×alt の2×2×2）をビット選択の固定回数ループで巡る。selectGlobeTiles の
     // traverse ホットパスで毎回配列リテラル（[latSouth,latNorth]等）を生成しないための対策
-    // （PR #467 レビュー指摘）。
+    // （レビュー指摘）。
     for (let i = 0; i < 8; i++) {
         const lat = i & 1 ? latNorth : latSouth;
         const lon = i & 2 ? lonEast : lonWest;
@@ -756,7 +756,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
      * `exempt=true` は、この呼び出し（root シード自体のみ、子孫には継承しない）で
      * 視錐台カリングを行わない。root シード自体（帯モデルの along-track/lateral 計算）は
      * 距離・FOV に基づく球面幾何で慎重に到達距離を計算済みであり、frustum の AABB 近似
-     * （地平線際のグレージング角度で誤判定しやすい, #463 フォローアップ）より信頼できる。
+     * （地平線際のグレージング角度で誤判定しやすい, フォローアップ）より信頼できる。
      * 遠方の root は通常 SSE が「粗いまま受容（分割不要）」を選ぶため、この免除で
      * 地平線際の被覆が frustum 誤判定で縮む回帰を防げる。一方、子孫（SSE 細分化で生じる
      * より高精細なタイル）には免除を継承しない＝画面外への過剰な精細化（#463 が解消した
@@ -771,7 +771,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
 
         // 距離適応で粗 root と近景 root の継ぎ目が重なる等、複数 root から同一タイルへ
         // 到達し得る。既に受容済みなら結果は変わらないため、地平線/視錐台カリングや距離計算に
-        // 進む前に早期 return して重い計算を避ける（PR #467 レビュー指摘）。
+        // 進む前に早期 return して重い計算を避ける（レビュー指摘）。
         const k = tileKey(zoom, x, y);
         if (acceptedKeys.has(k)) return;
 
@@ -910,7 +910,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     }
 
     // pinned地点（center含む）の最粗rootは帯モデルの被覆と無関係に必ず traverse を開始する
-    // （帯が地平線方向へしか伸びず pinned 地点をそもそも種付けしないケースの保険。#463）。
+    // （帯が地平線方向へしか伸びず pinned 地点をそもそも種付けしないケースの保険）。
     // 既に roots 経由で到達済みなら acceptedKeys の重複排除で吸収される。
     // 開始ノードは roots 側と同様に exempt=true（視錐台カリング免除）で呼ぶ。域外 pinned を
     // WORLD_TEXTURE_MAX_ZOOM へ丸める分岐では zoom≠minZoom となり traverse 内の pinnedRootKeys

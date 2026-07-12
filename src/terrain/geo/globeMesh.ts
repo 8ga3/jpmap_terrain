@@ -42,7 +42,7 @@ const SKIRT_DEPTH_RATIO = 0.05;
 export const ADAPTIVE_SEGMENTS_TARGET_M = 250;
 
 /**
- * 距離適応で引き上げるメッシュ分割数の上限（遠方タイルの頂点数暴発を抑制, #460）。
+ * 距離適応で引き上げるメッシュ分割数の上限（遠方タイルの頂点数暴発を抑制）。
  * zoom=10（最粗の遠方タイル）で到達し、それ以上は DEM(256/tile) の情報量的にも過剰。
  */
 export const ADAPTIVE_SEGMENTS_MAX = 128;
