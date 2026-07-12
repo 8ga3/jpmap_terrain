@@ -2235,8 +2235,17 @@ export class GlobeScene {
             if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
             // 実ビルド（Mesh/Geometry/Texture 生成）を複数フレームへ分散するため、syncTiles の
             // 間引き周期とは独立して毎フレーム消化する。キューが空なら早期 return で
-            // コストはごく小さい。
-            tileManager.drainBuildQueue();
+            // コストはごく小さい。desiredKeys は syncTiles 実行時にしか更新されないため、連続
+            // カメラ移動中は視界外へ出たジョブがそれだけでは最大 syncIntervalFrames フレーム
+            // 遅れて破棄される。真の視錐台6平面の算出（computeCameraFrustumPlanes）は行列演算
+            // のみで毎フレーム呼んでも軽いため、camEcef と併せて渡し、キュー消化側で AABB による
+            // 安価な追加チェックを行わせる（selectGlobeTiles 本体の再実行は避けたまま鮮度を上げる）。
+            const freshFrustumPlanes = computeCameraFrustumPlanes();
+            tileManager.drainBuildQueue(
+                freshFrustumPlanes
+                    ? { frustumPlanes: freshFrustumPlanes, cameraEcef: camEcef }
+                    : undefined,
+            );
             frame++;
         });
 
