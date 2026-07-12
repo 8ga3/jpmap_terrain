@@ -81,12 +81,22 @@ const lockControlPanelExceptPhoto = (): void => {
 
 /**
  * カメラ本体へのポインタ/キーボード/ホイール操作を無効化する。
+ * `activeCamera.detachControl()` は Babylon の ArcRotateCamera 標準入力
+ * （ドラッグ回転・ホイールズーム等）を止めるが、`globe.ts` が canvas に直接
+ * 登録しているポインタ/2本指ジェスチャのハンドラ（yaw/pitch 変更用）や、
+ * `jpmapTerrain.ts` が登録する wheel ハンドラは対象外で残ってしまう。
+ * `canvas.style.pointerEvents = "none"` で canvas 自体を非対話にすることで、
+ * それら独自ハンドラも含めて画面操作を確実に無効化する
+ * （写真ボタン等の UI は canvas 外の別 DOM 要素のため影響を受けない）。
  * `JpmapTerrain` の公開 API には含まれないデバッグアクセサ `__debugScene` 経由で
- * Babylon の `activeCamera.detachControl()` を呼び出す（デモ層に閉じた実装であり、
- * ライブラリ本体の挙動には影響しない）。
+ * 取得する（デモ層に閉じた実装であり、ライブラリ本体の挙動には影響しない）。
  */
 const lockCameraInput = (viewer: JpmapTerrain): void => {
     viewer.__debugScene?.activeCamera?.detachControl();
+    const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
+    if (canvas) {
+        canvas.style.pointerEvents = "none";
+    }
 };
 
 const applyCameraFrame = (viewer: JpmapTerrain, frame: CameraFrame): void => {
@@ -127,6 +137,10 @@ const start = async (): Promise<void> => {
         tilt: ZOOM_IN.tilt,
         mapType: "standard",
         viewMode: "3d",
+        // ドラッグパン・WASD パンは detachControl() では止まらない独自ハンドラのため、
+        // 写真ボタン以外を完全に無効化する要件のためオプションで明示的に無効化する。
+        enablePan: false,
+        enableKeyboardPan: false,
     };
     const viewer = await JpmapTerrain.create(mount, opts);
 
