@@ -420,7 +420,7 @@ describe("setFlatten", () => {
     });
 });
 
-describe("flat + flatScale サイズ一定（#395 Task3 続き）", () => {
+describe("flat + flatScale サイズ一定（追加ケース）", () => {
     it("flat 時は点サイズが高度に依らず pointDiameter*flatScale になる", () => {
         const { mgr } = makeManager();
         mgr.setFlatten(true);

@@ -400,7 +400,7 @@ describe("globe external frustum / tile camera 配線", () => {
         expect(camera.center.z).toBeCloseTo(expected.z, 3);
         // FOLLOW_TILE_BASE_RADIUS_M(2000) * 2^-1 = 1000。
         expect(camera.radius).toBeCloseTo(1000, 6);
-        // 渡された frustumPlanes/cameraPosition を gc.setExternalFrustum へそのまま伝搬する（#463）。
+        // 渡された frustumPlanes/cameraPosition を gc.setExternalFrustum へそのまま伝搬する。
         expect(gc.setExternalFrustum).toHaveBeenCalledWith(
             planes,
             expect.objectContaining({ x: 0, y: 0, z: 0 }),

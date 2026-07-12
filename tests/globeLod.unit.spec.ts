@@ -97,7 +97,7 @@ describe("selectGlobeTiles", () => {
         expect(nearMax).toBeGreaterThan(farMax);
     });
 
-    it("高高度（190km以上）では root/タイル zoom を z8 以下に抑え、さらに高いほど粗くする（#465 フォロー: 無駄な高レベル・被覆欠けを防ぐ）", () => {
+    it("高高度（190km以上）では root/タイル zoom を z8 以下に抑え、さらに高いほど粗くする（無駄な高レベル・被覆欠けを防ぐ）", () => {
         // 本番同様 rootZoomFloor を指定（globe.ts は常に 2 を渡す）。maxZoom=15 でも高高度キャップで
         // z8 以下、かつ距離累進で高度が上がるほど粗くなる（対数的）。
         const at = (alt: number) =>
@@ -188,7 +188,7 @@ describe("selectGlobeTiles", () => {
         it("root が分割（SSE細分化）した先の子タイルには免除が継承されず視錐台カリングされる", () => {
             // 近距離カメラは SSE が「分割が必要」と判定し root から子タイルへ細分化する。
             // 免除は root 呼び出し自体にのみ効き子孫には継承しないため、画面外への過剰な精細化
-            // （#463 が解消した本来の無駄）は引き続き frustum で防げることを確認する。
+            // （視錐台カリングにより解消済みの無駄）は引き続き frustum で防げることを確認する。
             const withFrustum = selectGlobeTiles(
                 baseOpts(3000, { maxZoom: 15, frustumPlanes: ALWAYS_OUTSIDE }),
             );
@@ -245,7 +245,7 @@ describe("selectGlobeTiles", () => {
         });
     });
 
-    describe("textureQualityFloorZoom（#463 フォローアップ: 遠方の低解像度混在を防ぐ）", () => {
+    describe("textureQualityFloorZoom（遠方の低解像度混在を防ぐ）", () => {
         it("指定時、遠方の root zoom が指定値より粗くならない", () => {
             // 高チルト・低高度で地平線付近まで見渡す構図（テクスチャ境界の混在が起きやすい状況）。
             const nadirLat = CENTER_LAT - 0.4; // 高チルト相当。
@@ -281,7 +281,7 @@ describe("selectGlobeTiles", () => {
         });
     });
 
-    describe("高チルト（水平気味）でも可視地表を欠けなく被覆する（#446 地平線カリング）", () => {
+    describe("高チルト（水平気味）でも可視地表を欠けなく被覆する（地平線カリング）", () => {
         // `geodeticToEcef`/`ecefToGeodetic` は WGS84 楕円体（赤道半径 a）基準のため、
         // 地表判定の球近似も平均半径ではなく a に揃える（レビュー指摘: 半径不整合による
         // 交点ズレ・被覆率誤判定の防止）。
@@ -424,7 +424,7 @@ describe("selectGlobeTiles", () => {
         });
     });
 
-    it("全球視点（高高度）は粗タイルで可視キャップ全体を欠けなく被覆する（#335 全球モード）", () => {
+    it("全球視点（高高度）は粗タイルで可視キャップ全体を欠けなく被覆する（全球モード）", () => {
         // 高度 15,000km の直下視＝地球の大部分が見える。視線方向に沿う 1 次元帯では 2 次元キャップを
         // 覆い切れないため全球モード（floorZoom 一様種付け＋タイルサイズ考慮の地平線カリング）に切替。
         const alt = 15_000_000;
@@ -463,7 +463,7 @@ describe("selectGlobeTiles", () => {
         }
     });
 
-    it("高チルトで rootZoomFloor を効かせると遠景がより遠くまで被覆される（#335）", () => {
+    it("高チルトで rootZoomFloor を効かせると遠景がより遠くまで被覆される", () => {
         // nadir を注視点の南 3°（≒333km）に置く＝高チルト。遠景は地平線（~870km）まで広がる。
         const highTiltCam = geodeticToEcef(CENTER_LAT - 3, CENTER_LON, 60000);
         const common = {
@@ -482,7 +482,7 @@ describe("selectGlobeTiles", () => {
         expect(withFloor.some((t) => t.zoom < 11)).toBe(true);
     });
 
-    it("選択結果に重複タイル（z/x/y）がない（#335 デデュプ）", () => {
+    it("選択結果に重複タイル（z/x/y）がない（デデュプ）", () => {
         const tiles = selectGlobeTiles(
             baseOpts(60000, {
                 cameraEcef: geodeticToEcef(CENTER_LAT - 3, CENTER_LON, 60000),
@@ -494,7 +494,7 @@ describe("selectGlobeTiles", () => {
         expect(new Set(keys).size).toBe(keys.length);
     });
 
-    it("チルト時は視錐台の奥（上端＝注視点の先）と左右端まで被覆する（#335 カバレッジ）", () => {
+    it("チルト時は視錐台の奥（上端＝注視点の先）と左右端まで被覆する（カバレッジ）", () => {
         // nadir を注視点の南 0.5°（≒55km）に置く＝チルト ~42°。視錐台は注視点を越えて奥まで、
         // かつ画面幅（左右）に広がる。旧実装は前方 2*dirLen・横 ±固定で奥/両端が欠けていた。
         const nadirLat = CENTER_LAT - 0.5;
@@ -540,7 +540,7 @@ describe("selectGlobeTiles", () => {
         expect(nearFine).toBe(true);
     });
 
-    it("斜め見（grazing 高チルト）でも奥が地平線近くまで被覆される（#335 球面 dFar）", () => {
+    it("斜め見（grazing 高チルト）でも奥が地平線近くまで被覆される（球面 dFar）", () => {
         // nadir を注視点の南 ~0.39°（≒43km）・高度 20km＝tilt ~65°。視錐台上端は地平線近くを
         // 掠めるため、真の可視遠端は平面 h·tan の過小評価ではなく地平線（~500km）付近まで伸びる。
         const nadirLat = CENTER_LAT - 0.39;
@@ -585,7 +585,7 @@ describe("selectGlobeTiles", () => {
         }
     });
 
-    it("低高度・斜め見で nadir↔center が 1 タイル未満でも帯が視線方向を向く（#335 分数方位）", () => {
+    it("低高度・斜め見で nadir↔center が 1 タイル未満でも帯が視線方向を向く（分数方位）", () => {
         // ユーザー報告ケース: radius~11km・tilt67°・az~175° の低高度で、nadir↔center の水平距離が
         // 1 minZoom タイル（~16km）未満。整数タイル方位だと t0==t1 で方向が失われ、帯が軸整列に
         // 落ちて視線（前方＝地平線方向）の地表が欠ける。分数タイル方位で帯が正しく前方を向き、
@@ -633,7 +633,7 @@ describe("selectGlobeTiles", () => {
         }
     });
 
-    it("水平チルトでカメラ直下（nadir）の前景タイルが選択される（#329）", () => {
+    it("水平チルトでカメラ直下（nadir）の前景タイルが選択される", () => {
         // カメラ直下点を注視点の南 ~0.8°（≒88km）に置く＝水平気味のチルト。
         const nadirLat = CENTER_LAT - 0.8;
         const tiles = selectGlobeTiles(
@@ -653,7 +653,7 @@ describe("selectGlobeTiles", () => {
         expect(hasForeground).toBe(true);
     });
 
-    describe("低高度・高チルト・高 DPI で地平線側の被覆が予算超過で欠けない（#470）", () => {
+    describe("低高度・高チルト・高 DPI で地平線側の被覆が予算超過で欠けない", () => {
         // 富士山頂付近をアップ（低高度・高チルト）にすると、近景の細タイルが maxTiles 予算を
         // 食い切り、素朴な「距離昇順 slice」では最遠（地平線側）のタイルが丸ごと捨てられて青の
         // ベースレイヤが露出した（sseThreshold=384 で顕在化。512 では総数が予算未満で露出しなかった）。
@@ -859,7 +859,7 @@ describe("selectGlobeRootTiles", () => {
         expect(isCovered(high, CENTER_LAT, CENTER_LON)).toBe(true);
     });
 
-    it("チルト時は nadir と center の地点を被覆する（#329 帯）", () => {
+    it("チルト時は nadir と center の地点を被覆する（帯）", () => {
         const nadirLat = CENTER_LAT - 0.8;
         const seeds = selectGlobeRootTiles(
             baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000)),
@@ -899,7 +899,7 @@ describe("selectGlobeRootTiles", () => {
         expect(isCovered(seeds, nadirLat, CENTER_LON)).toBe(true);
     });
 
-    it("全球モードで予算が全球枚数に満たなくても nadir/center を最優先で被覆する（#335）", () => {
+    it("全球モードで予算が全球枚数に満たなくても nadir/center を最優先で被覆する", () => {
         // 高度 3,000km は全球モード（地球の見かけ角半径が小さい）。floorZoom=4 だと全球 2^4×2^4=256
         // 枚だが予算は 8 枚しかなく、0 起点ラスタ順では北端/日付変更線側で予算が尽き、視界中央の
         // nadir/center 付近へ到達できない。nadir/center を最優先 seed することで視界中央を被覆する。
@@ -915,7 +915,7 @@ describe("selectGlobeRootTiles", () => {
         expect(isCovered(seeds, CENTER_LAT, CENTER_LON)).toBe(true);
     });
 
-    it("高チルトで nadir→地平線の帯が距離適応 zoom の継ぎ目で途切れず連続被覆する（#335 半刻み歩進）", () => {
+    it("高チルトで nadir→地平線の帯が距離適応 zoom の継ぎ目で途切れず連続被覆する（半刻み歩進）", () => {
         // 高チルト（nadir を注視点の南 ~0.4°, 高度 25km ≒ tilt 65°）で地平線が画面に入る。距離適応で
         // root の zoom が遠方ほど粗くなるが、その遷移の継ぎ目で along-track の global タイルを 1 枚
         // 飛ばすと奥が 1 行欠ける（旧 f-セル歩進の不具合）。nadir から地平線手前まで子午線上を
@@ -1019,7 +1019,7 @@ describe("selectGlobeRootTiles", () => {
         }
     });
 
-    it("高標高の注視点（富士山頂相当）でも前方到達距離が崩壊せず遠方まで種付けする（#465続き）", () => {
+    it("高標高の注視点（富士山頂相当）でも前方到達距離が崩壊せず遠方まで種付けする", () => {
         const DEG = Math.PI / 180;
         const E = 3776; // 富士山頂標高。seat-on-terrain で注視点が山頂に載る状況を模す。
         // グレージング視点（tilt70°）でカメラを山頂相当高度へ持ち上げて配置する。
@@ -1073,7 +1073,7 @@ describe("selectGlobeRootTiles", () => {
     });
 });
 
-describe("viewForwardFromFrustumPlanes（#475）", () => {
+describe("viewForwardFromFrustumPlanes", () => {
     const V_FOV = 0.8;
     const ASPECT = 1920 / 1080;
 
@@ -1156,7 +1156,7 @@ describe("Follow mode 前方到達距離補正（viewForward, #475）", () => {
     // Follow mode の幾何: 機体（高度 alt）の後方 radius・上方 height に追従カメラを置き、機体を見る。
     // cameraEcef=追従カメラ位置、center=機体直下地表（本番の flight/index.ts が渡す値）。
     // 追従カメラはほぼ水平前方を向くのに center=直下地表のため、center 由来 tilt では前方到達距離が
-    // 過小になり地平線側が未種付けの穴になる（#475）。frustum 由来 viewForward で解消する。
+    // 過小になり地平線側が未種付けの穴になる。frustum 由来 viewForward で解消する。
     const V_FOV = 0.8;
     const ASPECT = 1920 / 1080;
     const R = 6371000;

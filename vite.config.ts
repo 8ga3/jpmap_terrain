@@ -126,7 +126,7 @@ export default defineConfig({
                     }
                     return "assets/[name]-[hash][extname]";
                 },
-                // 共有依存（Babylon.js やシェーダー）を分離するチャンク分割 (#298 / #317)。
+                // 共有依存（Babylon.js やシェーダー）を分離するチャンク分割。
                 manualChunks(id) {
                     if (/\/ShadersWGSL\//.test(id)) return "webgpu-shaders";
                     if (/\/Shaders\//.test(id)) return "webgl-shaders";

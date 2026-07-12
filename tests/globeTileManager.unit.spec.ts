@@ -273,7 +273,7 @@ describe("createGlobeTileManager", () => {
         expect(mat0.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
     });
 
-    it("低〜中高度では base に地図テクスチャを適用せず海色のまま（#465 地平線際の緑露出防止）", () => {
+    it("低〜中高度では base に地図テクスチャを適用せず海色のまま（地平線際の緑露出防止）", () => {
         MeshMock.mockClear();
         MaterialMock.mockClear();
         capturedTextures.length = 0;
@@ -297,7 +297,7 @@ describe("createGlobeTileManager", () => {
         expect(baseMat.diffuseColor.r).toBeLessThan(1);
     });
 
-    it("高高度（全球表示）では base に地図テクスチャを適用する（#465）", () => {
+    it("高高度（全球表示）では base に地図テクスチャを適用する", () => {
         MeshMock.mockClear();
         MaterialMock.mockClear();
         capturedTextures.length = 0;
@@ -321,7 +321,7 @@ describe("createGlobeTileManager", () => {
         expect(baseMat.diffuseColor).toEqual({ r: 1, g: 1, b: 1 });
     });
 
-    it("高度が全球境界を跨ぐと base の見た目を地図↔海色へ再適用する（#465 applyBaseAppearance）", () => {
+    it("高度が全球境界を跨ぐと base の見た目を地図↔海色へ再適用する（applyBaseAppearance）", () => {
         MeshMock.mockClear();
         MaterialMock.mockClear();
         capturedTextures.length = 0;
@@ -719,7 +719,7 @@ describe("createGlobeTileManager", () => {
 
     it("zoom < minZoom でも近距離（距離閾値 ELEVATION_RELEVANT_MAX_DISTANCE_M 未満）なら標高ロード完了を待って建築する", async () => {
         // minZoom=10・zoom=9 でも distance=60000（ELEVATION_RELEVANT_MAX_DISTANCE_M=150000 未満）
-        // なら標高が視覚的に意味を持つとみなし、ロード中は建築をスキップする（#457）。
+        // なら標高が視覚的に意味を持つとみなし、ロード中は建築をスキップする。
         selectedTiles = [tile(50, 50, 9, 60_000)];
         const mgr = makeManager();
         mgr.sync(syncParams());
@@ -1159,7 +1159,7 @@ describe("createGlobeTileManager", () => {
             snapEnabled: false,
         });
 
-    it("gz<minZoom でも近距離(<=150km)でロード済みなら terrainElevAt が標高を返す（#459）", async () => {
+    it("gz<minZoom でも近距離(<=150km)でロード済みなら terrainElevAt が標高を返す", async () => {
         // 東京駅→富士山 約100.5km 相当。distCapZoom で root zoom が minZoom(12) を下回り zoom=10 が
         // 選ばれるが、実 DEM はロード完了している。旧実装は探索下限 min(minZoom,geomMaxZoom)=12 の
         // ため gz=10 を探索できず常に null だった。修正後は距離ゲート付きで採用し標高を返す。
@@ -1177,7 +1177,7 @@ describe("createGlobeTileManager", () => {
         expect(elev as number).toBeCloseTo(3000, 3);
     });
 
-    it("gz<minZoom かつ遠距離(>150km)では terrainElevAt が null を返す（#459 の距離ゲート）", async () => {
+    it("gz<minZoom かつ遠距離(>150km)では terrainElevAt が null を返す（距離ゲート）", async () => {
         // 全球視点相当の遠距離。DEM はロードされ elevCache に載るが、標高が視覚的に無意味な距離帯
         // なので elevRelevantGeom に載らず、terrainElevAt は超粗タイルの誤った標高を返さない。
         const mgr = makeFarViewManager();
@@ -1210,7 +1210,7 @@ describe("createGlobeTileManager", () => {
         expect(mgr.terrainElevAt(35, 139)).toBeNull();
     });
 
-    it("minZoom > geomMaxZoom（?zoom=18 等）では gz=geomMaxZoom を距離ゲート無しで返す（#459 レビュー対応）", async () => {
+    it("minZoom > geomMaxZoom（?zoom=18 等）では gz=geomMaxZoom を距離ゲート無しで返す（レビュー対応）", async () => {
         // 最も細かい実タイルは gz=geomMaxZoom(15) で minZoom(18) 未満。これを一律 gz<minZoom として
         // 距離ゲートで弾くと terrainElevAt が常に null になり seat-on-terrain が壊れる。ゲート基準を
         // min(minZoom,geomMaxZoom) にして gz=geomMaxZoom は無条件採用する。遠距離(>150km)で

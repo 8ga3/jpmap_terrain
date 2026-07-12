@@ -31,7 +31,7 @@ const SKIRT_MAX_DEPTH = 1500;
 const SKIRT_DEPTH_RATIO = 0.05;
 
 /**
- * 遠方（粗い zoom）タイルのメッシュ分割数を距離適応で増やす際の目標頂点間隔 [m]（#460）。
+ * 遠方（粗い zoom）タイルのメッシュ分割数を距離適応で増やす際の目標頂点間隔 [m]。
  * メッシュは DEM(256px) を (segments+1) 頂点へサブサンプルするため、既定 segments=32 では遠方の
  * 粗 zoom タイル（例: 東京→富士山 ≈100km で zoom=10, 1辺≈32km）が 1 頂点 ≈1km となり、富士山級の
  * 急峻な独立峰が数頂点に潰れて稜線が失われる。1 辺実距離をこの目標で割った分割数へ引き上げ、
@@ -48,7 +48,7 @@ export const ADAPTIVE_SEGMENTS_TARGET_M = 250;
 export const ADAPTIVE_SEGMENTS_MAX = 128;
 
 /**
- * タイルのメッシュ分割数を距離適応で決める（#460）。目標頂点間隔（`ADAPTIVE_SEGMENTS_TARGET_M`）
+ * タイルのメッシュ分割数を距離適応で決める。目標頂点間隔（`ADAPTIVE_SEGMENTS_TARGET_M`）
  * からタイル 1 辺実距離で分割数を決め、`baseSegments` を下限、DEM 利用可能サンプル数
  * （この描画タイルが覆う geom DEM 範囲 = 256 / 2^(displayZoom-geomZoom)）と `ADAPTIVE_SEGMENTS_MAX`
  * を上限にクランプする。近景の細タイル（displayZoom>geomZoom, z16-18）は avail<=baseSegments と

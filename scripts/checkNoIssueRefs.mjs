@@ -22,7 +22,11 @@ const SELF_EXCLUDE = new Set([
 
 export const PATTERNS = [
     { name: "issue-ref", regex: /\bissue\s*#\d+/gi },
-    { name: "paren-issue-ref", regex: /\(#\d+\)/g },
+    // 半角括弧 `(#123)` だけでなく全角括弧 `（#123）` や、番号の後に
+    // 説明文が続くケース（例: `（#465 applyBaseAppearance）`）も検知する。
+    // 括弧内に別の丸括弧が入れ子になっている場合は範囲を広げすぎないよう、
+    // `[^)）]*` で対象の閉じ括弧以外の文字に限定する。
+    { name: "paren-issue-ref", regex: /[(（]#\d+[^)）]*[)）]/g },
     { name: "phase-ref", regex: /\bphase\s*#?\d+\b/gi },
     { name: "phase-slice-code", regex: /\bp\d+-\d+[a-z]?\b/gi },
     { name: "slice-ref", regex: /\bslice\s*\d+[a-z]?\b/gi },

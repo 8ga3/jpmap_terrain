@@ -373,7 +373,7 @@ const start = async (): Promise<void> => {
     const CANNON_DISTANCE = 750; // 中心からの距離 (m)
 
     /** レイキャストで地形表面の Y 座標（ステージローカル）を取得する。ヒットなしは NaN */
-    // buildCollider のサンプリングは標高ダイレクト参照（#436）が主経路で、本レイキャストは
+    // buildCollider のサンプリングは標高ダイレクト参照が主経路で、本レイキャストは
     // 標高未ロード等で直参照が null を返した頂点のフォールバック専用。とはいえ最悪ケース
     // （全頂点 null）では subdivisions² オーダー（最大 40,401 回）呼ばれうるため、再利用
     // バッファでアロケーション・GC を避ける。
@@ -401,7 +401,7 @@ const start = async (): Promise<void> => {
     const pickToLocalY = (point: Vector3): number =>
         stage.worldToLocal(point, scratchPickLocal).y;
 
-    // 標高ダイレクト参照サンプラ（#435 案A）。レイキャストを使わず terrainElevAt で
+    // 標高ダイレクト参照サンプラ（案A）。レイキャストを使わず terrainElevAt で
     // 地表 Y を引く。標高未ロード等で取得不可な座標では null を返し、呼び出し側で
     // レイキャストへフォールバックする。
     const sampleTerrainYDirect = createDirectTerrainSampler(stage, (lat, lon) =>
