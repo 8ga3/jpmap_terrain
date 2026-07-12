@@ -24,26 +24,26 @@ const DEMO_MOUNT_ID = "root";
 
 /** ズームイン側（プロモーション用に指定された座標: `@35.345984,138.732388,2570,0.35,68.74`）。 */
 const ZOOM_IN: CameraEndpoint = {
-    lat: 35.345984,
-    lon: 138.732388,
-    altitude: 2570,
-    azimuth: 0.35,
-    tilt: 68.74,
+    lat: 35.358152,
+    lon: 138.732405,
+    altitude: 2000,
+    azimuth: 0,
+    tilt: 35,
 };
 
 /** ズームアウト側（プロモーション用に指定された座標: `@33.169094,134.931644,3176946,359.83,41.13`）。 */
 const ZOOM_OUT: CameraEndpoint = {
-    lat: 33.169094,
-    lon: 134.931644,
-    altitude: 3176946,
-    azimuth: 359.83,
-    tilt: 41.13,
+    lat: 35.075275,
+    lon: -96.293408,
+    altitude: 3_177_000,
+    azimuth: 0,
+    tilt: 45,
 };
 
 /** 片道の移動時間 [ms]（Issue指定: およそ60秒）。 */
-const MOVE_DURATION_MS = 60_000;
-/** 両端点での静止時間 [ms]（Issue指定: 3秒）。 */
-const HOLD_DURATION_MS = 3_000;
+const MOVE_DURATION_MS = 120_000;
+/** 両端点での静止時間 [ms]（Issue指定: 2秒）。 */
+const HOLD_DURATION_MS = 2_000;
 
 const LOOP_CONFIG: ZoomLoopConfig = {
     zoomIn: ZOOM_IN,

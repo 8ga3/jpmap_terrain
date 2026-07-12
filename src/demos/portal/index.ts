@@ -31,22 +31,28 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "timelapse",
     },
     {
+        title: "ズームループ",
+        description:
+            "指定した2地点間をカメラがクォータニオンで滑らかに往復ズームし続けるデモ。片道約60秒・両端3秒静止。写真ボタン以外の画面操作は無効です。",
+        href: "zoomloop",
+    },
+    {
         title: "ポリゴン",
         description:
             "PolygonManager 公開 API の動作確認デモ。terrain / absolute / closed の 3 種類のポリラインを表示し、enabled トグルで切替できます。",
         href: "polygon",
     },
     {
-        title: "距離計測",
-        description:
-            "地形クリックで点を追加し、辺ごとの水平距離と高低差を表示するデモ。追加 / 削除 / 編集モードで頂点を動的に編集できます。",
-        href: "distance",
-    },
-    {
         title: "サークル",
         description:
             "CircleManager 公開 API の動作確認デモ。terrain / absolute / カスタムセグメントの 3 種類の円を表示し、enabled や半径・スタイルの動的更新ができます。",
         href: "circle",
+    },
+    {
+        title: "距離計測",
+        description:
+            "地形クリックで点を追加し、辺ごとの水平距離と高低差を表示するデモ。追加 / 削除 / 編集モードで頂点を動的に編集できます。",
+        href: "distance",
     },
     {
         title: "Plan Viewer",
@@ -95,12 +101,6 @@ const DEMO_LIST: readonly DemoEntry[] = [
         description:
             "GeospatialCamera + ECEF 楕円体 + floating origin のグローブ地形コア（GlobeScene）を JpmapTerrain を介さず直接起動する診断デモ。floatingOrigin/LOD/タイル数の表示や ?snap=off 比較など内部状態の実機確認に使います。右ドラッグ=回転 / ホイール=ズーム。",
         href: "geospatial",
-    },
-    {
-        title: "ズームループ（プロモーション用）",
-        description:
-            "指定した2地点間をカメラがクォータニオンで滑らかに往復ズームし続けるデモ。片道約60秒・両端3秒静止。写真ボタン以外の画面操作は無効です。",
-        href: "zoomloop",
     },
 ];
 
