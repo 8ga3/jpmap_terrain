@@ -1,0 +1,47 @@
+name: "月次 TypeScript 互換性リマインダー"
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  remind-typescript-compatibility:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "既存の open issue を確認"
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: "月次確認: TypeScript major upgrade 互換性チェック"
+        run: |
+          existing_count=$(gh issue list \
+            --repo "$REPO" \
+            --state open \
+            --search "in:title \"$TITLE\"" \
+            --json number \
+            --jq 'length')
+
+          if [ "$existing_count" -gt 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "リマインダー issue を作成"
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: "月次確認: TypeScript major upgrade 互換性チェック"
+        run: |
+          gh issue create \
+            --repo "$REPO" \
+            --title "$TITLE" \
+            --body-file .github/issue-templates/monthly-typescript-reminder.md
