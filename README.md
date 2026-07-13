@@ -185,7 +185,7 @@ npm start
 ### エントリポイント
 
 - デモポータル: `src/demos/portal/index.ts`
-- 各デモエントリ: `src/demos/<デモ名>/index.ts`（全15デモの一覧は [デモポータル](#デモポータル) 参照）
+- 各デモエントリ: `src/demos/<デモ名>/index.ts`（portal を除く15デモの一覧は [デモポータル](#デモポータル) 参照）
 - シーン境界契約（インターフェース）: `src/scenes/sceneContract.ts`
 - グローブ地形シーン実装: `src/scenes/globe.ts`
 
@@ -194,7 +194,7 @@ npm start
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、全16件）
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、portal を含め全16件）
 │  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
 │  ├─ terrain/           # 地形・UI 実装
 │  └─ scenes/            # シーン境界契約とグローブ地形シーン実装
