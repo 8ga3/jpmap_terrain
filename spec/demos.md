@@ -3,7 +3,7 @@
 `jpmap_terrain` の開発デモは複数のエントリポイントを持ち、`/`（ポータル）から各デモへ遷移できます。
 本ドキュメントはデモポータルの方針・URL 規約・新規デモの追加手順をまとめます。
 
-## デモ一覧（2026-05 時点）
+## デモ一覧
 
 | デモ | URL | エントリ | 説明 |
 |---|---|---|---|
@@ -11,6 +11,7 @@
 | 3D 地形ビューア | `/viewer.html` | `src/demos/viewer/index.ts` | 既存の 3D 地形可視化（`/@lat,lon` URL ・カメラ・地図種別連動） |
 | タイムラプス | `/timelapse.html` | `src/demos/timelapse/index.ts` | 24 時間を 1 分に圧縮した太陽位置・陰影アニメ＋アナログ時計オーバーレイ |
 | ズームループ | `/zoomloop.html` | `src/demos/zoomloop/index.ts` | 指定した2地点間をカメラがクォータニオンで滑らかに往復ズームし続けるプロモーション用デモ。片道の移動時間・端点静止時間はコード内定数で調整。写真ボタン以外の画面操作（ドラッグ・ホイール・コンパス・ズームボタン・現在地・視点切替）を無効化 |
+| 富士山頂周回 | `/roiorbit.html` | `src/demos/roiorbit/index.ts` | 富士山頂 ROI を中心にカメラが固定半径・時計回りで周回し続けるプロモーション用デモ。半径・高度・角速度はコード内定数で調整。写真ボタン以外の画面操作を無効化 |
 | ポリゴン | `/polygon.html` | `src/demos/polygon/index.ts` | `JpmapTerrain` のポリゴン公開 API（terrain / absolute / closed の 3 種・点編集 API）の動作確認 |
 | サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 |
 | 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` / `onPolygonPoint*` / `edgeLabels` の統合動作確認デモ |
@@ -53,11 +54,12 @@
 
 #### 自前 Nginx / Apache の設定例
 
-`vite.rewrites.ts` の `DEMO_NAMES`（2026-05 時点で以下13件）と対応させる。デモを追加/削除した場合は、この設定例も合わせて更新すること（静的設定ファイルのため自動生成されない）。
+`vite.rewrites.ts` の `DEMO_NAMES` と対応させる。デモを追加/削除した場合は、この設定例も合わせて更新すること（静的設定ファイルのため自動生成されない）。
 
 ```
 viewer, timelapse, polygon, distance, circle, plan, model,
-avatar, avatar-controller, boids, flight, artillery, geospatial
+avatar, avatar-controller, boids, flight, artillery, geospatial,
+zoomloop, roiorbit
 ```
 
 **Nginx**（`server` ブロック内、`root` は `dist/` を指す。Docker上の `nginx:alpine` + 実際の `dist/` で動作確認済み）:
@@ -75,7 +77,7 @@ server {
         # ※ location の正規表現キャプチャ（外側の $1）を rewrite 側でそのまま
         #   参照すると空になるケースがあるため、rewrite 自体に捕捉グループを
         #   持たせる（location / 直下にまとめて置く）。
-        rewrite ^/(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial)(?:/.*)?$ /$1.html last;
+        rewrite ^/(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial|zoomloop|roiorbit)(?:/.*)?$ /$1.html last;
         try_files $uri $uri/ =404;
     }
 }
@@ -92,7 +94,7 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 # デモ識別子付きパス（/viewer, /viewer/@lat,lon,...）を実体HTMLへ書き換える。
 # demoAtPathRewrites（vite.rewrites.ts）と同じデモ名一覧を維持すること。
-RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial)(/.*)?$ /$1.html [L]
+RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial|zoomloop|roiorbit)(/.*)?$ /$1.html [L]
 ```
 
 すぐ試せる Docker 構成（上記 Nginx 設定を組み込んだ `Dockerfile` / `compose.yaml`）を [docker/README.md](../docker/README.md) に用意している。Raspberry Pi 5（arm64）等の自宅サーバーで動かす手順もそちらに記載している。

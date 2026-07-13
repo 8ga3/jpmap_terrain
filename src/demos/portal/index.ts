@@ -37,6 +37,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "zoomloop",
     },
     {
+        title: "富士山頂周回",
+        description:
+            "富士山頂ROIを中心にカメラが時計回りに周回し続けるデモ。写真ボタン以外の画面操作は無効です。",
+        href: "roiorbit",
+    },
+    {
         title: "ポリゴン",
         description:
             "PolygonManager 公開 API の動作確認デモ。terrain / absolute / closed の 3 種類のポリラインを表示し、enabled トグルで切替できます。",

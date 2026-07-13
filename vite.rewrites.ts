@@ -32,6 +32,7 @@ export const DEMO_NAMES = [
     "artillery",
     "geospatial",
     "zoomloop",
+    "roiorbit",
 ] as const;
 
 export const demoAtPathRewrites: DemoRewrite[] = DEMO_NAMES.map((name) => ({

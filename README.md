@@ -79,6 +79,7 @@ npm start
 | 3D 地形ビューア | `/viewer` | 既存の地理院タイル 3D ビューア。緯度経度・カメラ向き・地図種別を URL で指定可能。 |
 | タイムラプス | `/timelapse` | 24 時間を 1 分に圧縮し、太陽位置・陰影をアニメーション表示（アナログ時計オーバーレイ付き）。 |
 | ズームループ | `/zoomloop` | 指定した2地点間をカメラがクォータニオンで滑らかに往復ズームし続けるプロモーション用デモ。写真ボタン以外の画面操作は無効。 |
+| 富士山頂周回 | `/roiorbit` | 富士山頂 ROI を中心にカメラが時計回りに周回し続けるプロモーション用デモ。写真ボタン以外の画面操作は無効。 |
 | ポリゴン | `/polygon` | ポリゴン公開 API（terrain / absolute / closed）の動作確認。 |
 | サークル | `/circle` | サークル公開 API（terrain / absolute / custom-segments）の動作確認。 |
 | 距離計測 | `/distance` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示。 |
@@ -184,7 +185,7 @@ npm start
 ### エントリポイント
 
 - デモポータル: `src/demos/portal/index.ts`
-- 各デモエントリ: `src/demos/<デモ名>/index.ts`（全13デモの一覧は [デモポータル](#デモポータル) 参照）
+- 各デモエントリ: `src/demos/<デモ名>/index.ts`（全15デモの一覧は [デモポータル](#デモポータル) 参照）
 - シーン境界契約（インターフェース）: `src/scenes/sceneContract.ts`
 - グローブ地形シーン実装: `src/scenes/globe.ts`
 
@@ -193,7 +194,7 @@ npm start
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、全13件）
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、全15件）
 │  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
 │  ├─ terrain/           # 地形・UI 実装
 │  └─ scenes/            # シーン境界契約とグローブ地形シーン実装
