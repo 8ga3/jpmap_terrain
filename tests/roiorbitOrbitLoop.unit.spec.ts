@@ -101,4 +101,11 @@ describe("advanceRoiOrbit", () => {
         const next = advanceRoiOrbit(state, 999_999, invalidConfig);
         expect(Number.isFinite(next.elapsedMs)).toBe(true);
     });
+
+    it("角速度が0以下の異常値では周期が定まらないため状態を更新せず固定する", () => {
+        const invalidConfig: RoiOrbitConfig = { ...CONFIG, angularSpeedDegPerSec: 0 };
+        const state: RoiOrbitState = { elapsedMs: 12_345 };
+        const next = advanceRoiOrbit(state, 999_999, invalidConfig);
+        expect(next).toEqual(state);
+    });
 });
