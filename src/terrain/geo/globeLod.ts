@@ -207,9 +207,9 @@ export interface GlobeRootSeedOptions {
 const EARTH_MEAN_RADIUS_M = 6_371_000;
 
 /**
- * dirLen 縮退時に viewForward 方向を推定する際、nadir から実視線方向へ仮に進める距離 [m]。
- * 方位（角度）だけが必要なため大きすぎても小さすぎても問題にならないが、浮動小数点誤差や
- * メルカトル歪みの影響を避けられる程度に十分大きい値を選ぶ。
+ * dirLen 縮退時に viewForward 方向を推定する際、カメラ位置（cameraEcef）から実視線方向へ
+ * 仮に進める距離 [m]。方位（角度）だけが必要なため大きすぎても小さすぎても問題にならないが、
+ * 浮動小数点誤差やメルカトル歪みの影響を避けられる程度に十分大きい値を選ぶ。
  */
 const VIEW_FORWARD_PROBE_M = 50_000;
 
