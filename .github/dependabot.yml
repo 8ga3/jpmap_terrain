@@ -7,13 +7,23 @@ updates:
       day: "monday"
       timezone: "Asia/Tokyo"
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
     groups:
-      # devDependenciesをまとめて1つのPRにする
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+
       dev-dependencies:
         dependency-type: "development"
         patterns:
           - "*"
-      # productionの依存はpatchとminorをグループ化
+        exclude-patterns:
+          - "typescript"
+          - "@typescript-eslint/*"
+
       production-minor-patch:
         dependency-type: "production"
         update-types:
