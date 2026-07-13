@@ -9,6 +9,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: monthly-typescript-reminder
+  cancel-in-progress: false
+
 jobs:
   remind-typescript-compatibility:
     runs-on: ubuntu-latest
@@ -28,6 +32,7 @@ jobs:
             --repo "$REPO" \
             --state open \
             --search "in:title \"$TITLE\"" \
+            --limit 100 \
             --json number \
             --jq 'length')
 
