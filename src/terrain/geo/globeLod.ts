@@ -206,6 +206,13 @@ export interface GlobeRootSeedOptions {
 /** カメラ↔地表点の弦距離の概算に使う WGS84 平均半径 [m]。 */
 const EARTH_MEAN_RADIUS_M = 6_371_000;
 
+/**
+ * dirLen 縮退時に viewForward 方向を推定する際、nadir から実視線方向へ仮に進める距離 [m]。
+ * 方位（角度）だけが必要なため大きすぎても小さすぎても問題にならないが、浮動小数点誤差や
+ * メルカトル歪みの影響を避けられる程度に十分大きい値を選ぶ。
+ */
+const VIEW_FORWARD_PROBE_M = 50_000;
+
 /** z0（zoom 0）のタイル 1 辺の実距離 [m]（緯度 lat）。`tileEdgeMeters(lat,0)`。 */
 const tileEdge0Meters = (lat: number): number => tileEdgeMeters(lat, 0);
 
@@ -377,6 +384,30 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         uy = dy / dirLen;
         px = -uy;
         py = ux;
+    } else if (opts.viewForward) {
+        // center が nadir とほぼ同一地点（呼び出し側が注視点ではなくカメラ直下点相当を渡した
+        // 等）で dirLen が潰れていても、外部視錐台由来の実視線 viewForward があればそれを
+        // 帯の方向として使う。軸整列の固定フォールバックのままだと、周回カメラのように実視線が
+        // 継続的に回転する場合に、実視線と乖離した時間帯で前方（地平線側）タイルが選定されず
+        // 背景の地球楕円体が露出する穴が生じるため。
+        const vf = opts.viewForward;
+        const vfLenSq = vf.lengthSquared();
+        if (Number.isFinite(vfLenSq) && vfLenSq > 1e-12) {
+            const aheadEcef = cameraEcef.add(vf.scale(VIEW_FORWARD_PROBE_M / Math.sqrt(vfLenSq)));
+            const aheadGeo = ecefToGeodetic(aheadEcef);
+            const aheadPix = latLonToPixel(aheadGeo.latDeg, aheadGeo.lonDeg, totalMin);
+            const aheadTile = fracTile(aheadPix.px, aheadPix.py);
+            let vdx = ((((aheadTile.x - t0.x) % n) + n) % n);
+            if (vdx > n / 2) vdx -= n;
+            const vdy = aheadTile.y - t0.y;
+            const vDirLen = Math.hypot(vdx, vdy);
+            if (vDirLen > 1e-6) {
+                ux = vdx / vDirLen;
+                uy = vdy / vDirLen;
+                px = -uy;
+                py = ux;
+            }
+        }
     }
 
     const seeds: RootSeed[] = [];
