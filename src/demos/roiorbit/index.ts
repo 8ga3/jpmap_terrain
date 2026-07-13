@@ -169,7 +169,7 @@ const runRoiOrbit = (viewer: JpmapTerrain, orbitCamera: FreeCamera): void => {
         // （FUJI_SUMMIT、実際にカメラが向いている地点）を渡す。カメラ自身の直下地点を渡すと
         // 地形タイル選定側で「カメラ直下点≒注視点」となり視線方向が定まらず、周回に伴って
         // 回転する実際の視線方向を追従できない固定軸のフォールバックへ落ちて、周回方向によって
-        // 遠景タイルが選定されない（背景の海楕円体が露出し段差に見える）欠落が生じる。
+        // 遠景タイルが選定されない（背景の地球楕円体が露出し段差に見える）欠落が生じる。
         refreshTiles(now, FUJI_SUMMIT.lat, FUJI_SUMMIT.lon);
 
         requestAnimationFrame(step);
