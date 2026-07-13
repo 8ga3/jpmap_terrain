@@ -1071,6 +1071,45 @@ describe("selectGlobeRootTiles", () => {
         expect(seeds.length).toBeGreaterThan(0);
         for (const s of seeds) expect(s.zoom).toBeLessThanOrEqual(6);
     });
+
+    describe("center が nadir とほぼ同一（dirLen≒0）でも viewForward で実視線方向へ帯を伸ばす", () => {
+        // 呼び出し側が「注視点」ではなくカメラ自身の直下地点相当を center に渡してしまうと
+        // （周回カメラのデモ実装が誤って自身の直下地点を渡していたケースを模す）、nadir と
+        // center が一致し dirLen が潰れる。この状態でも frustum 由来の viewForward があれば、
+        // 固定の東西軸ではなく実際の視線の水平方向へ帯を伸ばせることを確認する。
+        const nadirLat = CENTER_LAT;
+        const nadirLon = CENTER_LON;
+        const cam = geodeticToEcef(nadirLat, nadirLon, 3000);
+        const east = new Vector3();
+        const north = new Vector3();
+        geographicTangentBasisToRef(cam, east, north);
+        const farNorthLat = nadirLat + 1.5;
+        const farEastLon = nadirLon + 1.5;
+
+        it("viewForward=北向きなら北側は被覆され、遠い東側は被覆されない", () => {
+            const seeds = selectGlobeRootTiles(
+                baseRoot(cam, {
+                    centerLat: nadirLat,
+                    centerLon: nadirLon,
+                    viewForward: north,
+                    rootZoomFloor: 6,
+                }),
+            );
+            expect(isCovered(seeds, farNorthLat, nadirLon)).toBe(true);
+            expect(isCovered(seeds, nadirLat, farEastLon)).toBe(false);
+        });
+
+        it("viewForward 省略時は固定軸（東西）フォールバックのため、遠い北側は被覆されない", () => {
+            const seeds = selectGlobeRootTiles(
+                baseRoot(cam, {
+                    centerLat: nadirLat,
+                    centerLon: nadirLon,
+                    rootZoomFloor: 6,
+                }),
+            );
+            expect(isCovered(seeds, farNorthLat, nadirLon)).toBe(false);
+        });
+    });
 });
 
 describe("viewForwardFromFrustumPlanes", () => {

@@ -109,7 +109,11 @@ const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamer
     let lastRefreshMs = 0;
     let inFlight = false;
 
-    return (nowMs: number, lat: number, lon: number): void => {
+    // centerLat/centerLon はカメラの直下地点ではなく、カメラが実際に向いている注視点
+    // （地形タイル選定の LOD 基準点）を渡すこと。カメラ直下地点を渡すと、内部のタイル
+    // 選定でカメラ直下点と注視点がほぼ一致してしまい、視線方向が定まらず遠景タイルの
+    // 選定に穴が生じる。
+    return (nowMs: number, centerLat: number, centerLon: number): void => {
         if (inFlight || nowMs - lastRefreshMs < TILE_REFRESH_INTERVAL_MS) return;
         lastRefreshMs = nowMs;
 
@@ -135,8 +139,8 @@ const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamer
         inFlight = true;
         void viewer
             .refreshTerrainWithExternalFrustum(
-                lat,
-                lon,
+                centerLat,
+                centerLon,
                 frustumPlanesResult,
                 cameraPositionResult,
                 0,
@@ -161,7 +165,12 @@ const runRoiOrbit = (viewer: JpmapTerrain, orbitCamera: FreeCamera): void => {
         const { lat, lon } = cameraPositionForRoiOrbit(state, ORBIT_CONFIG);
         updateOrbitCameraPose(orbitCamera, lat, lon);
         viewer.setExternalCompassDegrees(headingForRoiOrbit(state, ORBIT_CONFIG));
-        refreshTiles(now, lat, lon);
+        // タイル LOD の「注視点」には周回カメラ自身の直下地点ではなく ROI 中心
+        // （FUJI_SUMMIT、実際にカメラが向いている地点）を渡す。カメラ自身の直下地点を渡すと
+        // 地形タイル選定側で「カメラ直下点≒注視点」となり視線方向が定まらず、周回に伴って
+        // 回転する実際の視線方向を追従できない固定軸のフォールバックへ落ちて、周回方向によって
+        // 遠景タイルが選定されない（背景の海楕円体が露出し段差に見える）欠落が生じる。
+        refreshTiles(now, FUJI_SUMMIT.lat, FUJI_SUMMIT.lon);
 
         requestAnimationFrame(step);
     };
