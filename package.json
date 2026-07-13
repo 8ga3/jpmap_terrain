@@ -1,6 +1,6 @@
 {
   "name": "jpmap-terrain",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Terrain creation from elevation tiles of the Geospatial Information Authority of Japan.",
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",

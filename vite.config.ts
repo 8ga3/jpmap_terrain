@@ -1,6 +1,15 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import { demoRewritePlugin } from "./vite.rewrites";
+
+/**
+ * `package.json` の `version` をビルド時定数 `__APP_VERSION__` として埋め込むために読み込む。
+ * TS の JSON module 解決設定を増やさないよう、`fs` 経由で読み込む。
+ */
+const { version: APP_VERSION } = JSON.parse(
+    readFileSync(resolve(__dirname, "package.json"), "utf-8"),
+) as { version: string };
 
 /**
  * Vite 設定。
@@ -51,6 +60,11 @@ const ASSET_INLINE_LIMIT = 8192;
 
 export default defineConfig({
     base: "/",
+    // デモポータルのフッターにビルド時のバージョンを埋め込むためのグローバル定数。
+    // 型は `src/global.d.ts` の `declare const __APP_VERSION__` を参照。
+    define: {
+        __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
     // エントリ HTML は public/ に集約する（ルート直下を散らかさない）。
     root: PAGES_DIR,
     // 静的配信専用ディレクトリは使わない（アセットは import 経由でバンドルする）。

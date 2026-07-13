@@ -193,6 +193,7 @@ export const buildPortalHtml = (
         '<footer>',
         renderAttributions(attributions),
         '<p class="source">Source: <a href="https://github.com/8ga3/jpmap_terrain">github.com/8ga3/jpmap_terrain</a></p>',
+        `<p class="version">v${escapeHtml(__APP_VERSION__)}</p>`,
         '</footer>',
     ].join("");
 

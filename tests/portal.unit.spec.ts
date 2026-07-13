@@ -58,6 +58,11 @@ describe("buildPortalHtml", () => {
         );
     });
 
+    it("フッターにビルド時のバージョンを表示する", () => {
+        const html = buildPortalHtml();
+        expect(html).toContain(`<p class="version">v${__APP_VERSION__}</p>`);
+    });
+
     it("出典中の URL をリンク化する", () => {
         const html = buildPortalHtml();
         expect(html).toContain(
