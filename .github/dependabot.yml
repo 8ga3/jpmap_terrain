@@ -21,7 +21,6 @@ updates:
         patterns:
           - "*"
         exclude-patterns:
-          - "typescript"
           - "@typescript-eslint/*"
 
       production-minor-patch:
