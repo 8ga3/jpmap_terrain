@@ -194,7 +194,7 @@ npm start
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、全15件）
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、全16件）
 │  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
 │  ├─ terrain/           # 地形・UI 実装
 │  └─ scenes/            # シーン境界契約とグローブ地形シーン実装

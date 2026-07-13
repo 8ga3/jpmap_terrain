@@ -73,7 +73,15 @@ const resolveEngine = (search: string): EngineType | undefined => {
 const targetEcef = new Vector3();
 const cameraEcef = new Vector3();
 const rawFrustumPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+const frustumViewOnly = new Matrix();
 const frustumTransform = new Matrix();
+// refreshTerrainWithExternalFrustum への引数バッファ（呼び出し先の setExternalFrustum が
+// 即座に永続バッファへコピーするため、同じ参照を毎回 in-place 更新して再利用してよい契約
+// になっている。globe.ts の computeCameraFrustumPlanes と同方針で map() による配列＋
+// オブジェクト再生成を避ける）。
+const frustumPlanesResult: { normal: { x: number; y: number; z: number }; d: number }[] =
+    Array.from({ length: 6 }, () => ({ normal: { x: 0, y: 0, z: 0 }, d: 0 }));
+const cameraPositionResult = { x: 0, y: 0, z: 0 };
 
 /**
  * 周回カメラ（FreeCamera）を ROI 周回位置に合わせて配置する。
@@ -81,7 +89,9 @@ const frustumTransform = new Matrix();
  * （方位角・チルトは Babylon 側の自動計算に任せ、本デモでは算出しない）。
  */
 const updateOrbitCameraPose = (orbitCamera: FreeCamera, lat: number, lon: number): void => {
-    geodeticToEcefToRef(lat, lon, CAMERA_ALTITUDE_M, cameraEcef);
+    // 高度は ORBIT_CONFIG.cameraAltitudeM を正本として参照する（CAMERA_ALTITUDE_M 定数との
+    // 二重管理を避ける）。
+    geodeticToEcefToRef(lat, lon, ORBIT_CONFIG.cameraAltitudeM, cameraEcef);
     orbitCamera.position.copyFrom(cameraEcef);
     // 地心 up を上方向にすることで水平線のロールを防ぐ（flight デモの Follow モードと同じ方針）。
     orbitCamera.upVector.copyFrom(cameraEcef).normalize();
@@ -106,24 +116,31 @@ const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamer
         // 外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま
         // projection と合成すると Float32 演算の桁落ちが起きるため、並進行を 0 にした
         // 「camera 相対（回転のみ）」の行列で frustum 平面を作る（spec/package.md 3.3.14.2 参照）。
-        const viewMat = orbitCamera.getViewMatrix().clone();
-        viewMat.setRowFromFloats(3, 0, 0, 0, 1);
-        const projMat = orbitCamera.getProjectionMatrix();
-        viewMat.multiplyToRef(projMat, frustumTransform);
+        frustumViewOnly.copyFrom(orbitCamera.getViewMatrix());
+        frustumViewOnly.setRowFromFloats(3, 0, 0, 0, 1);
+        frustumViewOnly.multiplyToRef(orbitCamera.getProjectionMatrix(), frustumTransform);
         Frustum.GetPlanesToRef(frustumTransform, rawFrustumPlanes);
-        const frustumPlanes = rawFrustumPlanes.map((p) => ({
-            normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
-            d: p.d,
-        }));
-        const cameraPosition = {
-            x: orbitCamera.position.x,
-            y: orbitCamera.position.y,
-            z: orbitCamera.position.z,
-        };
+        for (let i = 0; i < 6; i++) {
+            const src = rawFrustumPlanes[i];
+            const dst = frustumPlanesResult[i];
+            dst.normal.x = src.normal.x;
+            dst.normal.y = src.normal.y;
+            dst.normal.z = src.normal.z;
+            dst.d = src.d;
+        }
+        cameraPositionResult.x = orbitCamera.position.x;
+        cameraPositionResult.y = orbitCamera.position.y;
+        cameraPositionResult.z = orbitCamera.position.z;
 
         inFlight = true;
         void viewer
-            .refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition, 0)
+            .refreshTerrainWithExternalFrustum(
+                lat,
+                lon,
+                frustumPlanesResult,
+                cameraPositionResult,
+                0,
+            )
             .finally(() => {
                 inFlight = false;
             });
