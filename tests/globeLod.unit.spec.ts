@@ -1080,9 +1080,8 @@ describe("selectGlobeRootTiles", () => {
         const nadirLat = CENTER_LAT;
         const nadirLon = CENTER_LON;
         const cam = geodeticToEcef(nadirLat, nadirLon, 3000);
-        const east = new Vector3();
         const north = new Vector3();
-        geographicTangentBasisToRef(cam, east, north);
+        geographicTangentBasisToRef(cam, new Vector3(), north);
         const farNorthLat = nadirLat + 1.5;
         const farEastLon = nadirLon + 1.5;
 
