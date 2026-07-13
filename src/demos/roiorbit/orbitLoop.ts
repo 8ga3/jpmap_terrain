@@ -55,6 +55,10 @@ const cyclePeriodMs = (config: RoiOrbitConfig): number =>
  * 経過時間 `deltaMs` を進めて周回ステートマシンの状態を更新する。
  * 1周期分の `elapsedMs` を剰余で差し引き、長時間実行してもフレームごとの
  * `elapsedMs` が無限に増加しないようにする（浮動小数点誤差対策）。
+ * 角速度が0以下（異常値）の場合は周期が定まらないため状態を更新せず固定する
+ * （`cameraPositionForRoiOrbit` 等が角度0に固定して扱うため、elapsedMs を
+ * 進めても意味がなく、`RoiOrbitState.elapsedMs` の「無限には増加しない」
+ * という仕様と矛盾しないようにする）。
  */
 export const advanceRoiOrbit = (
     state: RoiOrbitState,
@@ -62,10 +66,10 @@ export const advanceRoiOrbit = (
     config: RoiOrbitConfig,
 ): RoiOrbitState => {
     const period = cyclePeriodMs(config);
-    let elapsedMs = state.elapsedMs + Math.max(0, deltaMs);
-    if (Number.isFinite(period) && period > 0) {
-        elapsedMs %= period;
+    if (!Number.isFinite(period) || period <= 0) {
+        return state;
     }
+    const elapsedMs = (state.elapsedMs + Math.max(0, deltaMs)) % period;
     return { elapsedMs };
 };
 
