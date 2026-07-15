@@ -1,4 +1,4 @@
-import { defineConfig } from "tsup";
+import { defineConfig } from "tsdown";
 
 export default defineConfig({
     entry: { index: "src/lib.ts" },
@@ -8,7 +8,8 @@ export default defineConfig({
     clean: true,
     target: "es2021",
     outDir: "dist",
-    outExtension: () => ({ js: ".mjs" }),
-    external: [/^@babylonjs\//],
+    deps: {
+        neverBundle: [/^@babylonjs\//],
+    },
     tsconfig: "./tsconfig.lib.json",
 });

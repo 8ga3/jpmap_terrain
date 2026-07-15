@@ -2,31 +2,59 @@
   "name": "jpmap-terrain",
   "version": "0.2.2",
   "description": "Terrain creation from elevation tiles of the Geospatial Information Authority of Japan.",
-  "main": "./dist/index.mjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
+  "keywords": [
+    "Babylon.js",
+    "vite",
+    "typescript",
+    "es6",
+    "terrain",
+    "geospatial",
+    "elevation"
+  ],
+  "homepage": "https://github.com/8ga3/jpmap_terrain",
+  "bugs": {
+    "url": "https://github.com/8ga3/jpmap_terrain/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/8ga3/jpmap_terrain.git"
+  },
+  "license": "Apache-2.0",
+  "author": {
+    "name": "8ga3",
+    "url": "https://github.com/8ga3"
+  },
+  "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     }
   },
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "files": [
     "dist"
   ],
-  "sideEffects": false,
-  "peerDependencies": {
-    "@babylonjs/core": "^9.0.0",
-    "@babylonjs/loaders": "^9.0.0",
-    "@babylonjs/materials": "^9.0.0"
+  "scripts": {
+    "start": "vite",
+    "start:test": "vite --config vite.tests.config.ts",
+    "build:dev": "npm run typecheck && cross-env VITE_SOURCEMAP=true vite build --mode development",
+    "build:lib": "tsdown",
+    "clean:lib": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "lint": "npx eslint . --ext .ts,.tsx && npm run check:no-issue-refs",
+    "check:no-issue-refs": "node scripts/checkNoIssueRefs.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:visuals": "npx playwright test",
+    "test:visuals:update": "npx playwright test --update-snapshots=all",
+    "test:unit": "vitest run",
+    "prepare": "husky"
   },
-  "peerDependenciesMeta": {
-    "@babylonjs/loaders": {
-      "optional": true
-    },
-    "@babylonjs/materials": {
-      "optional": true
-    }
+  "lint-staged": {
+    "*.{ts,tsx}": "eslint --fix"
   },
   "dependencies": {
     "ammo.js": "github:kripken/ammo.js",
@@ -48,51 +76,22 @@
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.8",
-    "tsup": "^8.5.1",
+    "tsdown": "^0.22.7",
     "typescript": "^6.0.3",
     "vite": "^8.1.4",
     "vitest": "^4.1.10"
   },
-  "scripts": {
-    "start": "vite",
-    "start:test": "vite --config vite.tests.config.ts",
-    "build:dev": "npm run typecheck && cross-env VITE_SOURCEMAP=true vite build --mode development",
-    "build:lib": "tsup",
-    "clean:lib": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run typecheck && vite build",
-    "preview": "vite preview",
-    "lint": "npx eslint . --ext .ts,.tsx && npm run check:no-issue-refs",
-    "check:no-issue-refs": "node scripts/checkNoIssueRefs.mjs",
-    "typecheck": "tsc --noEmit",
-    "test:visuals": "npx playwright test",
-    "test:visuals:update": "npx playwright test --update-snapshots=all",
-    "test:unit": "vitest run",
-    "prepare": "husky"
+  "peerDependencies": {
+    "@babylonjs/core": "^9.0.0",
+    "@babylonjs/loaders": "^9.0.0",
+    "@babylonjs/materials": "^9.0.0"
   },
-  "lint-staged": {
-    "*.{ts,tsx}": "eslint --fix"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/8ga3/jpmap_terrain.git"
-  },
-  "keywords": [
-    "Babylon.js",
-    "vite",
-    "typescript",
-    "es6",
-    "terrain",
-    "geospatial",
-    "elevation"
-  ],
-  "author": {
-    "name": "8ga3",
-    "email": "masarue@gmail.com",
-    "url": "https://github.com/8ga3"
-  },
-  "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/8ga3/jpmap_terrain/issues"
-  },
-  "homepage": "https://github.com/8ga3/jpmap_terrain"
+  "peerDependenciesMeta": {
+    "@babylonjs/loaders": {
+      "optional": true
+    },
+    "@babylonjs/materials": {
+      "optional": true
+    }
+  }
 }
