@@ -1,11 +1,11 @@
 ---
 name: jscpd
-description: Copy-paste detector for 220+ languages. Detect duplicated code and measure duplication percentages.
+description: Copy-paste detector for 224 languages. Detect duplicated code and measure duplication percentages.
 ---
 
 # jscpd
 
-Copy-paste detector for programming source code, supports 150+ languages. Use this skill to run jscpd and understand its output.
+Copy-paste detector for programming source code, supports 224 languages. Use this skill to run jscpd and understand its output.
 
 ## Quick Start
 
