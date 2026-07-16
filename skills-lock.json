@@ -10,7 +10,7 @@
     "jscpd": {
       "source": "kucherenko/jscpd",
       "sourceType": "github",
-      "skillPath": "skills/jscpd/SKILL.md",
+      "skillPath": ".agents/skills/jscpd/SKILL.md",
       "computedHash": "4af10645dac7065babc570b9c6b3f293060d4f8e1d656d22c1c86007d78a17dc"
     }
   }
