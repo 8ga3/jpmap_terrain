@@ -4,7 +4,7 @@
     "dry-refactoring": {
       "source": "kucherenko/jscpd",
       "sourceType": "github",
-      "skillPath": "skills/dry-refactoring/SKILL.md",
+      "skillPath": ".agents/skills/dry-refactoring/SKILL.md",
       "computedHash": "21c7e0663ef01366fe4b934883ae09dd485f97aecae31885bfbf4b39939ba370"
     },
     "jscpd": {
