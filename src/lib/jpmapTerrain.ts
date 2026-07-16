@@ -387,14 +387,7 @@ export class JpmapTerrain {
                 try { this._markerManager.dispose(); } catch { /* best-effort */ }
                 this._markerManager = null;
             }
-            if (this._resizeObserver) {
-                this._resizeObserver.disconnect();
-                this._resizeObserver = null;
-            }
-            if (this._onWindowResize) {
-                window.removeEventListener("resize", this._onWindowResize);
-                this._onWindowResize = null;
-            }
+            this._disposeResizeHandling();
             if (this._scene) {
                 this._scene.dispose();
                 this._scene = null;
@@ -1412,6 +1405,21 @@ export class JpmapTerrain {
     // ---- ライフサイクル (spec §3.3.3) ----
 
     /**
+     * `ResizeObserver` / `window.resize` リスナを解除する。
+     * コンストラクタ失敗時のロールバックと `dispose()` の双方から呼ばれる。
+     */
+    private _disposeResizeHandling(): void {
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
+        if (this._onWindowResize) {
+            window.removeEventListener("resize", this._onWindowResize);
+            this._onWindowResize = null;
+        }
+    }
+
+    /**
      * ビューアを破棄し、`mountElement` 配下の canvas と controlPanel が生成した UI 要素を除去する。
      *
      * - 進行中の `flyTo` を中断
@@ -1439,14 +1447,7 @@ export class JpmapTerrain {
         this._lastCameraSnapshot = null;
         this._mapTypeListeners = [];
         this._viewModeListeners = [];
-        if (this._resizeObserver) {
-            this._resizeObserver.disconnect();
-            this._resizeObserver = null;
-        }
-        if (this._onWindowResize) {
-            window.removeEventListener("resize", this._onWindowResize);
-            this._onWindowResize = null;
-        }
+        this._disposeResizeHandling();
         // マーカーマネージャを Scene dispose 前に解放する。
         if (this._markerManager) {
             try {

@@ -274,6 +274,29 @@ export const extractOrthoStableFrustumPlanes = (camera: {
     ];
 };
 
+/**
+ * mesh の scaling(x/z, y=1)・position(x/z) を、`center`/`fracX`/`fracY`（呼び出し側で
+ * `convertTileZoom` / `computeSubTileOffset` により currentCenter から求めた値）を用いて更新する。
+ * 新規タイル生成時・Follow モードの軽量リポジション（active/pendingRelease 双方）で共用する。
+ */
+const applyTileTransform = (
+    mesh: Mesh,
+    coord: TileCoord,
+    tileSize: number,
+    center: TileCoord,
+    fracX: number,
+    fracY: number,
+): void => {
+    mesh.scaling.x = tileSize;
+    mesh.scaling.z = tileSize;
+    mesh.scaling.y = 1;
+    const dx = coord.x - center.x;
+    const dy = coord.y - center.y;
+    const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
+    mesh.position.x = wx;
+    mesh.position.z = wz;
+};
+
 export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const {
         scene,
@@ -410,28 +433,27 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         }
     };
 
-    /** pendingRelease から単一タイルを解放する */
-    const releasePendingTile = (key: TileKey): void => {
-        const pending = pendingRelease.get(key);
-        if (!pending) return;
-        clearTimeout(pending.timerId);
-        // タイムアウト等で強制解放する場合、待機中の子孫タイルを一斉に表示する。
-        // hiddenChildTiles を走査して pending.coord の子孫だけを処理する（O(hiddenChildTiles)）。
-        // ただしテクスチャ未 ready の mesh を setEnabled(true) すると null bind /
-        // 描画穴の原因になるため、hiddenChildTiles から外すだけにとどめ、
-        // テクスチャ onLoad 側で setEnabled(true) されるに委ねる。
-        const pz = pending.coord.zoom;
-        const px = pending.coord.x;
-        const py = pending.coord.y;
+    /**
+     * `hiddenChildTiles` のうち `(baseZoom, baseX, baseY)` の子孫（`includeSameZoom` が true なら
+     * 同一 zoom のタイル自身も対象）で、テクスチャ ready なものを表示し `hiddenChildTiles` から
+     * 除去する。`releasePendingTile`（子孫のみ・自身除く）と `enableDescendants`（自身も含む）の
+     * 双方が使う共通処理（globe版 `globeTileManager.ts` の `revealReadyDescendants` に相当）。
+     */
+    const revealActiveDescendants = (
+        baseZoom: number,
+        baseX: number,
+        baseY: number,
+        includeSameZoom: boolean,
+    ): void => {
         const toRemove: TileKey[] = [];
         for (const dk of hiddenChildTiles) {
             const parts = dk.split("/");
             const cz = Number(parts[0]);
-            if (cz <= pz) continue;
-            const diff = cz - pz;
+            if (includeSameZoom ? cz < baseZoom : cz <= baseZoom) continue;
+            const diff = cz - baseZoom;
             const cx = Number(parts[1]);
             const cy = Number(parts[2]);
-            if ((cx >> diff) === px && (cy >> diff) === py) {
+            if ((cx >> diff) === baseX && (cy >> diff) === baseY) {
                 toRemove.push(dk);
             }
         }
@@ -442,6 +464,19 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 tile.mesh.setEnabled(true);
             }
         }
+    };
+
+    /** pendingRelease から単一タイルを解放する */
+    const releasePendingTile = (key: TileKey): void => {
+        const pending = pendingRelease.get(key);
+        if (!pending) return;
+        clearTimeout(pending.timerId);
+        // タイムアウト等で強制解放する場合、待機中の子孫タイルを一斉に表示する。
+        // hiddenChildTiles を走査して pending.coord の子孫だけを処理する（O(hiddenChildTiles)）。
+        // ただしテクスチャ未 ready の mesh を setEnabled(true) すると null bind /
+        // 描画穴の原因になるため、hiddenChildTiles から外すだけにとどめ、
+        // テクスチャ onLoad 側で setEnabled(true) されるに委ねる。
+        revealActiveDescendants(pending.coord.zoom, pending.coord.x, pending.coord.y, false);
         // delete ではなく increment して in-flight コールバックを確実に無効化する。
         // delete 後に同 mesh がプールから再利用されると texReqId が 1 から再開し、
         // 残留していた古い onLoad（同じく texReqId=1）と衝突して誤テクスチャが適用される。
@@ -508,26 +543,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * hiddenChildTiles を1回走査して該当領域の子孫だけを処理する（O(hiddenChildTiles)）。
      */
     const enableDescendants = (areaZoom: number, ax: number, ay: number): void => {
-        const toRemove: TileKey[] = [];
-        for (const dk of hiddenChildTiles) {
-            const parts = dk.split("/");
-            const cz = Number(parts[0]);
-            if (cz < areaZoom) continue;
-            const diff = cz - areaZoom;
-            const cx = Number(parts[1]);
-            const cy = Number(parts[2]);
-            if ((cx >> diff) === ax && (cy >> diff) === ay) {
-                toRemove.push(dk);
-            }
-        }
-        for (const dk of toRemove) {
-            hiddenChildTiles.delete(dk);
-            const tile = activeTiles.get(dk);
-            if (tile && isMeshTextureReady(tile.mesh)) {
-                tile.mesh.setEnabled(true);
-            }
-            // テクスチャ未 ready の mesh は applyTexture の onLoad で setEnabled(true) される
-        }
+        revealActiveDescendants(areaZoom, ax, ay, true);
     };
 
     /**
@@ -703,19 +719,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 // メッシュ取得・配置
                 const mesh = meshPool.acquire();
 
-                // スケーリング
-                mesh.scaling.x = tileSize;
-                mesh.scaling.z = tileSize;
-                mesh.scaling.y = 1;
-
-                // 中心タイルからのオフセット（サブタイルオフセット補正込み）
+                // 中心タイルからのオフセット（サブタイルオフセット補正込み）でスケーリング・配置
                 const center = convertTileZoom(currentCenter, coord.zoom);
                 const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
-                const dx = coord.x - center.x;
-                const dy = coord.y - center.y;
-                const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
-                mesh.position.x = wx;
-                mesh.position.z = wz;
+                applyTileTransform(mesh, coord, tileSize, center, fracX, fracY);
 
                 // テクスチャを先に適用（Worker 待ちの applyStitchedElevation と無関係に
                 //  非同期 fetch を開始しておく）。標高反映後でも順序的には問題ない。
@@ -817,17 +824,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const tileSize = tileSizeForZoom(coord.zoom);
             tile.tileSize = tileSize;
 
-            mesh.scaling.x = tileSize;
-            mesh.scaling.z = tileSize;
-            mesh.scaling.y = 1;
-
             const center = convertTileZoom(currentCenter, coord.zoom);
             const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
-            const dx = coord.x - center.x;
-            const dy = coord.y - center.y;
-            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
-            mesh.position.x = wx;
-            mesh.position.z = wz;
+            applyTileTransform(mesh, coord, tileSize, center, fracX, fracY);
         }
         // pendingRelease タイルも同じ座標系に再配置する（位置ずれ防止）
         repositionPendingReleaseTiles();
@@ -842,17 +841,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const tileSize = tileSizeForZoom(coord.zoom);
             pending.tileSize = tileSize;
 
-            mesh.scaling.x = tileSize;
-            mesh.scaling.z = tileSize;
-            mesh.scaling.y = 1;
-
             const center = convertTileZoom(currentCenter, coord.zoom);
             const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
-            const dx = coord.x - center.x;
-            const dy = coord.y - center.y;
-            const { wx, wz } = tileOffsetToWorld(dx - fracX, dy - fracY, tileSize);
-            mesh.position.x = wx;
-            mesh.position.z = wz;
+            applyTileTransform(mesh, coord, tileSize, center, fracX, fracY);
         }
     };
 
@@ -1926,27 +1917,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 Math.abs((a.oT ?? 0) - (b.oT ?? 0)) > EPS_ORTHO ||
                 Math.abs((a.oB ?? 0) - (b.oB ?? 0)) > EPS_ORTHO;
             let lastSnap: Snap = snapshot();
-            cameraObserver = camera.onViewMatrixChangedObservable.add(() => {
-                // タイル読み込み中はカメラ-地形衝突による微小 radius 変更で
-                // refreshFromCamera が再発火して現在の読み込みを中断（requestId++）するのを防ぐ。
-                // 読み込み完了後に onViewMatrixChanged が再度発火すれば正しく refresh される。
-                if (loadingCount > 0) return;
-                const cur = snapshot();
-                if (!changed(lastSnap, cur)) return;
-                lastSnap = cur;
-                if (debounceTimer !== null) {
-                    clearTimeout(debounceTimer);
-                }
-                debounceTimer = setTimeout(() => {
-                    debounceTimer = null;
-                    void refreshFromCamera();
-                }, debounceMs);
-            });
-            // ロード完了時にカメラが移動していたら再リフレッシュをスケジュールする。
-            // clampCameraAboveTerrain がロード中にカメラを調整するが、observer が
-            // loadingCount > 0 で早期リターンするため、ロード完了後にカメラが既に
-            // 収束していると onViewMatrixChanged が再発火せず再リフレッシュが漏れる。
-            onLoadingComplete = () => {
+            /** スナップショットが実質的に変化していれば debounce タイマを再設定して refresh をスケジュールする。 */
+            const scheduleRefreshIfCameraChanged = (): void => {
                 const cur = snapshot();
                 if (!changed(lastSnap, cur)) return;
                 lastSnap = cur;
@@ -1958,6 +1930,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     void refreshFromCamera();
                 }, debounceMs);
             };
+            cameraObserver = camera.onViewMatrixChangedObservable.add(() => {
+                // タイル読み込み中はカメラ-地形衝突による微小 radius 変更で
+                // refreshFromCamera が再発火して現在の読み込みを中断（requestId++）するのを防ぐ。
+                // 読み込み完了後に onViewMatrixChanged が再度発火すれば正しく refresh される。
+                if (loadingCount > 0) return;
+                scheduleRefreshIfCameraChanged();
+            });
+            // ロード完了時にカメラが移動していたら再リフレッシュをスケジュールする。
+            // clampCameraAboveTerrain がロード中にカメラを調整するが、observer が
+            // loadingCount > 0 で早期リターンするため、ロード完了後にカメラが既に
+            // 収束していると onViewMatrixChanged が再発火せず再リフレッシュが漏れる。
+            onLoadingComplete = scheduleRefreshIfCameraChanged;
             // 再アタッチ直後はカメラが動いていなくても view matrix イベントが発火しないため、
             // 即時 refresh を1回発火させてタイルを確実に更新する。
             void refreshFromCamera();

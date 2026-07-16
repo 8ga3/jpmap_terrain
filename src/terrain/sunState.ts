@@ -12,6 +12,7 @@
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { smoothstep } from "./mathUtils";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -52,16 +53,6 @@ export interface SunState {
     /** 太陽メッシュ表示可否（地平線下では非表示） */
     visibleAboveHorizon: boolean;
 }
-
-/**
- * `t` を `[edge0, edge1]` で正規化し Hermite smoothstep で滑らかにする。
- * Architect §4.3 の薄明補間に使用。
- */
-const smoothstep = (edge0: number, edge1: number, t: number): number => {
-    if (edge1 === edge0) return t < edge0 ? 0 : 1;
-    const x = Math.max(0, Math.min(1, (t - edge0) / (edge1 - edge0)));
-    return x * x * (3 - 2 * x);
-};
 
 /**
  * 太陽の高度・方位角から `SunState` を導出する。

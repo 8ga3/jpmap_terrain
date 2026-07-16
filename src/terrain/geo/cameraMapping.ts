@@ -173,13 +173,29 @@ export const panCenterOnSphereToRef = (
  * @returns 交点があり t>=0 なら true（`ref` に交点。t=0 は origin が楕円体面上の境界ケース）、
  *          レイが楕円体を外す/両交点とも背面、または半径・origin・dir が非有限/半径が非正なら false。
  */
-export const rayEllipsoidNearHitToRef = (
+/** レイ楕円体交差の二次方程式の係数（`a`,`b`,判別式平方根 `sq`）。 */
+interface EllipsoidRayCoeffs {
+    a: number;
+    b: number;
+    sq: number;
+}
+
+/**
+ * `rayEllipsoidNearHitToRef` / `rayEllipsoidHitsToRef` 共通の入力検証とスケール空間での
+ * 二次方程式係数解決を行う。両関数は求める交点（手前のみ／両方）が異なるだけで、
+ * ここまでの計算は完全に同一のため切り出す。
+ * 呼び出しはズーム/パン中に毎フレーム発生するため、`outCoeffs` への書き込みでアロケーションを避ける。
+ *
+ * @returns 交点が存在すれば true（`outCoeffs` に係数を書き込む）、
+ *          半径・origin・dir が非有限/半径が非正、またはレイが楕円体と交わらないなら false。
+ */
+const solveEllipsoidRayCoeffsToRef = (
     origin: Vector3,
     dir: Vector3,
     radiusX: number,
     radiusY: number,
     radiusZ: number,
-    ref: Vector3,
+    outCoeffs: EllipsoidRayCoeffs,
 ): boolean => {
     // 半径が非有限/非正だと 0 除算で NaN が伝播し、disc<0 / t<0 判定を素通りして ref に NaN を
     // 書きつつ true を返し得る。origin/dir に NaN/Infinity が入った場合も同様に NaN が比較を
@@ -213,7 +229,36 @@ export const rayEllipsoidNearHitToRef = (
     const c = ox * ox + oy * oy + oz * oz - 1;
     const disc = b * b - 4 * a * c;
     if (disc < 0) return false; // レイが楕円体と交わらない（空を指している等）
-    const sq = Math.sqrt(disc);
+    outCoeffs.a = a;
+    outCoeffs.b = b;
+    outCoeffs.sq = Math.sqrt(disc);
+    return true;
+};
+
+/** `rayEllipsoidNearHitToRef` / `rayEllipsoidHitsToRef` 用の使い回し係数バッファ。 */
+const ellipsoidRayCoeffsScratch: EllipsoidRayCoeffs = { a: 0, b: 0, sq: 0 };
+
+export const rayEllipsoidNearHitToRef = (
+    origin: Vector3,
+    dir: Vector3,
+    radiusX: number,
+    radiusY: number,
+    radiusZ: number,
+    ref: Vector3,
+): boolean => {
+    if (
+        !solveEllipsoidRayCoeffsToRef(
+            origin,
+            dir,
+            radiusX,
+            radiusY,
+            radiusZ,
+            ellipsoidRayCoeffsScratch,
+        )
+    ) {
+        return false;
+    }
+    const { a, b, sq } = ellipsoidRayCoeffsScratch;
     let t = (-b - sq) / (2 * a); // 手前側
     if (t < 0) t = (-b + sq) / (2 * a); // 手前が背面なら奥側（カメラが内部＝地中の保険）
     if (t < 0) return false; // 両交点とも背面
@@ -247,34 +292,18 @@ const rayEllipsoidHitsToRef = (
     outT: EllipsoidHits,
 ): boolean => {
     if (
-        !(radiusX > 0) ||
-        !(radiusY > 0) ||
-        !(radiusZ > 0) ||
-        !Number.isFinite(radiusX) ||
-        !Number.isFinite(radiusY) ||
-        !Number.isFinite(radiusZ) ||
-        !Number.isFinite(origin.x) ||
-        !Number.isFinite(origin.y) ||
-        !Number.isFinite(origin.z) ||
-        !Number.isFinite(dir.x) ||
-        !Number.isFinite(dir.y) ||
-        !Number.isFinite(dir.z)
+        !solveEllipsoidRayCoeffsToRef(
+            origin,
+            dir,
+            radiusX,
+            radiusY,
+            radiusZ,
+            ellipsoidRayCoeffsScratch,
+        )
     ) {
         return false;
     }
-    const ox = origin.x / radiusX;
-    const oy = origin.y / radiusY;
-    const oz = origin.z / radiusZ;
-    const dx = dir.x / radiusX;
-    const dy = dir.y / radiusY;
-    const dz = dir.z / radiusZ;
-    const a = dx * dx + dy * dy + dz * dz;
-    if (a <= 0) return false;
-    const b = 2 * (ox * dx + oy * dy + oz * dz);
-    const c = ox * ox + oy * oy + oz * oz - 1;
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return false; // レイが楕円体と交わらない
-    const sq = Math.sqrt(disc);
+    const { a, b, sq } = ellipsoidRayCoeffsScratch;
     const ta = (-b - sq) / (2 * a);
     const tb = (-b + sq) / (2 * a);
     if (ta <= tb) {

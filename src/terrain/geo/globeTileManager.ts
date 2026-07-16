@@ -14,7 +14,7 @@
  */
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { isAABBInFrustum, type FrustumPlane } from "../visibleTiles";
+import { isAABBInFrustumRelativeToCamera, type FrustumPlane } from "../visibleTiles";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -812,19 +812,24 @@ export const createGlobeTileManager = (
         return entry;
     };
 
-    /** pendingRelease から単一タイルを解放する（メッシュを破棄）。 */
-    const releasePendingTile = (key: string): void => {
-        const pending = pendingRelease.get(key);
-        if (!pending) return;
-        clearTimeout(pending.timerId);
-        // 強制解放時は、待機中の子孫タイルを hiddenChildTiles から外して表示可能にする。
-        // テクスチャ未 ready のメッシュは onLoad 側で表示されるため、ここでは ready のもののみ表示。
+    /**
+     * `hiddenChildTiles` のうち `(baseZoom, baseX, baseY)` の子孫（`includeSameZoom` が true なら
+     * 同一 zoom のタイル自身も対象）で、テクスチャ ready なものを表示し `hiddenChildTiles` から
+     * 除去する。`releasePendingTile`（子孫のみ・自身除く）と `enableDescendants`（自身も含む）の
+     * 双方が使う共通処理。
+     */
+    const revealReadyDescendants = (
+        baseZoom: number,
+        baseX: number,
+        baseY: number,
+        includeSameZoom: boolean,
+    ): void => {
         const toRemove: string[] = [];
         for (const dk of hiddenChildTiles) {
             const c = parseKey(dk);
-            if (c.zoom <= pending.zoom) continue;
-            const diff = c.zoom - pending.zoom;
-            if ((c.x >> diff) === pending.x && (c.y >> diff) === pending.y) {
+            if (includeSameZoom ? c.zoom < baseZoom : c.zoom <= baseZoom) continue;
+            const diff = c.zoom - baseZoom;
+            if ((c.x >> diff) === baseX && (c.y >> diff) === baseY) {
                 toRemove.push(dk);
             }
         }
@@ -833,6 +838,16 @@ export const createGlobeTileManager = (
             const mesh = loaded.get(dk);
             if (mesh && isMeshTextureReady(mesh)) mesh.setEnabled(true);
         }
+    };
+
+    /** pendingRelease から単一タイルを解放する（メッシュを破棄）。 */
+    const releasePendingTile = (key: string): void => {
+        const pending = pendingRelease.get(key);
+        if (!pending) return;
+        clearTimeout(pending.timerId);
+        // 強制解放時は、待機中の子孫タイルを hiddenChildTiles から外して表示可能にする。
+        // テクスチャ未 ready のメッシュは onLoad 側で表示されるため、ここでは ready のもののみ表示。
+        revealReadyDescendants(pending.zoom, pending.x, pending.y, false);
         disposeMesh(key, pending.mesh);
         removePendingRelease(key);
     };
@@ -868,20 +883,24 @@ export const createGlobeTileManager = (
 
     /** 指定矩形領域内の hiddenChildTiles を一斉に表示状態にする（平面版 enableDescendants）。 */
     const enableDescendants = (areaZoom: number, ax: number, ay: number): void => {
-        const toRemove: string[] = [];
-        for (const dk of hiddenChildTiles) {
-            const c = parseKey(dk);
-            if (c.zoom < areaZoom) continue;
-            const diff = c.zoom - areaZoom;
-            if ((c.x >> diff) === ax && (c.y >> diff) === ay) {
-                toRemove.push(dk);
-            }
-        }
-        for (const dk of toRemove) {
-            hiddenChildTiles.delete(dk);
-            const mesh = loaded.get(dk);
-            if (mesh && isMeshTextureReady(mesh)) mesh.setEnabled(true);
-        }
+        revealReadyDescendants(areaZoom, ax, ay, true);
+    };
+
+    /**
+     * テクスチャ ready 到達時（onLoad/onError 共通）の後処理。読み込み成否に関わらず
+     * 「描画可能」として記録し、非表示待機中でなければ表示、カバー済み旧タイルを解放する。
+     */
+    const markTileMeshReady = (
+        mesh: Mesh,
+        key: string,
+        coord: { zoom: number; x: number; y: number },
+    ): void => {
+        // 描画可能になったことを記録（isAreaCovered / カバー判定で参照）。
+        readyMeshes.add(mesh);
+        // 非表示待機中（祖先が pendingRelease 中）の子タイルは表示しない。
+        if (!hiddenChildTiles.has(key)) mesh.setEnabled(true);
+        // このタイルでカバーされた旧 pending タイルを解放する。
+        checkAndReleaseCoveredTiles(coord);
     };
 
     /**
@@ -1429,12 +1448,8 @@ export const createGlobeTileManager = (
                     return;
                 }
                 mat.diffuseTexture = tex;
-                // 描画可能になったことを記録（isAreaCovered / カバー判定で参照）。
-                readyMeshes.add(mesh);
-                // 非表示待機中（祖先が pendingRelease 中）の子タイルは表示しない。
-                if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
-                // このタイルでカバーされた旧 pending タイルを解放する。
-                checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
+                // 描画可能になったことを記録し、必要なら表示・カバー判定を行う。
+                markTileMeshReady(mesh, k, { zoom: t.zoom, x: t.x, y: t.y });
             },
             // onError: ロード失敗（404/ネットワーク断等）時は Texture を破棄してリークを防ぐ。
             // テクスチャなし（白）でもホールより良いので描画可能扱いにする。ただし祖先が
@@ -1445,9 +1460,7 @@ export const createGlobeTileManager = (
             () => {
                 tex.dispose();
                 if (mesh.isDisposed() || currentMapType !== builtFor) return;
-                readyMeshes.add(mesh);
-                if (!hiddenChildTiles.has(k)) mesh.setEnabled(true);
-                checkAndReleaseCoveredTiles({ zoom: t.zoom, x: t.x, y: t.y });
+                markTileMeshReady(mesh, k, { zoom: t.zoom, x: t.x, y: t.y });
             },
         );
         tex.wrapU = Texture.CLAMP_ADDRESSMODE;
@@ -1474,13 +1487,9 @@ export const createGlobeTileManager = (
         if (tile.zoom <= minZoom) return true;
         const aabb = tileEcefAabb(tile.zoom, tile.x, tile.y, drainAabbScratch);
         const { cameraEcef } = freshFrustum;
-        return isAABBInFrustum(
-            aabb.minX - cameraEcef.x,
-            aabb.minY - cameraEcef.y,
-            aabb.minZ - cameraEcef.z,
-            aabb.maxX - cameraEcef.x,
-            aabb.maxY - cameraEcef.y,
-            aabb.maxZ - cameraEcef.z,
+        return isAABBInFrustumRelativeToCamera(
+            aabb,
+            cameraEcef,
             freshFrustum.frustumPlanes,
         );
     };

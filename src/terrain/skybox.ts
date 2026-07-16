@@ -3,6 +3,7 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { SkyMaterial } from "@babylonjs/materials/sky/skyMaterial";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { SunState } from "./sunState";
+import { smoothstep } from "./mathUtils";
 
 /** SkyMaterial.rayleigh の基準値（低高度・地表での青空散乱量）。 */
 const BASE_RAYLEIGH = 2;
@@ -17,13 +18,6 @@ export const SPACE_FADE_START_M = 12000;
  * 現実のカーマンライン（100km）には届かないが、上限で「ほぼ黒」へ収束させる。
  */
 export const SPACE_FADE_END_M = 75000;
-
-/** `t` を `[edge0, edge1]` で正規化し Hermite smoothstep で滑らかにする。 */
-const smoothstep = (edge0: number, edge1: number, t: number): number => {
-    if (edge1 === edge0) return t < edge0 ? 0 : 1;
-    const x = Math.max(0, Math.min(1, (t - edge0) / (edge1 - edge0)));
-    return x * x * (3 - 2 * x);
-};
 
 /**
  * カメラ高度（メートル）から「宇宙度」を導く純関数。
