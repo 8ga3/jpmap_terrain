@@ -30,6 +30,7 @@ import {
 } from "./overlayPlacement";
 import {
     POLYGON_DEFAULTS,
+    resolvePolygonStyle,
     type AltitudeMode,
     type PolygonStyleOptions,
 } from "../../lib/types";
@@ -84,23 +85,8 @@ interface ResolvedStyle {
     wallOpacity: number;
 }
 
-const resolveStyle = (style: PolygonStyleOptions | undefined): ResolvedStyle => ({
-    lineColor: style?.lineColor ?? POLYGON_DEFAULTS.style.lineColor,
-    lineWidth: style?.lineWidth ?? POLYGON_DEFAULTS.style.lineWidth,
-    lineOpacity: style?.lineOpacity ?? POLYGON_DEFAULTS.style.lineOpacity,
-    pointDiameter: style?.pointDiameter ?? POLYGON_DEFAULTS.style.pointDiameter,
-    pointColor: style?.pointColor ?? POLYGON_DEFAULTS.style.pointColor,
-    pointOpacity: style?.pointOpacity ?? POLYGON_DEFAULTS.style.pointOpacity,
-    dropLineColor: style?.dropLineColor ?? POLYGON_DEFAULTS.style.dropLineColor,
-    dropLineWidth: style?.dropLineWidth ?? POLYGON_DEFAULTS.style.dropLineWidth,
-    dropLineOpacity: style?.dropLineOpacity ?? POLYGON_DEFAULTS.style.dropLineOpacity,
-    labelColor: style?.labelColor ?? POLYGON_DEFAULTS.style.labelColor,
-    labelBackgroundColor:
-        style?.labelBackgroundColor ?? POLYGON_DEFAULTS.style.labelBackgroundColor,
-    labelFontSize: style?.labelFontSize ?? POLYGON_DEFAULTS.style.labelFontSize,
-    wallColor: style?.wallColor ?? POLYGON_DEFAULTS.style.wallColor,
-    wallOpacity: style?.wallOpacity ?? POLYGON_DEFAULTS.style.wallOpacity,
-});
+const resolveStyle = (style: PolygonStyleOptions | undefined): ResolvedStyle =>
+    resolvePolygonStyle(style);
 
 export interface GlobePolygonOptions {
     /** 頂点列（最低 1 点）。 */
@@ -286,6 +272,27 @@ const getProbeContext = (scene: Scene): ReturnType<DynamicTexture["getContext"]>
     return probe.getContext();
 };
 
+/** ラベル描画の共通レイアウト指標（フォントサイズ由来のパディング・行高）。 */
+interface LabelTextLayoutMetrics {
+    fontSize: number;
+    padPx: number;
+    strokePx: number;
+    lineHeightPx: number;
+    innerPad: number;
+}
+
+/**
+ * `style.labelFontSize` からラベル計測・描画の双方で使う指標を導出する。
+ * `computeLabelDims`（計測）と `paintLabel`（描画）で同一の値が必要なため共通化する。
+ */
+const computeLabelTextLayoutMetrics = (style: ResolvedStyle): LabelTextLayoutMetrics => {
+    const fontSize = Math.max(style.labelFontSize, 1);
+    const padPx = Math.round(fontSize * 0.1);
+    const strokePx = Math.max(2, Math.round(fontSize * 0.12));
+    const lineHeightPx = fontSize * 1.2;
+    return { fontSize, padPx, strokePx, lineHeightPx, innerPad: padPx + strokePx };
+};
+
 const computeLabelDims = (
     scene: Scene,
     text: string,
@@ -293,10 +300,7 @@ const computeLabelDims = (
     dpr: number,
 ): { dtWidth: number; dtHeight: number } => {
     const lines = text.split("\n");
-    const fontSize = Math.max(style.labelFontSize, 1);
-    const padPx = Math.round(fontSize * 0.1);
-    const strokePx = Math.max(2, Math.round(fontSize * 0.12));
-    const lineHeightPx = fontSize * 1.2;
+    const { fontSize, lineHeightPx, innerPad } = computeLabelTextLayoutMetrics(style);
     const probeCtx = getProbeContext(scene);
     probeCtx.font = `${fontSize}px sans-serif`;
     let maxLineWidth = 0;
@@ -304,7 +308,6 @@ const computeLabelDims = (
         maxLineWidth = Math.max(maxLineWidth, probeCtx.measureText(line || " ").width);
     }
 
-    const innerPad = padPx + strokePx;
     const innerW = maxLineWidth + innerPad * 2;
     const innerH = lineHeightPx * Math.max(lines.length, 1) + innerPad * 2;
     const dtWidth = Math.max(
@@ -332,11 +335,7 @@ const paintLabel = (
     dpr: number,
 ): void => {
     const lines = text.split("\n");
-    const fontSize = Math.max(style.labelFontSize, 1);
-    const padPx = Math.round(fontSize * 0.1);
-    const strokePx = Math.max(2, Math.round(fontSize * 0.12));
-    const lineHeightPx = fontSize * 1.2;
-    const innerPad = padPx + strokePx;
+    const { fontSize, strokePx, lineHeightPx, innerPad } = computeLabelTextLayoutMetrics(style);
     const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, dtWidth, dtHeight);
     if (style.labelBackgroundColor && style.labelBackgroundColor !== "transparent") {

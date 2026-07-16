@@ -70,6 +70,7 @@ import type {
 import {
     MARKER_DEFAULTS,
     POLYGON_DEFAULTS,
+    resolvePolygonStyle,
     CIRCLE_DEFAULTS,
     CIRCLE_RADIUS_MAX_M,
     CIRCLE_SEGMENTS_MIN,
@@ -329,26 +330,6 @@ interface PolygonAdapterEntry {
     labelsEnabled: boolean;
     wallsEnabled: boolean;
 }
-
-const resolvePolygonStyle = (
-    style: PolygonStyleOptions | undefined,
-): Required<PolygonStyleOptions> => ({
-    lineColor: style?.lineColor ?? POLYGON_DEFAULTS.style.lineColor,
-    lineWidth: style?.lineWidth ?? POLYGON_DEFAULTS.style.lineWidth,
-    lineOpacity: style?.lineOpacity ?? POLYGON_DEFAULTS.style.lineOpacity,
-    pointDiameter: style?.pointDiameter ?? POLYGON_DEFAULTS.style.pointDiameter,
-    pointColor: style?.pointColor ?? POLYGON_DEFAULTS.style.pointColor,
-    pointOpacity: style?.pointOpacity ?? POLYGON_DEFAULTS.style.pointOpacity,
-    dropLineColor: style?.dropLineColor ?? POLYGON_DEFAULTS.style.dropLineColor,
-    dropLineWidth: style?.dropLineWidth ?? POLYGON_DEFAULTS.style.dropLineWidth,
-    dropLineOpacity: style?.dropLineOpacity ?? POLYGON_DEFAULTS.style.dropLineOpacity,
-    labelColor: style?.labelColor ?? POLYGON_DEFAULTS.style.labelColor,
-    labelBackgroundColor:
-        style?.labelBackgroundColor ?? POLYGON_DEFAULTS.style.labelBackgroundColor,
-    labelFontSize: style?.labelFontSize ?? POLYGON_DEFAULTS.style.labelFontSize,
-    wallColor: style?.wallColor ?? POLYGON_DEFAULTS.style.wallColor,
-    wallOpacity: style?.wallOpacity ?? POLYGON_DEFAULTS.style.wallOpacity,
-});
 
 const polygonEdgeCount = (pointCount: number, closed: boolean): number =>
     closed && pointCount >= 2 ? pointCount : Math.max(0, pointCount - 1);

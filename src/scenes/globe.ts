@@ -1669,32 +1669,30 @@ export class GlobeScene {
                 }
             }
         };
+        /** ポリゴン関連リスナーへイベントを配信する共通ヘルパー。listener型が異なる呼び出し元で共用する。 */
+        const dispatchPolygonEvent = <T>(
+            listeners: Array<(event: T) => void>,
+            event: T,
+            label: string,
+        ): void => {
+            for (const l of listeners.slice()) {
+                try {
+                    l(event);
+                } catch (err) {
+                    console.error(`[globe] ${label} listener threw:`, err);
+                }
+            }
+        };
         const dispatchPolygonPoint = (
             listeners: GlobePolygonPointClickListener[],
             event: GlobePolygonPointEvent,
             label: string,
-        ): void => {
-            for (const l of listeners.slice()) {
-                try {
-                    l(event);
-                } catch (err) {
-                    console.error(`[globe] ${label} listener threw:`, err);
-                }
-            }
-        };
+        ): void => dispatchPolygonEvent(listeners, event, label);
         const dispatchPolygonDrag = (
             listeners: GlobePolygonPointDragListener[],
             event: GlobePolygonPointDragEvent,
             label: string,
-        ): void => {
-            for (const l of listeners.slice()) {
-                try {
-                    l(event);
-                } catch (err) {
-                    console.error(`[globe] ${label} listener threw:`, err);
-                }
-            }
-        };
+        ): void => dispatchPolygonEvent(listeners, event, label);
 
         const buildPolygonDragEvent = (
             gesture: NonNullable<typeof polygonPointGesture>,

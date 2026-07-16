@@ -55,6 +55,32 @@ export const isAABBInFrustum = (
     return true;
 };
 
+/**
+ * カメラ ECEF 相対の AABB フラスタム判定。倍精度桁落ち対策として AABB を `cameraEcef` 分
+ * 平行移動してから `isAABBInFrustum` へ渡す（`globeLod.ts` / `globeTileManager.ts` 共通処理）。
+ */
+export const isAABBInFrustumRelativeToCamera = (
+    aabb: {
+        minX: number;
+        minY: number;
+        minZ: number;
+        maxX: number;
+        maxY: number;
+        maxZ: number;
+    },
+    cameraEcef: { x: number; y: number; z: number },
+    planes: readonly FrustumPlane[],
+): boolean =>
+    isAABBInFrustum(
+        aabb.minX - cameraEcef.x,
+        aabb.minY - cameraEcef.y,
+        aabb.minZ - cameraEcef.z,
+        aabb.maxX - cameraEcef.x,
+        aabb.maxY - cameraEcef.y,
+        aabb.maxZ - cameraEcef.z,
+        planes,
+    );
+
 export interface QuadtreeTilesOptions {
     /** 最高ズームレベル（分割の上限） */
     maxZoom: number;

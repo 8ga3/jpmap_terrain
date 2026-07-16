@@ -18,7 +18,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters, toTileXY, JAPAN_BOUNDS, WORLD_TEXTURE_MAX_ZOOM } from "../gsiTile";
 import { ecefToGeodetic, geodeticToEcefToRef } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
-import { isAABBInFrustum, DEFAULT_MAX_ELEVATION, type FrustumPlane } from "../visibleTiles";
+import { isAABBInFrustumRelativeToCamera, DEFAULT_MAX_ELEVATION, type FrustumPlane } from "../visibleTiles";
 
 /** LOD 選択されたタイル。 */
 export interface GlobeTile {
@@ -855,17 +855,7 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             !(zoom === minZoom && pinnedRootKeys.has(k))
         ) {
             const aabb = tileEcefAabb(zoom, x, y, aabbScratch);
-            if (
-                !isAABBInFrustum(
-                    aabb.minX - cameraEcef.x,
-                    aabb.minY - cameraEcef.y,
-                    aabb.minZ - cameraEcef.z,
-                    aabb.maxX - cameraEcef.x,
-                    aabb.maxY - cameraEcef.y,
-                    aabb.maxZ - cameraEcef.z,
-                    frustumPlanes,
-                )
-            ) {
+            if (!isAABBInFrustumRelativeToCamera(aabb, cameraEcef, frustumPlanes)) {
                 return;
             }
         }
