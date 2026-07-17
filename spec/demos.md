@@ -58,7 +58,7 @@
 `vite.rewrites.ts` の `DEMO_NAMES` と対応させる。デモを追加/削除した場合は、この設定例も合わせて更新すること（静的設定ファイルのため自動生成されない）。
 
 ```
-viewer, timelapse, polygon, distance, circle, plan, model,
+viewer, timelapse, polygon, distance, circle, plan, gpx, model,
 avatar, avatar-controller, boids, flight, artillery, geospatial,
 zoomloop, roiorbit
 ```
@@ -78,7 +78,7 @@ server {
         # ※ location の正規表現キャプチャ（外側の $1）を rewrite 側でそのまま
         #   参照すると空になるケースがあるため、rewrite 自体に捕捉グループを
         #   持たせる（location / 直下にまとめて置く）。
-        rewrite ^/(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial|zoomloop|roiorbit)(?:/.*)?$ /$1.html last;
+        rewrite ^/(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|avatar-controller|boids|flight|artillery|geospatial|zoomloop|roiorbit)(?:/.*)?$ /$1.html last;
         try_files $uri $uri/ =404;
     }
 }
@@ -95,7 +95,7 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 # デモ識別子付きパス（/viewer, /viewer/@lat,lon,...）を実体HTMLへ書き換える。
 # demoAtPathRewrites（vite.rewrites.ts）と同じデモ名一覧を維持すること。
-RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|model|avatar|avatar-controller|boids|flight|artillery|geospatial|zoomloop|roiorbit)(/.*)?$ /$1.html [L]
+RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|avatar-controller|boids|flight|artillery|geospatial|zoomloop|roiorbit)(/.*)?$ /$1.html [L]
 ```
 
 すぐ試せる Docker 構成（上記 Nginx 設定を組み込んだ `Dockerfile` / `compose.yaml`）を [docker/README.md](../docker/README.md) に用意している。Raspberry Pi 5（arm64）等の自宅サーバーで動かす手順もそちらに記載している。
