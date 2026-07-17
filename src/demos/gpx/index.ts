@@ -6,9 +6,9 @@
  *
  * - ビューア専用（編集なし）
  * - 再ドロップで前回表示をクリアし、新しい GPX のみ表示
- * - トラックは大量の点（数千点規模）を含み得るため、垂線/壁/点ラベルは無効化し、
- *   描画点数も `MAX_RENDER_POINTS_PER_SEGMENT` まで間引いて軽量なポリラインとして描画する
- *   （統計値の計算には間引き前の全点データを使う）。
+ * - トラックは大量の点（数千点規模）を含み得るため、頂点球体マーカー/垂線/壁/点ラベルは
+ *   無効化し、線のみのポリラインとして描画する。描画点数も `MAX_RENDER_POINTS_PER_SEGMENT`
+ *   まで間引いて軽量化する（統計値の計算には間引き前の全点データを使う）。
  *   トラック始点・終点のみ Plan Viewer のホームポジション相当の単点マーカーで強調する。
  * - 描画は distance / plan デモと同じ addPolygon API を使用する。
  */
@@ -47,9 +47,6 @@ const ID_WAYPOINT_PREFIX = "gpx-waypoint-";
 const TRACK_COLORS = ["#2196f3", "#e91e63", "#4caf50", "#ff9800", "#9c27b0", "#00bcd4"];
 const colorForTrack = (index: number): string => TRACK_COLORS[index % TRACK_COLORS.length];
 
-/** トラックの頂点ごとに生成される球体の直径 (m)。密な軌跡上で目立たないよう小さくする。 */
-const TRACK_LINE_POINT_DIAMETER = 4;
-
 /**
  * トラックポリラインの基準太さ（Tube半径, m, world, `lineWidthMode: "screen"` 用）。
  * `"screen"` モードでは頂点ごとにカメラ距離比例のスケールを掛けるため、垂線・点マーカーと
@@ -62,8 +59,6 @@ const buildTrackLineStyle = (color: string): NonNullable<PolygonOptions["style"]
     lineColor: color,
     lineWidth: TRACK_LINE_WIDTH,
     lineWidthMode: "screen",
-    pointDiameter: TRACK_LINE_POINT_DIAMETER,
-    pointColor: color,
 });
 
 /** 種別ごとの描画 ID セット */
@@ -169,7 +164,8 @@ const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx): GpxIds => {
                     })),
                     altitudeMode: hasEle ? "absolute" : "terrain",
                     closed: false,
-                    // 垂線/壁/点ラベルは軌跡表示では不要なため無効化する（線のみ表示）。
+                    // 点マーカー/垂線/壁/点ラベルは軌跡表示では不要なため無効化する（線のみ表示）。
+                    pointsEnabled: false,
                     verticalsEnabled: false,
                     wallsEnabled: false,
                     labelsEnabled: false,

@@ -426,6 +426,8 @@ interface JpmapTerrain {
   removePolygon(id: string): void;
   /** enabled の薄いショートカット */
   setPolygonEnabled(id: string, enabled: boolean): void;
+  /** 各頂点の球体マーカー表示をポリゴン単位で ON/OFF */
+  setPointsEnabled(id: string, enabled: boolean): void;
   /** 各点からの垂線表示をポリゴン単位で ON/OFF */
   setVerticalsEnabled(id: string, enabled: boolean): void;
   /** ラベル表示をポリゴン単位で ON/OFF */
@@ -487,6 +489,8 @@ interface PolygonOptions {
   edgeLabels?: ReadonlyArray<string | undefined>;
   style?: PolygonStyleOptions;
   enabled?: boolean;                          // default true
+  /** 各頂点の球体マーカーの表示。default true */
+  pointsEnabled?: boolean;
   /** 各点から Y=0 まで伸びる垂線の表示。default true */
   verticalsEnabled?: boolean;
   /** ラベルの表示。default true */
@@ -500,7 +504,7 @@ interface PolygonOptions {
 
 - `points` の各点に対し、`altitudeMode === "absolute"` なら `altitude` をそのまま Y に採用する。`"terrain"` ならタイル標高 (m) を Y に採用し、`altitude` が指定されている場合は地表からのオフセットとして加算する。
 - `terrain` モードで 1 点でも標高未解決の間は **ポリゴン全体を hide** し、`onTerrainUpdated` 後に自動表示する（例外は投げない）。
-- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、地表メッシュと同じ `renderingGroupId = 0` で描画し地形に正しくオクルードされる）。スケールはカメラ距離に応じて screen-stable に動的更新されるが、ワールド直径は 100m を上限にクランプする（無制限に拡大すると遠距離で球が地形を貫通し手前側がはみ出て見えるため）。
+- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、地表メッシュと同じ `renderingGroupId = 0` で描画し地形に正しくオクルードされる）。スケールはカメラ距離に応じて screen-stable に動的更新されるが、ワールド直径は 100m を上限にクランプする（無制限に拡大すると遠距離で球が地形を貫通し手前側がはみ出て見えるため）。`PolygonOptions.pointsEnabled`（既定 true）を `false` にすると球体メッシュ自体を生成しない（大量頂点のポリライン表示でメッシュ数を削減する用途）。`JpmapTerrain.setPointsEnabled(id, enabled)` で表示切替が可能。
 - 隣接点間を **CreateTube**（`updatable: true`、半径 `style.lineWidth`）で結ぶ。`closed = true` のとき末尾→先頭も結ぶ。`style.lineWidthMode === "screen"` の場合は `radiusFunction` で頂点ごとにカメラ距離比例スケールを計算し、長い折れ線でもズーム位置によらず画面上の太さを一定に保つ（既定 `"world"` は全頂点の重心とカメラの距離から算出した単一スケールを一律適用する）。
 - JAPAN_BOUNDS 外の点・`points.length < 1`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。`points.length === 1` のときは辺（線 / 壁 / 辺ラベル）は存在せず、点・垂線・点ラベルのみ描画される。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
