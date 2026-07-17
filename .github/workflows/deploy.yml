@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    # タグ削除時もpushイベントが発火するため、削除イベントではデプロイをスキップする
+    if: github.event.deleted == false
     runs-on: ubuntu-latest
 
     steps:
