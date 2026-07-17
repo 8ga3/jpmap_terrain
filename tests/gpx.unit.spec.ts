@@ -84,6 +84,17 @@ describe("parseGpx", () => {
         expect(() => parseGpx("<gpx></gpx>")).toThrow("no track points or waypoints found");
     });
 
+    it("ルート要素が名前空間プレフィックス付き(<gpx:gpx>)でも正しく <gpx> と判定できる", () => {
+        const xml = `<gpx:gpx xmlns:gpx="http://www.topografix.com/GPX/1/1" version="1.1">
+          <trk><trkseg>
+            <trkpt lat="35.0" lon="139.0"></trkpt>
+          </trkseg></trk>
+        </gpx:gpx>`;
+        const result = parseGpx(xml);
+        expect(result.tracks).toHaveLength(1);
+        expect(result.tracks[0].segments[0].points).toHaveLength(1);
+    });
+
     it("複数トラック・複数セグメントをパースできる", () => {
         const xml = `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
           <trk>
