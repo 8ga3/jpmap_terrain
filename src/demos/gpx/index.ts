@@ -80,7 +80,11 @@ const clearGpxDisplay = (viewer: JpmapTerrain, ids: GpxIds): void => {
     }
 };
 
-/** 単点マーカー（開始/終了/ウェイポイント）用の PolygonOptions を組み立てる。 */
+/**
+ * 単点マーカー（開始/終了/ウェイポイント）用の PolygonOptions を組み立てる。
+ * トラックのポリライン（細い線・小さい点）に埋もれて見えなくならないよう、
+ * ポイント径・垂線を大きめにし、ラベルには背景色を付けて視認性を確保する。
+ */
 const buildMarkerOptions = (
     lat: number,
     lon: number,
@@ -95,9 +99,13 @@ const buildMarkerOptions = (
     style: {
         pointColor: color,
         lineColor: color,
-        pointDiameter: 14,
+        pointDiameter: 28,
         lineWidth: 2,
-        labelFontSize: 12,
+        dropLineColor: color,
+        dropLineWidth: 3,
+        labelFontSize: 13,
+        labelColor: "#000000",
+        labelBackgroundColor: "rgba(255, 255, 255, 0.85)",
         wallColor: color,
         wallOpacity: 0.15,
     },
