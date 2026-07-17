@@ -12,9 +12,12 @@
  *   トラック始点・終点のみ Plan Viewer のホームポジション相当の単点マーカーで強調する。
  * - 描画は distance / plan デモと同じ addPolygon API を使用する。
  * - 画面右上の操作パネルに水平移動距離・標高差等の統計を表示する。
- * - 画面下部に標高-時間グラフ（Canvas 2D、外部ライブラリ非依存）を表示する。
- *   `<trkpt><time>` を持つ GPX のみ対象（無ければパネルごと非表示）。時刻は GPX 上は
- *   UTC で記録されているため、表示時のみ JST (UTC+9固定) に変換する（GPX ファイル自体は変更しない）。
+ * - 画面下部に標高-時間グラフ（Canvas 2D、外部ライブラリ非依存、折れ線＋下側塗りつぶし）
+ *   を表示する。`<trkpt><time>` を持つ GPX のみ対象（無ければパネルごと非表示）。時刻は
+ *   GPX 上は UTC で記録されているため、表示時のみ JST (UTC+9固定) に変換する
+ *   （GPX ファイル自体は変更しない）。タイトル文言は表示せず（軸ラベルで自明なため）、
+ *   パネルの `bottom` オフセットは左下（写真ボタン）・右下（ズーム/スケールバー）の
+ *   操作 UI と重ならないよう実測して動的に調整する。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, PolygonOptions } from "../../lib/types";
@@ -287,8 +290,52 @@ const start = async (): Promise<void> => {
     let currentProfiles: ElevationProfileSeries[] = [];
 
     /**
+     * 標高-時間グラフパネルの位置・幅を、画面左下（写真ボタン）・右下（ズームボタン列・
+     * スケールバー）の操作 UI と重ならないよう実測して調整する。
+     *
+     * これらの操作 UI はタッチ端末/画面幅に応じてサイズが変わる（`controlPanel.ts` の
+     * `@media (pointer: coarse)`）ため、固定 px の CSS だけでは重なりを避けきれない。
+     * - 左端: 写真ボタン（`.cp-maptoggle`）の右端より右に。
+     * - 右端: ズームボタン列（`.cp-zoombtn`、右揃え）の左端より左に。
+     * - 下端: スケールバー行（`.cp-scale-text` の親要素。ズームボタン列の下、
+     *   右揃えで最も横幅が出るため水平方向は避けず、垂直方向にその上へ浮かせる）
+     *   より上に。
+     */
+    const adjustElevationPanelBounds = (): void => {
+        if (!elevationPanel) return;
+        const GAP_PX = 12;
+
+        const mapToggleRect = document.querySelector(".cp-maptoggle")?.getBoundingClientRect() ?? null;
+        const zoomBtnRects = Array.from(document.querySelectorAll(".cp-zoombtn")).map((el) =>
+            el.getBoundingClientRect(),
+        );
+        const scaleRowRect = document.querySelector(".cp-scale-text")?.parentElement?.getBoundingClientRect() ?? null;
+
+        const leftOffset = mapToggleRect ? Math.round(mapToggleRect.right + GAP_PX) : GAP_PX;
+        const rightOffset =
+            zoomBtnRects.length > 0
+                ? Math.round(window.innerWidth - Math.min(...zoomBtnRects.map((r) => r.left)) + GAP_PX)
+                : GAP_PX;
+        const bottomEdgeTop = scaleRowRect
+            ? scaleRowRect.top
+            : Math.min(
+                  mapToggleRect?.top ?? Infinity,
+                  zoomBtnRects.length > 0 ? Math.min(...zoomBtnRects.map((r) => r.top)) : Infinity,
+              );
+        const bottomOffset = Math.max(
+            GAP_PX,
+            Number.isFinite(bottomEdgeTop) ? Math.round(window.innerHeight - bottomEdgeTop + GAP_PX) : GAP_PX,
+        );
+
+        elevationPanel.style.left = `${leftOffset}px`;
+        elevationPanel.style.right = `${rightOffset}px`;
+        elevationPanel.style.bottom = `${bottomOffset}px`;
+    };
+
+    /**
      * 標高-時間グラフを再描画する。時刻情報を持つ点が無い GPX（あるいは未読み込み時）は
-     * パネルごと非表示にする（`grid-template-rows` を 0 にして高さを畳む）。
+     * パネルごと非表示にする（opacity 切替。高さは常に確保しているため canvas サイズは
+     * 表示/非表示に関わらず安定している）。
      */
     const redrawElevationChart = (): void => {
         const hasProfiles = currentProfiles.length > 0;
@@ -301,7 +348,11 @@ const start = async (): Promise<void> => {
         }
     };
 
-    window.addEventListener("resize", redrawElevationChart);
+    adjustElevationPanelBounds();
+    window.addEventListener("resize", () => {
+        adjustElevationPanelBounds();
+        redrawElevationChart();
+    });
 
     // レイヤー表示状態
     const layerVisible = { track: true, waypoints: true };
