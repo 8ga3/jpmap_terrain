@@ -84,6 +84,7 @@ npm start
 | サークル | `/circle` | サークル公開 API（terrain / absolute / custom-segments）の動作確認。 |
 | 距離計測 | `/distance` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示。 |
 | Plan Viewer | `/plan` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。 |
+| GPX Viewer | `/gpx` | GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップで表示するビューア。水平移動距離・標高差等の統計と標高-時間グラフを表示。 |
 | 3D モデル | `/model` | 地面クリックで 3D モデルを配置・移動する Model API の動作確認。 |
 | アバターアニメーション #01 | `/avatar` | 3D アバターが地形に沿って円軌道を移動するアニメーション。 |
 | アバターアニメーション #02 | `/avatar-controller` | キーボード・Game Controller・Virtual Joystick でアバターを操作。 |
@@ -185,7 +186,7 @@ npm start
 ### エントリポイント
 
 - デモポータル: `src/demos/portal/index.ts`
-- 各デモエントリ: `src/demos/<デモ名>/index.ts`（portal を除く15デモの一覧は [デモポータル](#デモポータル) 参照）
+- 各デモエントリ: `src/demos/<デモ名>/index.ts`（portal を除く16デモの一覧は [デモポータル](#デモポータル) 参照）
 - シーン境界契約（インターフェース）: `src/scenes/sceneContract.ts`
 - グローブ地形シーン実装: `src/scenes/globe.ts`
 
@@ -194,13 +195,13 @@ npm start
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、portal を含め全16件）
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、portal を含め全17件）
 │  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
 │  ├─ terrain/           # 地形・UI 実装
 │  └─ scenes/            # シーン境界契約とグローブ地形シーン実装
 ├─ public/               # Vite のエントリ HTML（root。デモごとの *.html）
 ├─ assets/               # デモ用の3Dモデル・音声等の静的アセット
-├─ examples/             # サンプルデータ（.plan ファイル等）
+├─ examples/             # サンプルデータ（.plan / .gpx ファイル等）
 ├─ scripts/              # 開発補助スクリプト（checkNoIssueRefs 等）
 ├─ docker/               # デモサイト配信用 Docker 構成（docker/README.md 参照）
 ├─ tests/                # Playwright の Visual Regression Test と Unit テスト

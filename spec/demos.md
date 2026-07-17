@@ -16,6 +16,7 @@
 | サークル | `/circle.html` | `src/demos/circle/index.ts` | `JpmapTerrain` のサークル公開 API（terrain / absolute / custom-segments の 3 種・updateCircle デモ）の動作確認 |
 | 距離計測 | `/distance.html` | `src/demos/distance/index.ts` | 地形クリックで頂点を追加し、辺ごとに水平距離・高低差を表示する。`onTerrainClick` / `onPolygonPoint*` / `edgeLabels` の統合動作確認デモ |
 | Plan Viewer | `/plan.html` | `src/demos/plan/index.ts` | QGroundControl の `.plan` ファイルをドラッグ&ドロップで表示するビューア。ウェイポイント・ジオフェンス・ラリーポイントを描画 |
+| GPX Viewer | `/gpx.html` | `src/demos/gpx/index.ts` | GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップで表示するビューア。トラック（軌跡）・ウェイポイントを描画し、水平移動距離・標高差等の統計と標高-時間グラフを表示 |
 | 3Dモデル | `/model.html` | `src/demos/model/index.ts` | 地面クリックで 3D モデル（human.glb/obj/stl）を配置・移動するデモ。方位変更・座標表示・カメラ移動・フォーマット切替。Model API の動作確認 |
 | アバターアニメーション #01 | `/avatar.html` | `src/demos/avatar/index.ts` | 3D アバター（`human_walk.glb`）が地形に沿って円軌道を移動するアニメーションデモ。地面クリックで軌道中心を変更、半径・速度スライダー、アニメーション開始/停止トグル。Model API と `playModelAnimation` の動作確認 |
 | アバターアニメーション #02（Game Controller） | `/avatar-controller.html` | `src/demos/avatar-controller/index.ts` | キーボード（矢印キー / WASD）・Game Controller・Virtual Joystick で 3D アバターを地形上で操作するデモ。地面クリックでスポーン位置変更、速度スライダー、カメラ方位に応じた入力補正。Model API、Gamepad API、DOM ベース Virtual Joystick の動作確認 |
@@ -206,6 +207,32 @@ QGroundControl の `.plan` ファイルをドラッグ&ドロップでマップ�
 **ラリーポイント:**
 
 - 1 点ポリゴン（`addPolygon`）でマーカー表示。ラベルは `R番号`。
+
+**URL:** `engine` / カメラ系は他デモと共通（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
+
+### gpx (`/gpx.html`)
+
+GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップでマップ上に表示するビューア。編集機能は持たない。
+
+**ファイル入力:** デスクトップからのドラッグ&ドロップ。再ドロップ時は前回表示をクリアし新しい GPX のみ表示する。
+
+**トラック（軌跡）:**
+
+- パスライン（`addPolygon`, `altitudeMode: "absolute"`, `closed: false`）で描画。頂点球体マーカー/垂線/壁/点ラベルは無効化し、線のみのポリラインとして描画する。
+- 大量の点（数千点規模）を含み得るため、描画点数は `MAX_RENDER_POINTS_PER_SEGMENT` まで間引く（統計値の計算には間引き前の全点データを使う）。
+- トラック始点・終点のみ、Plan Viewer のホームポジション相当の単点マーカー（開始=緑・終了=赤）で強調表示する。
+- 複数トラックを含む GPX はトラックごとに色分けして描画する。
+
+**ウェイポイント:** 1 点ポリゴン（`addPolygon`）でマーカー表示。ラベルは `<name>`（無ければ座標）。
+
+**統計パネル（画面右上）:** トラック名・水平移動距離（`水平移動距離:`、複数トラックは合計も表示）・標高差（↑登り／↓下り、標高レンジ）・トラックポイント数・ウェイポイント数を表示。トラック/ウェイポイントの表示切替ボタン付き。
+
+**標高-時間グラフ（画面下部）:**
+
+- Canvas 2D（外部ライブラリ非依存）で標高（縦軸）と記録時刻（横軸）の折れ線＋線より下側の半透明塗りつぶしを表示。
+- `<trkpt><time>` を持つ GPX のみ対象（時刻情報がなければパネルごと非表示）。
+- GPX 上の時刻は UTC で記録されているため、表示時のみ JST（UTC+9固定）に変換する（GPX ファイル自体は変更しない）。
+- パネルの位置・幅は、左下（写真ボタン）・右下（ズームボタン列・スケールバー）の操作 UI と実測して重ならないよう動的に調整する。狭幅時は時間軸ラベルが重ならないよう目盛り数を自動的に減らす。
 
 **URL:** `engine` / カメラ系は他デモと共通（`parseCameraStateFromUrl` / `parseMapTypeFromUrl` を共用）。
 
