@@ -95,6 +95,29 @@ describe("parseGpx", () => {
         expect(result.tracks[0].segments[0].points).toHaveLength(1);
     });
 
+    it("trk/trkseg/trkpt/wpt/ele/name/time が全て名前空間プレフィックス付きでもパースできる", () => {
+        const xml = `<gpx:gpx xmlns:gpx="http://www.topografix.com/GPX/1/1" version="1.1">
+          <gpx:trk>
+            <gpx:name>プレフィックス付きトラック</gpx:name>
+            <gpx:trkseg>
+              <gpx:trkpt lat="35.0" lon="139.0"><gpx:ele>123.4</gpx:ele><gpx:time>2025-01-02T03:04:05Z</gpx:time></gpx:trkpt>
+            </gpx:trkseg>
+          </gpx:trk>
+          <gpx:wpt lat="36.0" lon="140.0"><gpx:name>プレフィックス付きWPT</gpx:name></gpx:wpt>
+        </gpx:gpx>`;
+        const result = parseGpx(xml);
+        expect(result.tracks).toHaveLength(1);
+        expect(result.tracks[0].name).toBe("プレフィックス付きトラック");
+        expect(result.tracks[0].segments[0].points[0]).toEqual({
+            lat: 35.0,
+            lon: 139.0,
+            ele: 123.4,
+            time: Date.parse("2025-01-02T03:04:05Z"),
+        });
+        expect(result.waypoints).toHaveLength(1);
+        expect(result.waypoints[0].name).toBe("プレフィックス付きWPT");
+    });
+
     it("複数トラック・複数セグメントをパースできる", () => {
         const xml = `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
           <trk>

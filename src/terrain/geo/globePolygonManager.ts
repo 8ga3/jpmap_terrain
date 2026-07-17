@@ -631,8 +631,12 @@ export const createGlobePolygonManager = (
             // 長い折れ線の一部にズームインすると重心距離が遠いままで太く見えてしまう。
             // radiusFunction で頂点ごとに計算すれば、垂線と同じ考え方でズーム位置に
             // 依らず太さを一定に保てる）。
+            // 2D 正射（flat）では、上の distScale と同じ理由（radius 比例の flatScale が
+            // 既に全頂点で画面上サイズを一定にする。距離比例の per-vertex 計算は高度差で
+            // カメラ距離がばらつき、逆に太さが不揃いになる）で radiusFunction を無効化し、
+            // 一律 distScale（= flatScale）を使う。
             const radiusFunction =
-                node.style.lineWidthMode === "screen" && cameraEcef
+                !flat && node.style.lineWidthMode === "screen" && cameraEcef
                     ? (i: number): number =>
                           lineRadiusWorld *
                           computeOverlayDistanceScale(cameraEcef, node.top[i])
