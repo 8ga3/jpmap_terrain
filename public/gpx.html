@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>jpmap_terrain – GPX Viewer</title>
+  <meta name="description" content="GPX(GPS eXchange Format)ファイルをドラッグ&ドロップでマップ上に表示するデモ">
+  <meta name="author" content="8ga3">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <style>
+    html, body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #gpx-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    }
+
+    #gpx-overlay .back-link {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      pointer-events: auto;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    #gpx-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+
+    #gpx-controls {
+      position: absolute;
+      top: 12px;
+      right: 64px;
+      pointer-events: auto;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-width: 300px;
+    }
+
+    #gpx-controls strong {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: #c8d2e6;
+    }
+
+    #gpx-status {
+      font-size: 11px;
+      line-height: 1.4;
+      color: #e2e8f0;
+      white-space: pre-line;
+    }
+
+    /* レイヤー表示切替ボタン */
+    #gpx-layer-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    #gpx-layer-buttons button {
+      pointer-events: auto;
+      padding: 3px 9px;
+      font-size: 11px;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #gpx-layer-buttons button:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    /* 表示中: 色付きボーダーで強調、非表示時は薄暗く */
+    #gpx-layer-buttons button[data-active="true"] {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.7);
+    }
+
+    #gpx-layer-buttons button[data-active="false"] {
+      opacity: 0.45;
+    }
+
+    /* GPX 未読み込み時はボタンを無効化 */
+    #gpx-layer-buttons button:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+
+    /* ドラッグ&ドロップ オーバーレイ */
+    #gpx-drop-zone {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 100;
+    }
+
+    #gpx-drop-zone.active {
+      display: flex;
+      pointer-events: auto;
+    }
+
+    #gpx-drop-zone .drop-label {
+      font-size: 20px;
+      color: #fff;
+      padding: 32px 48px;
+      border: 3px dashed rgba(255, 255, 255, 0.6);
+      border-radius: 16px;
+      text-align: center;
+    }
+
+    /* モバイル用の操作パネル開閉トグル（PC では非表示・パネル常時表示）。 */
+    .panel-toggle-cb,
+    .panel-toggle-btn {
+      display: none;
+    }
+
+    @media (max-width: 640px) {
+      .panel-toggle-btn {
+        position: absolute;
+        top: 56px;
+        left: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        pointer-events: auto;
+        color: #fff;
+        font-size: 18px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 8px;
+        cursor: pointer;
+        z-index: 11;
+      }
+
+      #gpx-panel-toggle:checked + .panel-toggle-btn {
+        background: rgba(96, 165, 250, 0.55);
+        border-color: rgba(191, 219, 254, 0.85);
+      }
+
+      #gpx-controls {
+        top: 104px;
+        left: 8px;
+        right: auto;
+        width: min(78vw, 280px);
+        min-width: 0;
+        max-width: none;
+        max-height: calc(100vh - 160px);
+        overflow-y: auto;
+        font-size: 13px;
+      }
+
+      /* 既定は折り畳み（閉じた状態）。トグルで開く。 */
+      #gpx-panel-toggle:not(:checked) ~ #gpx-controls {
+        display: none;
+      }
+
+      #gpx-controls button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+
+      #gpx-overlay .back-link {
+        padding: 8px 14px;
+        font-size: 14px;
+      }
+
+      #gpx-drop-zone .drop-label {
+        max-width: calc(100vw - 32px);
+        box-sizing: border-box;
+        padding: 24px 28px;
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="gpx-overlay">
+    <a class="back-link" href="/">← デモ一覧へ</a>
+    <input type="checkbox" id="gpx-panel-toggle" class="panel-toggle-cb" hidden>
+    <label for="gpx-panel-toggle" class="panel-toggle-btn" aria-label="操作パネルの開閉" title="操作パネル">⚙</label>
+    <div id="gpx-controls">
+      <strong>GPX Viewer</strong>
+      <div id="gpx-layer-buttons">
+        <button type="button" id="btn-track" data-active="true" disabled>トラック</button>
+        <button type="button" id="btn-waypoints" data-active="true" disabled>ウェイポイント</button>
+      </div>
+      <div id="gpx-status">.gpx ファイルをドラッグ&ドロップしてください</div>
+    </div>
+  </div>
+  <div id="gpx-drop-zone">
+    <div class="drop-label">ここにドロップして GPX を読み込む</div>
+  </div>
+    <script type="module" src="/src/demos/gpx/index.ts"></script>
+  </body>
+</html>
