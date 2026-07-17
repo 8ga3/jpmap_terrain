@@ -47,16 +47,23 @@ const parseFloatOrNull = (value: string | null): number | null => {
     return Number.isFinite(n) ? n : null;
 };
 
+/**
+ * `el` の直下の子要素を、名前空間プレフィックスの有無に依存せず `localName` で
+ * 絞り込んで返す（`getElementsByTagName` と異なり子孫要素は含まない）。
+ */
+const childrenByLocalName = (el: Element, localName: string): Element[] =>
+    Array.from(el.children).filter((child) => child.localName.toLowerCase() === localName);
+
 /** 要素直下の最初の `<ele>` テキストを標高値としてパースする。 */
 const readElevation = (el: Element): number | null => {
-    const eleEl = el.getElementsByTagName("ele")[0];
+    const eleEl = childrenByLocalName(el, "ele")[0];
     if (!eleEl?.textContent) return null;
     return parseFloatOrNull(eleEl.textContent.trim());
 };
 
 /** 要素直下の最初の `<name>` テキストを返す。空文字は null 扱い。 */
 const readName = (el: Element): string | null => {
-    const nameEl = el.getElementsByTagName("name")[0];
+    const nameEl = childrenByLocalName(el, "name")[0];
     const text = nameEl?.textContent?.trim();
     return text ? text : null;
 };
@@ -67,7 +74,7 @@ const readName = (el: Element): string | null => {
  * 不正な場合は null。タイムゾーン変換（JST 表示）は表示側 (`formatJstTime`) で行う。
  */
 const readTime = (el: Element): number | null => {
-    const timeEl = el.getElementsByTagName("time")[0];
+    const timeEl = childrenByLocalName(el, "time")[0];
     const text = timeEl?.textContent?.trim();
     if (!text) return null;
     const ms = Date.parse(text);
@@ -98,12 +105,12 @@ export const parseGpx = (xmlText: string): ParsedGpx => {
     }
 
     const tracks: ParsedGpxTrack[] = [];
-    for (const trkEl of Array.from(doc.documentElement.getElementsByTagName("trk"))) {
+    for (const trkEl of childrenByLocalName(doc.documentElement, "trk")) {
         const name = readName(trkEl);
         const segments: ParsedGpxSegment[] = [];
-        for (const segEl of Array.from(trkEl.getElementsByTagName("trkseg"))) {
+        for (const segEl of childrenByLocalName(trkEl, "trkseg")) {
             const points: ParsedGpxPoint[] = [];
-            for (const ptEl of Array.from(segEl.getElementsByTagName("trkpt"))) {
+            for (const ptEl of childrenByLocalName(segEl, "trkpt")) {
                 const pt = readPoint(ptEl);
                 if (pt) points.push(pt);
             }
@@ -113,7 +120,7 @@ export const parseGpx = (xmlText: string): ParsedGpx => {
     }
 
     const waypoints: ParsedGpxWaypoint[] = [];
-    for (const wptEl of Array.from(doc.documentElement.getElementsByTagName("wpt"))) {
+    for (const wptEl of childrenByLocalName(doc.documentElement, "wpt")) {
         const pt = readPoint(wptEl);
         if (!pt) continue;
         waypoints.push({ ...pt, name: readName(wptEl) });

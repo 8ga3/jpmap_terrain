@@ -21,6 +21,8 @@ interface StubMesh {
     billboardMode?: number;
     setEnabled: (v: boolean) => void;
     dispose: () => void;
+    lastRadius?: number;
+    lastRadiusFunction?: unknown;
 }
 
 const createdLines: StubMesh[] = [];
@@ -72,14 +74,19 @@ vi.mock("@babylonjs/core/Meshes/Builders/sphereBuilder", () => ({
 }));
 
 vi.mock("@babylonjs/core/Meshes/Builders/tubeBuilder", () => ({
-    CreateTube: (name: string, opts: { instance?: StubMesh }) => {
+    CreateTube: (name: string, opts: { instance?: StubMesh; radius?: number; radiusFunction?: unknown }) => {
         if (opts.instance) {
             if (name.includes("outline")) lineInstanceUpdates.push(1);
             else dropInstanceUpdates.push(1);
+            opts.instance.lastRadius = opts.radius;
+            opts.instance.lastRadiusFunction = opts.radiusFunction;
             return opts.instance;
         }
         const bucket = name.includes("outline") ? createdLines : createdDrops;
-        return stub(name, bucket);
+        const m = stub(name, bucket);
+        m.lastRadius = opts.radius;
+        m.lastRadiusFunction = opts.radiusFunction;
+        return m;
     },
 }));
 
@@ -471,6 +478,38 @@ describe("flat + flatScale サイズ一定（追加ケース）", () => {
         // 3D の absolute は terrainElevAt を呼ばないが、2D（flat）では高度を捨てて
         // 地形標高へ接地するため terrainElevAt が呼ばれる。
         expect(terrainElevAt).toHaveBeenCalled();
+    });
+});
+
+describe("lineWidthMode: screen（アウトラインの radiusFunction）", () => {
+    const cameraEcef = geodeticToEcef(35.35, 138.8, 5_000_000);
+
+    it("3D（非 flat）では cameraEcef ありなら radiusFunction を頂点ごとに設定する", () => {
+        const { mgr } = makeManager();
+        mgr.add({ points: pts3, style: { lineWidthMode: "screen", lineWidth: 2 } });
+        mgr.update(cameraEcef, undefined);
+        expect(createdLines).toHaveLength(1);
+        expect(typeof createdLines[0].lastRadiusFunction).toBe("function");
+    });
+
+    it("flat（2D）では cameraEcef があっても radiusFunction を無効化し、一律 flatScale を使う", () => {
+        const { mgr } = makeManager();
+        mgr.setFlatten(true);
+        mgr.add({ points: pts3, style: { lineWidthMode: "screen", lineWidth: 2 } });
+        const flatScale = 3;
+        // 実運用（globe.ts）では 2D でも camEcef は常に渡されるため、cameraEcef ありでも
+        // flat 時は距離由来の per-vertex 計算を行わないことを検証する。
+        mgr.update(cameraEcef, flatScale);
+        expect(createdLines).toHaveLength(1);
+        expect(createdLines[0].lastRadiusFunction).toBeUndefined();
+        expect(createdLines[0].lastRadius).toBe(2 * flatScale);
+    });
+
+    it("lineWidthMode 省略時（既定 world）は flat でなくても radiusFunction を使わない", () => {
+        const { mgr } = makeManager();
+        mgr.add({ points: pts3, style: { lineWidth: 2 } });
+        mgr.update(cameraEcef, undefined);
+        expect(createdLines[0].lastRadiusFunction).toBeUndefined();
     });
 });
 
