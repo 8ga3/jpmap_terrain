@@ -114,9 +114,10 @@ const triggerResizeObservers = (): void => {
 const createPolygonNode = (
         _scene: unknown,
         id: string,
-        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean; wallsEnabled?: boolean },
+        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; pointsEnabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean; wallsEnabled?: boolean },
     ) => {
         let enabled = options.enabled ?? true;
+        let pointsEnabled = options.pointsEnabled ?? true;
         let verticalsEnabled = options.verticalsEnabled ?? true;
         let labelsEnabled = options.labelsEnabled ?? true;
         let wallsEnabled = options.wallsEnabled ?? true;
@@ -133,6 +134,9 @@ const createPolygonNode = (
             },
             setEnabledLogical: (v: boolean) => {
                 enabled = v;
+            },
+            setPointsEnabledLogical: (v: boolean) => {
+                pointsEnabled = v;
             },
             setVerticalsEnabledLogical: (v: boolean) => {
                 verticalsEnabled = v;
@@ -155,6 +159,7 @@ const createPolygonNode = (
                 edgeLabels: undefined,
                 style: {} as unknown as PolygonHandle["style"],
                 enabled,
+                pointsEnabled,
                 verticalsEnabled,
                 labelsEnabled,
                 wallsEnabled,
@@ -405,6 +410,10 @@ const createPolygonManagerStub = (): PolygonManager => {
         setVerticalsEnabled(id: string, enabled: boolean): void {
             if (disposed) return;
             nodes.get(id)?.setVerticalsEnabledLogical(enabled);
+        },
+        setPointsEnabled(id: string, enabled: boolean): void {
+            if (disposed) return;
+            nodes.get(id)?.setPointsEnabledLogical(enabled);
         },
         setLabelsEnabled(id: string, enabled: boolean): void {
             if (disposed) return;

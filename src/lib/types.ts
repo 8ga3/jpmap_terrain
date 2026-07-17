@@ -469,6 +469,8 @@ export interface PolygonOptions {
     style?: PolygonStyleOptions;
     /** default true */
     enabled?: boolean;
+    /** 各頂点の球体マーカーの表示 ON/OFF。default true */
+    pointsEnabled?: boolean;
     /** 各ポイントから地表へ落とす垂線の表示 ON/OFF。default true */
     verticalsEnabled?: boolean;
     /** ポイント脇のラベルの表示 ON/OFF。default true */
@@ -505,6 +507,7 @@ export type PolygonUpdate = Partial<
         | "edgeLabels"
         | "style"
         | "enabled"
+        | "pointsEnabled"
         | "verticalsEnabled"
         | "labelsEnabled"
         | "wallsEnabled"
@@ -528,6 +531,8 @@ export interface PolygonHandle {
     readonly edgeLabels: ReadonlyArray<string | undefined> | undefined;
     readonly style: Readonly<Required<PolygonStyleOptions>>;
     readonly enabled: boolean;
+    /** 頂点球体マーカーの表示状態 */
+    readonly pointsEnabled: boolean;
     /** 垂線の表示状態 */
     readonly verticalsEnabled: boolean;
     /** ラベルの表示状態 */
@@ -551,6 +556,7 @@ export const POLYGON_DEFAULTS = {
     closed: false,
     altitudeMode: "terrain" as AltitudeMode,
     enabled: true,
+    pointsEnabled: true,
     verticalsEnabled: true,
     labelsEnabled: true,
     wallsEnabled: true,

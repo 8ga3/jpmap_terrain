@@ -1212,6 +1212,11 @@ export class JpmapTerrain {
         this._polygonManager.setVerticalsEnabled(id, enabled);
     }
 
+    public setPointsEnabled(id: string, enabled: boolean): void {
+        if (this._disposed || !this._polygonManager) return;
+        this._polygonManager.setPointsEnabled(id, enabled);
+    }
+
     public setLabelsEnabled(id: string, enabled: boolean): void {
         if (this._disposed || !this._polygonManager) return;
         this._polygonManager.setLabelsEnabled(id, enabled);

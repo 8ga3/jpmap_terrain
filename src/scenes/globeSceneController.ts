@@ -326,6 +326,7 @@ interface PolygonAdapterEntry {
     hasEdgeLabels: boolean;
     style: Required<PolygonStyleOptions>;
     enabled: boolean;
+    pointsEnabled: boolean;
     verticalsEnabled: boolean;
     labelsEnabled: boolean;
     wallsEnabled: boolean;
@@ -363,6 +364,7 @@ const toGlobePolygonOptions = (entry: PolygonAdapterEntry): GlobePolygonOptions 
     edgeLabels: entry.hasEdgeLabels ? entry.edgeLabels : undefined,
     style: entry.style,
     enabled: entry.enabled,
+    pointsEnabled: entry.pointsEnabled,
     verticalsEnabled: entry.verticalsEnabled,
     labelsEnabled: entry.labelsEnabled,
     wallsEnabled: entry.wallsEnabled,
@@ -400,6 +402,7 @@ export const createGlobePolygonManagerAdapter = (
         edgeLabels: e.hasEdgeLabels ? Object.freeze([...e.edgeLabels]) : undefined,
         style: { ...e.style },
         enabled: e.enabled,
+        pointsEnabled: e.pointsEnabled,
         verticalsEnabled: e.verticalsEnabled,
         labelsEnabled: e.labelsEnabled,
         wallsEnabled: e.wallsEnabled,
@@ -465,6 +468,7 @@ export const createGlobePolygonManagerAdapter = (
             hasEdgeLabels: options.edgeLabels !== undefined,
             style: resolvePolygonStyle(options.style),
             enabled: options.enabled ?? POLYGON_DEFAULTS.enabled,
+            pointsEnabled: options.pointsEnabled ?? POLYGON_DEFAULTS.pointsEnabled,
             verticalsEnabled:
                 options.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled,
             labelsEnabled: options.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled,
@@ -532,6 +536,7 @@ export const createGlobePolygonManagerAdapter = (
                     ? resolvePolygonStyle(partial.style)
                     : prev.style,
                 enabled: partial.enabled ?? prev.enabled,
+                pointsEnabled: partial.pointsEnabled ?? prev.pointsEnabled,
                 verticalsEnabled:
                     partial.verticalsEnabled ?? prev.verticalsEnabled,
                 labelsEnabled: partial.labelsEnabled ?? prev.labelsEnabled,
@@ -544,6 +549,7 @@ export const createGlobePolygonManagerAdapter = (
                 next.closed === prev.closed &&
                 next.altitudeMode === prev.altitudeMode &&
                 next.enabled === prev.enabled &&
+                next.pointsEnabled === prev.pointsEnabled &&
                 next.verticalsEnabled === prev.verticalsEnabled &&
                 next.labelsEnabled === prev.labelsEnabled &&
                 next.wallsEnabled === prev.wallsEnabled &&
@@ -586,6 +592,13 @@ export const createGlobePolygonManagerAdapter = (
             const prev = requireEntry(id);
             const next = cloneEntry(prev);
             next.verticalsEnabled = enabled;
+            commitRebuild(id, prev, next);
+        },
+        setPointsEnabled(id: string, enabled: boolean): void {
+            assertNotDisposed();
+            const prev = requireEntry(id);
+            const next = cloneEntry(prev);
+            next.pointsEnabled = enabled;
             commitRebuild(id, prev, next);
         },
         setLabelsEnabled(id: string, enabled: boolean): void {

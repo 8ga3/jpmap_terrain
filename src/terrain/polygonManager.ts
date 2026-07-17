@@ -24,6 +24,7 @@ export interface PolygonManager {
     update(id: string, partial: PolygonUpdate): PolygonHandle;
     remove(id: string): void;
     setEnabled(id: string, enabled: boolean): void;
+    setPointsEnabled(id: string, enabled: boolean): void;
     setVerticalsEnabled(id: string, enabled: boolean): void;
     setLabelsEnabled(id: string, enabled: boolean): void;
     setWallsEnabled(id: string, enabled: boolean): void;

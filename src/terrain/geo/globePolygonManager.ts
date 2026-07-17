@@ -108,7 +108,7 @@ export interface GlobePolygonOptions {
     wallsEnabled?: boolean;
     /** アウトライン（輪郭線）の表示。default true。circle 委譲で線と壁を独立トグルするために使う。 */
     lineEnabled?: boolean;
-    /** 内部用途: circle 委譲時は頂点マーカーを非表示にして既存の円表示を保つ。 */
+    /** 頂点球体マーカーの表示。default true。circle 委譲では円周ノードで false にして既存の円表示を保つ。 */
     pointsEnabled?: boolean;
     enabled?: boolean;
 }
