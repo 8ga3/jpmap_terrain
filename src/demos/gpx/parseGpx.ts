@@ -14,6 +14,8 @@ export interface ParsedGpxPoint {
     lon: number;
     /** 標高 (m)。`<ele>` が存在しない/数値でない場合は null。 */
     ele: number | null;
+    /** 記録時刻 (epoch ms)。`<time>` が存在しない/日時として不正な場合は null。 */
+    time: number | null;
 }
 
 /** `<trkseg>` 1件分 */
@@ -59,12 +61,25 @@ const readName = (el: Element): string | null => {
     return text ? text : null;
 };
 
+/**
+ * 要素直下の最初の `<time>` テキストを epoch ms としてパースする。
+ * GPX の `<time>` は ISO 8601（通常 UTC, 末尾 `Z`）。存在しない/日時として
+ * 不正な場合は null。タイムゾーン変換（JST 表示）は表示側 (`formatJstTime`) で行う。
+ */
+const readTime = (el: Element): number | null => {
+    const timeEl = el.getElementsByTagName("time")[0];
+    const text = timeEl?.textContent?.trim();
+    if (!text) return null;
+    const ms = Date.parse(text);
+    return Number.isFinite(ms) ? ms : null;
+};
+
 /** `<trkpt>` / `<wpt>` 要素から座標情報を抽出する。lat/lon が数値でなければ null。 */
 const readPoint = (el: Element): ParsedGpxPoint | null => {
     const lat = parseFloatOrNull(el.getAttribute("lat"));
     const lon = parseFloatOrNull(el.getAttribute("lon"));
     if (lat === null || lon === null) return null;
-    return { lat, lon, ele: readElevation(el) };
+    return { lat, lon, ele: readElevation(el), time: readTime(el) };
 };
 
 /**

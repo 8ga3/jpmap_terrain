@@ -11,6 +11,10 @@
  *   まで間引いて軽量化する（統計値の計算には間引き前の全点データを使う）。
  *   トラック始点・終点のみ Plan Viewer のホームポジション相当の単点マーカーで強調する。
  * - 描画は distance / plan デモと同じ addPolygon API を使用する。
+ * - 画面右上の操作パネルに水平移動距離・標高差等の統計を表示する。
+ * - 画面下部に標高-時間グラフ（Canvas 2D、外部ライブラリ非依存）を表示する。
+ *   `<trkpt><time>` を持つ GPX のみ対象（無ければパネルごと非表示）。時刻は GPX 上は
+ *   UTC で記録されているため、表示時のみ JST (UTC+9固定) に変換する（GPX ファイル自体は変更しない）。
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, PolygonOptions } from "../../lib/types";
@@ -29,13 +33,18 @@ import {
     formatTrackLabel,
     formatWaypointLabel,
     MAX_RENDER_POINTS_PER_SEGMENT,
+    buildElevationProfiles,
 } from "./utils";
+import type { ElevationProfileSeries } from "./utils";
+import { clearElevationChart, renderElevationChart } from "./elevationChart";
 
 const DEMO_MOUNT_ID = "root";
 const STATUS_ID = "gpx-status";
 const DROP_ZONE_ID = "gpx-drop-zone";
 const BTN_TRACK_ID = "btn-track";
 const BTN_WAYPOINTS_ID = "btn-waypoints";
+const ELEVATION_PANEL_ID = "gpx-elevation-panel";
+const ELEVATION_CANVAS_ID = "gpx-elevation-canvas";
 
 // 描画 ID プレフィックス
 const ID_TRACK_LINE_PREFIX = "gpx-track-line-";
@@ -226,7 +235,8 @@ const updateStatus = (
     const lines: string[] = [];
     gpx.tracks.forEach((track, i) => {
         const stats = computeTrackStats(track);
-        lines.push(`${formatTrackLabel(track, i)}: ${formatHorizontalDistance(stats.distanceMeters)}`);
+        lines.push(formatTrackLabel(track, i));
+        lines.push(`  水平移動距離: ${formatHorizontalDistance(stats.distanceMeters)}`);
         lines.push(
             `  ↑${formatElevationMeters(stats.elevationGainMeters)} ↓${formatElevationMeters(stats.elevationLossMeters)}` +
                 ` (${formatElevationMeters(stats.minElevationMeters)}〜${formatElevationMeters(stats.maxElevationMeters)})`,
@@ -235,7 +245,7 @@ const updateStatus = (
     });
     if (gpx.tracks.length > 1) {
         const total = computeGpxStats(gpx.tracks);
-        lines.push(`合計距離: ${formatHorizontalDistance(total.distanceMeters)}`);
+        lines.push(`合計水平移動距離: ${formatHorizontalDistance(total.distanceMeters)}`);
     }
     if (gpx.waypoints.length > 0) {
         lines.push(`ウェイポイント: ${gpx.waypoints.length} 点`);
@@ -270,8 +280,28 @@ const start = async (): Promise<void> => {
 
     const statusEl = document.getElementById(STATUS_ID);
     const dropZone = document.getElementById(DROP_ZONE_ID);
+    const elevationPanel = document.getElementById(ELEVATION_PANEL_ID);
+    const elevationCanvas = document.getElementById(ELEVATION_CANVAS_ID) as HTMLCanvasElement | null;
 
     let currentIds: GpxIds = { ...EMPTY_GPX_IDS };
+    let currentProfiles: ElevationProfileSeries[] = [];
+
+    /**
+     * 標高-時間グラフを再描画する。時刻情報を持つ点が無い GPX（あるいは未読み込み時）は
+     * パネルごと非表示にする（`grid-template-rows` を 0 にして高さを畳む）。
+     */
+    const redrawElevationChart = (): void => {
+        const hasProfiles = currentProfiles.length > 0;
+        elevationPanel?.classList.toggle("visible", hasProfiles);
+        if (!elevationCanvas) return;
+        if (hasProfiles) {
+            renderElevationChart(elevationCanvas, currentProfiles, colorForTrack);
+        } else {
+            clearElevationChart(elevationCanvas);
+        }
+    };
+
+    window.addEventListener("resize", redrawElevationChart);
 
     // レイヤー表示状態
     const layerVisible = { track: true, waypoints: true };
@@ -347,12 +377,17 @@ const start = async (): Promise<void> => {
             updateStatus(statusEl, gpx);
             refreshButtons();
 
+            currentProfiles = buildElevationProfiles(gpx.tracks);
+            redrawElevationChart();
+
             const target = firstFlyToTarget(gpx);
             if (target) void viewer.flyTo(target);
         } catch (e) {
             const msg = e instanceof Error ? e.message : "不明なエラー";
             updateStatus(statusEl, null, msg);
             refreshButtons();
+            currentProfiles = [];
+            redrawElevationChart();
         }
     };
 

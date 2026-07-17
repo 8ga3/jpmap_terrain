@@ -118,6 +118,55 @@
       cursor: not-allowed;
     }
 
+    /* 画面下部の標高-時間グラフパネル（地図が透けて見える半透明スタイル） */
+    /*
+     * 高さは常に確保しておき opacity のみで表示/非表示を切り替える。
+     * height を transition させると、表示切替直後に canvas のサイズ測定
+     * (getBoundingClientRect) がアニメーション開始前の値を拾い、
+     * 描画がずれる/空になることがあるため避けている。
+     */
+    #gpx-elevation-panel {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      height: 140px;
+      opacity: 0;
+      pointer-events: none;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      box-sizing: border-box;
+      padding: 6px 10px;
+      transition: opacity 0.15s ease-out;
+    }
+
+    #gpx-elevation-panel.visible {
+      opacity: 1;
+    }
+
+    #gpx-elevation-title {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: #c8d2e6;
+      margin-bottom: 2px;
+    }
+
+    #gpx-elevation-canvas {
+      display: block;
+      width: 100%;
+      height: calc(100% - 16px);
+    }
+
+    @media (max-width: 640px) {
+      #gpx-elevation-panel {
+        height: 110px;
+      }
+    }
+
     /* ドラッグ&ドロップ オーバーレイ */
     #gpx-drop-zone {
       position: absolute;
@@ -225,6 +274,10 @@
         <button type="button" id="btn-waypoints" data-active="true" disabled>ウェイポイント</button>
       </div>
       <div id="gpx-status">.gpx ファイルをドラッグ&ドロップしてください</div>
+    </div>
+    <div id="gpx-elevation-panel">
+      <div id="gpx-elevation-title">標高-時間グラフ (JST)</div>
+      <canvas id="gpx-elevation-canvas"></canvas>
     </div>
   </div>
   <div id="gpx-drop-zone">

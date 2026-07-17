@@ -7,17 +7,21 @@
  * - parseGpx: GPX (XML) のパースとフィルタリング
  * - computeTrackStats / computeGpxStats: 距離・標高統計の集計
  * - formatElevationMeters / formatTrackLabel / formatWaypointLabel: ラベル整形
+ * - formatJstTime: epoch ms の JST 表示整形
+ * - buildElevationProfiles: 標高-時間グラフ用データの組み立て
  */
 import { describe, it, expect } from "vitest";
 
 import { parseGpx } from "../src/demos/gpx/parseGpx";
 import type { ParsedGpxTrack } from "../src/demos/gpx/parseGpx";
 import {
+    buildElevationProfiles,
     computeGpxStats,
     computeTrackStats,
     decimatePoints,
     flattenSegments,
     formatElevationMeters,
+    formatJstTime,
     formatTrackLabel,
     formatWaypointLabel,
 } from "../src/demos/gpx/utils";
@@ -47,8 +51,31 @@ describe("parseGpx", () => {
             lat: 36.602896666154265,
             lon: 137.6161671616137,
             ele: 2531.199951171875,
+            time: Date.parse("2025-07-26T19:22:53Z"),
         });
         expect(result.waypoints).toHaveLength(0);
+    });
+
+    it("time が UTC の <time> を epoch ms としてパースする", () => {
+        const xml = `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+          <trk><trkseg>
+            <trkpt lat="35.0" lon="139.0"><time>2025-01-02T03:04:05Z</time></trkpt>
+          </trkseg></trk>
+        </gpx>`;
+        const result = parseGpx(xml);
+        expect(result.tracks[0].segments[0].points[0].time).toBe(Date.parse("2025-01-02T03:04:05Z"));
+    });
+
+    it("time が無い/不正な trkpt は time: null としてパースする", () => {
+        const xml = `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+          <trk><trkseg>
+            <trkpt lat="35.0" lon="139.0"></trkpt>
+            <trkpt lat="35.1" lon="139.1"><time>not-a-date</time></trkpt>
+          </trkseg></trk>
+        </gpx>`;
+        const result = parseGpx(xml);
+        expect(result.tracks[0].segments[0].points[0].time).toBeNull();
+        expect(result.tracks[0].segments[0].points[1].time).toBeNull();
     });
 
     it("不正な入力で例外を投げる", () => {
@@ -125,7 +152,7 @@ describe("parseGpx", () => {
         const result = parseGpx(xml);
         expect(result.tracks).toHaveLength(0);
         expect(result.waypoints).toHaveLength(2);
-        expect(result.waypoints[0]).toEqual({ lat: 35.5, lon: 139.5, ele: 50, name: "山頂" });
+        expect(result.waypoints[0]).toEqual({ lat: 35.5, lon: 139.5, ele: 50, name: "山頂", time: null });
         expect(result.waypoints[1].name).toBeNull();
     });
 
@@ -149,9 +176,9 @@ describe("computeTrackStats", () => {
             segments: [
                 {
                     points: [
-                        { lat: 35.0, lon: 139.0, ele: 100 },
-                        { lat: 35.0, lon: 139.01, ele: 150 }, // +50
-                        { lat: 35.0, lon: 139.02, ele: 120 }, // -30
+                        { lat: 35.0, lon: 139.0, ele: 100, time: null },
+                        { lat: 35.0, lon: 139.01, ele: 150, time: null }, // +50
+                        { lat: 35.0, lon: 139.02, ele: 120, time: null }, // -30
                     ],
                 },
             ],
@@ -171,8 +198,8 @@ describe("computeTrackStats", () => {
             segments: [
                 {
                     points: [
-                        { lat: 35.0, lon: 139.0, ele: null },
-                        { lat: 36.0, lon: 140.0, ele: null },
+                        { lat: 35.0, lon: 139.0, ele: null, time: null },
+                        { lat: 36.0, lon: 140.0, ele: null, time: null },
                     ],
                 },
             ],
@@ -180,8 +207,8 @@ describe("computeTrackStats", () => {
         const trackTwoSegments: ParsedGpxTrack = {
             name: null,
             segments: [
-                { points: [{ lat: 35.0, lon: 139.0, ele: null }] },
-                { points: [{ lat: 36.0, lon: 140.0, ele: null }] },
+                { points: [{ lat: 35.0, lon: 139.0, ele: null, time: null }] },
+                { points: [{ lat: 36.0, lon: 140.0, ele: null, time: null }] },
             ],
         };
         expect(computeTrackStats(trackTwoSegments).distanceMeters).toBe(0);
@@ -194,9 +221,9 @@ describe("computeTrackStats", () => {
             segments: [
                 {
                     points: [
-                        { lat: 35.0, lon: 139.0, ele: 100 },
-                        { lat: 35.0, lon: 139.01, ele: null },
-                        { lat: 35.0, lon: 139.02, ele: 200 },
+                        { lat: 35.0, lon: 139.0, ele: 100, time: null },
+                        { lat: 35.0, lon: 139.01, ele: null, time: null },
+                        { lat: 35.0, lon: 139.02, ele: 200, time: null },
                     ],
                 },
             ],
@@ -211,7 +238,7 @@ describe("computeTrackStats", () => {
     it("ele を持つ点が無ければ min/max は null", () => {
         const track: ParsedGpxTrack = {
             name: null,
-            segments: [{ points: [{ lat: 35.0, lon: 139.0, ele: null }] }],
+            segments: [{ points: [{ lat: 35.0, lon: 139.0, ele: null, time: null }] }],
         };
         const stats = computeTrackStats(track);
         expect(stats.maxElevationMeters).toBeNull();
@@ -239,8 +266,8 @@ describe("computeGpxStats", () => {
                 segments: [
                     {
                         points: [
-                            { lat: 35.0, lon: 139.0, ele: 100 },
-                            { lat: 35.0, lon: 139.01, ele: 150 },
+                            { lat: 35.0, lon: 139.0, ele: 100, time: null },
+                            { lat: 35.0, lon: 139.01, ele: 150, time: null },
                         ],
                     },
                 ],
@@ -250,8 +277,8 @@ describe("computeGpxStats", () => {
                 segments: [
                     {
                         points: [
-                            { lat: 36.0, lon: 140.0, ele: 50 },
-                            { lat: 36.0, lon: 140.01, ele: 30 },
+                            { lat: 36.0, lon: 140.0, ele: 50, time: null },
+                            { lat: 36.0, lon: 140.01, ele: 30, time: null },
                         ],
                     },
                 ],
@@ -277,8 +304,8 @@ describe("computeGpxStats", () => {
 describe("flattenSegments", () => {
     it("複数セグメントの点を1つの配列に平坦化する", () => {
         const points = flattenSegments([
-            { points: [{ lat: 1, lon: 1, ele: null }] },
-            { points: [{ lat: 2, lon: 2, ele: null }, { lat: 3, lon: 3, ele: null }] },
+            { points: [{ lat: 1, lon: 1, ele: null, time: null }] },
+            { points: [{ lat: 2, lon: 2, ele: null, time: null }, { lat: 3, lon: 3, ele: null, time: null }] },
         ]);
         expect(points).toHaveLength(3);
     });
@@ -340,5 +367,103 @@ describe("formatWaypointLabel", () => {
     it("name が無ければ連番を使う（1始まり）", () => {
         expect(formatWaypointLabel(null, 0)).toBe("WPT 1");
         expect(formatWaypointLabel(null, 4)).toBe("WPT 5");
+    });
+});
+
+describe("formatJstTime", () => {
+    it("UTC の epoch ms を JST (UTC+9) の HH:MM に変換する", () => {
+        // 2025-01-02T03:04:05Z -> JST 12:04
+        expect(formatJstTime(Date.parse("2025-01-02T03:04:05Z"))).toBe("12:04");
+    });
+
+    it("日付をまたぐ変換も正しく計算する（UTC 前日深夜 -> JST 当日朝）", () => {
+        // 2025-01-01T15:30:00Z -> JST 2025-01-02 00:30
+        expect(formatJstTime(Date.parse("2025-01-01T15:30:00Z"))).toBe("00:30");
+    });
+
+    it("時刻はブラウザ/OS のローカルタイムゾーンに依存しない (UTC 基準で +9h 固定計算)", () => {
+        // 実行環境のタイムゾーンに関わらず同じ結果になることを確認する
+        expect(formatJstTime(Date.parse("2025-06-15T00:00:00Z"))).toBe("09:00");
+    });
+});
+
+describe("buildElevationProfiles", () => {
+    const trackWithTimeAndEle: ParsedGpxTrack = {
+        name: "A",
+        segments: [
+            {
+                points: [
+                    { lat: 35.0, lon: 139.0, ele: 100, time: Date.parse("2025-01-01T00:00:00Z") },
+                    { lat: 35.01, lon: 139.0, ele: 150, time: Date.parse("2025-01-01T00:01:00Z") },
+                    { lat: 35.02, lon: 139.0, ele: 120, time: Date.parse("2025-01-01T00:02:00Z") },
+                ],
+            },
+        ],
+    };
+
+    it("time と ele を両方持つ点から系列を組み立てる", () => {
+        const result = buildElevationProfiles([trackWithTimeAndEle]);
+        expect(result).toHaveLength(1);
+        expect(result[0].trackIndex).toBe(0);
+        expect(result[0].points).toEqual([
+            { timeMs: Date.parse("2025-01-01T00:00:00Z"), ele: 100 },
+            { timeMs: Date.parse("2025-01-01T00:01:00Z"), ele: 150 },
+            { timeMs: Date.parse("2025-01-01T00:02:00Z"), ele: 120 },
+        ]);
+    });
+
+    it("time か ele のどちらかが欠損する点はスキップする", () => {
+        const track: ParsedGpxTrack = {
+            name: null,
+            segments: [
+                {
+                    points: [
+                        { lat: 35.0, lon: 139.0, ele: 100, time: Date.parse("2025-01-01T00:00:00Z") },
+                        { lat: 35.01, lon: 139.0, ele: null, time: Date.parse("2025-01-01T00:01:00Z") },
+                        { lat: 35.02, lon: 139.0, ele: 120, time: null },
+                        { lat: 35.03, lon: 139.0, ele: 130, time: Date.parse("2025-01-01T00:03:00Z") },
+                    ],
+                },
+            ],
+        };
+        const result = buildElevationProfiles([track]);
+        expect(result).toHaveLength(1);
+        expect(result[0].points).toHaveLength(2);
+    });
+
+    it("有効点が2未満のトラックは除外する", () => {
+        const track: ParsedGpxTrack = {
+            name: null,
+            segments: [
+                { points: [{ lat: 35.0, lon: 139.0, ele: 100, time: Date.parse("2025-01-01T00:00:00Z") }] },
+            ],
+        };
+        expect(buildElevationProfiles([track])).toEqual([]);
+    });
+
+    it("time を持つ点が全く無ければ空配列を返す", () => {
+        const track: ParsedGpxTrack = {
+            name: null,
+            segments: [{ points: [{ lat: 35.0, lon: 139.0, ele: 100, time: null }] }],
+        };
+        expect(buildElevationProfiles([track])).toEqual([]);
+    });
+
+    it("複数トラックはトラックごとに系列を分ける", () => {
+        const trackB: ParsedGpxTrack = {
+            name: "B",
+            segments: [
+                {
+                    points: [
+                        { lat: 36.0, lon: 140.0, ele: 200, time: Date.parse("2025-01-01T01:00:00Z") },
+                        { lat: 36.01, lon: 140.0, ele: 210, time: Date.parse("2025-01-01T01:01:00Z") },
+                    ],
+                },
+            ],
+        };
+        const result = buildElevationProfiles([trackWithTimeAndEle, trackB]);
+        expect(result).toHaveLength(2);
+        expect(result[0].trackIndex).toBe(0);
+        expect(result[1].trackIndex).toBe(1);
     });
 });
