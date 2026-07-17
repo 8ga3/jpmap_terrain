@@ -37,6 +37,7 @@ const HTML_ENTRIES = [
     "distance",
     "circle",
     "plan",
+    "gpx",
     "model",
     "avatar",
     "avatar-controller",

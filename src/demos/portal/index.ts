@@ -67,6 +67,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
         href: "plan",
     },
     {
+        title: "GPX Viewer",
+        description:
+            "GPX(GPS eXchange Format)ファイル（.gpx）をドラッグ&ドロップでマップ上に表示するビューア。トラック（軌跡）とウェイポイントを描画し、距離・標高差を表示します。",
+        href: "gpx",
+    },
+    {
         title: "3Dモデル",
         description:
             "地面クリックで 3D モデル（human.glb）を配置・移動するデモ。方位変更やモデル位置へのカメラ移動が可能です。",
