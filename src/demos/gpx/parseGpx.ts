@@ -93,7 +93,7 @@ export const parseGpx = (xmlText: string): ParsedGpx => {
     if (doc.getElementsByTagName("parsererror").length > 0) {
         throw new Error("Invalid GPX file: XML parse error");
     }
-    if (doc.documentElement?.tagName.toLowerCase() !== "gpx") {
+    if (doc.documentElement?.localName?.toLowerCase() !== "gpx") {
         throw new Error("Invalid GPX file: root element is not <gpx>");
     }
 
