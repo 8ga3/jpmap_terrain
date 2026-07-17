@@ -124,12 +124,16 @@
      * height を transition させると、表示切替直後に canvas のサイズ測定
      * (getBoundingClientRect) がアニメーション開始前の値を拾い、
      * 描画がずれる/空になることがあるため避けている。
+     *
+     * left / right / bottom は左下（写真ボタン）・右下（ズームボタン列・スケールバー）の
+     * 操作 UI と重ならないよう、JS 側 (index.ts の adjustElevationPanelBounds) で
+     * 実測して上書きする。ここでの値は JS 実行前の暫定値。
      */
     #gpx-elevation-panel {
       position: absolute;
       left: 12px;
       right: 12px;
-      bottom: 12px;
+      bottom: 140px;
       height: 140px;
       opacity: 0;
       pointer-events: none;
@@ -148,17 +152,10 @@
       opacity: 1;
     }
 
-    #gpx-elevation-title {
-      font-size: 11px;
-      letter-spacing: 0.04em;
-      color: #c8d2e6;
-      margin-bottom: 2px;
-    }
-
     #gpx-elevation-canvas {
       display: block;
       width: 100%;
-      height: calc(100% - 16px);
+      height: 100%;
     }
 
     @media (max-width: 640px) {
@@ -276,7 +273,6 @@
       <div id="gpx-status">.gpx ファイルをドラッグ&ドロップしてください</div>
     </div>
     <div id="gpx-elevation-panel">
-      <div id="gpx-elevation-title">標高-時間グラフ (JST)</div>
       <canvas id="gpx-elevation-canvas"></canvas>
     </div>
   </div>
