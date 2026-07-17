@@ -4,9 +4,33 @@
     version="1.1" xmlns="http://www.topografix.com/GPX/1/1"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <metadata>
-        <bounds maxlat="36.62335094064474" maxlon="137.61710677295923" minlat="36.586629236117005"
-            minlon="137.60112474672496" />
+        <bounds maxlat="36.62335094064474" maxlon="137.61710677295923" minlat="36.586584"
+            minlon="137.5985057" />
     </metadata>
+    <wpt lat="36.6048612" lon="137.6134063">
+        <name>剱澤小屋</name>
+    </wpt>
+    <wpt lat="36.6092108" lon="137.6096747">
+        <name>剣山荘</name>
+    </wpt>
+    <wpt lat="36.616896" lon="137.6124789">
+        <name>前剱</name>
+    </wpt>
+    <wpt lat="36.6235291" lon="137.6071233">
+        <name>剣岳</name>
+    </wpt>
+    <wpt lat="36.6024321" lon="137.5985057">
+        <name>剱御前</name>
+    </wpt>
+    <wpt lat="36.597894226985844" lon="137.6094569902841">
+        <name>剱御前山</name>
+    </wpt>
+    <wpt lat="36.5962742" lon="137.6077037">
+        <name>剱御前小舎</name>
+    </wpt>
+    <wpt lat="36.586584" lon="137.5985094">
+        <name>雷鳥沢キャンプ場</name>
+    </wpt>
     <trk>
         <name>剱岳-2025-07-27</name>
         <number>1</number>
