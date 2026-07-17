@@ -733,6 +733,7 @@ const resolveCircleStyle = (
     lineColor: style?.lineColor ?? CIRCLE_DEFAULTS.style.lineColor,
     lineWidth: style?.lineWidth ?? CIRCLE_DEFAULTS.style.lineWidth,
     lineOpacity: style?.lineOpacity ?? CIRCLE_DEFAULTS.style.lineOpacity,
+    lineWidthMode: style?.lineWidthMode ?? CIRCLE_DEFAULTS.style.lineWidthMode,
     wallColor: style?.wallColor ?? CIRCLE_DEFAULTS.style.wallColor,
     wallOpacity: style?.wallOpacity ?? CIRCLE_DEFAULTS.style.wallOpacity,
     labelColor: style?.labelColor ?? CIRCLE_DEFAULTS.style.labelColor,

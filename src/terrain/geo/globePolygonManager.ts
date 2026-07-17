@@ -72,6 +72,7 @@ interface ResolvedStyle {
     lineColor: string;
     lineWidth: number;
     lineOpacity: number;
+    lineWidthMode: "world" | "screen";
     pointDiameter: number;
     pointColor: string;
     pointOpacity: number;
@@ -624,12 +625,25 @@ export const createGlobePolygonManager = (
 
         const hasEdges = node.points.length >= 2;
         if (hasEdges) {
+            const lineRadiusWorld = Math.max(node.style.lineWidth, 0.001);
+            // "screen" モードでは頂点ごとの実カメラ距離から distScale を計算する
+            // （既定の "world" は距離比例の distScale だが、算出元が全頂点の重心のため、
+            // 長い折れ線の一部にズームインすると重心距離が遠いままで太く見えてしまう。
+            // radiusFunction で頂点ごとに計算すれば、垂線と同じ考え方でズーム位置に
+            // 依らず太さを一定に保てる）。
+            const radiusFunction =
+                node.style.lineWidthMode === "screen" && cameraEcef
+                    ? (i: number): number =>
+                          lineRadiusWorld *
+                          computeOverlayDistanceScale(cameraEcef, node.top[i])
+                    : undefined;
             node.lineMesh = CreateTube(
                 `${node.id}-outline`,
                 {
                     path: node.relTop,
                     // ラインも distScale を掛けて画面上の太さを一定に保つ（マーカーの pole と同様）。
-                    radius: Math.max(node.style.lineWidth, 0.001) * distScale,
+                    radius: lineRadiusWorld * distScale,
+                    radiusFunction,
                     instance: node.lineMesh,
                 },
                 scene,

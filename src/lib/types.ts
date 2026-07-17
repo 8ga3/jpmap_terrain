@@ -405,6 +405,17 @@ export interface PolygonStyleOptions {
     lineWidth?: number;
     /** 線の不透明度 [0,1]。default 1 */
     lineOpacity?: number;
+    /**
+     * 線幅の基準。
+     * - `"world"`（既定）: `lineWidth` を世界座標のTube半径として扱う（従来互換）。
+     * - `"screen"`: 頂点ごとにカメラ距離を計算し、点/垂線と同じ距離比例スケールを
+     *   線の全長にわたって頂点単位で適用する。長い折れ線（GPXトラック等）で一部
+     *   （重心から離れた区間）にズームインしても、その頂点付近の実際のカメラ距離を
+     *   反映するため、画面上の太さがズーム位置によらず一定に保たれる。
+     *   `"world"` は頂点全体の重心とカメラの距離のみで太さを決めるため、長い折れ線の
+     *   端にズームインすると重心までの距離が遠いままとなり、太く見える問題がある。
+     */
+    lineWidthMode?: "world" | "screen";
     /** 球の色 CSS。default `#ff0000` */
     pointColor?: string;
     /** 球の直径 (m, world、distScale 適用前)。default 20 */
@@ -547,6 +558,7 @@ export const POLYGON_DEFAULTS = {
         lineColor: "#ff0000",
         lineWidth: 2,
         lineOpacity: 1,
+        lineWidthMode: "world" as const,
         pointColor: "#ff0000",
         pointDiameter: 20,
         pointOpacity: 1,
@@ -572,6 +584,7 @@ export const resolvePolygonStyle = (
     lineColor: style?.lineColor ?? POLYGON_DEFAULTS.style.lineColor,
     lineWidth: style?.lineWidth ?? POLYGON_DEFAULTS.style.lineWidth,
     lineOpacity: style?.lineOpacity ?? POLYGON_DEFAULTS.style.lineOpacity,
+    lineWidthMode: style?.lineWidthMode ?? POLYGON_DEFAULTS.style.lineWidthMode,
     pointDiameter: style?.pointDiameter ?? POLYGON_DEFAULTS.style.pointDiameter,
     pointColor: style?.pointColor ?? POLYGON_DEFAULTS.style.pointColor,
     pointOpacity: style?.pointOpacity ?? POLYGON_DEFAULTS.style.pointOpacity,
@@ -623,6 +636,12 @@ export interface CircleStyleOptions {
     lineWidth?: number;
     /** 円周線の不透明度 [0,1]。default 1 */
     lineOpacity?: number;
+    /**
+     * 円周線の線幅の基準。{@link PolygonStyleOptions.lineWidthMode} と同じ意味。
+     * `"screen"` にすると円周（頂点列）の各頂点でカメラ距離比例スケールを個別に
+     * 計算するため、大きな円にズームインしても太さが一定に保たれる。default `"world"`
+     */
+    lineWidthMode?: "world" | "screen";
     /** 壁の色 CSS。default `#ff0000` */
     wallColor?: string;
     /** 壁の不透明度 [0,1]。default 0.3 */
@@ -753,6 +772,7 @@ export const CIRCLE_DEFAULTS = {
         lineColor: "#ff0000",
         lineWidth: 2,
         lineOpacity: 1,
+        lineWidthMode: "world" as const,
         wallColor: "#ff0000",
         wallOpacity: 0.3,
         labelColor: "#000000",

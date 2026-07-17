@@ -47,51 +47,35 @@ const ID_WAYPOINT_PREFIX = "gpx-waypoint-";
 const TRACK_COLORS = ["#2196f3", "#e91e63", "#4caf50", "#ff9800", "#9c27b0", "#00bcd4"];
 const colorForTrack = (index: number): string => TRACK_COLORS[index % TRACK_COLORS.length];
 
-/**
- * トラックポリラインの `lineWidth`（Tube半径, m, world）をカメラ高度に応じて段階的に変える。
- * `lineWidth` はワールド座標系の固定半径のため、ズームアップ（カメラが近づく）ほど
- * 画面上では太く見える。全体表示時に見やすい太さ（3）を基準に、近づくほど細くして
- * 地図がポリラインで隠れすぎないようにする。
- * カメラ変化のたびに毎回ポリゴンを再構築するのはコストが高いため、段階（バケット）が
- * 変わったときだけ再構築するよう、少数の閾値に量子化する。
- */
-const TRACK_LINE_WIDTH_STEPS: ReadonlyArray<{ readonly maxAltitude: number; readonly lineWidth: number }> = [
-    { maxAltitude: 150, lineWidth: 0.6 },
-    { maxAltitude: 400, lineWidth: 1 },
-    { maxAltitude: 1000, lineWidth: 1.5 },
-    { maxAltitude: 2500, lineWidth: 2 },
-    { maxAltitude: Number.POSITIVE_INFINITY, lineWidth: 3 },
-];
-
-const lineWidthForAltitude = (altitude: number): number => {
-    for (const step of TRACK_LINE_WIDTH_STEPS) {
-        if (altitude <= step.maxAltitude) return step.lineWidth;
-    }
-    return TRACK_LINE_WIDTH_STEPS[TRACK_LINE_WIDTH_STEPS.length - 1].lineWidth;
-};
-
 /** トラックの頂点ごとに生成される球体の直径 (m)。密な軌跡上で目立たないよう小さくする。 */
 const TRACK_LINE_POINT_DIAMETER = 4;
 
-/** トラックポリライン用の style を組み立てる（lineWidth のみカメラ高度で可変）。 */
-const buildTrackLineStyle = (color: string, lineWidth: number): NonNullable<PolygonOptions["style"]> => ({
+/**
+ * トラックポリラインの基準太さ（Tube半径, m, world, `lineWidthMode: "screen"` 用）。
+ * `"screen"` モードでは頂点ごとにカメラ距離比例のスケールを掛けるため、垂線・点マーカーと
+ * 同様にズームに依らず画面上の太さがほぼ一定になる（マーカーの垂線と同じ仕組み）。
+ */
+const TRACK_LINE_WIDTH = 3;
+
+/** トラックポリライン用の style を組み立てる。 */
+const buildTrackLineStyle = (color: string): NonNullable<PolygonOptions["style"]> => ({
     lineColor: color,
-    lineWidth,
+    lineWidth: TRACK_LINE_WIDTH,
+    lineWidthMode: "screen",
     pointDiameter: TRACK_LINE_POINT_DIAMETER,
     pointColor: color,
 });
 
 /** 種別ごとの描画 ID セット */
 interface GpxIds {
-    /** トラックのポリライン ID と、再スタイル用に色を保持する */
-    trackLineEntries: Array<{ readonly id: string; readonly color: string }>;
+    trackLineIds: string[];
     trackStartIds: string[];
     trackEndIds: string[];
     waypointIds: string[];
 }
 
 const EMPTY_GPX_IDS: GpxIds = {
-    trackLineEntries: [],
+    trackLineIds: [],
     trackStartIds: [],
     trackEndIds: [],
     waypointIds: [],
@@ -110,7 +94,7 @@ const resolveEngine = (search: string): "webgpu" | "webgl2" | undefined => {
 /** 既存の GPX 描画をすべて削除する */
 const clearGpxDisplay = (viewer: JpmapTerrain, ids: GpxIds): void => {
     const allPolyIds = [
-        ...ids.trackLineEntries.map((e) => e.id),
+        ...ids.trackLineIds,
         ...ids.trackStartIds,
         ...ids.trackEndIds,
         ...ids.waypointIds,
@@ -160,8 +144,8 @@ const buildMarkerOptions = (
 });
 
 /** GPX をマップに描画し、種別ごとの ID を返す */
-const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx, lineWidth: number): GpxIds => {
-    const result: GpxIds = { trackLineEntries: [], trackStartIds: [], trackEndIds: [], waypointIds: [] };
+const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx): GpxIds => {
+    const result: GpxIds = { trackLineIds: [], trackStartIds: [], trackEndIds: [], waypointIds: [] };
 
     try {
         gpx.tracks.forEach((track, trackIndex) => {
@@ -189,11 +173,11 @@ const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx, lineWidth: number): Gpx
                     verticalsEnabled: false,
                     wallsEnabled: false,
                     labelsEnabled: false,
-                    style: buildTrackLineStyle(color, lineWidth),
+                    style: buildTrackLineStyle(color),
                 };
                 const id = `${ID_TRACK_LINE_PREFIX}${trackIndex}-${segIndex}`;
                 viewer.addPolygon(id, opts);
-                result.trackLineEntries.push({ id, color });
+                result.trackLineIds.push(id);
             });
 
             // トラック始点・終点のみ強調表示する。
@@ -292,21 +276,6 @@ const start = async (): Promise<void> => {
     const dropZone = document.getElementById(DROP_ZONE_ID);
 
     let currentIds: GpxIds = { ...EMPTY_GPX_IDS };
-    // 現在適用中のトラック lineWidth（カメラ高度バケット変化時のみ再構築するための基準値）。
-    let currentTrackLineWidth = lineWidthForAltitude(viewer.altitude);
-
-    // カメラ高度に応じてトラックの lineWidth を段階的に更新する。
-    // ズームアップし過ぎてポリラインが太くなり地図が見えづらくなる問題を緩和する。
-    viewer.onCameraChange((event) => {
-        const nextWidth = lineWidthForAltitude(event.altitude);
-        if (nextWidth === currentTrackLineWidth) return;
-        currentTrackLineWidth = nextWidth;
-        for (const entry of currentIds.trackLineEntries) {
-            if (viewer.getPolygon(entry.id)) {
-                viewer.updatePolygon(entry.id, { style: buildTrackLineStyle(entry.color, nextWidth) });
-            }
-        }
-    });
 
     // レイヤー表示状態
     const layerVisible = { track: true, waypoints: true };
@@ -315,7 +284,7 @@ const start = async (): Promise<void> => {
     const btnWaypoints = document.getElementById(BTN_WAYPOINTS_ID) as HTMLButtonElement | null;
 
     const refreshButtons = (): void => {
-        const hasTrack = currentIds.trackLineEntries.length > 0;
+        const hasTrack = currentIds.trackLineIds.length > 0;
         const hasWaypoints = currentIds.waypointIds.length > 0;
         if (btnTrack) {
             btnTrack.disabled = !hasTrack;
@@ -329,7 +298,7 @@ const start = async (): Promise<void> => {
 
     const applyLayerVisibility = (): void => {
         for (const id of [
-            ...currentIds.trackLineEntries.map((e) => e.id),
+            ...currentIds.trackLineIds,
             ...currentIds.trackStartIds,
             ...currentIds.trackEndIds,
         ]) {
@@ -378,7 +347,7 @@ const start = async (): Promise<void> => {
 
         try {
             const gpx = parseGpx(fileContent);
-            currentIds = renderGpx(viewer, gpx, currentTrackLineWidth);
+            currentIds = renderGpx(viewer, gpx);
             updateStatus(statusEl, gpx);
             refreshButtons();
 
