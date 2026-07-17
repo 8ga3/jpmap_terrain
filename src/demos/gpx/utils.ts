@@ -115,6 +115,63 @@ export const formatTrackLabel = (track: ParsedGpxTrack, index: number): string =
  */
 export const MAX_RENDER_POINTS_PER_SEGMENT = 1000;
 
+/** JST (UTC+9, サマータイムなし) のオフセット (ms)。 */
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * epoch ms を日本ローカル時刻 (JST, UTC+9固定) の `HH:MM` 表記に整形する。
+ *
+ * GPX の `<time>` は通常 UTC で記録されるため、閲覧者のブラウザ/OS のタイムゾーンに
+ * 依存せず常に JST で表示できるよう、UTC 基準の getters + オフセット加算で計算する
+ * （`toLocaleString` 等は環境依存のため使わない）。
+ */
+export const formatJstTime = (epochMs: number): string => {
+    const jst = new Date(epochMs + JST_OFFSET_MS);
+    const hh = String(jst.getUTCHours()).padStart(2, "0");
+    const mm = String(jst.getUTCMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+};
+
+/** 標高グラフ 1 点分（時刻 + 標高）。 */
+export interface ElevationProfilePoint {
+    /** 記録時刻 (epoch ms, UTC)。表示時は `formatJstTime` で JST に変換する。 */
+    timeMs: number;
+    ele: number;
+}
+
+/** 標高グラフ 1 系列分（トラック 1 本に対応）。 */
+export interface ElevationProfileSeries {
+    trackIndex: number;
+    points: ElevationProfilePoint[];
+}
+
+/** 標高グラフ描画用ポリライン頂点数の上限（1トラックあたり）。 */
+export const MAX_CHART_POINTS_PER_TRACK = 400;
+
+/**
+ * トラック群から標高-時間グラフ用のデータを組み立てる。
+ *
+ * `time` / `ele` の両方を持つ点のみを対象とする（どちらか欠損する点はスキップ）。
+ * 有効点が 2 未満のトラックは折れ線を描けないため除外する。
+ * 描画性能のため `MAX_CHART_POINTS_PER_TRACK` まで間引く。
+ */
+export const buildElevationProfiles = (
+    tracks: readonly ParsedGpxTrack[],
+): ElevationProfileSeries[] => {
+    const series: ElevationProfileSeries[] = [];
+    tracks.forEach((track, trackIndex) => {
+        const points: ElevationProfilePoint[] = [];
+        for (const point of flattenSegments(track.segments)) {
+            if (point.time !== null && point.ele !== null) {
+                points.push({ timeMs: point.time, ele: point.ele });
+            }
+        }
+        if (points.length < 2) return;
+        series.push({ trackIndex, points: decimatePoints(points, MAX_CHART_POINTS_PER_TRACK) });
+    });
+    return series;
+};
+
 /**
  * 配列を最大 `maxPoints` 件まで等間隔に間引く。先頭・末尾は必ず保持する。
  * `points.length <= maxPoints` の場合はそのまま返す。連続して同一 index を
