@@ -81,9 +81,17 @@ const clearGpxDisplay = (viewer: JpmapTerrain, ids: GpxIds): void => {
 };
 
 /**
+ * マーカーを地表/トラックより持ち上げる高さ (m)。
+ * ズームアップしてトラックのポリラインが太く見える状態でも、
+ * マーカーが埋もれず垂線（drop line）で地表位置と結び付けて見えるようにする。
+ */
+const MARKER_ALTITUDE_OFFSET_M = 20;
+
+/**
  * 単点マーカー（開始/終了/ウェイポイント）用の PolygonOptions を組み立てる。
  * トラックのポリライン（細い線・小さい点）に埋もれて見えなくならないよう、
- * ポイント径・垂線を大きめにし、ラベルには背景色を付けて視認性を確保する。
+ * ポイント径・垂線を大きめにし、地表より少し高い位置に浮かせ、
+ * ラベルには背景色を付けて視認性を確保する。
  */
 const buildMarkerOptions = (
     lat: number,
@@ -92,7 +100,7 @@ const buildMarkerOptions = (
     label: string,
     color: string,
 ): PolygonOptions => ({
-    points: [{ lat, lon, altitude: ele ?? 0 }],
+    points: [{ lat, lon, altitude: (ele ?? 0) + MARKER_ALTITUDE_OFFSET_M }],
     altitudeMode: ele !== null ? "absolute" : "terrain",
     closed: false,
     labels: [label],
