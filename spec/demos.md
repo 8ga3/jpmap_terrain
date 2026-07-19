@@ -159,11 +159,15 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   （スティック入力→パン/ズーム移動量への変換、DOM/Babylon 非依存の純粋関数）に分かれている。
 - **z-fighting 対策**: WebXR カメラはブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため
   `engine.useReverseDepthBuffer`（デスクトップで z-fighting 対策に使っている reverse-Z）の
-  恩恵を受けられない。そのため XR カメラの `minZ`/`maxZ` は毎フレーム
-  `computeVrCameraClipPlanes`（`webXrControllerMapping.ts`）で、地平線距離ベースの
-  より狭い範囲に動的更新している（デスクトップの `GeospatialClippingBehavior` をそのまま
-  流用すると常に far clip が惑星半径の1割≒638km になり、低高度で背景の地球楕円体球と
-  地形タイルが z-fighting する不具合を実機検証で確認・修正した）。
+  恩恵を受けられない。さらに、実際にレンダリングへ反映される近遠クリップは
+  `camera.minZ`/`camera.maxZ` ではなく **`WebXRSessionManager.updateRenderState({ depthNear,
+  depthFar })`（WebXR 標準 API）でのみ変更できる**（`camera.minZ`/`maxZ` を設定するだけでは
+  実描画に一切反映されない。当初この理解が誤っており実質何も変わっていなかった）。
+  `updateRenderState` を、地平線距離ベースのより狭い範囲を返す `computeVrCameraClipPlanes`
+  （`webXrControllerMapping.ts`）の結果で間引きつつ動的に呼び出している（デスクトップの
+  `GeospatialClippingBehavior` をそのまま流用すると常に far clip が惑星半径の1割≒638km に
+  なり、低高度で背景の地球楕円体球と地形タイルが z-fighting する不具合を実機検証で確認・
+  修正した）。
 - **タイル LOD（過剰な詳細度要求・タイル境界の不整合）対策**: タイル LOD の SSE 評価は
   desktop 側 `GeospatialCamera`（`globe-camera`）の `fov` を参照するが、Babylon 既定の
   fov（約46°）は Meta Quest 3 実機の実際の視野角（約90〜100°）よりかなり狭く、この不一致が

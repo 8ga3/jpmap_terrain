@@ -35,13 +35,21 @@
  *   地表高度としてそのまま使わない。既定の 2000m を使うと空しか見えない高度に
  *   なるため（実機検証で確認済み）、VR 突入時は控えめな既定高度
  *   （{@link DEFAULT_VR_HOVER_HEIGHT_M}）を使う。
- * - XR カメラの `minZ`/`maxZ`（near/far clip）は毎フレーム動的に更新する
- *   （{@link computeVrCameraClipPlanes}）。デスクトップの `GeospatialClippingBehavior`
- *   と同じ式をそのまま使うと、地球半径の1割（約638km）が常に far clip の下限になり、
+ * - WebXR セッションの `depthNear`/`depthFar`（近遠クリップ、実際の地表高度に応じて
+ *   毎フレーム間引きつつ動的更新、{@link updateXrDepthRange}）は
+ *   `WebXRSessionManager.updateRenderState({ depthNear, depthFar })` を呼んで設定する。
+ *   **重要**: `camera.minZ`/`camera.maxZ` を設定するだけでは実描画に一切反映されない
+ *   （`WebXRCamera.updateFromXRFrame` がブラウザ提供の `XRView.projectionMatrix` を
+ *   そのままコピーする実装のため、通常の `Camera.getProjectionMatrix()` の
+ *   `minZ`/`maxZ` ベース計算を経由しない）。当初はこれに気づかず `camera.minZ`/`maxZ`
+ *   のみを設定しており、実質何も変わっていなかった（実機検証で z-fighting が解消しない
+ *   ことから発覚）。またデスクトップの `GeospatialClippingBehavior` の式（惑星半径の
+ *   1割≒638km を far clip の下限にする）は reverse-Z 前提の設計であり、
  *   **WebXR カメラは `engine.useReverseDepthBuffer`（reverse-Z）の恩恵を受けられない**
- *   （ブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため）ことと相まって、
- *   低高度で地球楕円体の背景球と地形タイルが z-fighting する不具合を実機検証で確認した。
- *   VR は局所的な地表観覧が主目的のため、地平線距離ベースのより狭い範囲を使う。
+ *   （同じ理由でブラウザ提供の投影行列を直接使うため）ため、そのまま流用すると低高度で
+ *   地球楕円体の背景球と地形タイルが z-fighting する。VR は局所的な地表観覧が主目的の
+ *   ため、地平線距離ベースのより狭い範囲を使う式（{@link computeVrCameraClipPlanes}）に
+ *   変更している。
  * - タイル LOD の SSE（画面誤差）評価は desktop 側の `GeospatialCamera`（`globe-camera`）の
  *   `fov`/ビューポート寸法を使う（`refreshTerrainWithExternalFrustum` 内部の `syncTiles`
  *   参照）。desktop の既定 fov（Babylon 既定値、約46°）は Meta Quest 3 実機の実際の
@@ -89,24 +97,41 @@ const MAX_DT_SEC = 0.05;
 const TILE_REFRESH_INTERVAL_MS = 300;
 
 /**
- * XR カメラの `minZ`/`maxZ` を、実際の地表高度（地心距離 - 惑星半径）に応じて更新する。
- * 計算式は {@link computeVrCameraClipPlanes} 参照（デスクトップの
- * `GeospatialClippingBehavior` とは異なり、reverse-Z の恩恵を受けられない WebXR
- * カメラ向けに調整した式）。
+ * XR セッションの `depthNear`/`depthFar` を、実際の地表高度（地心距離 - 惑星半径）に応じて更新する。
+ * 計算式は {@link computeVrCameraClipPlanes} 参照（デスクトップの `GeospatialClippingBehavior`
+ * とは異なり、reverse-Z の恩恵を受けられない WebXR カメラ向けに調整した式）。
+ *
+ * @remarks
+ * **重要**: WebXR セッション中、実際のレンダリングに使われる投影行列は
+ * `WebXRCamera.updateFromXRFrame` がブラウザ提供の `XRView.projectionMatrix` を
+ * **そのままコピー**して構築する（Babylon の `Camera.getProjectionMatrix()` の
+ * 通常の `minZ`/`maxZ` ベース計算を経由しない）。そのため、`camera.minZ`/`camera.maxZ`
+ * を設定するだけでは実際の描画・本関数が使う frustum culling の双方に**一切反映されない**
+ * （as-if no-op。以前の実装はこの誤りにより実質的に無効だった）。
+ * ブラウザ側の near/far を実際に変更するには、WebXR 標準 API の
+ * `XRSession.updateRenderState({ depthNear, depthFar })`（Babylon では
+ * `WebXRSessionManager.updateRenderState`）を呼ぶ必要がある。
  *
  * @param positionEcef カメラのおおよその ECEF 絶対位置（`rig.position` を想定）。
  *   `camera.globalPosition` はワールド行列の再計算タイミング次第で 1 フレーム遅延した
  *   値を返し得るため、`updateRig` 内で当フレーム分をすでに計算済みの位置を渡す。
- * `updateRig`（`scene.onBeforeRenderObservable`）から毎フレーム呼ぶ想定。
+ * 呼び出し頻度は `TILE_REFRESH_INTERVAL_MS` で間引く（`updateRenderState` は
+ * 「次フレームから反映」の仕様であり毎フレーム呼ぶ必要はなく、頻繁な呼び出しは
+ * 避けたほうがよいとされる）。
  */
-const updateXrCameraClipPlanes = (
+const updateXrDepthRange = (
+    sessionManager: WebXRSessionManager,
     positionEcef: Vector3,
     camera: { minZ: number; maxZ: number },
 ): void => {
     const altitudeM = positionEcef.length() - PLANET_RADIUS_M_FOR_CLIP_PLANES;
     const { minZ, maxZ } = computeVrCameraClipPlanes(altitudeM);
+    // camera.minZ/maxZ は実描画には使われないが、Babylon 内部の他のカリング/ヘルパーが
+    // 参照する可能性があるため一貫性のために設定しておく（実質的な z-fighting 対策は
+    // 下記 updateRenderState 呼び出しが担う）。
     camera.minZ = minZ;
     camera.maxZ = maxZ;
+    sessionManager.updateRenderState({ depthNear: minZ, depthFar: maxZ });
 };
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
@@ -382,8 +407,8 @@ const enterVr = async (
         button.textContent = "終了";
         button.setAttribute("aria-label", "VRを終了");
         button.setAttribute("title", "VRを終了");
-        // minZ/maxZ は毎フレーム updateXrCameraClipPlanes で動的に更新するため、ここでは
-        // 初期値の設定は不要（初回 updateRig 呼び出しで即座に上書きされる）。
+        // depthNear/depthFar は updateRig 内で updateXrDepthRange により間引きつつ動的に
+        // 更新するため、ここでの初期値設定は不要（初回呼び出しで即座に反映される）。
 
         // 既存 terrain camera の自動タイル更新・canvas ポインタ操作は、VR中は使わない
         // （flight/roiorbit デモの「外部カメラ」パターンと同じ切り替え）。
@@ -419,6 +444,10 @@ const enterVr = async (
         const scratch = createScratch();
         let lastTileRefreshMs = 0;
         let tileRefreshInFlight = false;
+        // depthNear/depthFar 更新（updateXrDepthRange）用の間引きタイマー。
+        // `XRSession.updateRenderState` は毎フレーム呼ぶ必要がなく、頻繁な呼び出しは
+        // 避けたほうがよいとされるため、タイル refresh と同じ間隔で間引く。
+        let lastDepthRangeUpdateMs = 0;
 
         const updateRig = (): void => {
             // B/Y ボタンでの終了リクエストを最優先で処理する。
@@ -477,10 +506,14 @@ const enterVr = async (
             }
 
             rig.position.copyFrom(scratch.centerEcef);
-            // z-fighting 対策: 実際の地表高度に応じて near/far clip を動的更新する
-            // （デスクトップの GeospatialClippingBehavior と同じ式。実機検証で
-            // 固定 far clip による背景球とのちらつきを確認・修正済み）。
-            updateXrCameraClipPlanes(scratch.centerEcef, xr!.baseExperience.camera);
+            // z-fighting 対策: 実際の地表高度に応じて XR セッションの depthNear/depthFar
+            // （実際にレンダリングへ反映される、`updateXrDepthRange` のコメント参照）を
+            // 間引きつつ動的更新する。
+            const nowMsForDepthRange = performance.now();
+            if (nowMsForDepthRange - lastDepthRangeUpdateMs >= TILE_REFRESH_INTERVAL_MS) {
+                lastDepthRangeUpdateMs = nowMsForDepthRange;
+                updateXrDepthRange(xr!.baseExperience.sessionManager, scratch.centerEcef, xr!.baseExperience.camera);
+            }
             // リグの向き: X=東, Y=地心up, Z=南（-Z=北を「前方」= WebXR/RH既定のヘッドセット
             // 正面に合わせる）。geographicTangentBasisToRef が特異点（極直下）で失敗した場合は
             // 直前の向きを維持する。
