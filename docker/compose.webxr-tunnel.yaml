@@ -16,6 +16,13 @@
 #   docker compose -f compose.webxr-tunnel.yaml logs -f
 #     → ログに表示される "https://<random>.trycloudflare.com" を
 #       Meta Quest 3 等のブラウザで開く。
+#     ログが流れて探しづらい場合は、URL部分だけを抽出する:
+#       docker compose -f compose.webxr-tunnel.yaml logs \
+#         | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com'
+#     起動直後からリアルタイムで拾いたい場合（-f + --line-buffered で
+#     パイプ越しでも都度出力させる）:
+#       docker compose -f compose.webxr-tunnel.yaml logs -f \
+#         | grep --line-buffered -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com'
 #
 # 停止:
 #   docker compose -f compose.webxr-tunnel.yaml down

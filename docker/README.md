@@ -106,6 +106,10 @@ docker compose -f compose.webxr-tunnel.yaml up -d
 
 # 3. 発行された https://*.trycloudflare.com URL を確認する
 docker compose -f compose.webxr-tunnel.yaml logs -f
+
+# ログが流れて探しづらい場合は、URL部分だけを抽出する
+docker compose -f compose.webxr-tunnel.yaml logs \
+  | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com'
 ```
 
 ログに表示される `https://<random>.trycloudflare.com/viewer.html` を Meta Quest 3
