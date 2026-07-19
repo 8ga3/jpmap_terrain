@@ -131,6 +131,21 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 - `?mapType=standard|photo`、`?dateTime=<ISO8601>`、`?autoSunPosition=true|false`、`?showSunShadows=true|false`。
 - 詳細は [README.md](../README.md) の「URL フォーマット」節を参照。
 
+#### WebXR (VR) 対応（PoC）
+
+- 画面左上に、WebXR (`immersive-vr`) に対応したブラウザ/デバイス（例: Meta Quest 3）でのみ
+  「VR」ボタンが表示される。非対応環境では機能検出後にボタンを表示しない。
+- ボタン押下で WebXR セッションを開始し、コントローラーで以下を操作できる。
+  - 左スティック: 地図平面移動（パン）
+  - 右スティック: 高度（ズーム）
+- 実装は `src/demos/viewer/webXrVrSession.ts`（Babylon.js `WebXRDefaultExperience` のセットアップ・
+  カメラリグの ECEF 位置同期・地形 LOD 追従）と `src/demos/viewer/webXrControllerMapping.ts`
+  （スティック入力→パン/ズーム移動量への変換、DOM/Babylon 非依存の純粋関数）に分かれている。
+- **現状はデモ層に閉じた PoC**であり、`JpmapTerrain` の公開 API ではない内部アクセサ
+  （`__debugScene` 等）に依存している。`flight` / `roiorbit` デモが用いる「外部カメラで
+  地形 LOD を駆動する」既存パターンを踏襲したもので、動作が安定した段階でライブラリ公開 API
+  への昇格を検討する。
+
 ### timelapse (`/timelapse.html`)
 
 | パラメータ | 型 | 既定値 | 説明 |

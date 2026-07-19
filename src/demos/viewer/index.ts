@@ -26,6 +26,7 @@ import {
     updateViewModeInUrl,
     type CameraUrlState,
 } from "../../terrain/urlState";
+import { setupWebXrVrButton } from "./webXrVrSession";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -265,6 +266,15 @@ const start = async (): Promise<void> => {
     } catch (err) {
         console.warn("[jpmap-terrain demo] failed to add demo markers:", err);
     }
+
+    // WebXR (immersive-vr) 対応 PoC。非対応ブラウザ/デバイスでは
+    // 機能検出後にボタンを表示しない。デモ層に閉じた暫定実装（詳細は webXrVrSession.ts 参照）。
+    // 機能検出 (`navigator.xr.isSessionSupported`) が環境によっては長時間/無応答になり得るため、
+    // await せず fire-and-forget にしてデモ起動（`window.scene` 露出等）をブロックしない。
+    // 内部でもタイムアウトガードを掛けている（webXrVrSession.ts 参照）。
+    setupWebXrVrButton(mount, viewer).catch((err: unknown) => {
+        console.warn("[jpmap-terrain demo] failed to set up WebXR VR button:", err);
+    });
 
     // 開発/テストビルドでのみデバッグ用に内部状態を露出する。
     // （Playwright の `window.scene.isReady()` 等が依存しているため）
