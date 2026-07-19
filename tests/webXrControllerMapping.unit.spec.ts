@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
     applyStickDeadzone,
     computeAltitudeFactorFromStick,
+    computeLodBiasForAltitude,
     computePanMetersFromStick,
     DEFAULT_MIN_ALTITUDE_FOR_PAN_SPEED_M,
     DEFAULT_STICK_DEADZONE,
+    DEFAULT_VR_HOVER_HEIGHT_M,
+    FOLLOW_TILE_BASE_RADIUS_M_REFERENCE,
+    resolveVrHoverHeightM,
 } from "../src/demos/viewer/webXrControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -115,5 +119,44 @@ describe("computeAltitudeFactorFromStick", () => {
 
     it("uses the default deadzone when not specified", () => {
         expect(computeAltitudeFactorFromStick(DEFAULT_STICK_DEADZONE, 1, 4)).toBe(1);
+    });
+});
+
+describe("computeLodBiasForAltitude", () => {
+    it("returns 0 when targetRadiusM equals the reference base radius", () => {
+        expect(computeLodBiasForAltitude(FOLLOW_TILE_BASE_RADIUS_M_REFERENCE)).toBeCloseTo(0);
+    });
+
+    it("returns a positive bias when targetRadiusM is smaller than the reference (zoomed in)", () => {
+        // FOLLOW_TILE_BASE_RADIUS_M_REFERENCE * 2^-bias = targetRadiusM を満たす。
+        const targetRadiusM = FOLLOW_TILE_BASE_RADIUS_M_REFERENCE / 4;
+        const bias = computeLodBiasForAltitude(targetRadiusM);
+        expect(bias).toBeCloseTo(2);
+        expect(FOLLOW_TILE_BASE_RADIUS_M_REFERENCE * Math.pow(2, -bias)).toBeCloseTo(targetRadiusM);
+    });
+
+    it("returns a negative bias when targetRadiusM is larger than the reference (zoomed out)", () => {
+        const targetRadiusM = FOLLOW_TILE_BASE_RADIUS_M_REFERENCE * 8;
+        const bias = computeLodBiasForAltitude(targetRadiusM);
+        expect(bias).toBeCloseTo(-3);
+        expect(FOLLOW_TILE_BASE_RADIUS_M_REFERENCE * Math.pow(2, -bias)).toBeCloseTo(targetRadiusM);
+    });
+});
+
+describe("resolveVrHoverHeightM", () => {
+    it("returns the default hover height when the query param is absent", () => {
+        expect(resolveVrHoverHeightM("")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
+        expect(resolveVrHoverHeightM("?engine=webgl2")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
+    });
+
+    it("parses a valid vrHoverHeight query param", () => {
+        expect(resolveVrHoverHeightM("?vrHoverHeight=300")).toBe(300);
+        expect(resolveVrHoverHeightM("?engine=webgl2&vrHoverHeight=50")).toBe(50);
+    });
+
+    it("falls back to the default for non-numeric or non-positive values", () => {
+        expect(resolveVrHoverHeightM("?vrHoverHeight=abc")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
+        expect(resolveVrHoverHeightM("?vrHoverHeight=0")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
+        expect(resolveVrHoverHeightM("?vrHoverHeight=-50")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
     });
 });

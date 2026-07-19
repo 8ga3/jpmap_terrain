@@ -15,11 +15,22 @@
  *   rotationQuaternion を上書きするため、直接 ECEF 絶対座標を書き込めない。
  *   そのため「リグ」(`TransformNode`) を親に設定し（Babylon 公式の
  *   "Moving the camera" パターン）、リグの position/rotationQuaternion を
- *   現在の lat/lon/altitude から算出した ECEF 位置・東西南北基底で毎フレーム更新する。
+ *   現在の lat/lon + 地表からの高さ（altitude）から算出した ECEF 位置・東西南北基底で
+ *   毎フレーム更新する。
  * - パン（左スティック）・ズーム（右スティック、高度）は
  *   {@link module:src/demos/viewer/webXrControllerMapping.ts} の純粋関数に委譲する。
+ * - squeeze（グリップ）ボタンで VR セッションを終了する（没入中は 2D DOM ボタンに
+ *   触れられないため）。
  * - 地形 LOD は `viewer.detachTileCamera()` + `viewer.refreshTerrainWithExternalFrustum`
  *   （flight/roiorbit デモと同じ「外部カメラ frustum」パターン、C案）で追従させる。
+ *   `lodBias` も渡し、内部で上書きされる `camera.radius`（マーカー/ポリゴン/サークルの
+ *   距離ベース自動スケール計算にも使われる）を実際の地表高度と一致させる
+ *   （{@link computeLodBiasForAltitude} 参照。実機検証で「近距離マーカーが巨大表示される」
+ *   不具合を確認・修正済み）。
+ * - `viewer.altitude`（desktop ArcRotateCamera の `radius`＝注視点からの距離）は VR の
+ *   地表高度としてそのまま使わない。既定の 2000m を使うと空しか見えない高度に
+ *   なるため（実機検証で確認済み）、VR 突入時は控えめな既定高度
+ *   （{@link DEFAULT_VR_HOVER_HEIGHT_M}）を使う。
  *
  * 命名メモ: このリポジトリでは "VR" は Playwright の Visual Regression テストの略称としても
  * 使われている。本ファイル内では区別のため "WebXr" プレフィックスを用いる
@@ -43,8 +54,10 @@ import { geographicTangentBasisToRef, panCenterOnSphereToRef } from "../../terra
 import { clampAltitude } from "../../terrain/urlState";
 import {
     computeAltitudeFactorFromStick,
+    computeLodBiasForAltitude,
     computePanMetersFromStick,
     DEFAULT_ALTITUDE_ZOOM_RATE_PER_SEC,
+    resolveVrHoverHeightM,
 } from "./webXrControllerMapping";
 
 /** 左スティックのパン速度（高度1mあたりの秒速係数）。既存ドラッグパンに近い体感になるよう暫定調整。 */
@@ -126,17 +139,30 @@ interface StickState {
 
 const zeroStick = (): StickState => ({ left: { x: 0, y: 0 }, right: { x: 0, y: 0 } });
 
-/** 追加されたコントローラーの thumbstick 入力を `sticks` へ反映するリスナーを登録する。 */
-const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: StickState): void => {
+/** 追加されたコントローラーの thumbstick 入力を `sticks` へ反映し、squeeze（グリップ）
+ *  ボタン押下で `onExitRequested` を呼ぶリスナーを登録する。
+ *
+ *  VR没入中は画面上の2D DOMボタン（`setupWebXrVrButton` が作る「終了」ボタン）に
+ *  触れられないため、コントローラー操作での終了手段が必須。squeeze はスティック操作
+ *  （パン/ズーム）と衝突しない離散的な入力のため終了トリガーに採用する。
+ */
+const trackControllerSticks = (
+    xr: WebXRDefaultExperience,
+    sticks: StickState,
+    onExitRequested: () => void,
+): void => {
     const bindController = (controller: WebXRInputSource): void => {
         const handedness = controller.inputSource.handedness;
         if (handedness !== "left" && handedness !== "right") return;
         controller.onMotionControllerInitObservable.add((motionController) => {
             const thumbstick = motionController.getComponentOfType("thumbstick");
-            if (!thumbstick) return;
-            thumbstick.onAxisValueChangedObservable.add(({ x, y }) => {
+            thumbstick?.onAxisValueChangedObservable.add(({ x, y }) => {
                 sticks[handedness].x = x;
                 sticks[handedness].y = y;
+            });
+            const squeeze = motionController.getComponentOfType("squeeze");
+            squeeze?.onButtonStateChangedObservable.add((component) => {
+                if (component.pressed) onExitRequested();
             });
         });
     };
@@ -272,6 +298,9 @@ const enterVr = async (
             // ポインタ選択機能は無効化し、入力の競合を避ける。
             disableTeleportation: true,
             disablePointerSelection: true,
+            // 独自の VR ボタン（本ファイル）で enter/exit を制御するため、Babylon 標準の
+            // Enter/Exit UI は無効化する（二重のボタン表示による混乱を避ける）。
+            disableDefaultUI: true,
         });
 
         if (xr.baseExperience.state === WebXRState.NOT_IN_XR) {
@@ -305,19 +334,33 @@ const enterVr = async (
 
         let lat = viewer.lat;
         let lon = viewer.lon;
-        let altitude = viewer.altitude;
+        // `viewer.altitude`（desktop ArcRotateCamera の radius）は継承しない。既定 2000m を
+        // そのまま VR の地表高度に使うと空しか見えない高度になるため（実機検証で確認済み）、
+        // VR向けの控えめな既定高度を使う（DEFAULT_VR_HOVER_HEIGHT_M 参照）。
+        let altitude = resolveVrHoverHeightM(location.search);
 
         const sticks = zeroStick();
-        trackControllerSticks(xr, sticks);
+        let exitRequested = false;
+        trackControllerSticks(xr, sticks, () => {
+            exitRequested = true;
+        });
 
         const scratch = createScratch();
         let lastTileRefreshMs = 0;
         let tileRefreshInFlight = false;
 
         const updateRig = (): void => {
+            // squeeze（グリップ）ボタンでの終了リクエストを最優先で処理する。
+            if (exitRequested) {
+                exitRequested = false;
+                void xr!.baseExperience.exitXRAsync();
+                return;
+            }
+
             const dtSec = Math.min(MAX_DT_SEC, Math.max(0, engine.getDeltaTime() / 1000));
 
-            // 右スティック(前後) → 高度（ズーム）。
+            // 右スティック(前後) → 高度（ズーム）。ここでの altitude は「地表からの高さ」であり、
+            // 海抜高度ではない（DEFAULT_VR_HOVER_HEIGHT_M のコメント参照）。
             const altitudeFactor = computeAltitudeFactorFromStick(
                 sticks.right.y,
                 dtSec,
@@ -332,7 +375,8 @@ const enterVr = async (
                 altitude,
                 PAN_SPEED_PER_ALTITUDE_M_PER_SEC,
             );
-            geodeticToEcefToRef(lat, lon, altitude, scratch.centerEcef);
+            let terrainElevM = viewer.terrainElevAt(lat, lon) ?? 0;
+            geodeticToEcefToRef(lat, lon, terrainElevM + altitude, scratch.centerEcef);
             if (
                 (pan.eastM !== 0 || pan.northM !== 0) &&
                 geographicTangentBasisToRef(scratch.centerEcef, scratch.eastRef, scratch.northRef)
@@ -345,9 +389,10 @@ const enterVr = async (
                 ecefToGeodeticToRef(scratch.pannedEcef, scratch.geodetic);
                 lat = scratch.geodetic.latDeg;
                 lon = scratch.geodetic.lonDeg;
-                // 高度は独自に管理する値を正本とし（パン後の測地逆変換由来の高度は使わない）、
-                // 新しい lat/lon 上で ECEF 位置を引き直す。
-                geodeticToEcefToRef(lat, lon, altitude, scratch.centerEcef);
+                // 新しい lat/lon の地形標高を取り直し、地表からの高さ(altitude)を正本として
+                // ECEF 位置を引き直す（パン中間点の高度は使わない）。
+                terrainElevM = viewer.terrainElevAt(lat, lon) ?? terrainElevM;
+                geodeticToEcefToRef(lat, lon, terrainElevM + altitude, scratch.centerEcef);
             }
 
             rig.position.copyFrom(scratch.centerEcef);
@@ -382,9 +427,24 @@ const enterVr = async (
                 scratch.cameraPositionResult.y = globalPos.y;
                 scratch.cameraPositionResult.z = globalPos.z;
 
+                // lodBias: refreshTerrainWithExternalFrustum は内部で
+                // camera.radius = FOLLOW_TILE_BASE_RADIUS_M * 2^-lodBias を設定する
+                // （globeSceneController.ts 参照）。camera.radius はタイル LOD だけでなく
+                // マーカー/ポリゴン/サークルの距離ベース自動スケール計算にも使われるため、
+                // 既定の lodBias=0（固定 2000m 相当）のままだと VR中の実際の地表高度と
+                // 乖離し、近距離のマーカーが異常な大きさで表示される
+                // （実機検証で確認済みの不具合）。altitude と一致するよう逆算する。
+                const lodBias = computeLodBiasForAltitude(altitude);
+
                 tileRefreshInFlight = true;
                 void viewer
-                    .refreshTerrainWithExternalFrustum(lat, lon, scratch.frustumPlanesResult, scratch.cameraPositionResult)
+                    .refreshTerrainWithExternalFrustum(
+                        lat,
+                        lon,
+                        scratch.frustumPlanesResult,
+                        scratch.cameraPositionResult,
+                        lodBias,
+                    )
                     .finally(() => {
                         tileRefreshInFlight = false;
                     });

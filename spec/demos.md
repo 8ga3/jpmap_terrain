@@ -135,9 +135,18 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 
 - 画面左上に、WebXR (`immersive-vr`) に対応したブラウザ/デバイス（例: Meta Quest 3）でのみ
   「VR」ボタンが表示される。非対応環境では機能検出後にボタンを表示しない。
+- **実機で動作させるにはセキュアコンテキスト（HTTPS または `localhost`）が必須**
+  （WebXR の仕様上の制約）。`docker/` 配下でのローカル配信は既定でプレーン HTTP のため、
+  実機検証には `docker/compose.webxr-tunnel.yaml`（Cloudflare quick tunnel、詳細は
+  [docker/README.md](../docker/README.md) 参照）等で HTTPS 化すること。
+- 描画エンジンは **WebGL2 を使うこと**（`?engine=webgl2`）。既定の自動選択（WebGPU 優先）は
+  実機（Meta Quest Browser）で `enterXRAsync` が失敗し VR に入れない事例を確認している。
 - ボタン押下で WebXR セッションを開始し、コントローラーで以下を操作できる。
   - 左スティック: 地図平面移動（パン）
-  - 右スティック: 高度（ズーム）
+  - 右スティック: 高度（ズーム）。ここでの高度は地表からの高さ（既定 150m、
+    `?vrHoverHeight=<meters>` で調整可能）であり、海抜高度ではない。
+  - squeeze（グリップ）ボタン: VR セッションを終了する（没入中は画面上の 2D ボタンに
+    触れられないため）。
 - 実装は `src/demos/viewer/webXrVrSession.ts`（Babylon.js `WebXRDefaultExperience` のセットアップ・
   カメラリグの ECEF 位置同期・地形 LOD 追従）と `src/demos/viewer/webXrControllerMapping.ts`
   （スティック入力→パン/ズーム移動量への変換、DOM/Babylon 非依存の純粋関数）に分かれている。
@@ -145,6 +154,8 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   （`__debugScene` 等）に依存している。`flight` / `roiorbit` デモが用いる「外部カメラで
   地形 LOD を駆動する」既存パターンを踏襲したもので、動作が安定した段階でライブラリ公開 API
   への昇格を検討する。
+- 既知の制限: VR 中は 2D のコンパス UI が非表示になり、方位（東西南北）の手がかりがない
+  （follow-up 課題）。
 
 ### timelapse (`/timelapse.html`)
 

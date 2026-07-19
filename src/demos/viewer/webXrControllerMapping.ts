@@ -25,6 +25,54 @@ export const DEFAULT_MIN_ALTITUDE_FOR_PAN_SPEED_M = 30;
 /** 高度ズームの秒間倍率既定値（1秒間フルで倒すと高度が概ね4倍/0.25倍になる）。 */
 export const DEFAULT_ALTITUDE_ZOOM_RATE_PER_SEC = 4;
 
+/**
+ * VR突入時点の既定「地表からの高度」[m]（`viewer.altitude` を継承しない）。
+ *
+ * `viewer.altitude` は実体が ArcRotateCamera 系の `radius`（注視点からの距離）であり
+ * （spec/package.md 参照）、デスクトップ既定値は 2000m。これをそのまま VR の地表高度に
+ * 使うと、地表からはるか上空（ほぼ空しか見えない高度）にリグが配置されてしまう
+ * （実機検証で確認済みの不具合）。VR では見下ろし観覧に適した控えめな高度を既定にする。
+ * `?vrHoverHeight=<meters>` で実機調整用に上書き可能（{@link resolveVrHoverHeightM}）。
+ */
+export const DEFAULT_VR_HOVER_HEIGHT_M = 150;
+
+/**
+ * `refreshTerrainWithExternalFrustum` 内部の `camera.radius` 上書き式
+ * （`FOLLOW_TILE_BASE_RADIUS_M * 2^-lodBias`）と同じ基準値。
+ * `src/scenes/globeSceneController.ts` の private 定数 `FOLLOW_TILE_BASE_RADIUS_M`
+ * と同値（意図的な重複。相手は非公開のため import 不可）。値を変更する場合は
+ * 両者を同期させること。
+ *
+ * この基準値と `lodBias` から `camera.radius` を算出できることを利用し、
+ * VR中の `camera.radius` が実際の地表高度（altitude）と一致するよう `lodBias` を
+ * 逆算する（{@link computeLodBiasForAltitude}）。`camera.radius` は
+ * マーカー/ポリゴン/サークルの距離ベース自動スケール計算（`computeCameraEcef` 経由）
+ * にも使われるため、これを合わせないと VR中に固定 2000m 相当のスケールで計算され、
+ * 近距離のマーカーが異常に巨大表示される（実機検証で確認済みの不具合）。
+ */
+export const FOLLOW_TILE_BASE_RADIUS_M_REFERENCE = 2000;
+
+/**
+ * {@link FOLLOW_TILE_BASE_RADIUS_M_REFERENCE} を基準に、`camera.radius` が
+ * `targetRadiusM` と一致するような `lodBias` を算出する。
+ *
+ * @param targetRadiusM 正の有限値を想定（`altitude` は `clampAltitude` で
+ *   [50, ALTITUDE_MAX] にクランプ済みのため常に満たされる）。
+ */
+export const computeLodBiasForAltitude = (targetRadiusM: number): number =>
+    Math.log2(FOLLOW_TILE_BASE_RADIUS_M_REFERENCE / targetRadiusM);
+
+/**
+ * `?vrHoverHeight=` クエリ文字列から VR 突入時の既定高度[m]を解決する。
+ * 未指定・不正値（非数値・0以下）は {@link DEFAULT_VR_HOVER_HEIGHT_M} にフォールバックする。
+ */
+export const resolveVrHoverHeightM = (search: string): number => {
+    const raw = new URLSearchParams(search).get("vrHoverHeight");
+    if (raw === null) return DEFAULT_VR_HOVER_HEIGHT_M;
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_VR_HOVER_HEIGHT_M;
+};
+
 /** スティックの2軸入力（[-1,1] 想定）。 */
 export interface StickAxes {
     x: number;
