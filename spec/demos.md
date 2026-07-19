@@ -141,6 +141,11 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   [docker/README.md](../docker/README.md) 参照）等で HTTPS 化すること。
 - 描画エンジンは **WebGL2 を使うこと**（`?engine=webgl2`）。既定の自動選択（WebGPU 優先）は
   実機（Meta Quest Browser）で `enterXRAsync` が失敗し VR に入れない事例を確認している。
+  これは本 PoC のバグではなく、**Meta Quest Browser（スタンドアロン）が現時点で
+  WebGPU+WebXR(VR) の組み合わせに未対応**というプラットフォーム側の制約による
+  （2025年12月時点、AirLink 経由の Windows Chrome Canary では動作報告あり。将来の
+  ブラウザ更新で対応される可能性がある）。そのため本 PoC では VR 突入時に描画エンジンを
+  自動的に強制切り替えすることはせず、`?engine=webgl2` の手動指定に委ねる方針とした。
 - ボタン押下で WebXR セッションを開始し、コントローラーで以下を操作できる。
   - 左スティック: 地図平面移動（パン）
   - 右スティック: 高度（ズーム）。ここでの高度は地表からの高さ（既定 150m、
