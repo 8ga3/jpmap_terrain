@@ -2019,6 +2019,14 @@ export class GlobeScene {
             const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
             if (elev === null) return;
             centerElevation = elev; // SSE 距離評価の基準標高（追従の有無に関わらず最新化）
+            // 外部フラスタム制御中（VR/Follow カメラ等）は、camera（GeospatialCamera）自体は
+            // 実際の描画に使われない「タイル LOD 選択の基準点」専用カメラになる。ここで
+            // camera.center を動かすと、外部呼び出し元（refreshTerrainWithExternalFrustum）が
+            // 設定した値と競合し、SSE 評価の基準点が毎フレーム不安定になって隣接タイル間の
+            // LOD 不整合（継ぎ目にスカートが露出する等）を引き起こす（VR実機検証で確認）。
+            // centerElevation の最新化だけは行い（referenceAltitude の鮮度を保つ）、
+            // camera.center は外部制御中は動かさない。
+            if (externalFrustumOverride) return;
             if (zoomActive) return; // ズーム中は seat を止める（鉛直の引っ張り合いを断つ）
             // カメラの対地クリアランスで追従強度をフェード（FULL 以下で完全追従、ZERO 以上で停止）。
             const clearance = camAltMeters - elev;
@@ -2043,6 +2051,9 @@ export class GlobeScene {
         // camEcef / camGeo / lookAt は observer で 1 回だけ計算したものを共有する
         // （seat → 衝突で computeCameraEcef / ecefToGeodetic を二重実行しないため）。
         const enforceGroundClearance = (camEcef: Vector3, camGeo: Geodetic): void => {
+            // 外部フラスタム制御中（VR/Follow カメラ等）は camera.radius を触らない
+            // （seatCenterOnTerrain と同じ理由。実機検証で確認した VR タイル継ぎ目不整合対策）。
+            if (externalFrustumOverride) return;
             // 外部（setAltitude / setView / ホイールズーム等、経路を問わず）が radius を直接
             // 上書きしていれば、地形衝突の追加分を破棄して現在の radius を新たな素の値として
             // 再基準化する。これをしないと stepGroundClearanceRadius が誤った naturalRadius

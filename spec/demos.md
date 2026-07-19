@@ -157,6 +157,20 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 - 実装は `src/demos/viewer/webXrVrSession.ts`（Babylon.js `WebXRDefaultExperience` のセットアップ・
   カメラリグの ECEF 位置同期・地形 LOD 追従）と `src/demos/viewer/webXrControllerMapping.ts`
   （スティック入力→パン/ズーム移動量への変換、DOM/Babylon 非依存の純粋関数）に分かれている。
+- **タイル境界の不整合（隣接タイルの継ぎ目にスカートが露出し段差に見える）根本原因対策**:
+  デスクトップの `GeospatialCamera`（`globe-camera`）用に実装された `seatCenterOnTerrain`
+  （注視点を地形に着座させる）・`enforceGroundClearance`（カメラの地形めり込み防止）が、
+  `src/scenes/globe.ts` の毎フレームループで**外部フラスタム制御中かどうかに関わらず**実行
+  され、`camera.center`/`camera.radius`（VR中はタイル LOD 選択の基準点としてのみ使う、
+  実際の描画には使われない値）を勝手に書き換えていたことが根本原因と判明した。VR中は
+  `refreshTerrainWithExternalFrustum` が設定した基準点と競合し、SSE 評価の基準が毎フレーム
+  不安定になることで隣接タイル間の LOD 不整合を引き起こしていた。外部フラスタム制御中
+  （`externalFrustumOverride !== null`）はこの2関数をスキップするよう修正した
+  （`centerElevation`＝ referenceAltitude の最新化のみ継続）。
+- 背景の地球楕円体球（`globe-earth`）は VR 中は非表示にしている。本来は DEM no-data 領域
+  （海上等）のフォールバック背景だが、VR は近距離観覧が主目的でこの球が視界の大半を占める
+  ことはなく、上記のようなタイル間の隙間ができた際に目立つ青色の露出として実機検証で
+  指摘されたため。
 - **z-fighting 対策**: WebXR カメラはブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため
   `engine.useReverseDepthBuffer`（デスクトップで z-fighting 対策に使っている reverse-Z）の
   恩恵を受けられない。さらに、実際にレンダリングへ反映される近遠クリップは
@@ -168,12 +182,11 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   `GeospatialClippingBehavior` をそのまま流用すると常に far clip が惑星半径の1割≒638km に
   なり、低高度で背景の地球楕円体球と地形タイルが z-fighting する不具合を実機検証で確認・
   修正した）。
-- **タイル LOD（過剰な詳細度要求・タイル境界の不整合）対策**: タイル LOD の SSE 評価は
+- **タイル LOD（過剰な詳細度要求）対策**: タイル LOD の SSE 評価は
   desktop 側 `GeospatialCamera`（`globe-camera`）の `fov` を参照するが、Babylon 既定の
   fov（約46°）は Meta Quest 3 実機の実際の視野角（約90〜100°）よりかなり狭く、この不一致が
-  LOD 判定を過剰に高精細にし、可視範囲内のタイル数が上限を超えて欠ける・低ズームレベルで
-  隣接タイルの LOD 不整合（本来ギャップを隠すためのスカート形状が可視化される）の一因に
-  なっていた（実機検証で確認）。毎フレーム `xr.baseExperience.camera.fov`
+  LOD 判定を過剰に高精細にし、可視範囲内のタイル数が上限を超えて欠ける一因になっていた
+  （実機検証で確認）。毎フレーム `xr.baseExperience.camera.fov`
   （ブラウザの実 FOV を反映、Babylon が自動更新）を `globe-camera` へ同期して緩和している。
   加えて、`lodBias` 算出用の実効半径にも下限（400m、`resolveVrLodEffectiveRadiusM`）を
   設けている。
