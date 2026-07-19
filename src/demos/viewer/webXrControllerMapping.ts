@@ -93,6 +93,23 @@ export const DEFAULT_VR_MIN_Z_ALTITUDE_FACTOR = 0.01;
 export const DEFAULT_VR_MIN_Z_FLOOR_M = 0.5;
 export const DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR = 2;
 export const DEFAULT_VR_MAX_Z_FLOOR_M = 2000;
+/**
+ * `maxZ`（far clip）の絶対上限[m]。
+ *
+ * `horizonDistM * DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR` は高度が上がるほど際限なく
+ * 巨大化する（例: 高度 200km で約 3,200km）。WebXR (`XRSession.updateRenderState`) の
+ * `depthFar` にこのような非現実的に大きい値を渡すと、多くのブラウザ/ランタイムが
+ * これを妥当な範囲外として無視・クランプし、内部既定値（Babylon.js の `WebXRCamera` は
+ * `maxZ` 既定 10000m）にフォールバックする可能性が高い。これが、高高度
+ * （タイルレベル8＝高度200〜300km相当）でカメラ直下の地形が広範囲に渡って全く
+ * 描画されない（円形の穴）症状の実機検証で確認された原因と推定される
+ * （`updateRenderState` 呼び出し自体は正しく行われていても、渡した値がブラウザ側で
+ * 無視されるため見た目には反映されない）。
+ * VR は局所的な地表観覧が主目的で地球全体の水平線まで見える必要はないため、
+ * この上限で頭打ちにする（Babylon 既定の 10000m よりは広く、かつ非現実的に
+ * 巨大にはならない値として 50000m を採用）。
+ */
+export const DEFAULT_VR_MAX_Z_CAP_M = 50000;
 
 /**
  * VR カメラの `minZ`/`maxZ` を、実際の地表高度（地心距離 - 惑星半径）に応じて算出する。
@@ -109,7 +126,8 @@ export const DEFAULT_VR_MAX_Z_FLOOR_M = 2000;
  *
  * VR は局所的な地表観覧が主目的で地球全体の水平線まで見える必要はないため、
  * 地平線距離に適度な倍率（{@link DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR}）を掛けた、
- * より狭い範囲を使う。
+ * より狭い範囲を使う。さらに {@link DEFAULT_VR_MAX_Z_CAP_M} で絶対上限を設ける
+ * （ブラウザ側が極端な depthFar を無視する問題への対策。上記コメント参照）。
  */
 export const computeVrCameraClipPlanes = (
     altitudeM: number,
@@ -118,7 +136,10 @@ export const computeVrCameraClipPlanes = (
     const safeAltitudeM = Math.max(1, altitudeM);
     const minZ = Math.max(DEFAULT_VR_MIN_Z_FLOOR_M, safeAltitudeM * DEFAULT_VR_MIN_Z_ALTITUDE_FACTOR);
     const horizonDistM = Math.sqrt(2 * planetRadiusM * safeAltitudeM + safeAltitudeM * safeAltitudeM);
-    const maxZ = Math.max(DEFAULT_VR_MAX_Z_FLOOR_M, horizonDistM * DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR);
+    const maxZ = Math.min(
+        DEFAULT_VR_MAX_Z_CAP_M,
+        Math.max(DEFAULT_VR_MAX_Z_FLOOR_M, horizonDistM * DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR),
+    );
     return { minZ, maxZ };
 };
 

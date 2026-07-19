@@ -382,8 +382,6 @@ const enterVr = async (
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
     let restoreUi: (() => void) | null = null;
-    let earthMesh: ReturnType<Scene["getMeshByName"]> = null;
-    let earthMeshWasEnabled: boolean | null = null;
     try {
         const engine = scene.getEngine();
         xr = await scene.createDefaultXRExperienceAsync({
@@ -416,15 +414,6 @@ const enterVr = async (
         // （flight/roiorbit デモの「外部カメラ」パターンと同じ切り替え）。
         viewer.detachTileCamera();
         restoreUi = hideUiForVr(viewer);
-
-        // 背景の地球楕円体球（globe-earth）を VR 中は非表示にする。本来は DEM no-data 領域
-        // （海上等）やタイル未生成領域のフォールバック背景だが、VR は近距離の局所観覧が
-        // 主目的でこの球が視界の大半を占めることはなく、むしろタイル間の LOD 不整合等で
-        // 隙間ができた際に目立つ青色の露出として実機検証で指摘された。表示する積極的な
-        // 理由がないため、VR中は非表示にし終了時に元の状態へ復元する。
-        earthMesh = scene.getMeshByName("globe-earth");
-        earthMeshWasEnabled = earthMesh?.isEnabled(false) ?? null;
-        earthMesh?.setEnabled(false);
 
         // XR カメラを親に持つ「リグ」を作成し、リグの position/rotation を
         // lat/lon/altitude から算出した ECEF で毎フレーム駆動する。
@@ -598,10 +587,6 @@ const enterVr = async (
             if (desktopCamera && originalFov !== undefined) {
                 desktopCamera.fov = originalFov;
             }
-            // 背景の地球楕円体球を元の表示状態へ復元する。
-            if (earthMeshWasEnabled !== null) {
-                earthMesh?.setEnabled(earthMeshWasEnabled);
-            }
             styleVrButton(button);
         };
 
@@ -617,9 +602,6 @@ const enterVr = async (
         // 部分的に確保したリソース（terrain camera detach / UI非表示等）を後始末する。
         restoreUi?.();
         viewer.attachTileCamera();
-        if (earthMeshWasEnabled !== null) {
-            earthMesh?.setEnabled(earthMeshWasEnabled);
-        }
         xr?.dispose();
         styleVrButton(button);
         return null;

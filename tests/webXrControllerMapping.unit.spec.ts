@@ -9,6 +9,7 @@ import {
     DEFAULT_STICK_DEADZONE,
     DEFAULT_VR_HOVER_HEIGHT_M,
     DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M,
+    DEFAULT_VR_MAX_Z_CAP_M,
     FOLLOW_TILE_BASE_RADIUS_M_REFERENCE,
     resolveVrHoverHeightM,
     resolveVrLodEffectiveRadiusM,
@@ -190,11 +191,17 @@ describe("computeVrCameraClipPlanes", () => {
         expect(maxZ).toBeGreaterThan(minZ);
     });
 
-    it("increases both minZ and maxZ as altitude increases", () => {
+    it("increases minZ as altitude increases (once above the floor)", () => {
         const low = computeVrCameraClipPlanes(150);
-        const high = computeVrCameraClipPlanes(50_000);
+        const high = computeVrCameraClipPlanes(500);
         expect(high.minZ).toBeGreaterThan(low.minZ);
+    });
+
+    it("increases maxZ as altitude increases (below the cap)", () => {
+        const low = computeVrCameraClipPlanes(10);
+        const high = computeVrCameraClipPlanes(20);
         expect(high.maxZ).toBeGreaterThan(low.maxZ);
+        expect(high.maxZ).toBeLessThan(DEFAULT_VR_MAX_Z_CAP_M);
     });
 
     it("clamps to sane floors for near-zero or negative altitude", () => {
@@ -210,5 +217,19 @@ describe("computeVrCameraClipPlanes", () => {
         const { minZ, maxZ } = computeVrCameraClipPlanes(150);
         // 修正前は minZ=1, maxZ=6,000,000（比率 600万）だった。
         expect(maxZ / minZ).toBeLessThan(600_000);
+    });
+
+    it("caps maxZ at high altitude instead of growing unbounded with horizon distance", () => {
+        // 高度200km（タイルレベル8相当、実機検証で症状が確認された高度）では、
+        // 地平線距離ベースの式だけだと maxZ が約3,200kmまで際限なく膨らんでしまう。
+        // ブラウザが極端な depthFar を無視/クランプする問題を避けるため、絶対上限で
+        // 頭打ちにする。
+        const { maxZ } = computeVrCameraClipPlanes(200_000);
+        expect(maxZ).toBe(DEFAULT_VR_MAX_Z_CAP_M);
+    });
+
+    it("caps maxZ identically at an even higher altitude (300km)", () => {
+        const { maxZ } = computeVrCameraClipPlanes(300_000);
+        expect(maxZ).toBe(DEFAULT_VR_MAX_Z_CAP_M);
     });
 });

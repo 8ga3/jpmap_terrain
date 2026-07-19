@@ -167,21 +167,23 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   不安定になることで隣接タイル間の LOD 不整合を引き起こしていた。外部フラスタム制御中
   （`externalFrustumOverride !== null`）はこの2関数をスキップするよう修正した
   （`centerElevation`＝ referenceAltitude の最新化のみ継続）。
-- 背景の地球楕円体球（`globe-earth`）は VR 中は非表示にしている。本来は DEM no-data 領域
-  （海上等）のフォールバック背景だが、VR は近距離観覧が主目的でこの球が視界の大半を占める
-  ことはなく、上記のようなタイル間の隙間ができた際に目立つ青色の露出として実機検証で
-  指摘されたため。
-- **z-fighting 対策**: WebXR カメラはブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため
-  `engine.useReverseDepthBuffer`（デスクトップで z-fighting 対策に使っている reverse-Z）の
-  恩恵を受けられない。さらに、実際にレンダリングへ反映される近遠クリップは
-  `camera.minZ`/`camera.maxZ` ではなく **`WebXRSessionManager.updateRenderState({ depthNear,
-  depthFar })`（WebXR 標準 API）でのみ変更できる**（`camera.minZ`/`maxZ` を設定するだけでは
-  実描画に一切反映されない。当初この理解が誤っており実質何も変わっていなかった）。
-  `updateRenderState` を、地平線距離ベースのより狭い範囲を返す `computeVrCameraClipPlanes`
-  （`webXrControllerMapping.ts`）の結果で間引きつつ動的に呼び出している（デスクトップの
-  `GeospatialClippingBehavior` をそのまま流用すると常に far clip が惑星半径の1割≒638km に
-  なり、低高度で背景の地球楕円体球と地形タイルが z-fighting する不具合を実機検証で確認・
-  修正した）。
+- 背景の地球楕円体球（`globe-earth`）は通常どおり表示する。VR 中の非表示化を一時的に試したが
+  （DEM no-data 領域のフォールバック背景で、タイル間の隙間ができた際に目立つ青色の露出を
+  緩和する狙いだった）、実機検証で症状の緩和には寄与しなかったため中止した。
+- **z-fighting・地形の描画欠落 対策**: WebXR カメラはブラウザ提供の `XRView.projectionMatrix` を
+  直接使う実装のため `engine.useReverseDepthBuffer`（デスクトップで z-fighting 対策に使っている
+  reverse-Z）の恩恵を受けられない。近遠クリップは `camera.minZ`/`camera.maxZ` を設定すると
+  `WebXRCamera` 自身が変化を検知して `WebXRSessionManager.updateRenderState({ depthNear,
+  depthFar })`（WebXR 標準 API）を自動的に呼ぶ仕組みが Babylon.js に既にある（当初この仕組みを
+  把握しておらず、明示的に `updateRenderState` を呼ぶ形に変更したが、実際の原因は次の点だった）。
+  `computeVrCameraClipPlanes`（`webXrControllerMapping.ts`、地平線距離ベースで maxZ を算出）が
+  **絶対上限を設けていなかった**ため、高高度（例: 200km）で `maxZ` が数百〜数千km という
+  非現実的な値になっていた。多くの WebXR ランタイムはこのような極端な `depthFar` を無視/
+  クランプし、内部既定値（Babylon.js の `WebXRCamera` 既定 10000m）にフォールバックすると
+  推定され、これが**タイルレベル8（高度200〜300km相当）からカメラ直下の地形が広範囲に渡って
+  全く描画されない（円形の穴）**という実機検証結果の真因と考えられる（高度を下げるにつれて、
+  近い場所＝山頂から見え始め、遠い場所＝低地は最後まで見えない、という報告とも整合する）。
+  `maxZ` に絶対上限（`DEFAULT_VR_MAX_Z_CAP_M`＝50000m）を設けて対策した。
 - **タイル LOD（過剰な詳細度要求）対策**: タイル LOD の SSE 評価は
   desktop 側 `GeospatialCamera`（`globe-camera`）の `fov` を参照するが、Babylon 既定の
   fov（約46°）は Meta Quest 3 実機の実際の視野角（約90〜100°）よりかなり狭く、この不一致が
