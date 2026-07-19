@@ -150,8 +150,10 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   - 左スティック: 地図平面移動（パン）
   - 右スティック: 高度（ズーム）。ここでの高度は地表からの高さ（既定 150m、
     `?vrHoverHeight=<meters>` で調整可能）であり、海抜高度ではない。
-  - squeeze（グリップ）ボタン: VR セッションを終了する（没入中は画面上の 2D ボタンに
-    触れられないため）。
+  - B/Y ボタン（右手 = B、左手 = Y、どちらも xr-standard マッピングの `buttons[5]`）:
+    VR セッションを終了する（没入中は画面上の 2D ボタンに触れられないため）。当初は
+    グリップ（squeeze）ボタンを使っていたが、コントローラーを握る動作で誤操作が
+    多いとの実機フィードバックを受けて変更した。
 - 実装は `src/demos/viewer/webXrVrSession.ts`（Babylon.js `WebXRDefaultExperience` のセットアップ・
   カメラリグの ECEF 位置同期・地形 LOD 追従）と `src/demos/viewer/webXrControllerMapping.ts`
   （スティック入力→パン/ズーム移動量への変換、DOM/Babylon 非依存の純粋関数）に分かれている。
@@ -162,6 +164,15 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   より狭い範囲に動的更新している（デスクトップの `GeospatialClippingBehavior` をそのまま
   流用すると常に far clip が惑星半径の1割≒638km になり、低高度で背景の地球楕円体球と
   地形タイルが z-fighting する不具合を実機検証で確認・修正した）。
+- **タイル LOD（過剰な詳細度要求・タイル境界の不整合）対策**: タイル LOD の SSE 評価は
+  desktop 側 `GeospatialCamera`（`globe-camera`）の `fov` を参照するが、Babylon 既定の
+  fov（約46°）は Meta Quest 3 実機の実際の視野角（約90〜100°）よりかなり狭く、この不一致が
+  LOD 判定を過剰に高精細にし、可視範囲内のタイル数が上限を超えて欠ける・低ズームレベルで
+  隣接タイルの LOD 不整合（本来ギャップを隠すためのスカート形状が可視化される）の一因に
+  なっていた（実機検証で確認）。毎フレーム `xr.baseExperience.camera.fov`
+  （ブラウザの実 FOV を反映、Babylon が自動更新）を `globe-camera` へ同期して緩和している。
+  加えて、`lodBias` 算出用の実効半径にも下限（400m、`resolveVrLodEffectiveRadiusM`）を
+  設けている。
 - **現状はデモ層に閉じた PoC**であり、`JpmapTerrain` の公開 API ではない内部アクセサ
   （`__debugScene` 等）に依存している。`flight` / `roiorbit` デモが用いる「外部カメラで
   地形 LOD を駆動する」既存パターンを踏襲したもので、動作が安定した段階でライブラリ公開 API

@@ -19,11 +19,12 @@
  *   毎フレーム更新する。
  * - パン（左スティック）・ズーム（右スティック、高度）は
  *   {@link module:src/demos/viewer/webXrControllerMapping.ts} の純粋関数に委譲する。
- * - グリップ（squeeze）ボタンで VR セッションを終了する（没入中は 2D DOM ボタンに
- *   触れられないため）。ブラウザ標準の Gamepad API（`XRInputSource.gamepad`）を毎フレーム
- *   ポーリングする方式（`pollGripExit`）。Babylon の高レベル API
- *   （`motionController.getComponentOfType("squeeze")`）では実機で反応しない事例を
- *   確認したため、プロファイル解決を経由しないこちらを採用している。
+ * - B/Y ボタン（`EXIT_BUTTON_INDEX`）で VR セッションを終了する（没入中は 2D DOM
+ *   ボタンに触れられないため）。ブラウザ標準の Gamepad API（`XRInputSource.gamepad`）を
+ *   毎フレームポーリングする方式（`pollExitButton`）。当初はグリップ（squeeze）を
+ *   使っていたが、コントローラーを握る動作で誤操作が多いとの実機フィードバックを受けて
+ *   変更した。Babylon の高レベル API（`motionController.getComponentOfType(...)`）は
+ *   実機で反応しない事例を確認したため、プロファイル解決を経由しないこちらを採用している。
  * - 地形 LOD は `viewer.detachTileCamera()` + `viewer.refreshTerrainWithExternalFrustum`
  *   （flight/roiorbit デモと同じ「外部カメラ frustum」パターン、C案）で追従させる。
  *   `lodBias` も渡し、内部で上書きされる `camera.radius`（マーカー/ポリゴン/サークルの
@@ -41,6 +42,13 @@
  *   （ブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため）ことと相まって、
  *   低高度で地球楕円体の背景球と地形タイルが z-fighting する不具合を実機検証で確認した。
  *   VR は局所的な地表観覧が主目的のため、地平線距離ベースのより狭い範囲を使う。
+ * - タイル LOD の SSE（画面誤差）評価は desktop 側の `GeospatialCamera`（`globe-camera`）の
+ *   `fov`/ビューポート寸法を使う（`refreshTerrainWithExternalFrustum` 内部の `syncTiles`
+ *   参照）。desktop の既定 fov（Babylon 既定値、約46°）は Meta Quest 3 実機の実際の
+ *   視野角（約90〜100°）よりかなり狭く、この不一致が LOD 判定を実際より保守的（過剰に
+ *   高精細）にし、タイル数超過による表示欠けやタイル境界の不整合（スカートの可視化）の
+ *   一因になっていた（実機検証で確認）。毎フレーム `xr.baseExperience.camera.fov`
+ *   （ブラウザの実 FOV を反映する、Babylon が自動更新）を `globe-camera` へ同期する。
  *
  * 命名メモ: このリポジトリでは "VR" は Playwright の Visual Regression テストの略称としても
  * 使われている。本ファイル内では区別のため "WebXr" プレフィックスを用いる
@@ -195,30 +203,36 @@ const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: StickState): 
 };
 
 /**
- * WebXR "xr-standard" Gamepad マッピングにおけるグリップ（squeeze）ボタンのインデックス。
- * `buttons[0]` = trigger, `buttons[1]` = squeeze（両手とも共通）。
+ * WebXR "xr-standard" Gamepad マッピングにおける B/Y ボタン（セカンダリボタン）の
+ * インデックス。Meta Quest Touch 系コントローラーでは右手 = B、左手 = Y だが、
+ * どちらも `gamepadIndices.button: 5`（`buttons[4]` が A/X、`buttons[5]` が B/Y）で
+ * 共通（Babylon の `webXROculusTouchMotionController` プロファイル定義で確認）。
+ *
+ * 当初はグリップ（squeeze, `buttons[1]`）を終了トリガーに使っていたが、コントローラーを
+ * 握る動作で意図せず押してしまう誤操作が多いとの実機フィードバックを受けて変更した。
  * @see https://www.w3.org/TR/webxr-gamepads-module-1/#xr-standard-heuristics
  */
-const GRIP_BUTTON_INDEX = 1;
+const EXIT_BUTTON_INDEX = 5;
 
 /**
- * 左右コントローラーのグリップ（squeeze）ボタンを毎フレームポーリングし、押下エッジ
+ * 左右コントローラーの B/Y ボタンを毎フレームポーリングし、押下エッジ
  * （前フレーム非押下 → 今フレーム押下）で `onExitRequested` を呼ぶ。
  *
- * Babylon の `motionController.getComponentOfType("squeeze")`（プロファイル解決に依存する
+ * Babylon の `motionController.getComponentOfType(...)`（プロファイル解決に依存する
  * 高レベル API）ではなく、ブラウザ標準の `XRInputSource.gamepad`（生の Gamepad API、
- * プロファイル解決を経由しない）を直接参照する。実機検証で前者が反応しない事例を確認した
- * ため、より低レベルで確実な経路にフォールバックした。
+ * プロファイル解決を経由しない）を直接参照する。squeeze 使用時に実機で
+ * `getComponentOfType("squeeze")` が反応しない事例を確認したため、より低レベルで
+ * 確実な経路を採用している。
  *
  * `updateRig`（`scene.onBeforeRenderObservable`）から毎フレーム呼ぶ想定。
  */
-const pollGripExit = (
+const pollExitButton = (
     xr: WebXRDefaultExperience,
     wasPressed: Map<string, boolean>,
     onExitRequested: () => void,
 ): void => {
     xr.input.controllers.forEach((controller) => {
-        const button = controller.inputSource.gamepad?.buttons[GRIP_BUTTON_INDEX];
+        const button = controller.inputSource.gamepad?.buttons[EXIT_BUTTON_INDEX];
         if (!button) return;
         const key = controller.uniqueId;
         if (button.pressed && !wasPressed.get(key)) {
@@ -384,6 +398,12 @@ const enterVr = async (
         xr.baseExperience.camera.rotationQuaternion = Quaternion.Identity();
         rig.rotationQuaternion = Quaternion.Identity();
 
+        // desktop の GeospatialCamera（タイル LOD の SSE 評価が fov を参照する）。
+        // 実際の VR ヘッドセット FOV を毎フレーム同期するために保持する
+        // （下記コメント・updateRig 内 fov 同期処理参照）。
+        const desktopCamera = scene.getCameraByName("globe-camera");
+        const originalFov = desktopCamera?.fov;
+
         let lat = viewer.lat;
         let lon = viewer.lon;
         // `viewer.altitude`（desktop ArcRotateCamera の radius）は継承しない。既定 2000m を
@@ -394,21 +414,28 @@ const enterVr = async (
         const sticks = zeroStick();
         trackControllerSticks(xr, sticks);
         let exitRequested = false;
-        const gripWasPressed = new Map<string, boolean>();
+        const exitButtonWasPressed = new Map<string, boolean>();
 
         const scratch = createScratch();
         let lastTileRefreshMs = 0;
         let tileRefreshInFlight = false;
 
         const updateRig = (): void => {
-            // squeeze（グリップ）ボタンでの終了リクエストを最優先で処理する。
-            pollGripExit(xr!, gripWasPressed, () => {
+            // B/Y ボタンでの終了リクエストを最優先で処理する。
+            pollExitButton(xr!, exitButtonWasPressed, () => {
                 exitRequested = true;
             });
             if (exitRequested) {
                 exitRequested = false;
                 void xr!.baseExperience.exitXRAsync();
                 return;
+            }
+
+            // タイル LOD の SSE 評価が使う desktop カメラの fov を、実際のヘッドセット FOV へ
+            // 同期する（{@link module:src/demos/viewer/webXrVrSession.ts} 冒頭のコメント参照。
+            // 狭い desktop 既定値のままだと LOD 判定が過剰に高精細になる不具合を実機検証で確認）。
+            if (desktopCamera) {
+                desktopCamera.fov = xr!.baseExperience.camera.fov;
             }
 
             const dtSec = Math.min(MAX_DT_SEC, Math.max(0, engine.getDeltaTime() / 1000));
@@ -523,6 +550,10 @@ const enterVr = async (
             viewer.lat = lat;
             viewer.lon = lon;
             viewer.altitude = altitude;
+            // VR中に同期した fov を desktop 既定値へ戻す。
+            if (desktopCamera && originalFov !== undefined) {
+                desktopCamera.fov = originalFov;
+            }
             styleVrButton(button);
         };
 
