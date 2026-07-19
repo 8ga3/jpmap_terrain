@@ -63,6 +63,66 @@ export const computeLodBiasForAltitude = (targetRadiusM: number): number =>
     Math.log2(FOLLOW_TILE_BASE_RADIUS_M_REFERENCE / targetRadiusM);
 
 /**
+ * `lodBias` 算出（{@link computeLodBiasForAltitude}）に使う実効半径の下限[m]。
+ *
+ * VR の地表高度（`altitude`、`clampAltitude` で最小 50m まで許容）をそのまま
+ * `lodBias` の基準にすると、低高度でタイル LOD が過剰に高精細（深いズームレベル）を
+ * 要求し、可視範囲内のタイル数が `maxVisited` 等の上限を超えて欠け（表示しきれない
+ * タイルが発生）が生じる不具合を実機検証で確認した（ユーザーからも「もっとズーム
+ * レベルを下げても十分」との指摘あり）。この下限で高度が極端に低い場合の要求詳細度を
+ * 抑える。`camera.radius`（マーカー等の距離ベース自動スケールにも使われる）も
+ * 同じ値になるため、大きくしすぎるとマーカーが小さく見えすぎる可能性がある
+ * トレードオフがある。
+ */
+export const DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M = 400;
+
+/**
+ * `altitudeM` に {@link DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M} 未満の下限を適用した
+ * 「lodBias 算出用の実効半径」を返す（高高度側の挙動は変えない）。
+ */
+export const resolveVrLodEffectiveRadiusM = (
+    altitudeM: number,
+    minM: number = DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M,
+): number => Math.max(altitudeM, minM);
+
+/** WGS84 の赤道半径[m]（near/far clip 計算の基準）。 */
+export const PLANET_RADIUS_M_FOR_CLIP_PLANES = 6378137;
+
+/** {@link computeVrCameraClipPlanes} の既定パラメータ。 */
+export const DEFAULT_VR_MIN_Z_ALTITUDE_FACTOR = 0.01;
+export const DEFAULT_VR_MIN_Z_FLOOR_M = 0.5;
+export const DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR = 2;
+export const DEFAULT_VR_MAX_Z_FLOOR_M = 2000;
+
+/**
+ * VR カメラの `minZ`/`maxZ` を、実際の地表高度（地心距離 - 惑星半径）に応じて算出する。
+ *
+ * デスクトップの `GeospatialCamera` に付与されている `GeospatialClippingBehavior`
+ * （`horizonDist + planetRadius*0.1` で maxZ を求める式）をそのまま VR に流用すると、
+ * 惑星半径の1割（地球なら約638km）が常に maxZ の下限になってしまう。この式は
+ * `engine.useReverseDepthBuffer`（reverse-Z）による深度精度改善を前提にした設計だが、
+ * **WebXR カメラはブラウザが提供する `XRView.projectionMatrix` を直接使う実装のため
+ * reverse-Z の恩恵を受けられない**（Babylon の `Camera.getProjectionMatrix()` 経由の
+ * reverse-Z ロジックを通らない）。そのため標準（非reverse）深度バッファのままこの
+ * 巨大な maxZ を使うと、低高度で地球楕円体の背景球と地形タイルが z-fighting する
+ * 不具合を実機検証で確認した。
+ *
+ * VR は局所的な地表観覧が主目的で地球全体の水平線まで見える必要はないため、
+ * 地平線距離に適度な倍率（{@link DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR}）を掛けた、
+ * より狭い範囲を使う。
+ */
+export const computeVrCameraClipPlanes = (
+    altitudeM: number,
+    planetRadiusM: number = PLANET_RADIUS_M_FOR_CLIP_PLANES,
+): { minZ: number; maxZ: number } => {
+    const safeAltitudeM = Math.max(1, altitudeM);
+    const minZ = Math.max(DEFAULT_VR_MIN_Z_FLOOR_M, safeAltitudeM * DEFAULT_VR_MIN_Z_ALTITUDE_FACTOR);
+    const horizonDistM = Math.sqrt(2 * planetRadiusM * safeAltitudeM + safeAltitudeM * safeAltitudeM);
+    const maxZ = Math.max(DEFAULT_VR_MAX_Z_FLOOR_M, horizonDistM * DEFAULT_VR_MAX_Z_HORIZON_MARGIN_FACTOR);
+    return { minZ, maxZ };
+};
+
+/**
  * `?vrHoverHeight=` クエリ文字列から VR 突入時の既定高度[m]を解決する。
  * 未指定・不正値（非数値・0以下）は {@link DEFAULT_VR_HOVER_HEIGHT_M} にフォールバックする。
  */

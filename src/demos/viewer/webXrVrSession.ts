@@ -34,6 +34,13 @@
  *   地表高度としてそのまま使わない。既定の 2000m を使うと空しか見えない高度に
  *   なるため（実機検証で確認済み）、VR 突入時は控えめな既定高度
  *   （{@link DEFAULT_VR_HOVER_HEIGHT_M}）を使う。
+ * - XR カメラの `minZ`/`maxZ`（near/far clip）は毎フレーム動的に更新する
+ *   （{@link computeVrCameraClipPlanes}）。デスクトップの `GeospatialClippingBehavior`
+ *   と同じ式をそのまま使うと、地球半径の1割（約638km）が常に far clip の下限になり、
+ *   **WebXR カメラは `engine.useReverseDepthBuffer`（reverse-Z）の恩恵を受けられない**
+ *   （ブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため）ことと相まって、
+ *   低高度で地球楕円体の背景球と地形タイルが z-fighting する不具合を実機検証で確認した。
+ *   VR は局所的な地表観覧が主目的のため、地平線距離ベースのより狭い範囲を使う。
  *
  * 命名メモ: このリポジトリでは "VR" は Playwright の Visual Regression テストの略称としても
  * 使われている。本ファイル内では区別のため "WebXr" プレフィックスを用いる
@@ -44,7 +51,6 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
-import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 // `scene.createDefaultXRExperienceAsync` を Scene プロトタイプへ追加する副作用 import。
 import "@babylonjs/core/Helpers/sceneHelpers";
 import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
@@ -60,8 +66,11 @@ import {
     computeAltitudeFactorFromStick,
     computeLodBiasForAltitude,
     computePanMetersFromStick,
+    computeVrCameraClipPlanes,
     DEFAULT_ALTITUDE_ZOOM_RATE_PER_SEC,
+    PLANET_RADIUS_M_FOR_CLIP_PLANES,
     resolveVrHoverHeightM,
+    resolveVrLodEffectiveRadiusM,
 } from "./webXrControllerMapping";
 
 /** 左スティックのパン速度（高度1mあたりの秒速係数）。既存ドラッグパンに近い体感になるよう暫定調整。 */
@@ -71,19 +80,11 @@ const MAX_DT_SEC = 0.05;
 /** 地形タイル frustum 更新の最小間隔[ms]（flight/roiorbit デモと同じ値）。 */
 const TILE_REFRESH_INTERVAL_MS = 300;
 
-/** WGS84 の赤道半径[m]。地表からの高度算出（near/far clip 計算用）の基準に使う。 */
-const PLANET_RADIUS_M = Wgs84Ellipsoid.semiMajorAxis;
-
 /**
- * XR カメラの `minZ`/`maxZ` を、実際の地表高度（地心距離 - 惑星半径）に応じて動的に
- * 更新する。デスクトップの `GeospatialCamera` に付与されている
- * `GeospatialClippingBehavior`（`@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior`）
- * と同一の式を使う。
- *
- * 固定値（当初 6,000,000m 固定）のままだと、地表高度が低い（例: 150m）場合に
- * near/far の比率が極端に大きくなり、深度バッファ精度不足で地球楕円体の背景球
- * （`globe-earth`）と地形タイルが z-fighting（ちらつき）する不具合を実機検証で確認した。
- * デスクトップと同じ動的計算にすることでこれを解消する。
+ * XR カメラの `minZ`/`maxZ` を、実際の地表高度（地心距離 - 惑星半径）に応じて更新する。
+ * 計算式は {@link computeVrCameraClipPlanes} 参照（デスクトップの
+ * `GeospatialClippingBehavior` とは異なり、reverse-Z の恩恵を受けられない WebXR
+ * カメラ向けに調整した式）。
  *
  * @param positionEcef カメラのおおよその ECEF 絶対位置（`rig.position` を想定）。
  *   `camera.globalPosition` はワールド行列の再計算タイミング次第で 1 フレーム遅延した
@@ -94,10 +95,10 @@ const updateXrCameraClipPlanes = (
     positionEcef: Vector3,
     camera: { minZ: number; maxZ: number },
 ): void => {
-    const altitudeM = Math.max(1, positionEcef.length() - PLANET_RADIUS_M);
-    camera.minZ = Math.max(1, altitudeM * 0.001);
-    const horizonDistM = Math.sqrt(2 * PLANET_RADIUS_M * altitudeM + altitudeM * altitudeM);
-    camera.maxZ = horizonDistM + PLANET_RADIUS_M * 0.1;
+    const altitudeM = positionEcef.length() - PLANET_RADIUS_M_FOR_CLIP_PLANES;
+    const { minZ, maxZ } = computeVrCameraClipPlanes(altitudeM);
+    camera.minZ = minZ;
+    camera.maxZ = maxZ;
 };
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
@@ -491,7 +492,10 @@ const enterVr = async (
                 // 既定の lodBias=0（固定 2000m 相当）のままだと VR中の実際の地表高度と
                 // 乖離し、近距離のマーカーが異常な大きさで表示される
                 // （実機検証で確認済みの不具合）。altitude と一致するよう逆算する。
-                const lodBias = computeLodBiasForAltitude(altitude);
+                // ただし低高度では altitude をそのまま使うとタイル要求が過剰に高精細になり
+                // 表示しきれない（欠ける）不具合も実機検証で確認したため、下限を設ける
+                // （resolveVrLodEffectiveRadiusM）。
+                const lodBias = computeLodBiasForAltitude(resolveVrLodEffectiveRadiusM(altitude));
 
                 tileRefreshInFlight = true;
                 void viewer

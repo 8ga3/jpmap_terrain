@@ -155,6 +155,13 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 - 実装は `src/demos/viewer/webXrVrSession.ts`（Babylon.js `WebXRDefaultExperience` のセットアップ・
   カメラリグの ECEF 位置同期・地形 LOD 追従）と `src/demos/viewer/webXrControllerMapping.ts`
   （スティック入力→パン/ズーム移動量への変換、DOM/Babylon 非依存の純粋関数）に分かれている。
+- **z-fighting 対策**: WebXR カメラはブラウザ提供の `XRView.projectionMatrix` を直接使う実装のため
+  `engine.useReverseDepthBuffer`（デスクトップで z-fighting 対策に使っている reverse-Z）の
+  恩恵を受けられない。そのため XR カメラの `minZ`/`maxZ` は毎フレーム
+  `computeVrCameraClipPlanes`（`webXrControllerMapping.ts`）で、地平線距離ベースの
+  より狭い範囲に動的更新している（デスクトップの `GeospatialClippingBehavior` をそのまま
+  流用すると常に far clip が惑星半径の1割≒638km になり、低高度で背景の地球楕円体球と
+  地形タイルが z-fighting する不具合を実機検証で確認・修正した）。
 - **現状はデモ層に閉じた PoC**であり、`JpmapTerrain` の公開 API ではない内部アクセサ
   （`__debugScene` 等）に依存している。`flight` / `roiorbit` デモが用いる「外部カメラで
   地形 LOD を駆動する」既存パターンを踏襲したもので、動作が安定した段階でライブラリ公開 API

@@ -4,11 +4,14 @@ import {
     computeAltitudeFactorFromStick,
     computeLodBiasForAltitude,
     computePanMetersFromStick,
+    computeVrCameraClipPlanes,
     DEFAULT_MIN_ALTITUDE_FOR_PAN_SPEED_M,
     DEFAULT_STICK_DEADZONE,
     DEFAULT_VR_HOVER_HEIGHT_M,
+    DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M,
     FOLLOW_TILE_BASE_RADIUS_M_REFERENCE,
     resolveVrHoverHeightM,
+    resolveVrLodEffectiveRadiusM,
 } from "../src/demos/viewer/webXrControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -158,5 +161,54 @@ describe("resolveVrHoverHeightM", () => {
         expect(resolveVrHoverHeightM("?vrHoverHeight=abc")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
         expect(resolveVrHoverHeightM("?vrHoverHeight=0")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
         expect(resolveVrHoverHeightM("?vrHoverHeight=-50")).toBe(DEFAULT_VR_HOVER_HEIGHT_M);
+    });
+});
+
+describe("resolveVrLodEffectiveRadiusM", () => {
+    it("floors low altitudes to the minimum effective radius", () => {
+        expect(resolveVrLodEffectiveRadiusM(50)).toBe(DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M);
+        expect(resolveVrLodEffectiveRadiusM(150)).toBe(DEFAULT_VR_LOD_EFFECTIVE_RADIUS_MIN_M);
+    });
+
+    it("leaves altitudes above the minimum unchanged", () => {
+        expect(resolveVrLodEffectiveRadiusM(2000)).toBe(2000);
+    });
+
+    it("honors a custom minimum", () => {
+        expect(resolveVrLodEffectiveRadiusM(150, 100)).toBe(150);
+        expect(resolveVrLodEffectiveRadiusM(50, 100)).toBe(100);
+    });
+});
+
+describe("computeVrCameraClipPlanes", () => {
+    it("uses a much smaller maxZ than the desktop GeospatialClippingBehavior formula at low altitude", () => {
+        // デスクトップの式（horizonDist + planetRadius*0.1）だと altitude=150 でも
+        // maxZ は惑星半径の1割（地球なら約638km）が下限になってしまう。
+        const { minZ, maxZ } = computeVrCameraClipPlanes(150);
+        expect(maxZ).toBeLessThan(200_000);
+        expect(minZ).toBeGreaterThan(0);
+        expect(maxZ).toBeGreaterThan(minZ);
+    });
+
+    it("increases both minZ and maxZ as altitude increases", () => {
+        const low = computeVrCameraClipPlanes(150);
+        const high = computeVrCameraClipPlanes(50_000);
+        expect(high.minZ).toBeGreaterThan(low.minZ);
+        expect(high.maxZ).toBeGreaterThan(low.maxZ);
+    });
+
+    it("clamps to sane floors for near-zero or negative altitude", () => {
+        const { minZ, maxZ } = computeVrCameraClipPlanes(0);
+        expect(minZ).toBeGreaterThan(0);
+        expect(maxZ).toBeGreaterThan(minZ);
+        const negative = computeVrCameraClipPlanes(-100);
+        expect(negative.minZ).toBeGreaterThan(0);
+        expect(negative.maxZ).toBeGreaterThan(negative.minZ);
+    });
+
+    it("keeps maxZ/minZ ratio far smaller than the previous fixed 6,000,000 far clip", () => {
+        const { minZ, maxZ } = computeVrCameraClipPlanes(150);
+        // 修正前は minZ=1, maxZ=6,000,000（比率 600万）だった。
+        expect(maxZ / minZ).toBeLessThan(600_000);
     });
 });
