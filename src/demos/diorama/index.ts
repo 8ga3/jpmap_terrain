@@ -25,6 +25,9 @@ import { setupDioramaWebXrArButton } from "./webXrArSession";
 import { createArDebugOverlay } from "./arDebugOverlay";
 // [一時的な診断コード] A/B/Cテクスチャ生成方式の切り分け用。確認後にrevertして削除する。
 import { createTextureAbcTest } from "./textureAbcTest";
+// [一時的な診断コード] D/Eテスト（メッシュ複雑さ vs テクスチャサイズの切り分け用）。
+// 確認後にrevertして削除する。
+import { createMosaicOnSimplePlaneTest, swapDioramaTextureWithSimpleTile } from "./textureDeTest";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -152,6 +155,30 @@ const start = async (): Promise<void> => {
         .catch((err: unknown) => {
             debugOverlay.log(`createTextureAbcTest failed: ${err instanceof Error ? err.message : String(err)}`);
         });
+
+    // [一時的な診断コード] テストD: 本番と全く同じ関数で生成した複数タイルの
+    // モザイクテクスチャを、単純な板ポリに貼る（メッシュの複雑さを除外）。
+    // 確認後にrevertして削除する。
+    createMosaicOnSimplePlaneTest(scene, DEFAULT_CENTER, DEFAULT_FOOTPRINT_RADIUS_M, 16, "std")
+        .then((testDRoot) => {
+            testDRoot.position.set(DEFAULT_TABLE_RADIUS_M * 3.5, 0, 0);
+            scene.onBeforeRenderObservable.add(() => {
+                testDRoot.position.copyFrom(dioramaTerrain.root.position);
+                testDRoot.position.x += DEFAULT_TABLE_RADIUS_M * 3.5;
+            });
+            debugOverlay.log("createMosaicOnSimplePlaneTest (D): done");
+        })
+        .catch((err: unknown) => {
+            debugOverlay.log(`createMosaicOnSimplePlaneTest (D) failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
+
+    // [一時的な診断コード] テストE: 本体の箱庭メッシュの diffuseTexture を
+    // 単一タイルの動作確認済みテクスチャへ直接差し替える（テクスチャサイズを
+    // 除外し、複雑なメッシュ自体がAR中に表示されるかを確認する）。
+    // UVは本番のモザイクレイアウト用のままのため地図はズレて表示される。
+    // 確認後にrevertして削除する。
+    swapDioramaTextureWithSimpleTile(scene, dioramaTerrain.mesh, DEFAULT_CENTER, 15, "std");
+    debugOverlay.log("swapDioramaTextureWithSimpleTile (E): done");
 
     setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, debugOverlay).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
