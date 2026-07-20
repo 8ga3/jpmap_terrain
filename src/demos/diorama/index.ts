@@ -6,9 +6,10 @@
  * `terrain/diorama/dioramaTerrain`（放射状グリッド + 実世界DEM/タイル取得 +
  * 縮小スケール）で構築する。GlobeScene（実寸大ECEF楕円体 + floating origin）は
  * 使わない独立実装のため、本デモは `JpmapTerrain` に依存しない。
- * - WebXR (immersive-vr) セッション統合は後続タスクで行う。
+ * - WebXR (`immersive-ar`) セッション統合（`webXrArSession.ts`）により、箱庭の周りを
+ *   歩いて見られるパススルーAR表示に対応する。
  * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更・ライティング・
- *   タイル切替・トップ復帰）も後続タスクで行う。
+ *   タイル切替・トップ復帰）は後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
@@ -20,6 +21,7 @@ import { Color4, Color3 } from "@babylonjs/core/Maths/math.color";
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
+import { setupDioramaWebXrArButton } from "./webXrArSession";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -87,6 +89,10 @@ const start = async (): Promise<void> => {
         center: DEFAULT_CENTER,
         footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
+    });
+
+    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root).catch((err: unknown) => {
+        console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
     });
 
     engine.runRenderLoop(() => {
