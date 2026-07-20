@@ -23,6 +23,7 @@ import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
+import { createArDebugOverlay } from "./arDebugOverlay";
 // [一時的] 実機AR診断用。詳細は primitiveArTest.ts 冒頭コメント参照。診断が終わったら削除する。
 import { createPrimitiveArTestObjects } from "./primitiveArTest";
 
@@ -65,6 +66,10 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const canvas = createCanvas(mount);
+    // [実機診断用] devtoolsが使えない実機（Meta Quest 3 / Android Chrome等）でも
+    // 画面上で直接ログを確認できるようにする。
+    const debugOverlay = createArDebugOverlay(mount);
+    debugOverlay.log("start() begin");
     // 他デモは既定で `webgpu` を優先するが、本デモは既定を `webgl2` にする
     // （`?engine=webgpu` で明示指定すれば従来通りWebGPUを使える）。
     //
@@ -79,6 +84,7 @@ const start = async (): Promise<void> => {
     // WebGL2 を既定にしてこのリスクを避ける。
     const engineType = resolveEngine(location.search) ?? "webgl2";
     const engine = await createBabylonEngine(canvas, engineType);
+    debugOverlay.log(`engine created: ${engine.constructor.name}`);
 
 
     const scene = new Scene(engine);
@@ -128,6 +134,7 @@ const start = async (): Promise<void> => {
         footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
+    debugOverlay.log("createDioramaTerrain: done");
 
     // [一時的] 実機AR診断: `?arPrimitiveTest=1` 指定時、独自構築の地形/側面壁メッシュを隠し、
     // Babylon標準プリミティブ（Cube + Cylinder x2）のみを表示する。地形メッシュ固有の構築方法
@@ -146,10 +153,12 @@ const start = async (): Promise<void> => {
         const primitiveTestRoot = new TransformNode("primitive-test-root", scene);
         createPrimitiveArTestObjects(scene, primitiveTestRoot);
         arRoot = primitiveTestRoot;
+        debugOverlay.log("arPrimitiveTest: enabled");
     }
 
-    setupDioramaWebXrArButton(mount, scene, arRoot).catch((err: unknown) => {
+    setupDioramaWebXrArButton(mount, scene, arRoot, debugOverlay).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
+        debugOverlay.log(`setupDioramaWebXrArButton failed: ${err instanceof Error ? err.message : String(err)}`);
     });
 
     engine.runRenderLoop(() => {
