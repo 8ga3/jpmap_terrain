@@ -27,7 +27,7 @@ import { createArDebugOverlay } from "./arDebugOverlay";
 import { createTextureAbcTest } from "./textureAbcTest";
 // [一時的な診断コード] D/Eテスト（メッシュ複雑さ vs テクスチャサイズの切り分け用）。
 // 確認後にrevertして削除する。
-import { createMosaicOnSimplePlaneTest, swapDioramaTextureWithSimpleTile } from "./textureDeTest";
+import { createMosaicOnSimplePlaneTest } from "./textureDeTest";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -172,13 +172,9 @@ const start = async (): Promise<void> => {
             debugOverlay.log(`createMosaicOnSimplePlaneTest (D) failed: ${err instanceof Error ? err.message : String(err)}`);
         });
 
-    // [一時的な診断コード] テストE: 本体の箱庭メッシュの diffuseTexture を
-    // 単一タイルの動作確認済みテクスチャへ直接差し替える（テクスチャサイズを
-    // 除外し、複雑なメッシュ自体がAR中に表示されるかを確認する）。
-    // UVは本番のモザイクレイアウト用のままのため地図はズレて表示される。
-    // 確認後にrevertして削除する。
-    swapDioramaTextureWithSimpleTile(scene, dioramaTerrain.mesh, DEFAULT_CENTER, 15, "std");
-    debugOverlay.log("swapDioramaTextureWithSimpleTile (E): done");
+    // テストE（本体メッシュのテクスチャ差し替え）は原因切り分けに使用し、
+    // メッシュ側（backFaceCulling）が原因と判明したため無効化した
+    // （`dioramaTerrain.ts` の `material.backFaceCulling = false` 参照）。
 
     setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, debugOverlay).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
