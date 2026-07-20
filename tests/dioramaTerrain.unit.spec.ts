@@ -106,21 +106,13 @@ vi.mock("../src/terrain/diorama/dioramaGrid", () => ({
     buildDioramaGridIndices: vi.fn(() => new Uint32Array([0, 1, 2])),
 }));
 
-const callTimestamps: { fetchElevationsStart: number[]; buildTextureStart: number[] } = {
-    fetchElevationsStart: [],
-    buildTextureStart: [],
-};
-
 let elevationDelayMs = 0;
 vi.mock("../src/terrain/diorama/dioramaElevation", () => ({
     fetchDioramaElevations: vi.fn(async (points: readonly unknown[]) => {
-        callTimestamps.fetchElevationsStart.push(Date.now());
         await new Promise((resolve) => setTimeout(resolve, elevationDelayMs));
         return new Float32Array(points.length);
     }),
 }));
-
-let textureDelayMs = 0;
 
 vi.mock("../src/terrain/diorama/dioramaTexture", () => ({
     computeDioramaTextureLayout: vi.fn(
@@ -138,11 +130,7 @@ vi.mock("../src/terrain/diorama/dioramaTexture", () => ({
             uvs: points.map(() => ({ u: 0, v: 0 })),
         }),
     ),
-    buildDioramaMosaicTexture: vi.fn(async () => {
-        callTimestamps.buildTextureStart.push(Date.now());
-        await new Promise((resolve) => setTimeout(resolve, textureDelayMs));
-        return { dispose: vi.fn() };
-    }),
+    buildDioramaMosaicTexture: vi.fn(async () => ({ dispose: vi.fn() })),
 }));
 
 vi.mock("../src/terrain/diorama/dioramaSkirt", () => ({
@@ -155,11 +143,13 @@ vi.mock("../src/terrain/diorama/dioramaSkirt", () => ({
 
 import { createDioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
 import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
+import { buildDioramaMosaicTexture } from "../src/terrain/diorama/dioramaTexture";
 import { buildDioramaGridPoints } from "../src/terrain/diorama/dioramaGrid";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 const mockFetchElevations = vi.mocked(fetchDioramaElevations);
+const mockBuildTexture = vi.mocked(buildDioramaMosaicTexture);
 const mockBuildGridPoints = vi.mocked(buildDioramaGridPoints);
 const mockMesh = vi.mocked(Mesh);
 const mockTransformNode = vi.mocked(TransformNode);
@@ -175,10 +165,8 @@ const dummyScene = {} as Parameters<typeof createDioramaTerrain>[0];
 
 beforeEach(() => {
     elevationDelayMs = 0;
-    textureDelayMs = 0;
-    callTimestamps.fetchElevationsStart = [];
-    callTimestamps.buildTextureStart = [];
     mockFetchElevations.mockClear();
+    mockBuildTexture.mockClear();
     mockBuildGridPoints.mockClear();
     mockMesh.mockClear();
     mockTransformNode.mockClear();
@@ -240,17 +228,36 @@ describe("createDioramaTerrain の入力検証", () => {
     });
 
     it("DEM取得とテクスチャ取得が並列に開始される（直列にならない）", async () => {
-        elevationDelayMs = 30;
-        textureDelayMs = 30;
-        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
-        expect(callTimestamps.fetchElevationsStart.length).toBe(1);
-        expect(callTimestamps.buildTextureStart.length).toBe(1);
-        // 直列であれば片方の開始がもう片方の遅延(30ms)ぶん遅れるはずだが、
-        // 並列であれば両者はほぼ同時（数ms以内）に開始される。
-        const gap = Math.abs(
-            callTimestamps.fetchElevationsStart[0] - callTimestamps.buildTextureStart[0],
+        // どちらのモックも意図的に解決を保留し、「両方とも呼ばれた」ことのみを検証する
+        // （タイマー精度に依存する Date.now() 差分比較はCI負荷でフレークし得るため避ける）。
+        // createDioramaTerrain の内部（buildMesh）は Promise.all([fetchDioramaElevations(...),
+        // buildDioramaMosaicTexture(...)]) に到達するまで同期的に実行されるため、この呼び出し
+        // 直後（どちらの Promise もまだ未解決の時点）で両モックの呼び出し回数を確認すれば、
+        // 直列実装（片方の完了を待ってからもう片方を呼ぶ）ではないことを決定的に検証できる。
+        let resolveElevations: (value: Float32Array) => void = () => {};
+        let resolveTexture: (value: Awaited<ReturnType<typeof mockBuildTexture>>) => void = () => {};
+        mockFetchElevations.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveElevations = resolve;
+                }),
         );
-        expect(gap).toBeLessThan(20);
+        mockBuildTexture.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveTexture = resolve;
+                }),
+        );
+
+        const pending = createDioramaTerrain(dummyScene, baseOptions);
+
+        // 直列実装であればこの時点で buildDioramaMosaicTexture はまだ呼ばれていないはず。
+        expect(mockFetchElevations).toHaveBeenCalledTimes(1);
+        expect(mockBuildTexture).toHaveBeenCalledTimes(1);
+
+        resolveElevations(new Float32Array(5));
+        resolveTexture({ dispose: vi.fn() } as unknown as Awaited<ReturnType<typeof mockBuildTexture>>);
+        const terrain = await pending;
         terrain.dispose();
     });
 });
