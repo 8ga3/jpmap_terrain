@@ -16,41 +16,16 @@ import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 
 vi.mock("@babylonjs/core/scene", () => ({ Scene: class {} }));
 
-vi.mock("@babylonjs/core/Meshes/mesh", () => {
-    const MeshMock = vi.fn<(name: string) => unknown>().mockImplementation(function (name) {
+vi.mock("@babylonjs/core/Meshes/mesh", () => ({
+    Mesh: vi.fn<(name: string) => unknown>().mockImplementation(function (name) {
         return {
             name,
             material: null as unknown,
             parent: null as unknown,
-            alwaysSelectAsActiveMesh: false,
             dispose: vi.fn(),
         };
-    });
-    // `buildMesh` は地形面・側面壁を統合するため `Mesh.MergeMeshes`（静的メソッド）を
-    // 呼ぶ。実際の頂点統合ロジックはテスト対象外（Babylon側の実装）のため、
-    // 呼び出された引数（1つ目のメッシュの名前等）を模した最小限のダミーを返す。
-    // `disposeSource=true` で呼ばれるため、実際のBabylonと同様に統合元メッシュの
-    // `dispose()` を呼ぶ（呼び出し元のテストが「rebuild中断時に生成物が破棄される」
-    // ことを検証する際、統合元メッシュ側の `dispose` 呼び出しを確認するため）。
-    (MeshMock as unknown as { MergeMeshes: Mock }).MergeMeshes = vi.fn(
-        (
-            meshes: Array<{ name: string; material: unknown; dispose: () => void }>,
-            disposeSource?: boolean,
-        ) => {
-            if (disposeSource) {
-                meshes.forEach((m) => m.dispose());
-            }
-            return {
-                name: meshes[0]?.name,
-                material: null as unknown,
-                parent: null as unknown,
-                alwaysSelectAsActiveMesh: false,
-                dispose: vi.fn(),
-            };
-        },
-    );
-    return { Mesh: MeshMock };
-});
+    }),
+}));
 
 vi.mock("@babylonjs/core/Meshes/mesh.vertexData", () => ({
     VertexData: class {
@@ -186,12 +161,7 @@ const baseOptions = {
 };
 
 // `Scene` はモック済みだが本実装は使わないため、コンストラクタ引数を要求しないダミーで足りる。
-// ただし `buildMesh` は `scene.setRenderingAutoClearDepthStencil(...)` を呼ぶため、
-// 呼び出し可能なスタブを用意しておく（`renderingGroupId` を跨いだ深度クリア無効化。
-// `dioramaTerrain.ts` 側のコメント参照）。
-const dummyScene = {
-    setRenderingAutoClearDepthStencil: vi.fn(),
-} as unknown as Parameters<typeof createDioramaTerrain>[0];
+const dummyScene = {} as Parameters<typeof createDioramaTerrain>[0];
 
 beforeEach(() => {
     elevationDelayMs = 0;
