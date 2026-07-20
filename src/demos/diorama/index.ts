@@ -34,7 +34,8 @@ const DEFAULT_TABLE_RADIUS_M = 0.35;
 
 /**
  * `?engine=` クエリ文字列から描画エンジン種別を解決する（他デモと同じ規約）。
- * 未指定時は `JpmapTerrain` 既定と同じ自動判定（WebGPU 優先・WebGL2 フォールバック）に委ねる。
+ * 未指定時は既定で `webgl2` を使う（他デモの既定 `webgpu` とは異なる。理由は
+ * {@link start} 内の既定値決定コメント参照）。
  */
 const resolveEngine = (search: string): EngineType | undefined => {
     const value = new URLSearchParams(search).get("engine");
@@ -61,8 +62,21 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const canvas = createCanvas(mount);
-    const engineType = resolveEngine(location.search) ?? "webgpu";
+    // 他デモは既定で `webgpu` を優先するが、本デモは既定を `webgl2` にする
+    // （`?engine=webgpu` で明示指定すれば従来通りWebGPUを使える）。
+    //
+    // 理由: Babylon.js は WebGPU engine で `scene.createDefaultXRExperienceAsync` /
+    // `enterXRAsync` を呼ぶと、XRセッションの `requiredFeatures` へ自動的に
+    // `"webgpu"`（WebXR/WebGPU バインディング仕様の機能記述子）を追加する
+    // （`WebXRSessionManager.initializeSessionAsync` 参照）。この機能を要求された
+    // ブラウザ側のWebXR実装が対応していない場合（Meta Quest Browser 等、
+    // 実機検証で確認済み）、`requestSession` がそのまま reject し、
+    // WebGLへのフォールバックは行われない（Babylon側が意図的にフォールバックしない
+    // 設計のため）。ARが主要機能である本デモでは、対応が枯れている
+    // WebGL2 を既定にしてこのリスクを避ける。
+    const engineType = resolveEngine(location.search) ?? "webgl2";
     const engine = await createBabylonEngine(canvas, engineType);
+
 
     const scene = new Scene(engine);
     scene.clearColor = new Color4(0.05, 0.07, 0.1, 1);
