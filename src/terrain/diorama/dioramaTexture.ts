@@ -2,12 +2,21 @@
  * 箱庭ジオラマのテクスチャモザイク合成。
  *
  * `dioramaGrid` の格子点群が跨る少数の GSI ラスタタイル（標準地図/写真）を
- * 1 枚の `DynamicTexture` へ合成し、各点の UV を計算する。
+ * 1 枚のオフスクリーン `<canvas>` へ合成し、各点の UV を計算する。
  * レイアウト計算（`computeDioramaTextureLayout`）は純粋関数として分離し、
  * 実際のフェッチ/描画（`buildDioramaMosaicTexture`）から独立してテストできるようにする。
+ *
+ * @remarks
+ * 合成したcanvasは、Babylonの `DynamicTexture` ではなく、`canvas.toBlob()` で
+ * 得た画像データを通常の `Texture`（`buffer` 引数にBlobを直接渡す形）として
+ * 読み込む。WebXR (`immersive-ar`) の実機検証で、`DynamicTexture` を使うと
+ * パススルー合成中に地形面だけが透けて見える（実際の景色が透過する）不具合を
+ * 確認したため（単純な板ポリに通常の`Texture`で同じタイル画像を貼ったテストでは
+ * 再現しなかった）、原因の完全な特定には至っていないものの、既知良好な
+ * `Texture` 経路へ切り替えることで回避する。
  */
 import type { Scene } from "@babylonjs/core/scene";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { TILE_SIZE, toTileXY, textureUrl, type MapType } from "../gsiTile";
 import { totalPixelsForZoom, latLonToPixel } from "../geo/mapping";
@@ -174,22 +183,23 @@ const FALLBACK_TILE_COLOR = "#8a8270";
 
 /**
  * `computeDioramaTextureLayout` の結果に基づき、実際にタイル画像を取得して
- * 1枚の `DynamicTexture` へ合成する。取得に失敗したタイルは該当領域を
- * {@link FALLBACK_TILE_COLOR} で塗りつぶし（描画継続を優先）、コンソールにエラーを出す。
+ * 1枚のオフスクリーン `<canvas>` へ合成し、`Texture` として読み込む。取得に
+ * 失敗したタイルは該当領域を {@link FALLBACK_TILE_COLOR} で塗りつぶし
+ * （描画継続を優先）、コンソールにエラーを出す。
  */
 export const buildDioramaMosaicTexture = async (
     scene: Scene,
     layout: DioramaTextureLayout,
     mapType: MapType,
     name = "diorama-terrain-texture",
-): Promise<DynamicTexture> => {
-    const texture = new DynamicTexture(
-        name,
-        { width: layout.mosaicWidthPx, height: layout.mosaicHeightPx },
-        scene,
-        true,
-    );
-    const ctx = texture.getContext();
+): Promise<Texture> => {
+    const canvas = document.createElement("canvas");
+    canvas.width = layout.mosaicWidthPx;
+    canvas.height = layout.mosaicHeightPx;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        throw new Error("[jpmap-terrain diorama] failed to acquire 2D context for texture mosaic canvas");
+    }
 
     await Promise.all(
         layout.tiles.map(async (tile) => {
@@ -209,6 +219,36 @@ export const buildDioramaMosaicTexture = async (
         }),
     );
 
-    texture.update(false);
-    return texture;
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve));
+    if (!blob) {
+        throw new Error("[jpmap-terrain diorama] failed to encode texture mosaic canvas to a blob");
+    }
+
+    // Babylon の `Texture` は内部で `<img>` 要素（`Tools.LoadImage`）を使って画像を
+    // 読み込むため、`buffer` 引数に Blob を渡すだけでは `url` 引数が実際に
+    // fetch されてしまい失敗する（`buffer` はDDS/KTX等の一部フォーマット向けの
+    // 経路でのみ使われ、標準的な画像読み込み経路では使われない）。
+    // `URL.createObjectURL` で読み込み可能なURLへ変換して渡す。このURLは
+    // 呼び出しごとに一意（UUIDを含む）なため、Babylonのシーン内テクスチャ
+    // キャッシュが再構築時に古いタイル画像を誤って再利用する心配もない。
+    const objectUrl = URL.createObjectURL(blob);
+
+    return await new Promise<Texture>((resolve, reject) => {
+        const texture = new Texture(
+            objectUrl,
+            scene,
+            false, // noMipmap=false（ミップマップを生成する。従来のDynamicTexture(generateMipMaps=true)と同等）
+            false, // invertY=false（従来のDynamicTexture.update(false)と同じ向き規約を維持する）
+            Texture.TRILINEAR_SAMPLINGMODE,
+            () => {
+                URL.revokeObjectURL(objectUrl);
+                resolve(texture);
+            },
+            (message, exception: unknown) => {
+                URL.revokeObjectURL(objectUrl);
+                reject(exception instanceof Error ? exception : new Error(message ?? "failed to load diorama texture mosaic"));
+            },
+        );
+        texture.name = name;
+    });
 };
