@@ -22,6 +22,8 @@ import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
+// [一時的な診断コード] 単純な板ポリでのテクスチャ表示確認用。確認後にrevertして削除する。
+import { createDebugTexturePlane } from "./debugTexturePlane";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -126,7 +128,17 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
 
-    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root).catch((err: unknown) => {
+    // [一時的な診断コード] 単純な板ポリ（1枚の地図タイルテクスチャ、裏面は目印の赤）を
+    // 箱庭の隣に配置し、複雑な dioramaTerrain を経由しない最小構成でAR中のテクスチャ
+    // 表示を切り分ける。dioramaTerrain.root（スケール適用あり）には親付けせず、
+    // ワールド座標で独立配置する（`webXrArSession` の配置処理はワールド座標前提のため）。
+    // 確認後にrevertして削除する。
+    const debugPlane = createDebugTexturePlane(scene, DEFAULT_CENTER, 15, "std", 0.3);
+    debugPlane.position.set(DEFAULT_TABLE_RADIUS_M * 2, 0, 0);
+
+    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, [
+        { node: debugPlane, lateralOffsetM: 0.5 },
+    ]).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
     });
 
