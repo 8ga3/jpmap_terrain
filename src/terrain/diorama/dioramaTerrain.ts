@@ -17,6 +17,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Material } from "@babylonjs/core/Materials/material";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
@@ -212,6 +213,16 @@ const buildMesh = async (
     const material = new StandardMaterial("diorama-terrain-material", scene);
     material.diffuseTexture = texture;
     material.specularColor = Color3.Black();
+    // WebXR (`immersive-ar`) のパススルー合成では、レンダリング結果のアルファ値が
+    // そのまま「実世界カメラ映像とどれだけ混ぜるか」に使われる（通常のデスクトップ
+    // 表示ではアルファ値は表示に一切影響しないため気づきにくい）。DynamicTexture の
+    // キャンバスは初期状態が透明（アルファ0）であり、モザイクタイル画像自体に
+    // アルファチャンネルが含まれる場合、意図せず地形面のアルファが下がり
+    // AR中に地形が透けて見えてしまう不具合を実機検証で確認した。
+    // `transparencyMode` を明示的に不透明へ固定し、`diffuseTexture` のアルファが
+    // 一切ブレンド判定・出力アルファに影響しないようにする。
+    material.transparencyMode = Material.MATERIAL_OPAQUE;
+    material.diffuseTexture.hasAlpha = false;
     mesh.material = material;
 
     // 側面壁・底面（土台）。実物のジオラマ模型のように、外周リングから一定深さ下へ
@@ -241,6 +252,9 @@ const buildMesh = async (
     const skirtMaterial = new StandardMaterial("diorama-skirt-material", scene);
     skirtMaterial.diffuseColor = SOIL_COLOR;
     skirtMaterial.specularColor = Color3.Black();
+    // 地形面と同様の理由（AR中のパススルー合成でアルファ値が意味を持つ）で、
+    // 念のため側面壁も不透明へ明示固定する。
+    skirtMaterial.transparencyMode = Material.MATERIAL_OPAQUE;
     // 巻き順に依存せず常に描画されるようにする（箱庭の周りを歩く/回転させる用途のため、
     // 側面壁は裏側からも見える可能性がある小規模メッシュ。カリングによる負荷は無視できる）。
     skirtMaterial.backFaceCulling = false;
