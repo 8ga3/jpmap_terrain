@@ -139,11 +139,8 @@ const start = async (): Promise<void> => {
     });
     debugOverlay.log("createDioramaTerrain: done");
 
-    // [一時的な診断コード] 側面壁・底面（diorama-skirt）を一時的に非表示にし、
-    // 地形メッシュ単体の見え方を確認する。確認後にrevertして削除する。
-    const skirtMesh = dioramaTerrain.root.getChildMeshes().find((m) => m.name === "diorama-skirt");
-    skirtMesh?.setEnabled(false);
-    debugOverlay.log(`diorama-skirt hidden: ${skirtMesh ? "ok" : "not found"}`);
+    // 側面壁の非表示テストで原因が判明した（renderingGroupIdで解決、
+    // dioramaTerrain.ts参照）ため、壁は通常通り表示する。
 
     // [一時的な診断コード] Questでの検証用に、URLクエリの手入力が不要な
     // ボタンでの切り替えに変更する。タップするたびに
