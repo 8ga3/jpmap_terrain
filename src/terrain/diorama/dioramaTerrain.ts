@@ -175,11 +175,14 @@ const buildMesh = async (
     const points = buildDioramaGridPoints(resolved.center, resolved.footprintRadiusM, gridOptions);
     const indices = buildDioramaGridIndices(gridOptions);
 
-    const [elevations, textureLayout] = await Promise.all([
+    // computeDioramaTextureLayout は同期処理のため先に算出し、DEM取得と
+    // テクスチャタイル取得（いずれもネットワーク待ちを伴う）を Promise.all で並列に
+    // 開始する。直列にすると両者の待ち時間が合算されて初期構築/再構築が不要に遅くなる。
+    const textureLayout = computeDioramaTextureLayout(points, resolved.textureZoom);
+    const [elevations, texture] = await Promise.all([
         fetchDioramaElevations(points, resolved.demZoom),
-        Promise.resolve(computeDioramaTextureLayout(points, resolved.textureZoom)),
+        buildDioramaMosaicTexture(scene, textureLayout, resolved.mapType),
     ]);
-    const texture = await buildDioramaMosaicTexture(scene, textureLayout, resolved.mapType);
 
     // 中心点の標高を基準面とし、箱庭が root.position.y=0 付近に収まるようにする。
     const baseElevation = elevations[0];
@@ -257,6 +260,11 @@ export const createDioramaTerrain = async (
 ): Promise<DioramaTerrain> => {
     let resolved = resolveOptions(options);
 
+    // root は buildMesh 成功後に生成する。buildMesh より先に生成すると、初期構築で
+    // buildMesh が例外（例: center がWebメルカトル有効域外など）を投げた場合に
+    // root が dispose されずシーンへ残留してリークするため。
+    let built = await buildMesh(scene, resolved);
+
     const root = new TransformNode("diorama-root", scene);
     const applyScale = (): void => {
         if (!(resolved.tableRadiusM > 0)) {
@@ -269,7 +277,6 @@ export const createDioramaTerrain = async (
         root.scaling.setAll(scale);
     };
 
-    let built = await buildMesh(scene, resolved);
     built.mesh.parent = root;
     built.skirtMesh.parent = root;
     applyScale();
