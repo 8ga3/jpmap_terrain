@@ -113,6 +113,27 @@ const styleArButton = (button: HTMLButtonElement): void => {
 const AR_PLACEMENT_DISTANCE_M = 1.2;
 
 /**
+ * diorama デモのシーンは既定（左手系、`useRightHandedSystem` 未設定）のため、
+ * Babylon の座標規約上「前方」は `+Z`（`Vector3.Forward()` 参照。右手系なら `-Z`）。
+ * WebXRカメラの姿勢もシーンの座標系規約に合わせて変換される
+ * （`WebXRCamera` 内の `!scene.useRightHandedSystem` 分岐参照）ため、
+ * 箱庭の配置オフセットも同じ規約（前方 = `+Z`）に合わせる必要がある。
+ * （実機検証で `-Z` を使うと箱庭がユーザーの背後に配置され見えない不具合を確認・修正）
+ */
+const AR_FORWARD_Z = 1;
+
+/**
+ * AR突入時の箱庭配置オフセット `[x, y, z]`（scene units, meters）を返す純粋関数。
+ * サインミス（前方/後方の取り違え）を再発させないよう、`z` が正であること
+ * （={@link AR_FORWARD_Z} 分だけ前方）を unit test で固定している。
+ */
+export const computeArPlacementOffset = (): readonly [number, number, number] => [
+    0,
+    0,
+    AR_FORWARD_Z * AR_PLACEMENT_DISTANCE_M,
+];
+
+/**
  * diorama デモに ARボタンを追加し、WebXR (`immersive-ar`) セッションの開始/終了、
  * 箱庭のユーザー正面配置、パススルー背景化を行うセットアップを行う。
  *
@@ -198,7 +219,7 @@ const enterAr = async (
         scene.clearColor.a = 0;
         // 没入開始位置（`local-floor` 原点付近＝ユーザー正面）から前方へ配置し、
         // 箱庭の周りを実際に歩いて観察できるようにする。
-        dioramaRoot.position.set(0, 0, -AR_PLACEMENT_DISTANCE_M);
+        dioramaRoot.position.set(...computeArPlacementOffset());
 
         const restoreOnExit = (): void => {
             dioramaRoot.position.copyFrom(originalPosition);
