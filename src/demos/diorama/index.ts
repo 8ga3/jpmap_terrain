@@ -85,6 +85,16 @@ const start = async (): Promise<void> => {
     // ピンチ距離の「比率」で radius を更新するためスケール非依存になり、
     // tableRadiusM を変えても再チューニング不要になる。
     camera.useNaturalPinchZoom = true;
+    // pan（右クリックドラッグ・Ctrl+左ドラッグ・タッチの2本指ドラッグ等で
+    // camera.target をずらす操作）は無効化する。
+    // - 円形にクリップされた手元サイズの箱庭は、pan するとフレームアウトしてしまい
+    //   戻す手段もないため、プレビュー用途としては「回転（1本指ドラッグ）＋
+    //   ズーム（ピンチ/ホイール）」のみに絞るほうが自然（実機検証でのフィードバックを反映）。
+    // - 箱庭の実世界中心（緯度経度）・フットプリント半径を変更する「地図移動・拡大縮小」は
+    //   #539 で別途 WebXR コントローラー（免入中のQuestサムスティック等）専用の操作として
+    //   実装予定であり、本カメラの pan（camera.target シフトのみで実データは変わらない）
+    //   とは意味・入力経路が異なる。両者を混同しないよう、本カメラの pan は完全に閉じておく。
+    camera.panningSensibility = 0;
     // `noPreventDefault=true` だと wheel/pointer イベントで `preventDefault()` を
     // 呼ばないため、macOS Chrome 等のトラックパッド「ピンチ」（`ctrlKey:true` の wheel
     // イベントとして配信される）がブラウザ既定のページズームに奪われる（実機検証で確認）。
