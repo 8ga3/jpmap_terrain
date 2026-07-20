@@ -161,7 +161,12 @@ const baseOptions = {
 };
 
 // `Scene` はモック済みだが本実装は使わないため、コンストラクタ引数を要求しないダミーで足りる。
-const dummyScene = {} as Parameters<typeof createDioramaTerrain>[0];
+// ただし `buildMesh` は `scene.setRenderingAutoClearDepthStencil(...)` を呼ぶため、
+// 呼び出し可能なスタブを用意しておく（`renderingGroupId` を跨いだ深度クリア無効化。
+// `dioramaTerrain.ts` 側のコメント参照）。
+const dummyScene = {
+    setRenderingAutoClearDepthStencil: vi.fn(),
+} as unknown as Parameters<typeof createDioramaTerrain>[0];
 
 beforeEach(() => {
     elevationDelayMs = 0;
