@@ -29,12 +29,13 @@ import {
 } from "./dioramaGrid";
 import { fetchDioramaElevations } from "./dioramaElevation";
 import { computeDioramaTextureLayout, buildDioramaMosaicTexture } from "./dioramaTexture";
+import { buildDioramaSkirtGeometry } from "./dioramaSkirt";
 
 /** 箱庭地形の構築オプション。 */
 export interface DioramaTerrainOptions {
     /** 実世界の中心（測地座標）。 */
     center: DioramaCenter;
-    /** 実世界フットプリント半径[m]（#539拡大縮小で可変）。 */
+    /** 実世界フットプリント半径[m]（拡大縮小操作で可変になる想定）。 */
     footprintRadiusM: number;
     /** 卓上表示半径[m]（`root` の縮小スケール算出に使用）。 */
     tableRadiusM: number;
@@ -50,6 +51,12 @@ export interface DioramaTerrainOptions {
     mapType?: MapType;
     /** 標高の垂直誇張倍率（`root` の一様スケール適用前、既定 1）。 */
     heightScaleFactor?: number;
+    /**
+     * 側面壁（土台）の深さ ÷ footprintRadiusM（既定 0.15）。
+     * `root` の一様スケール適用後は tableRadiusM に対する比率として一定になるため、
+     * フットプリント半径を変えても見た目の壁厚は変わらない。
+     */
+    baseDepthRatio?: number;
 }
 
 export interface DioramaTerrain {
@@ -70,7 +77,11 @@ const DEFAULTS = {
     textureZoom: 16,
     mapType: "std" as MapType,
     heightScaleFactor: 1,
+    baseDepthRatio: 0.15,
 };
+
+/** 側面壁・底面（土台）の色（土色）。 */
+const SOIL_COLOR = new Color3(0.36, 0.26, 0.16);
 
 interface ResolvedOptions {
     center: DioramaCenter;
@@ -82,6 +93,7 @@ interface ResolvedOptions {
     textureZoom: number;
     mapType: MapType;
     heightScaleFactor: number;
+    baseDepthRatio: number;
 }
 
 const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => ({
@@ -94,12 +106,15 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => ({
     textureZoom: options.textureZoom ?? DEFAULTS.textureZoom,
     mapType: options.mapType ?? DEFAULTS.mapType,
     heightScaleFactor: options.heightScaleFactor ?? DEFAULTS.heightScaleFactor,
+    baseDepthRatio: options.baseDepthRatio ?? DEFAULTS.baseDepthRatio,
 });
 
 interface BuiltMesh {
     mesh: Mesh;
     material: StandardMaterial;
     texture: Texture;
+    skirtMesh: Mesh;
+    skirtMaterial: StandardMaterial;
 }
 
 /**
@@ -153,7 +168,39 @@ const buildMesh = async (
     material.specularColor = Color3.Black();
     mesh.material = material;
 
-    return { mesh, material, texture };
+    // 側面壁・底面（土台）。実物のジオラマ模型のように、外周リングから一定深さ下へ
+    // 壁を張って底面で閉じることで、地形メッシュ単体では失われがちな水平（基準面）の
+    // 手がかりを与える。壁の深さは footprintRadiusM に比例させ、root の一様スケール
+    // 適用後は tableRadiusM に対する比率として一定になるようにする
+    // （フットプリント半径を変えても見た目の壁厚が変わらない）。
+    let minY = Infinity;
+    for (let i = 1; i < positions.length; i += 3) {
+        if (positions[i] < minY) minY = positions[i];
+    }
+    const baseY = minY - resolved.footprintRadiusM * resolved.baseDepthRatio;
+    const outerRingStart = 1 + (resolved.ringCount - 1) * resolved.radialSegments;
+    const outerRing = Array.from({ length: resolved.radialSegments }, (_, i) => {
+        const idx = outerRingStart + i;
+        return { x: positions[idx * 3], y: positions[idx * 3 + 1], z: positions[idx * 3 + 2] };
+    });
+    const skirtGeometry = buildDioramaSkirtGeometry(outerRing, baseY);
+    const skirtVertexData = new VertexData();
+    skirtVertexData.positions = skirtGeometry.positions;
+    skirtVertexData.indices = skirtGeometry.indices;
+    skirtVertexData.normals = skirtGeometry.normals;
+
+    const skirtMesh = new Mesh("diorama-skirt", scene);
+    skirtVertexData.applyToMesh(skirtMesh, true);
+
+    const skirtMaterial = new StandardMaterial("diorama-skirt-material", scene);
+    skirtMaterial.diffuseColor = SOIL_COLOR;
+    skirtMaterial.specularColor = Color3.Black();
+    // 巻き順に依存せず常に描画されるようにする（箱庭の周りを歩く/回転させる用途のため、
+    // 側面壁は裏側からも見える可能性がある小規模メッシュ。カリングによる負荷は無視できる）。
+    skirtMaterial.backFaceCulling = false;
+    skirtMesh.material = skirtMaterial;
+
+    return { mesh, material, texture, skirtMesh, skirtMaterial };
 };
 
 /**
@@ -175,17 +222,21 @@ export const createDioramaTerrain = async (
 
     let built = await buildMesh(scene, resolved);
     built.mesh.parent = root;
+    built.skirtMesh.parent = root;
     applyScale();
 
     const disposeBuilt = (b: BuiltMesh): void => {
         b.mesh.dispose();
         b.material.dispose();
         b.texture.dispose();
+        b.skirtMesh.dispose();
+        b.skirtMaterial.dispose();
     };
 
     const rebuild = async (next: ResolvedOptions): Promise<void> => {
         const rebuilt = await buildMesh(scene, next);
         rebuilt.mesh.parent = root;
+        rebuilt.skirtMesh.parent = root;
         const previous = built;
         built = rebuilt;
         resolved = next;
