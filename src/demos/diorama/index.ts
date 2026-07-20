@@ -2,15 +2,15 @@
  * 箱庭ジオラマビューア（diorama）デモ雛形。
  *
  * @remarks
- * #535「地形ジオラマビューア WebXR対応」のサブタスク #536。本ファイルは後続サブタスクの
- * 土台となる最小限の雛形であり、現時点では地形は描画せず、円形プレースホルダーメッシュ
- * （箱庭の外形サイズ感の確認用）と最小限のライティングのみを表示する。
- * - 地形メッシュ生成・円形クリップの実装は #537 で行う（`JpmapTerrain`/`GlobeScene` の
- *   実寸大 ECEF 前提をそのまま使うか、専用の縮小スケール実装にするかは #537 の
- *   Architect 工程で決定する。そのため本雛形は `JpmapTerrain` に依存しない）。
- * - WebXR (immersive-vr) セッション統合は #538 で行う。
+ * 地形を手元サイズの円形「箱庭」として表示するWebXR対応デモの土台となる最小限の雛形。
+ * 現時点では地形は描画せず、円形プレースホルダーメッシュ（箱庭の外形サイズ感の確認用）と
+ * 最小限のライティングのみを表示する。
+ * - 地形メッシュ生成・円形クリップの実装は後続タスクで行う（`JpmapTerrain`/`GlobeScene` の
+ *   実寸大 ECEF 前提をそのまま使うか、専用の縮小スケール実装にするかは設計工程で決定する。
+ *   そのため本雛形は `JpmapTerrain` に依存しない）。
+ * - WebXR (immersive-vr) セッション統合は後続タスクで行う。
  * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更・ライティング・
- *   タイル切替・トップ復帰）は #539〜#542 で行う。
+ *   タイル切替・トップ復帰）も後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
@@ -76,7 +76,7 @@ const start = async (): Promise<void> => {
 
     new HemisphericLight("diorama-light", new Vector3(0, 1, 0), scene);
 
-    // 地形実装（#537）までの一時的なプレースホルダー。箱庭の円形外形サイズ感のみ確認する。
+    // 地形実装までの一時的なプレースホルダー。箱庭の円形外形サイズ感のみ確認する。
     CreateDisc(
         "diorama-placeholder",
         { radius: PLACEHOLDER_RADIUS_M, tessellation: 64 },
