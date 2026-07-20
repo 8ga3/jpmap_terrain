@@ -4,6 +4,8 @@
  * - 単一タイル内の点は該当タイルのバイリニア標高を返す
  * - 複数タイルに跨る点群は、タイル座標ごとに `loadElevationTile` が重複なく呼ばれる
  * - タイル取得失敗時は 0m にフォールバックし、処理全体は継続する
+ * - 局所的な欠測（一部無効値）は fillInvalidPixels で補間される
+ * - 全ピクセル無効なタイルは粗ズーム祖先へフォールバックする
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -17,7 +19,7 @@ vi.mock("../src/terrain/gsiTile", async () => {
     };
 });
 
-import { loadElevationTile, TILE_SIZE, toTileXY } from "../src/terrain/gsiTile";
+import { loadElevationTile, TILE_SIZE, toTileXY, NO_DATA_SENTINEL } from "../src/terrain/gsiTile";
 import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
 
 const mockLoadElevationTile = vi.mocked(loadElevationTile);
@@ -74,6 +76,52 @@ describe("fetchDioramaElevations", () => {
     it("タイル取得失敗時は該当点の標高を0mにフォールバックし、例外を投げない", async () => {
         const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
         mockLoadElevationTile.mockRejectedValue(new Error("network error"));
+        const elevations = await fetchDioramaElevations([TOKYO], ZOOM);
+        expect(elevations[0]).toBe(0);
+        expect(consoleErrorSpy).toHaveBeenCalled();
+        consoleErrorSpy.mockRestore();
+    });
+
+    it("一部ピクセルが欠測しているタイルは fillInvalidPixels で補間され、0mへ落ちない", async () => {
+        // 外周1pxのみ有効値(200)にし、内側は全て欠測（NO_DATA_SENTINEL）にする。
+        // サンプル点がどこにマップされても内側の欠測領域に当たるようにし、
+        // fillInvalidPixels のBFS補間が働かなければ0mへ落ちることを確実に検知できるようにする。
+        const tile = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);
+        for (let x = 0; x < TILE_SIZE; x++) {
+            tile[x] = 200;
+            tile[(TILE_SIZE - 1) * TILE_SIZE + x] = 200;
+        }
+        for (let y = 0; y < TILE_SIZE; y++) {
+            tile[y * TILE_SIZE] = 200;
+            tile[y * TILE_SIZE + (TILE_SIZE - 1)] = 200;
+        }
+        mockLoadElevationTile.mockResolvedValue(tile);
+        const elevations = await fetchDioramaElevations([TOKYO], ZOOM);
+        expect(elevations[0]).toBeCloseTo(200, 0);
+    });
+
+    it("全ピクセル無効なタイル（大きな湖等）は粗ズーム祖先へフォールバックする", async () => {
+        const { x, y } = toTileXY(TOKYO.lat, TOKYO.lon, ZOOM);
+        const parentX = x >> 1;
+        const parentY = y >> 1;
+        mockLoadElevationTile.mockImplementation(
+            async (z: number, tx: number, ty: number): Promise<Float32Array> => {
+                if (z === ZOOM && tx === x && ty === y) {
+                    return new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
+                }
+                if (z === ZOOM - 1 && tx === parentX && ty === parentY) {
+                    return constTile(300);
+                }
+                throw new Error(`unexpected tile request z${z}/${tx}/${ty}`);
+            },
+        );
+        const elevations = await fetchDioramaElevations([TOKYO], ZOOM);
+        expect(elevations[0]).toBeCloseTo(300, 0);
+    });
+
+    it("祖先も含め有効データが皆無の場合は0mにフォールバックしconsole.errorを出力する", async () => {
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        mockLoadElevationTile.mockResolvedValue(new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN));
         const elevations = await fetchDioramaElevations([TOKYO], ZOOM);
         expect(elevations[0]).toBe(0);
         expect(consoleErrorSpy).toHaveBeenCalled();
