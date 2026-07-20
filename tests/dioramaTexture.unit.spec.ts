@@ -92,4 +92,22 @@ describe("computeDioramaTextureLayout", () => {
             computeDioramaTextureLayout([TOKYO, { lat: 35, lon: Infinity }], ZOOM),
         ).toThrow(RangeError);
     });
+
+    it("点群が反子午線(±180°)を跨ぐとRangeError（巨大なモザイクを防ぐ）", () => {
+        // toTileXYは経度を[-180,180)に正規化するため、+180近傍と-180近傍の点は
+        // タイルX座標が「隣接」ではなく世界の両端（0付近と2^zoom-1付近）に写像される。
+        const points = [
+            { lat: 35, lon: 179.99 },
+            { lat: 35, lon: -179.99 },
+        ];
+        expect(() => computeDioramaTextureLayout(points, ZOOM)).toThrow(RangeError);
+    });
+
+    it("反子午線を跨がなくても、タイル数上限を超える広域の点群はRangeError", () => {
+        const points = [
+            { lat: 35, lon: 130 },
+            { lat: 35, lon: 145 },
+        ];
+        expect(() => computeDioramaTextureLayout(points, 14)).toThrow(RangeError);
+    });
 });
