@@ -44,6 +44,18 @@ describe("fetchDioramaElevations", () => {
         await expect(fetchDioramaElevations([TOKYO], -1)).rejects.toThrow(RangeError);
     });
 
+    it("latがNaNの点を含む場合はRangeErrorでreject", async () => {
+        await expect(
+            fetchDioramaElevations([{ lat: NaN, lon: 0 }], ZOOM),
+        ).rejects.toThrow(RangeError);
+    });
+
+    it("lonがInfinityの点を含む場合はRangeErrorでreject", async () => {
+        await expect(
+            fetchDioramaElevations([TOKYO, { lat: 35, lon: Infinity }], ZOOM),
+        ).rejects.toThrow(RangeError);
+    });
+
     it("単一点・定数標高タイルではその値を返す", async () => {
         mockLoadElevationTile.mockResolvedValue(constTile(123.5));
         const elevations = await fetchDioramaElevations([TOKYO], ZOOM);

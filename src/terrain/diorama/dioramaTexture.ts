@@ -59,6 +59,20 @@ const assertValidZoom = (zoom: number): void => {
     }
 };
 
+/**
+ * 点群の lat/lon がすべて有限値であることを検証する。
+ * NaN/Infinity を toTileXY/latLonToPixel にそのまま渡すと、min/max が更新されず
+ * mosaicWidthPx が Infinity/NaN になる、UV が NaN になるなどサイレントに壊れるため、
+ * 公開APIとして早期に検証する。
+ */
+const assertFinitePoints = (points: readonly DioramaTexturePoint[]): void => {
+    for (const p of points) {
+        if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) {
+            throw new RangeError(`point.lat/lon must be finite (got lat=${p.lat}, lon=${p.lon})`);
+        }
+    }
+};
+
 export const computeDioramaTextureLayout = (
     points: readonly DioramaTexturePoint[],
     zoom: number,
@@ -67,6 +81,7 @@ export const computeDioramaTextureLayout = (
         throw new RangeError("points must not be empty");
     }
     assertValidZoom(zoom);
+    assertFinitePoints(points);
     const totalPixels = totalPixelsForZoom(zoom);
 
     let minTileX = Infinity;

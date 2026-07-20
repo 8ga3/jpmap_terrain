@@ -106,6 +106,19 @@ const assertValidZoom = (zoom: number): void => {
 };
 
 /**
+ * 点群の lat/lon がすべて有限値であることを検証する。
+ * NaN/Infinity を toTileXY/latLonToPixel にそのまま渡すと `loadElevationTile(zoom, NaN, NaN)`
+ * のような不正なタイル要求やNaNサンプルにつながるため、公開APIとして早期に検証する。
+ */
+const assertFinitePoints = (points: readonly DioramaElevationPoint[]): void => {
+    for (const p of points) {
+        if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) {
+            throw new RangeError(`point.lat/lon must be finite (got lat=${p.lat}, lon=${p.lon})`);
+        }
+    }
+};
+
+/**
  * 格子点群の標高[m]を取得する。戻り値は入力と同じ順序・長さの `Float32Array`。
  *
  * 内部では点群が跨るタイル座標を重複排除して並列フェッチし（点数よりタイル数が
@@ -118,6 +131,7 @@ export const fetchDioramaElevations = async (
     zoom: number,
 ): Promise<Float32Array> => {
     assertValidZoom(zoom);
+    assertFinitePoints(points);
     const neededTiles = new Map<string, { x: number; y: number }>();
     for (const p of points) {
         const { x, y } = toTileXY(p.lat, p.lon, zoom);
