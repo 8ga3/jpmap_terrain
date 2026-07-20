@@ -23,6 +23,8 @@ import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
 import { createArDebugOverlay } from "./arDebugOverlay";
+// [一時的な診断コード] A/B/Cテクスチャ生成方式の切り分け用。確認後にrevertして削除する。
+import { createTextureAbcTest } from "./textureAbcTest";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -132,6 +134,24 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
     debugOverlay.log("createDioramaTerrain: done");
+
+    // [一時的な診断コード] A（リモートURL直読み・対照群）/ B（canvas→blob→Texture・
+    // 本番実装と同じ方式）/ C（canvas→RawTexture・URL読み込みを経由しない方式）の
+    // 3枚の板ポリを箱庭の隣に並べる。dioramaTerrain.root の位置を毎フレーム追従
+    // させることで、webXrArSession側の変更なしにAR中も一緒に配置される。
+    // 確認後にrevertして削除する。
+    createTextureAbcTest(scene, DEFAULT_CENTER, 15, "std")
+        .then((abcRoot) => {
+            abcRoot.position.set(DEFAULT_TABLE_RADIUS_M * 2, 0, 0);
+            scene.onBeforeRenderObservable.add(() => {
+                abcRoot.position.copyFrom(dioramaTerrain.root.position);
+                abcRoot.position.x += DEFAULT_TABLE_RADIUS_M * 2;
+            });
+            debugOverlay.log("createTextureAbcTest: done");
+        })
+        .catch((err: unknown) => {
+            debugOverlay.log(`createTextureAbcTest failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
 
     setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, debugOverlay).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
