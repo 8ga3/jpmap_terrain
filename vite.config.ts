@@ -47,6 +47,7 @@ const HTML_ENTRIES = [
     "geospatial",
     "zoomloop",
     "roiorbit",
+    "diorama",
 ];
 
 const input = Object.fromEntries(

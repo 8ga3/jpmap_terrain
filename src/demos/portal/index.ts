@@ -114,6 +114,12 @@ const DEMO_LIST: readonly DemoEntry[] = [
             "GeospatialCamera + ECEF 楕円体 + floating origin のグローブ地形コア（GlobeScene）を JpmapTerrain を介さず直接起動する診断デモ。floatingOrigin/LOD/タイル数の表示や ?snap=off 比較など内部状態の実機確認に使います。右ドラッグ=回転 / ホイール=ズーム。",
         href: "geospatial",
     },
+    {
+        title: "箱庭ジオラマビューア（diorama、開発中）",
+        description:
+            "地形を手元サイズの円形「箱庭」として表示するWebXR対応デモ（開発中）。現時点では雛形のみで、地形描画・XR操作は今後のサブタスクで追加予定です。",
+        href: "diorama",
+    },
 ];
 
 const PORTAL_MOUNT_ID = "root";
