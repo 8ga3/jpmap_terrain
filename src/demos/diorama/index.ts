@@ -12,6 +12,7 @@
  *   タイル切替・トップ復帰）は後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -22,6 +23,8 @@ import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
+// [一時的] 実機AR診断用。詳細は primitiveArTest.ts 冒頭コメント参照。診断が終わったら削除する。
+import { createPrimitiveArTestObjects } from "./primitiveArTest";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -126,7 +129,26 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
 
-    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root).catch((err: unknown) => {
+    // [一時的] 実機AR診断: `?arPrimitiveTest=1` 指定時、独自構築の地形/側面壁メッシュを隠し、
+    // Babylon標準プリミティブ（Cube + Cylinder x2）のみを表示する。地形メッシュ固有の構築方法
+    // （独自VertexData等）と、多メッシュAR描画・深度オクルージョンそのものの問題を切り分ける。
+    // `dioramaTerrain.root` は実世界メートル→卓上サイズの縮小スケール（tableRadiusM /
+    // footprintRadiusM、既定で概ね1/2000）が掛かっているため、そのまま親にすると
+    // プリミティブも同じ縮小率で見えなくなる。ARボタンによる配置（AR突入時に
+    // `dioramaRoot.position` を書き換える処理）だけを共有したいので、スケール無しの
+    // 専用 `TransformNode` を用意し、そちらを ARボタンの対象にする。
+    // 詳細は primitiveArTest.ts 冒頭コメント参照。診断が終わったら削除する。
+    let arRoot = dioramaTerrain.root;
+    if (new URLSearchParams(location.search).get("arPrimitiveTest") === "1") {
+        for (const childMesh of dioramaTerrain.root.getChildMeshes()) {
+            childMesh.setEnabled(false);
+        }
+        const primitiveTestRoot = new TransformNode("primitive-test-root", scene);
+        createPrimitiveArTestObjects(scene, primitiveTestRoot);
+        arRoot = primitiveTestRoot;
+    }
+
+    setupDioramaWebXrArButton(mount, scene, arRoot).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
     });
 
