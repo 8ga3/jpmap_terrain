@@ -82,4 +82,14 @@ describe("computeDioramaTextureLayout", () => {
     it("zoomが負数はRangeError", () => {
         expect(() => computeDioramaTextureLayout([TOKYO], -1)).toThrow(RangeError);
     });
+
+    it("latがNaNの点を含む場合はRangeError", () => {
+        expect(() => computeDioramaTextureLayout([{ lat: NaN, lon: 0 }], ZOOM)).toThrow(RangeError);
+    });
+
+    it("lonがInfinityの点を含む場合はRangeError", () => {
+        expect(() =>
+            computeDioramaTextureLayout([TOKYO, { lat: 35, lon: Infinity }], ZOOM),
+        ).toThrow(RangeError);
+    });
 });
