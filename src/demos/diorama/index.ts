@@ -12,7 +12,6 @@
  *   タイル切替・トップ復帰）は後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -23,9 +22,6 @@ import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
-import { createArDebugOverlay } from "./arDebugOverlay";
-// [一時的] 実機AR診断用。詳細は primitiveArTest.ts 冒頭コメント参照。診断が終わったら削除する。
-import { createPrimitiveArTestObjects } from "./primitiveArTest";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -66,10 +62,6 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const canvas = createCanvas(mount);
-    // [実機診断用] devtoolsが使えない実機（Meta Quest 3 / Android Chrome等）でも
-    // 画面上で直接ログを確認できるようにする。
-    const debugOverlay = createArDebugOverlay(mount);
-    debugOverlay.log("start() begin");
     // 他デモは既定で `webgpu` を優先するが、本デモは既定を `webgl2` にする
     // （`?engine=webgpu` で明示指定すれば従来通りWebGPUを使える）。
     //
@@ -94,7 +86,6 @@ const start = async (): Promise<void> => {
     // 根本原因である可能性が高いと判明したため、無効化する。詳細は
     // {@link CreateBabylonEngineOptions.reverseDepthBuffer} 冒頭コメント参照。
     const engine = await createBabylonEngine(canvas, engineType, { reverseDepthBuffer: false });
-    debugOverlay.log(`engine created: ${engine.constructor.name}`);
 
 
     const scene = new Scene(engine);
@@ -144,31 +135,9 @@ const start = async (): Promise<void> => {
         footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
-    debugOverlay.log("createDioramaTerrain: done");
 
-    // [一時的] 実機AR診断: `?arPrimitiveTest=1` 指定時、独自構築の地形/側面壁メッシュを隠し、
-    // Babylon標準プリミティブ（Cube + Cylinder x2）のみを表示する。地形メッシュ固有の構築方法
-    // （独自VertexData等）と、多メッシュAR描画・深度オクルージョンそのものの問題を切り分ける。
-    // `dioramaTerrain.root` は実世界メートル→卓上サイズの縮小スケール（tableRadiusM /
-    // footprintRadiusM、既定で概ね1/2000）が掛かっているため、そのまま親にすると
-    // プリミティブも同じ縮小率で見えなくなる。ARボタンによる配置（AR突入時に
-    // `dioramaRoot.position` を書き換える処理）だけを共有したいので、スケール無しの
-    // 専用 `TransformNode` を用意し、そちらを ARボタンの対象にする。
-    // 詳細は primitiveArTest.ts 冒頭コメント参照。診断が終わったら削除する。
-    let arRoot = dioramaTerrain.root;
-    if (new URLSearchParams(location.search).get("arPrimitiveTest") === "1") {
-        for (const childMesh of dioramaTerrain.root.getChildMeshes()) {
-            childMesh.setEnabled(false);
-        }
-        const primitiveTestRoot = new TransformNode("primitive-test-root", scene);
-        createPrimitiveArTestObjects(scene, primitiveTestRoot);
-        arRoot = primitiveTestRoot;
-        debugOverlay.log("arPrimitiveTest: enabled");
-    }
-
-    setupDioramaWebXrArButton(mount, scene, arRoot, debugOverlay).catch((err: unknown) => {
+    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
-        debugOverlay.log(`setupDioramaWebXrArButton failed: ${err instanceof Error ? err.message : String(err)}`);
     });
 
     engine.runRenderLoop(() => {
