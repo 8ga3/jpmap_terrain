@@ -37,6 +37,19 @@ describe("metersPerDegreeAt", () => {
         const mpd = metersPerDegreeAt(60);
         expect(mpd.lon).toBeLessThan(mpd.lat);
     });
+
+    it("極付近（|lat|が有効域を超える）はRangeError（ゼロ除算を未然に防ぐ）", () => {
+        expect(() => metersPerDegreeAt(90)).toThrow(RangeError);
+        expect(() => metersPerDegreeAt(-90)).toThrow(RangeError);
+        expect(() => metersPerDegreeAt(86)).toThrow(RangeError);
+    });
+
+    it("有効域の境界ぎりぎりでは例外を投げず、有限の正数を返す", () => {
+        const mpd = metersPerDegreeAt(85);
+        expect(Number.isFinite(mpd.lat)).toBe(true);
+        expect(Number.isFinite(mpd.lon)).toBe(true);
+        expect(mpd.lon).toBeGreaterThan(0);
+    });
 });
 
 describe("offsetToLatLon", () => {
@@ -61,6 +74,10 @@ describe("offsetToLatLon", () => {
         const { lat, lon } = offsetToLatLon(TOKYO, 0, 0);
         expect(lat).toBeCloseTo(TOKYO.lat, 12);
         expect(lon).toBeCloseTo(TOKYO.lon, 12);
+    });
+
+    it("極付近を中心にするとRangeError（ゼロ除算を未然に防ぐ）", () => {
+        expect(() => offsetToLatLon({ lat: 89, lon: 0 }, 100, 0)).toThrow(RangeError);
     });
 });
 
@@ -106,6 +123,10 @@ describe("buildDioramaGridPoints", () => {
         expect(p).toBeDefined();
         expect(p?.x).toBeCloseTo(0, 9);
         expect(p?.z ?? 0).toBeGreaterThan(0);
+    });
+
+    it("極付近を中心にするとRangeError（ゼロ除算を未然に防ぐ）", () => {
+        expect(() => buildDioramaGridPoints({ lat: 89, lon: 0 }, 500, options)).toThrow(RangeError);
     });
 
     it("ringCount < 1 は RangeError", () => {
