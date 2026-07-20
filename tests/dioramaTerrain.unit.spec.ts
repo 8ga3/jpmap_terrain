@@ -144,9 +144,11 @@ vi.mock("../src/terrain/diorama/dioramaSkirt", () => ({
 import { createDioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
 import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
 import { buildDioramaGridPoints } from "../src/terrain/diorama/dioramaGrid";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 
 const mockFetchElevations = vi.mocked(fetchDioramaElevations);
 const mockBuildGridPoints = vi.mocked(buildDioramaGridPoints);
+const mockMesh = vi.mocked(Mesh);
 
 const baseOptions = {
     center: { lat: 35, lon: 139 },
@@ -161,6 +163,7 @@ beforeEach(() => {
     elevationDelayMs = 0;
     mockFetchElevations.mockClear();
     mockBuildGridPoints.mockClear();
+    mockMesh.mockClear();
 });
 
 describe("createDioramaTerrain の入力検証", () => {
@@ -272,5 +275,46 @@ describe("並行呼び出しのrebuildキュー直列化", () => {
         await expect(p2).resolves.toBeUndefined();
 
         terrain.dispose();
+    });
+});
+
+describe("dispose後のrebuildガード", () => {
+    it("dispose後にキュー待ちだったrebuildは何もせず、新規メッシュも生成しない", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockBuildGridPoints.mockClear();
+
+        terrain.dispose();
+        // dispose後に呼ばれたsetCenterは例外を投げず、静かに何もしない。
+        await expect(terrain.setCenter(36, 140)).resolves.toBeUndefined();
+        expect(mockBuildGridPoints).not.toHaveBeenCalled();
+    });
+
+    it("buildMesh実行中にdisposeされた場合、新規生成物はそのまま破棄され、破棄済みrootへparentされない", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockMesh.mockClear();
+
+        // fetchDioramaElevations（buildMesh内部）を意図的に遅延させ、rebuildが
+        // 「実行中（buildMesh awaitの最中）」の状態を作る。
+        elevationDelayMs = 30;
+        const p1 = terrain.setCenter(36, 140);
+        // run() が buildMesh の await まで進むのを待つ（rebuildが実行中の状態にする）。
+        await new Promise((resolve) => setTimeout(resolve, 5));
+
+        terrain.dispose();
+
+        // p1 は例外を投げずに解決する（生成物を静かに破棄するだけ）。
+        await expect(p1).resolves.toBeUndefined();
+
+        // このrebuildで新規生成された Mesh（地形メッシュ + 側面壁メッシュの2つ）は
+        // 破棄済みの root へ parent 設定されず、即座に dispose される。
+        const createdInThisRebuild = mockMesh.mock.results.map((r) => r.value as {
+            parent: unknown;
+            dispose: ReturnType<typeof vi.fn>;
+        });
+        expect(createdInThisRebuild.length).toBeGreaterThan(0);
+        for (const created of createdInThisRebuild) {
+            expect(created.parent).toBeNull();
+            expect(created.dispose).toHaveBeenCalled();
+        }
     });
 });

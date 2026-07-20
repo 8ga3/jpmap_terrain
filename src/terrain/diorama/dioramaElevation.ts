@@ -98,6 +98,13 @@ const resolveTileElevation = async (
     return { zoom, x, y, elev: new Float32Array(TILE_SIZE * TILE_SIZE) };
 };
 
+/** ズームレベルが0以上の整数であることを検証する（非整数/負数はtoTileXY/totalPixelsForZoomを不正な計算に導くため）。 */
+const assertValidZoom = (zoom: number): void => {
+    if (!(Number.isInteger(zoom) && zoom >= 0)) {
+        throw new RangeError(`zoom must be a non-negative integer (got ${zoom})`);
+    }
+};
+
 /**
  * 格子点群の標高[m]を取得する。戻り値は入力と同じ順序・長さの `Float32Array`。
  *
@@ -110,6 +117,7 @@ export const fetchDioramaElevations = async (
     points: readonly DioramaElevationPoint[],
     zoom: number,
 ): Promise<Float32Array> => {
+    assertValidZoom(zoom);
     const neededTiles = new Map<string, { x: number; y: number }>();
     for (const p of points) {
         const { x, y } = toTileXY(p.lat, p.lon, zoom);
