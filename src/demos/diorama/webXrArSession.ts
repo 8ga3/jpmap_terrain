@@ -147,8 +147,7 @@ const AR_PLACEMENT_WAIT_FRAMES = 3;
 const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
 
 /**
- * 実機カメラの現在位置・水平前方向を基準に、`node` をユーザー正面
- * （テーブル高さ相当、必要なら水平方向に`lateralOffsetM`だけ左右にずらした位置）へ
+ * 実機カメラの現在位置・水平前方向を基準に、箱庭をユーザー正面（テーブル高さ相当）へ
  * 配置する。カメラの向きが正しく反映されている必要があるため、
  * {@link AR_PLACEMENT_WAIT_FRAMES} フレーム待ってから呼ぶこと。
  *
@@ -156,11 +155,10 @@ const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
  * 報告時、この出力内容（カメラ位置・前方向・配置結果）があると原因切り分けが
  * 容易になる。
  */
-const placeNodeRelativeToCamera = (
+const placeDioramaRelativeToCamera = (
     scene: Scene,
-    node: TransformNode,
+    dioramaRoot: TransformNode,
     camera: WebXRCamera,
-    lateralOffsetM = 0,
 ): void => {
     const forward = camera.getDirection(Vector3.Forward(scene.useRightHandedSystem));
     forward.y = 0;
@@ -170,19 +168,14 @@ const placeNodeRelativeToCamera = (
     } else {
         forward.normalize();
     }
-    node.position.copyFrom(camera.position);
-    node.position.addInPlace(forward.scale(AR_PLACEMENT_DISTANCE_M));
-    node.position.y += AR_TABLE_HEIGHT_M - camera.position.y;
-    if (lateralOffsetM !== 0) {
-        const right = Vector3.Cross(Vector3.Up(), forward).normalize();
-        node.position.addInPlace(right.scale(lateralOffsetM));
-    }
+    dioramaRoot.position.copyFrom(camera.position);
+    dioramaRoot.position.addInPlace(forward.scale(AR_PLACEMENT_DISTANCE_M));
+    dioramaRoot.position.y += AR_TABLE_HEIGHT_M - camera.position.y;
     console.debug(
-        "[jpmap-terrain diorama demo] AR placement: node=%s cameraPosition=%o forward=%o placedPosition=%o",
-        node.name,
+        "[jpmap-terrain diorama demo] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
         camera.position.asArray(),
         forward.asArray(),
-        node.position.asArray(),
+        dioramaRoot.position.asArray(),
     );
 };
 
@@ -196,16 +189,12 @@ const placeNodeRelativeToCamera = (
  * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
  * @param scene 対象の `Scene`。
  * @param dioramaRoot 箱庭地形の `root`（`createDioramaTerrain` が返す `TransformNode`）。
- * @param extraTargets [一時的な診断用] 箱庭と一緒にAR配置したい追加ノード
- *   （例: `debugTexturePlane`）。`lateralOffsetM` だけ箱庭から左右にずらして
- *   重ならないようにする。確認後に削除予定。
  * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
  */
 export const setupDioramaWebXrArButton = async (
     mount: HTMLElement,
     scene: Scene,
     dioramaRoot: TransformNode,
-    extraTargets: { node: TransformNode; lateralOffsetM: number }[] = [],
 ): Promise<() => void> => {
     const supported = await isImmersiveArSupported();
     if (!supported) return () => {};
@@ -229,7 +218,7 @@ export const setupDioramaWebXrArButton = async (
             void xr.baseExperience.exitXRAsync();
             return;
         }
-        void enterAr(scene, dioramaRoot, extraTargets, button).then((created) => {
+        void enterAr(scene, dioramaRoot, button).then((created) => {
             xr = created;
         });
     });
@@ -244,14 +233,12 @@ export const setupDioramaWebXrArButton = async (
 const enterAr = async (
     scene: Scene,
     dioramaRoot: TransformNode,
-    extraTargets: { node: TransformNode; lateralOffsetM: number }[],
     button: HTMLButtonElement,
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
     // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
     // 突入前の状態を保存しておく。
     const originalPosition = dioramaRoot.position.clone();
-    const originalExtraPositions = extraTargets.map((t) => t.node.position.clone());
     const originalClearAlpha = scene.clearColor.a;
     try {
         xr = await scene.createDefaultXRExperienceAsync({
@@ -285,19 +272,13 @@ const enterAr = async (
             framesWaited += 1;
             if (framesWaited < AR_PLACEMENT_WAIT_FRAMES) return;
             scene.onBeforeRenderObservable.remove(placementObserver);
-            placeNodeRelativeToCamera(scene, dioramaRoot, xrExperience.baseExperience.camera);
-            extraTargets.forEach(({ node, lateralOffsetM }) => {
-                placeNodeRelativeToCamera(scene, node, xrExperience.baseExperience.camera, lateralOffsetM);
-            });
+            placeDioramaRelativeToCamera(scene, dioramaRoot, xrExperience.baseExperience.camera);
         });
 
         const restoreOnExit = (): void => {
             // 配置待ちの途中でセッションが終了した場合、以後 placement を実行しない。
             scene.onBeforeRenderObservable.remove(placementObserver);
             dioramaRoot.position.copyFrom(originalPosition);
-            extraTargets.forEach(({ node }, i) => {
-                node.position.copyFrom(originalExtraPositions[i]);
-            });
             scene.clearColor.a = originalClearAlpha;
             styleArButton(button);
         };
@@ -313,9 +294,6 @@ const enterAr = async (
         console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
         // 部分的に確保したリソース（箱庭配置・パススルー背景状態）を後始末する。
         dioramaRoot.position.copyFrom(originalPosition);
-        extraTargets.forEach(({ node }, i) => {
-            node.position.copyFrom(originalExtraPositions[i]);
-        });
         scene.clearColor.a = originalClearAlpha;
         xr?.dispose();
         styleArButton(button);
