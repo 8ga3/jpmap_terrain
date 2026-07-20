@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+
+  <title>jpmap_terrain – 箱庭ジオラマビューア（diorama）</title>
+  <meta name="description" content="地形を手元サイズの円形「箱庭」として表示するWebXR対応デモ（開発中）">
+  <meta name="author" content="8ga3">
+  <style>
+    html,
+    body {
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      /* モバイルでの2本指スクロール/オーバースクロール（自動スクロール）やダブルタップ
+         ズーム等のブラウザ既定ジェスチャを抑止する。 */
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #diorama-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+    }
+
+    #diorama-overlay .back-link {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      pointer-events: auto;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none;
+    }
+
+    #diorama-overlay .back-link:hover {
+      background: rgba(0, 0, 0, 0.6);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <div id="diorama-overlay">
+    <a class="back-link" href="/">← デモ一覧へ</a>
+  </div>
+  <script type="module" src="/src/demos/diorama/index.ts"></script>
+</body>
+
+</html>
