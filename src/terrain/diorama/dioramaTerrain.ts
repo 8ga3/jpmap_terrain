@@ -215,12 +215,15 @@ const buildMesh = async (
     material.specularColor = Color3.Black();
     // WebXR (`immersive-ar`) のパススルー合成では、レンダリング結果のアルファ値が
     // そのまま「実世界カメラ映像とどれだけ混ぜるか」に使われる（通常のデスクトップ
-    // 表示ではアルファ値は表示に一切影響しないため気づきにくい）。DynamicTexture の
-    // キャンバスは初期状態が透明（アルファ0）であり、モザイクタイル画像自体に
-    // アルファチャンネルが含まれる場合、意図せず地形面のアルファが下がり
-    // AR中に地形が透けて見えてしまう不具合を実機検証で確認した。
-    // `transparencyMode` を明示的に不透明へ固定し、`diffuseTexture` のアルファが
-    // 一切ブレンド判定・出力アルファに影響しないようにする。
+    // 表示ではアルファ値は表示に一切影響しないため気づきにくい）。
+    // 実機検証で「地形面（テクスチャあり）だけがAR中に透けて見え、側面壁
+    // （無地マテリアル）は問題ない」不具合を確認した。単純な板ポリに通常の
+    // `Texture` で同じタイル画像を貼るテストでは再現しなかったため、原因は
+    // Babylonの`DynamicTexture`（旧`buildDioramaMosaicTexture`実装）固有の
+    // 何かにあると判断し、`dioramaTexture.ts` 側を通常の `Texture`（canvas
+    // 合成結果を`Blob`経由で読み込む）へ切り替えた（根本原因の完全な特定には
+    // 至っていない）。本設定はその防御としてアルファブレンドが一切有効化
+    // されないことも併せて保証しておく。
     material.transparencyMode = Material.MATERIAL_OPAQUE;
     material.diffuseTexture.hasAlpha = false;
     mesh.material = material;
