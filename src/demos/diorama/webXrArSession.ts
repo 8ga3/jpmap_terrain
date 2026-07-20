@@ -22,22 +22,33 @@
  * 透過表示するには、フレームバッファの alpha を 0 にする必要があるため、
  * `scene.clearColor.a` をAR突入時に 0、退出時に元の値へ戻す。
  *
- * **箱庭の配置**: `local-floor` 参照空間の原点はセッション開始時のヘッドセット位置
- * （床への投影）に概ね一致するため、`dioramaRoot.position` を原点から前方
- * （{@link AR_PLACEMENT_DISTANCE_M}）へオフセットするだけで、ユーザーの目の前・
- * 歩いて周回できる位置に配置できる。デスクトップ表示への影響を避けるため、
- * 退出時に元の position へ復元する。
+ * **箱庭の配置**: AR突入直後は `camera.position`/`rotationQuaternion` がまだ実機の
+ * トラッキング値に更新されていないことがある（`immersive-ar` セッションは
+ * `immersive-vr` と異なり、デスクトップカメラの姿勢を引き継ぐ処理を行わず、
+ * 実際の最初の実機フレームが届くまでプレースホルダー値のままになる。
+ * `WebXRExperienceHelper.enterXRAsync` 参照）。そのため、突入直後に固定の
+ * ワールド座標へ配置すると、実機の初期トラッキング原点との対応関係が
+ * 保証されない（実機検証で「見えない」「背後に横倒しで表示される」不具合を確認）。
+ * これを避けるため、実機フレームが複数回届いて姿勢が安定してから、
+ * その時点の実際のカメラ位置・水平前方向を読み取って相対配置する
+ * （{@link placeDioramaRelativeToCamera}）。
+ *
+ * 卓上（テーブルトップ）ジオラマという体裁に合わせ、床面（y=0）ではなく
+ * 目線よりやや低いテーブル高さ相当（{@link AR_TABLE_HEIGHT_M}）に配置する
+ * （床検出（hit-test）による実際のテーブル高さ推定は本Issueの範囲外）。
  *
  * 命名メモ: VR PoC 同様、本リポジトリでは "VR" が Playwright Visual Regression テストの
  * 略称としても使われているため、シンボル名には "WebXr" プレフィックスを用いる。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 // `scene.createDefaultXRExperienceAsync` を Scene プロトタイプへ追加する副作用 import。
 import "@babylonjs/core/Helpers/sceneHelpers";
 import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
+import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
  *  環境によっては（実デバイス無し等）Promise がいつまでも解決しないことがあるため、
@@ -109,29 +120,64 @@ const styleArButton = (button: HTMLButtonElement): void => {
     button.setAttribute("title", "ARで表示 (WebXR)");
 };
 
-/** AR突入時、箱庭をユーザー正面へ配置するオフセット[m]（`local-floor` 原点から前方）。 */
+/** AR突入時、箱庭をユーザー正面へ配置するオフセット[m]（実機カメラ位置から水平前方）。 */
 const AR_PLACEMENT_DISTANCE_M = 1.2;
 
 /**
- * diorama デモのシーンは既定（左手系、`useRightHandedSystem` 未設定）のため、
- * Babylon の座標規約上「前方」は `+Z`（`Vector3.Forward()` 参照。右手系なら `-Z`）。
- * WebXRカメラの姿勢もシーンの座標系規約に合わせて変換される
- * （`WebXRCamera` 内の `!scene.useRightHandedSystem` 分岐参照）ため、
- * 箱庭の配置オフセットも同じ規約（前方 = `+Z`）に合わせる必要がある。
- * （実機検証で `-Z` を使うと箱庭がユーザーの背後に配置され見えない不具合を確認・修正）
+ * 卓上（テーブルトップ）ジオラマとして自然に見えるよう、床面（y=0）ではなく
+ * このぶんだけ持ち上げた高さに配置する（一般的なローテーブル〜デスク程度の高さを想定した
+ * 概算値。床検出（hit-test）による実際のテーブル高さ推定は本Issueの範囲外）。
  */
-const AR_FORWARD_Z = 1;
+const AR_TABLE_HEIGHT_M = 0.7;
 
 /**
- * AR突入時の箱庭配置オフセット `[x, y, z]`（scene units, meters）を返す純粋関数。
- * サインミス（前方/後方の取り違え）を再発させないよう、`z` が正であること
- * （={@link AR_FORWARD_Z} 分だけ前方）を unit test で固定している。
+ * ARセッション突入直後、実機のトラッキング姿勢が反映されるまで待つフレーム数。
+ *
+ * @remarks
+ * `immersive-ar` セッションは `enterXRAsync` 内で `camera.position`/`rotationQuaternion`
+ * を一旦プレースホルダー値（原点・単位回転）にリセットするのみで、`immersive-vr` の
+ * ようにデスクトップカメラの姿勢を引き継ぐ処理（`compensateOnFirstFrame`）は行わない
+ * （`WebXRExperienceHelper.enterXRAsync` 参照）。実際の値は最初の実機フレームで
+ * 上書きされるが、念のため数フレーム待ってから読み取ることで、初期化タイミングの
+ * 揺らぎに対して安全側に倒す。
  */
-export const computeArPlacementOffset = (): readonly [number, number, number] => [
-    0,
-    0,
-    AR_FORWARD_Z * AR_PLACEMENT_DISTANCE_M,
-];
+const AR_PLACEMENT_WAIT_FRAMES = 3;
+
+/** 水平方向がほぼ0（カメラが真上/真下を向いている等の退化ケース）とみなす閾値。 */
+const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
+
+/**
+ * 実機カメラの現在位置・水平前方向を基準に、箱庭をユーザー正面（テーブル高さ相当）へ
+ * 配置する。カメラの向きが正しく反映されている必要があるため、
+ * {@link AR_PLACEMENT_WAIT_FRAMES} フレーム待ってから呼ぶこと。
+ *
+ * @remarks 診断用に配置結果を `console.debug` へ出力する。実機での配置不具合の
+ * 報告時、この出力内容（カメラ位置・前方向・配置結果）があると原因切り分けが
+ * 容易になる。
+ */
+const placeDioramaRelativeToCamera = (
+    scene: Scene,
+    dioramaRoot: TransformNode,
+    camera: WebXRCamera,
+): void => {
+    const forward = camera.getDirection(Vector3.Forward(scene.useRightHandedSystem));
+    forward.y = 0;
+    if (forward.lengthSquared() < HORIZONTAL_DIRECTION_EPSILON) {
+        // カメラがほぼ真上/真下を向いている退化ケース。シーンの既定前方向へフォールバックする。
+        forward.copyFrom(Vector3.Forward(scene.useRightHandedSystem));
+    } else {
+        forward.normalize();
+    }
+    dioramaRoot.position.copyFrom(camera.position);
+    dioramaRoot.position.addInPlace(forward.scale(AR_PLACEMENT_DISTANCE_M));
+    dioramaRoot.position.y += AR_TABLE_HEIGHT_M - camera.position.y;
+    console.debug(
+        "[jpmap-terrain diorama demo] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
+        camera.position.asArray(),
+        forward.asArray(),
+        dioramaRoot.position.asArray(),
+    );
+};
 
 /**
  * diorama デモに ARボタンを追加し、WebXR (`immersive-ar`) セッションの開始/終了、
@@ -205,8 +251,9 @@ const enterAr = async (
             disableDefaultUI: true,
         });
 
-        if (xr.baseExperience.state === WebXRState.NOT_IN_XR) {
-            await xr.baseExperience.enterXRAsync("immersive-ar", "local-floor", xr.renderTarget);
+        const xrExperience = xr;
+        if (xrExperience.baseExperience.state === WebXRState.NOT_IN_XR) {
+            await xrExperience.baseExperience.enterXRAsync("immersive-ar", "local-floor", xrExperience.renderTarget);
         }
 
         button.textContent = "終了";
@@ -217,23 +264,32 @@ const enterAr = async (
         // 透けて見えるようにする（{@link module:src/demos/diorama/webXrArSession.ts}
         // 冒頭のコメント参照）。
         scene.clearColor.a = 0;
-        // 没入開始位置（`local-floor` 原点付近＝ユーザー正面）から前方へ配置し、
-        // 箱庭の周りを実際に歩いて観察できるようにする。
-        dioramaRoot.position.set(...computeArPlacementOffset());
+
+        // 実機のトラッキング姿勢が反映されるまで数フレーム待ってから配置する
+        // （{@link AR_PLACEMENT_WAIT_FRAMES} 冒頭のコメント参照）。
+        let framesWaited = 0;
+        const placementObserver = scene.onBeforeRenderObservable.add(() => {
+            framesWaited += 1;
+            if (framesWaited < AR_PLACEMENT_WAIT_FRAMES) return;
+            scene.onBeforeRenderObservable.remove(placementObserver);
+            placeDioramaRelativeToCamera(scene, dioramaRoot, xrExperience.baseExperience.camera);
+        });
 
         const restoreOnExit = (): void => {
+            // 配置待ちの途中でセッションが終了した場合、以後 placement を実行しない。
+            scene.onBeforeRenderObservable.remove(placementObserver);
             dioramaRoot.position.copyFrom(originalPosition);
             scene.clearColor.a = originalClearAlpha;
             styleArButton(button);
         };
 
-        xr.baseExperience.onStateChangedObservable.add((state) => {
+        xrExperience.baseExperience.onStateChangedObservable.add((state) => {
             if (state === WebXRState.NOT_IN_XR) {
                 restoreOnExit();
             }
         });
 
-        return xr;
+        return xrExperience;
     } catch (err) {
         console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
         // 部分的に確保したリソース（箱庭配置・パススルー背景状態）を後始末する。
