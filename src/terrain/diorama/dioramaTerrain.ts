@@ -96,6 +96,27 @@ interface ResolvedOptions {
     baseDepthRatio: number;
 }
 
+/** 有限の正数であることを検証する（0以下・NaN・Infinityを拒否）。 */
+const assertPositiveFinite = (value: number, name: string): void => {
+    if (!(Number.isFinite(value) && value > 0)) {
+        throw new RangeError(`${name} must be a positive finite number (got ${value})`);
+    }
+};
+
+/** 0以上の有限数であることを検証する（負数・NaN・Infinityを拒否）。 */
+const assertNonNegativeFinite = (value: number, name: string): void => {
+    if (!(Number.isFinite(value) && value >= 0)) {
+        throw new RangeError(`${name} must be a non-negative finite number (got ${value})`);
+    }
+};
+
+/** 0以上の整数であることを検証する（ズームレベル用。非整数・負数・NaN・Infinityを拒否）。 */
+const assertNonNegativeInteger = (value: number, name: string): void => {
+    if (!(Number.isInteger(value) && value >= 0)) {
+        throw new RangeError(`${name} must be a non-negative integer (got ${value})`);
+    }
+};
+
 const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     // tableRadiusM は root.scaling の分母（applyScale）になるため、構築完了を待たず
     // ここで早期に検証し、不正値（0/負数）による無効なスケール算出を防ぐ。
@@ -107,17 +128,27 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     if (!(options.footprintRadiusM > 0)) {
         throw new RangeError(`footprintRadiusM must be > 0 (got ${options.footprintRadiusM})`);
     }
+    const demZoom = options.demZoom ?? DEFAULTS.demZoom;
+    const textureZoom = options.textureZoom ?? DEFAULTS.textureZoom;
+    const heightScaleFactor = options.heightScaleFactor ?? DEFAULTS.heightScaleFactor;
+    const baseDepthRatio = options.baseDepthRatio ?? DEFAULTS.baseDepthRatio;
+    // 非整数/負数の zoom は toTileXY・totalPixelsForZoom（gsiTile.ts/geo/mapping.ts）を
+    // 不正なタイル要求・レイアウト計算に導くため、早期に検証する。
+    assertNonNegativeInteger(demZoom, "demZoom");
+    assertNonNegativeInteger(textureZoom, "textureZoom");
+    assertPositiveFinite(heightScaleFactor, "heightScaleFactor");
+    assertNonNegativeFinite(baseDepthRatio, "baseDepthRatio");
     return {
         center: options.center,
         footprintRadiusM: options.footprintRadiusM,
         tableRadiusM: options.tableRadiusM,
         ringCount: options.ringCount ?? DEFAULTS.ringCount,
         radialSegments: options.radialSegments ?? DEFAULTS.radialSegments,
-        demZoom: options.demZoom ?? DEFAULTS.demZoom,
-        textureZoom: options.textureZoom ?? DEFAULTS.textureZoom,
+        demZoom,
+        textureZoom,
         mapType: options.mapType ?? DEFAULTS.mapType,
-        heightScaleFactor: options.heightScaleFactor ?? DEFAULTS.heightScaleFactor,
-        baseDepthRatio: options.baseDepthRatio ?? DEFAULTS.baseDepthRatio,
+        heightScaleFactor,
+        baseDepthRatio,
     };
 };
 
@@ -251,15 +282,39 @@ export const createDioramaTerrain = async (
         b.skirtMaterial.dispose();
     };
 
-    const rebuild = async (next: ResolvedOptions): Promise<void> => {
-        const rebuilt = await buildMesh(scene, next);
-        rebuilt.mesh.parent = root;
-        rebuilt.skirtMesh.parent = root;
-        const previous = built;
-        built = rebuilt;
-        resolved = next;
-        applyScale();
-        disposeBuilt(previous);
+    /**
+     * 保留中の rebuild チェーン。`enqueueRebuild` はこれに繋げて直列化する。
+     * `setCenter`/`setFootprintRadius`/`setMapType` が並行に呼ばれても、rebuild が
+     * 呼び出し順に1つずつ実行されるようにし、以下の競合を防ぐ:
+     * - 後から開始したが先に完了した rebuild が `built`/`resolved` を上書きし、
+     *   別の（本来もっと新しい）rebuild の結果を消してしまう
+     * - 同時に走る rebuild 同士で `previous`/`built` の入れ替えが競合し、
+     *   まだ使用中のメッシュを誤って dispose する、または二重 dispose する
+     * 失敗（reject）した rebuild があってもチェーンを止めない（`.then` の
+     * 第2引数にも同じ `run` を渡し、次のキュー項目へ進める）。
+     */
+    let pendingRebuild: Promise<void> = Promise.resolve();
+
+    /**
+     * `patch` はキューの実行順が回ってきた時点の最新 `resolved` を受け取る
+     * （呼び出し時点ではなく実行時点の状態を基準にするため、直前の rebuild の
+     * 結果を正しく引き継げる）。
+     */
+    const enqueueRebuild = (patch: (current: ResolvedOptions) => ResolvedOptions): Promise<void> => {
+        const run = async (): Promise<void> => {
+            const next = patch(resolved);
+            const rebuilt = await buildMesh(scene, next);
+            rebuilt.mesh.parent = root;
+            rebuilt.skirtMesh.parent = root;
+            const previous = built;
+            built = rebuilt;
+            resolved = next;
+            applyScale();
+            disposeBuilt(previous);
+        };
+        const chained = pendingRebuild.then(run, run);
+        pendingRebuild = chained;
+        return chained;
     };
 
     return {
@@ -268,10 +323,19 @@ export const createDioramaTerrain = async (
         },
         root,
         setCenter: (lat: number, lon: number): Promise<void> =>
-            rebuild({ ...resolved, center: { lat, lon } }),
-        setFootprintRadius: (radiusM: number): Promise<void> =>
-            rebuild({ ...resolved, footprintRadiusM: radiusM }),
-        setMapType: (mapType: MapType): Promise<void> => rebuild({ ...resolved, mapType }),
+            enqueueRebuild((current) => ({ ...current, center: { lat, lon } })),
+        setFootprintRadius: (radiusM: number): Promise<void> => {
+            try {
+                assertPositiveFinite(radiusM, "radiusM");
+            } catch (err) {
+                // 呼び出し側の一貫したエラーハンドリング（Promise.catch/await+try-catch）のため、
+                // 同期例外ではなく reject として返す（他のメソッドと同じ非同期契約に揃える）。
+                return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+            }
+            return enqueueRebuild((current) => ({ ...current, footprintRadiusM: radiusM }));
+        },
+        setMapType: (mapType: MapType): Promise<void> =>
+            enqueueRebuild((current) => ({ ...current, mapType })),
         dispose: (): void => {
             disposeBuilt(built);
             root.dispose();
