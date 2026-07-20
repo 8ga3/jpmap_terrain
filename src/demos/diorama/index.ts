@@ -139,22 +139,52 @@ const start = async (): Promise<void> => {
     });
     debugOverlay.log("createDioramaTerrain: done");
 
-    // [一時的な診断コード] `?dioramaDebugMode=wireframe` でテクスチャの代わりに
-    // ワイヤーフレーム表示、`?dioramaDebugMode=green` でテクスチャ無しの単色
-    // （緑）表示に切り替えられるようにする。実機でのAR中の切り分け用
-    // （メッシュ形状自体は見えるか／テクスチャ無しの単色マテリアルなら見えるか）。
+    // [一時的な診断コード] Questでの検証用に、URLクエリの手入力が不要な
+    // ボタンでの切り替えに変更する。タップするたびに
+    // 通常 → ワイヤーフレーム → 緑（無地・テクスチャ無し） → 通常 と巡回する。
+    // AR突入前にタップしてモードを決めてからARボタンを押す想定。
     // 確認後にrevertして削除する。
-    const dioramaDebugMode = new URLSearchParams(location.search).get("dioramaDebugMode");
     const terrainMaterial = dioramaTerrain.mesh.material as StandardMaterial | null;
     if (terrainMaterial) {
-        if (dioramaDebugMode === "wireframe") {
-            terrainMaterial.wireframe = true;
-            debugOverlay.log("dioramaDebugMode = wireframe");
-        } else if (dioramaDebugMode === "green") {
-            terrainMaterial.diffuseTexture = null;
-            terrainMaterial.diffuseColor = new Color3(0, 0.6, 0.1);
-            debugOverlay.log("dioramaDebugMode = green (no texture)");
-        }
+        const originalDiffuseTexture = terrainMaterial.diffuseTexture;
+        const originalDiffuseColor = terrainMaterial.diffuseColor.clone();
+        const modes = ["normal", "wireframe", "green"] as const;
+        let modeIndex = 0;
+        const applyMode = (mode: (typeof modes)[number]): void => {
+            terrainMaterial.wireframe = mode === "wireframe";
+            if (mode === "green") {
+                terrainMaterial.diffuseTexture = null;
+                terrainMaterial.diffuseColor = new Color3(0, 0.6, 0.1);
+            } else {
+                terrainMaterial.diffuseTexture = originalDiffuseTexture;
+                terrainMaterial.diffuseColor = originalDiffuseColor;
+            }
+            debugOverlay.log(`dioramaDebugMode = ${mode}`);
+        };
+        const debugModeButton = document.createElement("button");
+        Object.assign(debugModeButton.style, {
+            position: "absolute",
+            top: "12px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: "10",
+            padding: "8px 12px",
+            borderRadius: "10px",
+            border: "none",
+            background: "rgba(9,18,32,0.72)",
+            color: "#fff",
+            fontSize: "13px",
+            fontWeight: "600",
+            cursor: "pointer",
+        } satisfies Partial<CSSStyleDeclaration>);
+        debugModeButton.textContent = "表示: normal";
+        debugModeButton.addEventListener("click", () => {
+            modeIndex = (modeIndex + 1) % modes.length;
+            const mode = modes[modeIndex];
+            applyMode(mode);
+            debugModeButton.textContent = `表示: ${mode}`;
+        });
+        mount.appendChild(debugModeButton);
     }
 
     // [一時的な診断コード] A（リモートURL直読み・対照群）/ B（canvas→blob→Texture・
