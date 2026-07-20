@@ -78,7 +78,18 @@ const start = async (): Promise<void> => {
     camera.lowerRadiusLimit = DEFAULT_TABLE_RADIUS_M * 1.2;
     camera.upperRadiusLimit = DEFAULT_TABLE_RADIUS_M * 15;
     camera.wheelPrecision = 200;
-    camera.attachControl(canvas, true);
+    // タッチのピンチズームは既定 (`pinchPrecision`/`angularSensibility` ベースの絶対量)
+    // だと「radius がタブレットサイズ相当」の想定でチューニングされており、箱庭の
+    // 極小スケール（既定 radius 0.42〜5.25m）では同じ指の動きが radius レンジ全体を
+    // 一気に飛び越えるほど過敏になる（実機検証で確認）。`useNaturalPinchZoom` は
+    // ピンチ距離の「比率」で radius を更新するためスケール非依存になり、
+    // tableRadiusM を変えても再チューニング不要になる。
+    camera.useNaturalPinchZoom = true;
+    // `noPreventDefault=true` だと wheel/pointer イベントで `preventDefault()` を
+    // 呼ばないため、macOS Chrome 等のトラックパッド「ピンチ」（`ctrlKey:true` の wheel
+    // イベントとして配信される）がブラウザ既定のページズームに奪われる（実機検証で確認）。
+    // 明示的に `false` を渡し、Babylon 側で preventDefault させる。
+    camera.attachControl(canvas, false);
 
     new HemisphericLight("diorama-ambient-light", new Vector3(0, 1, 0), scene).intensity = 0.6;
     const sunLight = new DirectionalLight("diorama-sun-light", new Vector3(-0.4, -1, -0.3), scene);
