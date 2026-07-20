@@ -1,3 +1,5 @@
+name: jpmap-terrain-demo
+
 services:
   demo:
     build:
@@ -7,3 +9,9 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+    networks:
+      - demo-net
+
+networks:
+  demo-net:
+    name: jpmap-terrain-demo-net
