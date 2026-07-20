@@ -157,13 +157,23 @@ interface BuiltMesh {
     mesh: Mesh;
     material: StandardMaterial;
     texture: Texture;
-    skirtMesh: Mesh;
     skirtMaterial: StandardMaterial;
 }
 
 /**
  * 実世界メートル単位の地形メッシュ（+ 地図テクスチャ材質）を1回分構築する。
  * `dioramaGrid`/`dioramaElevation`/`dioramaTexture` を順に呼び出す統合ポイント。
+ *
+ * @remarks
+ * 地形面（テクスチャ付き）と側面壁（無地）は、別々の `Mesh` として構築した後
+ * `Mesh.MergeMeshes`（`multiMultiMaterials: true`）で1つの `Mesh` +
+ * `MultiMaterial` に統合する。実機（Meta Quest 3 / Androidスマホ）検証で、
+ * 2つの独立した `Mesh` のままだと、どちらが深度的に「手前」として扱われるかが
+ * 機種・エンジンによって不安定/逆転する不具合を確認した
+ * （`renderingGroupId`分離、`zOffset`によるバイアス、いずれも機種間で一貫した
+ * 解決に至らなかった）。1つの `Mesh`（＝1回の描画コール群、通常のWebGL深度
+ * テストのみに依存）へ統合することで、メッシュ間の描画順・レンダリング
+ * グループ切り替えタイミングに一切依存しない、より頑健な構成にする。
  */
 const buildMesh = async (
     scene: Scene,
@@ -220,30 +230,7 @@ const buildMesh = async (
     material.transparencyMode = Material.MATERIAL_OPAQUE;
     material.diffuseTexture.hasAlpha = false;
     material.backFaceCulling = false;
-    // 実機（Meta Quest 3 / Androidスマホ）検証で、側面壁（`diorama-skirt`）を
-    // 非表示にすると地形面がAR中に正しく表示されることを確認した。すなわち
-    // 地形面自体の描画は問題なく、側面壁との深度比較で地形面が不当に
-    // 覆い隠されていたことが判明した。
-    //
-    // `mesh.renderingGroupId` を分けて描画順を制御する方式も試したが、Babylon の
-    // レンダリンググループ切り替え時の深度クリア挙動（既定で有効、無効化も可能）は
-    // 実機・エンジンによって結果が一貫せず、Quest 3とAndroidスマホで真逆の症状
-    // （どちらか一方が必ず消える）になり、安定した解決策にならなかった。
-    // そこで両メッシュは既定の同一レンダリンググループ（0）のまま残し、代わりに
-    // `zOffset`（`gl.polygonOffset` 相当。実際の頂点位置は動かさず、深度比較上
-    // だけ手前側へ補正する、decal等で使われる標準的な手法）を地形面に負値で
-    // 設定し、深度比較が僅差・不安定なケースでも地形面が確実に優先されるように
-    // する。クリップ空間の深度値への補正のためワールドスケール（root の縮小
-    // スケール）にも描画順にも依存しない、より頑健な対策となる。
-    material.zOffset = -2;
     mesh.material = material;
-    // 地形メッシュは側面壁より遥かに広い水平方向の外延（footprintRadiusM半径の
-    // 円盤）を持つ一方で標高差は比較的小さく、バウンディングボリュームが非常に
-    // 薄く偏平になりやすい。root の一様スケールも極端に小さい
-    // （tableRadiusM/footprintRadiusM、既定で概ね1/2000）ため、フラスタム判定で
-    // 誤ってカリングされるリスクを避ける目的で明示的に無効化しておく
-    // （実際に効果があったかは未確定だが、無効化のコストはほぼ無いため維持する）。
-    mesh.alwaysSelectAsActiveMesh = true;
 
     // 側面壁・底面（土台）。実物のジオラマ模型のように、外周リングから一定深さ下へ
     // 壁を張って底面で閉じることで、地形メッシュ単体では失われがちな水平（基準面）の
@@ -265,6 +252,11 @@ const buildMesh = async (
     skirtVertexData.positions = skirtGeometry.positions;
     skirtVertexData.indices = skirtGeometry.indices;
     skirtVertexData.normals = skirtGeometry.normals;
+    // `Mesh.MergeMeshes` は統合対象の全メッシュが同じ頂点属性集合を持つことを
+    // 要求する（`VertexData._mergeCoroutine` が属性不一致でエラーを投げる）。
+    // 側面壁は無地マテリアルのためUVは実際には使わないが、地形面との統合のために
+    // ダミーのUV（0埋め）を用意しておく。
+    skirtVertexData.uvs = new Float32Array(skirtGeometry.positions.length / 3 * 2);
 
     const skirtMesh = new Mesh("diorama-skirt", scene);
     skirtVertexData.applyToMesh(skirtMesh, true);
@@ -280,7 +272,26 @@ const buildMesh = async (
     skirtMaterial.backFaceCulling = false;
     skirtMesh.material = skirtMaterial;
 
-    return { mesh, material, texture, skirtMesh, skirtMaterial };
+    // 実機（Meta Quest 3 / Androidスマホ）検証で、地形面と側面壁を別々の`Mesh`の
+    // ままにしておくと、どちらが深度的に「手前」として扱われるかが機種・エンジンに
+    // よって不安定/逆転することを確認した（`renderingGroupId`分離、`zOffset`
+    // バイアス、いずれも機種間で一貫した解決に至らなかった）。
+    // `Mesh.MergeMeshes`（`multiMultiMaterials: true`）で1つの`Mesh` +
+    // `MultiMaterial`へ統合し、メッシュ間の描画順・レンダリンググループ切り替え
+    // タイミングに一切依存しない、通常のWebGL深度テストのみに基づく構成にする。
+    const merged = Mesh.MergeMeshes([mesh, skirtMesh], true, true, undefined, false, true);
+    if (!merged) {
+        throw new Error("[jpmap-terrain diorama] failed to merge terrain and skirt meshes");
+    }
+    merged.name = "diorama-terrain";
+    // 地形メッシュは側面壁より遥かに広い水平方向の外延（footprintRadiusM半径の
+    // 円盤）を持つ一方で標高差は比較的小さく、バウンディングボリュームが非常に
+    // 薄く偏平になりやすい。root の一様スケールも極端に小さい
+    // （tableRadiusM/footprintRadiusM、既定で概ね1/2000）ため、フラスタム判定で
+    // 誤ってカリングされるリスクを避ける目的で明示的に無効化しておく。
+    merged.alwaysSelectAsActiveMesh = true;
+
+    return { mesh: merged, material, texture, skirtMaterial };
 };
 
 /**
@@ -312,14 +323,17 @@ export const createDioramaTerrain = async (
     };
 
     built.mesh.parent = root;
-    built.skirtMesh.parent = root;
     applyScale();
 
     const disposeBuilt = (b: BuiltMesh): void => {
+        // `b.mesh` は地形面・側面壁を統合した1つの `Mesh`。
+        // `Mesh.dispose()` は既定でアタッチされた `Material`（統合時に
+        // Babylonが生成した `MultiMaterial`）を破棄しないため、
+        // 明示的に破棄する必要がある。
+        b.mesh.material?.dispose();
         b.mesh.dispose();
         b.material.dispose();
         b.texture.dispose();
-        b.skirtMesh.dispose();
         b.skirtMaterial.dispose();
     };
 
@@ -363,7 +377,6 @@ export const createDioramaTerrain = async (
                 return;
             }
             rebuilt.mesh.parent = root;
-            rebuilt.skirtMesh.parent = root;
             const previous = built;
             built = rebuilt;
             resolved = next;
