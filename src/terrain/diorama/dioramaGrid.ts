@@ -12,6 +12,7 @@
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
 import { DEG2RAD } from "../geo/ecef";
+import { MERCATOR_MAX_LAT } from "../geo/mapping";
 
 /** 箱庭の中心（測地座標、度）。 */
 export interface DioramaCenter {
@@ -46,10 +47,23 @@ export interface DioramaGridPoint {
 /**
  * 緯度[deg]における「1度あたりのメートル」（WGS84楕円体、東西/南北）。
  * `ecef.ts` と同じ `Wgs84Ellipsoid` 定数を用い、子午線曲率半径 M・卯酉線曲率半径 N から算出する。
+ *
+ * 極付近（|lat|→90°）では `cos(lat)→0` となり、経度方向の1度あたりメートル（`lon`）が
+ * 0 に近づく。`offsetToLatLon` はこの値で除算するため、そのまま許すとゼロ除算で
+ * `Infinity`/`NaN` を返してしまう。GSI タイルの実用域（`geo/mapping.ts` の
+ * `MERCATOR_MAX_LAT`、Web メルカトルの緯度有効域）と同じ範囲に制限し、早期に
+ * `RangeError` を投げることでこの破綻を防ぐ（箱庭が対象とする実世界地形は
+ * いずれにせよこの範囲外に存在しない）。
  */
 export const metersPerDegreeAt = (
     latDeg: number,
 ): { lat: number; lon: number } => {
+    if (!(Math.abs(latDeg) <= MERCATOR_MAX_LAT)) {
+        throw new RangeError(
+            `latDeg must be within ±${MERCATOR_MAX_LAT} (got ${latDeg}); ` +
+                "near-pole centers are unsupported (cos(lat)→0 causes division by zero in offsetToLatLon)",
+        );
+    }
     const a = Wgs84Ellipsoid.semiMajorAxis;
     const e2 = Wgs84Ellipsoid.firstEccentricitySquared;
     const lat = latDeg * DEG2RAD;
