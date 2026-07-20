@@ -1,0 +1,225 @@
+/**
+ * diorama デモの WebXR (`immersive-ar`) セッション統合。
+ *
+ * @remarks
+ * **設計方針（VR PoC との違い）**: `feature/533-webxr-vr-viewer` ブランチの
+ * `src/demos/viewer/webXrVrSession.ts`（immersive-vr PoC）は、実寸大の惑星ECEF座標系を
+ * WebXR カメラへ反映するため、リグ（`TransformNode`）の毎フレームECEF位置更新、
+ * コントローラースティックによるパン/ズーム、LODバイアス同期、depthNear/depthFarの
+ * 動的更新など、惑星スケール特有の複雑な仕組みを必要とした。
+ *
+ * 一方、diorama は既に実寸メートルスケールの固定卓上モデル（`dioramaTerrain.root` の
+ * 一様スケール適用のみ）であり、AR中の視点移動は「ユーザーが物理的に歩く」ことで
+ * 実現する（`local-floor` 参照空間でのヘッドセットトラッキングをそのまま使うだけでよく、
+ * 独自のリグ位置更新ロジックは不要）。そのため本モジュールは PoC よりも大幅に単純である：
+ * - ECEF座標変換・LODバイアス同期・depth range動的更新は不要（対象外）
+ * - コントローラー入力によるパン/ズームも行わない（歩行のみ）
+ * - 唯一必要な独自ロジックは「箱庭をユーザー正面に配置する」「パススルー背景にする」の2点
+ *
+ * **パススルー表示の実現方法**: diorama シーンは `scene.createDefaultEnvironment()` の
+ * ようなスカイボックス/地面メッシュを持たないため、`WebXRBackgroundRemover` feature
+ * （名前付きメッシュの非表示化のみを行う）は無効（no-op）。実際にパススルー映像を
+ * 透過表示するには、フレームバッファの alpha を 0 にする必要があるため、
+ * `scene.clearColor.a` をAR突入時に 0、退出時に元の値へ戻す。
+ *
+ * **箱庭の配置**: `local-floor` 参照空間の原点はセッション開始時のヘッドセット位置
+ * （床への投影）に概ね一致するため、`dioramaRoot.position` を原点から前方
+ * （{@link AR_PLACEMENT_DISTANCE_M}）へオフセットするだけで、ユーザーの目の前・
+ * 歩いて周回できる位置に配置できる。デスクトップ表示への影響を避けるため、
+ * 退出時に元の position へ復元する。
+ *
+ * 命名メモ: VR PoC 同様、本リポジトリでは "VR" が Playwright Visual Regression テストの
+ * 略称としても使われているため、シンボル名には "WebXr" プレフィックスを用いる。
+ */
+import type { Scene } from "@babylonjs/core/scene";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+// `scene.createDefaultXRExperienceAsync` を Scene プロトタイプへ追加する副作用 import。
+import "@babylonjs/core/Helpers/sceneHelpers";
+import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
+import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
+import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
+
+/** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
+ *  環境によっては（実デバイス無し等）Promise がいつまでも解決しないことがあるため、
+ *  一定時間で諦めて「非対応」扱いにし、デモの起動をブロックしないようにする。
+ */
+const SUPPORT_CHECK_TIMEOUT_MS = 4000;
+
+/** `promise` が `timeoutMs` 以内に解決しなければ `onTimeout` の値へフォールバックする。 */
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, onTimeout: T): Promise<T> =>
+    new Promise<T>((resolve) => {
+        const timer = setTimeout(() => resolve(onTimeout), timeoutMs);
+        promise.then(
+            (value) => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            () => {
+                clearTimeout(timer);
+                resolve(onTimeout);
+            },
+        );
+    });
+
+/** WebXR (`immersive-ar`) にブラウザ/デバイスが対応しているかを判定する。
+ *  {@link SUPPORT_CHECK_TIMEOUT_MS} 以内に応答がない場合は非対応として扱う。
+ */
+export const isImmersiveArSupported = async (): Promise<boolean> => {
+    try {
+        if (typeof navigator === "undefined" || !("xr" in navigator)) return false;
+        return await withTimeout(
+            WebXRSessionManager.IsSessionSupportedAsync("immersive-ar"),
+            SUPPORT_CHECK_TIMEOUT_MS,
+            false,
+        );
+    } catch (err) {
+        console.warn("[jpmap-terrain diorama demo] WebXR AR support check failed:", err);
+        return false;
+    }
+};
+
+/**
+ * ARボタンのスタイル（VR PoC の `styleVrButton` に準じた外観）を適用する。
+ *
+ * @remarks
+ * 配置は右上（`right`）にしている。左上（`left: 12px`）は `public/diorama.html` の
+ * 「← デモ一覧へ」back-link が同じ位置を占有しており、重なるとback-link側が
+ * クリックを奪ってしまう（back-linkの方がDOM順序で後にあり、pointer-eventsが
+ * 有効なため）。
+ */
+const styleArButton = (button: HTMLButtonElement): void => {
+    Object.assign(button.style, {
+        position: "absolute",
+        top: "12px",
+        right: "12px",
+        zIndex: "10",
+        width: "56px",
+        height: "40px",
+        borderRadius: "10px",
+        border: "none",
+        background: "rgba(9,18,32,0.72)",
+        color: "#fff",
+        fontSize: "13px",
+        fontWeight: "600",
+        cursor: "pointer",
+        backdropFilter: "blur(6px)",
+    } satisfies Partial<CSSStyleDeclaration>);
+    button.textContent = "AR";
+    button.setAttribute("aria-label", "ARで表示");
+    button.setAttribute("title", "ARで表示 (WebXR)");
+};
+
+/** AR突入時、箱庭をユーザー正面へ配置するオフセット[m]（`local-floor` 原点から前方）。 */
+const AR_PLACEMENT_DISTANCE_M = 1.2;
+
+/**
+ * diorama デモに ARボタンを追加し、WebXR (`immersive-ar`) セッションの開始/終了、
+ * 箱庭のユーザー正面配置、パススルー背景化を行うセットアップを行う。
+ *
+ * WebXR (`immersive-ar`) 非対応環境では機能検出後にボタンを表示しない
+ * （VR PoC と同じ合意事項）。
+ *
+ * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
+ * @param scene 対象の `Scene`。
+ * @param dioramaRoot 箱庭地形の `root`（`createDioramaTerrain` が返す `TransformNode`）。
+ * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
+ */
+export const setupDioramaWebXrArButton = async (
+    mount: HTMLElement,
+    scene: Scene,
+    dioramaRoot: TransformNode,
+): Promise<() => void> => {
+    const supported = await isImmersiveArSupported();
+    if (!supported) return () => {};
+
+    const button = document.createElement("button");
+    styleArButton(button);
+    mount.appendChild(button);
+
+    let xr: WebXRDefaultExperience | null = null;
+    let disposed = false;
+
+    const cleanup = (): void => {
+        disposed = true;
+        button.remove();
+        xr?.dispose();
+    };
+
+    button.addEventListener("click", () => {
+        if (disposed) return;
+        if (xr && xr.baseExperience.state !== WebXRState.NOT_IN_XR) {
+            void xr.baseExperience.exitXRAsync();
+            return;
+        }
+        void enterAr(scene, dioramaRoot, button).then((created) => {
+            xr = created;
+        });
+    });
+
+    return cleanup;
+};
+
+/** ARセッションを開始し、パススルー背景化・箱庭配置のセットアップを行う。
+ *  セットアップ中に例外が発生した場合は、生成済みリソース（`xr`・シーン状態）を後始末し、
+ *  ボタンを通常表示へ戻したうえで `null` を返す（呼び出し元はクリック可能な状態を維持する）。
+ */
+const enterAr = async (
+    scene: Scene,
+    dioramaRoot: TransformNode,
+    button: HTMLButtonElement,
+): Promise<WebXRDefaultExperience | null> => {
+    let xr: WebXRDefaultExperience | null = null;
+    // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
+    // 突入前の状態を保存しておく。
+    const originalPosition = dioramaRoot.position.clone();
+    const originalClearAlpha = scene.clearColor.a;
+    try {
+        xr = await scene.createDefaultXRExperienceAsync({
+            // 本モジュールは歩行のみで移動するため、既定のテレポート/ポインタ選択機能は
+            // 無効化し、入力の競合を避ける（VR PoC と同じ理由）。
+            disableTeleportation: true,
+            disablePointerSelection: true,
+            // 独自の ARボタン（本ファイル）で enter/exit を制御するため、Babylon 標準の
+            // Enter/Exit UI は無効化する（二重のボタン表示による混乱を避ける）。
+            disableDefaultUI: true,
+        });
+
+        if (xr.baseExperience.state === WebXRState.NOT_IN_XR) {
+            await xr.baseExperience.enterXRAsync("immersive-ar", "local-floor", xr.renderTarget);
+        }
+
+        button.textContent = "終了";
+        button.setAttribute("aria-label", "ARを終了");
+        button.setAttribute("title", "ARを終了");
+
+        // パススルー表示: フレームバッファの alpha を 0 にし、実世界カメラ映像が
+        // 透けて見えるようにする（{@link module:src/demos/diorama/webXrArSession.ts}
+        // 冒頭のコメント参照）。
+        scene.clearColor.a = 0;
+        // 没入開始位置（`local-floor` 原点付近＝ユーザー正面）から前方へ配置し、
+        // 箱庭の周りを実際に歩いて観察できるようにする。
+        dioramaRoot.position.set(0, 0, -AR_PLACEMENT_DISTANCE_M);
+
+        const restoreOnExit = (): void => {
+            dioramaRoot.position.copyFrom(originalPosition);
+            scene.clearColor.a = originalClearAlpha;
+            styleArButton(button);
+        };
+
+        xr.baseExperience.onStateChangedObservable.add((state) => {
+            if (state === WebXRState.NOT_IN_XR) {
+                restoreOnExit();
+            }
+        });
+
+        return xr;
+    } catch (err) {
+        console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
+        // 部分的に確保したリソース（箱庭配置・パススルー背景状態）を後始末する。
+        dioramaRoot.position.copyFrom(originalPosition);
+        scene.clearColor.a = originalClearAlpha;
+        xr?.dispose();
+        styleArButton(button);
+        return null;
+    }
+};
