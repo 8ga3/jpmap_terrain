@@ -96,18 +96,30 @@ interface ResolvedOptions {
     baseDepthRatio: number;
 }
 
-const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => ({
-    center: options.center,
-    footprintRadiusM: options.footprintRadiusM,
-    tableRadiusM: options.tableRadiusM,
-    ringCount: options.ringCount ?? DEFAULTS.ringCount,
-    radialSegments: options.radialSegments ?? DEFAULTS.radialSegments,
-    demZoom: options.demZoom ?? DEFAULTS.demZoom,
-    textureZoom: options.textureZoom ?? DEFAULTS.textureZoom,
-    mapType: options.mapType ?? DEFAULTS.mapType,
-    heightScaleFactor: options.heightScaleFactor ?? DEFAULTS.heightScaleFactor,
-    baseDepthRatio: options.baseDepthRatio ?? DEFAULTS.baseDepthRatio,
-});
+const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
+    // tableRadiusM は root.scaling の分母（applyScale）になるため、構築完了を待たず
+    // ここで早期に検証し、不正値（0/負数）による無効なスケール算出を防ぐ。
+    if (!(options.tableRadiusM > 0)) {
+        throw new RangeError(`tableRadiusM must be > 0 (got ${options.tableRadiusM})`);
+    }
+    // footprintRadiusM は buildDioramaGridPoints（dioramaGrid.ts）内でも検証されるが、
+    // ここでも早期に検証し、非同期のタイル取得等を開始する前に失敗させる。
+    if (!(options.footprintRadiusM > 0)) {
+        throw new RangeError(`footprintRadiusM must be > 0 (got ${options.footprintRadiusM})`);
+    }
+    return {
+        center: options.center,
+        footprintRadiusM: options.footprintRadiusM,
+        tableRadiusM: options.tableRadiusM,
+        ringCount: options.ringCount ?? DEFAULTS.ringCount,
+        radialSegments: options.radialSegments ?? DEFAULTS.radialSegments,
+        demZoom: options.demZoom ?? DEFAULTS.demZoom,
+        textureZoom: options.textureZoom ?? DEFAULTS.textureZoom,
+        mapType: options.mapType ?? DEFAULTS.mapType,
+        heightScaleFactor: options.heightScaleFactor ?? DEFAULTS.heightScaleFactor,
+        baseDepthRatio: options.baseDepthRatio ?? DEFAULTS.baseDepthRatio,
+    };
+};
 
 interface BuiltMesh {
     mesh: Mesh;
@@ -216,6 +228,12 @@ export const createDioramaTerrain = async (
 
     const root = new TransformNode("diorama-root", scene);
     const applyScale = (): void => {
+        if (!(resolved.tableRadiusM > 0)) {
+            throw new RangeError(`tableRadiusM must be > 0 (got ${resolved.tableRadiusM})`);
+        }
+        if (!(resolved.footprintRadiusM > 0)) {
+            throw new RangeError(`footprintRadiusM must be > 0 (got ${resolved.footprintRadiusM})`);
+        }
         const scale = resolved.tableRadiusM / resolved.footprintRadiusM;
         root.scaling.setAll(scale);
     };

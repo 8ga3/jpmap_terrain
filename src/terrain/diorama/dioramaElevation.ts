@@ -17,7 +17,7 @@ export interface DioramaElevationPoint {
     lon: number;
 }
 
-/** `z/x/y` 形式のタイルキー。 */
+/** タイル座標のキー（`x/y` 形式）。本モジュール内では zoom は呼び出し単位で固定のため含めない。 */
 const tileKeyOf = (x: number, y: number): string => `${x}/${y}`;
 
 /**
