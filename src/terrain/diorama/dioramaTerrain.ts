@@ -300,10 +300,27 @@ export const createDioramaTerrain = async (
      * （呼び出し時点ではなく実行時点の状態を基準にするため、直前の rebuild の
      * 結果を正しく引き継げる）。
      */
+    /**
+     * dispose 済みかどうか。`enqueueRebuild` の `run` はこれを実行前後で確認し、
+     * dispose 後に新規 Mesh/Texture を生成してリークしたり、破棄済みの `root` へ
+     * parent 設定して例外になるのを防ぐ。
+     */
+    let disposed = false;
+
     const enqueueRebuild = (patch: (current: ResolvedOptions) => ResolvedOptions): Promise<void> => {
         const run = async (): Promise<void> => {
+            // dispose 後にキューの順番が回ってきた場合は何もしない
+            // （新規フェッチ・メッシュ生成自体を行わない）。
+            if (disposed) return;
             const next = patch(resolved);
             const rebuilt = await buildMesh(scene, next);
+            if (disposed) {
+                // buildMesh 実行中（非同期のタイル取得等の最中）に dispose された場合。
+                // 破棄済みの root へ parent 設定すると例外になり得るため、生成物は
+                // そのまま使わず即座に破棄する。
+                disposeBuilt(rebuilt);
+                return;
+            }
             rebuilt.mesh.parent = root;
             rebuilt.skirtMesh.parent = root;
             const previous = built;
@@ -337,6 +354,7 @@ export const createDioramaTerrain = async (
         setMapType: (mapType: MapType): Promise<void> =>
             enqueueRebuild((current) => ({ ...current, mapType })),
         dispose: (): void => {
+            disposed = true;
             disposeBuilt(built);
             root.dispose();
         },
