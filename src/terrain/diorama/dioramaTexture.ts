@@ -52,6 +52,13 @@ export interface DioramaTextureLayout {
  * ため、円の外側にあたる四隅のタイルも合成対象に含まれる（単純さを優先した実装。
  * フットプリント半径に対してタイル数が少ない前提のため、無駄なフェッチの影響は小さい）。
  */
+/** ズームレベルが0以上の整数であることを検証する（非整数/負数はtoTileXY/totalPixelsForZoomを不正な計算に導くため）。 */
+const assertValidZoom = (zoom: number): void => {
+    if (!(Number.isInteger(zoom) && zoom >= 0)) {
+        throw new RangeError(`zoom must be a non-negative integer (got ${zoom})`);
+    }
+};
+
 export const computeDioramaTextureLayout = (
     points: readonly DioramaTexturePoint[],
     zoom: number,
@@ -59,6 +66,7 @@ export const computeDioramaTextureLayout = (
     if (points.length === 0) {
         throw new RangeError("points must not be empty");
     }
+    assertValidZoom(zoom);
     const totalPixels = totalPixelsForZoom(zoom);
 
     let minTileX = Infinity;

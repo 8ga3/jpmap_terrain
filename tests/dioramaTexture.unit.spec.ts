@@ -74,4 +74,12 @@ describe("computeDioramaTextureLayout", () => {
     it("空の点群はRangeError", () => {
         expect(() => computeDioramaTextureLayout([], ZOOM)).toThrow(RangeError);
     });
+
+    it("zoomが非整数はRangeError", () => {
+        expect(() => computeDioramaTextureLayout([TOKYO], 16.5)).toThrow(RangeError);
+    });
+
+    it("zoomが負数はRangeError", () => {
+        expect(() => computeDioramaTextureLayout([TOKYO], -1)).toThrow(RangeError);
+    });
 });
