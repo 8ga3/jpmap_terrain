@@ -47,8 +47,14 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Helpers/sceneHelpers";
 import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
+import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
+// `xr-dom-overlay` feature をfeaturesManagerへ登録する副作用 import
+// （[実機診断用] `debugOverlay`をAR中も表示するために使う）。
+import "@babylonjs/core/XR/features/WebXRDOMOverlay";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
+
+import type { ArDebugOverlay } from "./arDebugOverlay";
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
  *  環境によっては（実デバイス無し等）Promise がいつまでも解決しないことがあるため、
@@ -151,14 +157,15 @@ const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
  * 配置する。カメラの向きが正しく反映されている必要があるため、
  * {@link AR_PLACEMENT_WAIT_FRAMES} フレーム待ってから呼ぶこと。
  *
- * @remarks 診断用に配置結果を `console.debug` へ出力する。実機での配置不具合の
- * 報告時、この出力内容（カメラ位置・前方向・配置結果）があると原因切り分けが
- * 容易になる。
+ * @remarks 診断用に配置結果を `console.debug` / `debugOverlay` へ出力する。
+ * 実機での配置不具合の報告時、この出力内容（カメラ位置・前方向・配置結果）が
+ * あると原因切り分けが容易になる。
  */
 const placeDioramaRelativeToCamera = (
     scene: Scene,
     dioramaRoot: TransformNode,
     camera: WebXRCamera,
+    debugOverlay?: ArDebugOverlay,
 ): void => {
     const forward = camera.getDirection(Vector3.Forward(scene.useRightHandedSystem));
     forward.y = 0;
@@ -171,11 +178,16 @@ const placeDioramaRelativeToCamera = (
     dioramaRoot.position.copyFrom(camera.position);
     dioramaRoot.position.addInPlace(forward.scale(AR_PLACEMENT_DISTANCE_M));
     dioramaRoot.position.y += AR_TABLE_HEIGHT_M - camera.position.y;
+    const fmt = (v: { x: number; y: number; z: number }): string =>
+        `(${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${v.z.toFixed(2)})`;
     console.debug(
         "[jpmap-terrain diorama demo] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
         camera.position.asArray(),
         forward.asArray(),
         dioramaRoot.position.asArray(),
+    );
+    debugOverlay?.log(
+        `placed: camera=${fmt(camera.position)} forward=${fmt(forward)} placed=${fmt(dioramaRoot.position)}`,
     );
 };
 
@@ -189,14 +201,19 @@ const placeDioramaRelativeToCamera = (
  * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
  * @param scene 対象の `Scene`。
  * @param dioramaRoot 箱庭地形の `root`（`createDioramaTerrain` が返す `TransformNode`）。
+ * @param debugOverlay [実機診断用] 与えると、ARセッションのライフサイクル
+ *   （生成・突入・配置・エラー）を画面上のログパネルへ出力し、対応ブラウザでは
+ *   `dom-overlay` featureにより没入セッション中も表示され続ける。
  * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
  */
 export const setupDioramaWebXrArButton = async (
     mount: HTMLElement,
     scene: Scene,
     dioramaRoot: TransformNode,
+    debugOverlay?: ArDebugOverlay,
 ): Promise<() => void> => {
     const supported = await isImmersiveArSupported();
+    debugOverlay?.log(`isImmersiveArSupported() = ${supported}`);
     if (!supported) return () => {};
 
     const button = document.createElement("button");
@@ -218,13 +235,14 @@ export const setupDioramaWebXrArButton = async (
             void xr.baseExperience.exitXRAsync();
             return;
         }
-        void enterAr(scene, dioramaRoot, button).then((created) => {
+        void enterAr(scene, dioramaRoot, button, debugOverlay).then((created) => {
             xr = created;
         });
     });
 
     return cleanup;
 };
+
 
 /** ARセッションを開始し、パススルー背景化・箱庭配置のセットアップを行う。
  *  セットアップ中に例外が発生した場合は、生成済みリソース（`xr`・シーン状態）を後始末し、
@@ -234,6 +252,7 @@ const enterAr = async (
     scene: Scene,
     dioramaRoot: TransformNode,
     button: HTMLButtonElement,
+    debugOverlay?: ArDebugOverlay,
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
     // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
@@ -241,6 +260,7 @@ const enterAr = async (
     const originalPosition = dioramaRoot.position.clone();
     const originalClearAlpha = scene.clearColor.a;
     try {
+        debugOverlay?.log("createDefaultXRExperienceAsync: start");
         xr = await scene.createDefaultXRExperienceAsync({
             // 本モジュールは歩行のみで移動するため、既定のテレポート/ポインタ選択機能は
             // 無効化し、入力の競合を避ける（VR PoC と同じ理由）。
@@ -250,10 +270,32 @@ const enterAr = async (
             // Enter/Exit UI は無効化する（二重のボタン表示による混乱を避ける）。
             disableDefaultUI: true,
         });
+        debugOverlay?.log("createDefaultXRExperienceAsync: done");
 
         const xrExperience = xr;
+
+        // [実機診断用] `dom-overlay` feature に対応するブラウザ（Android Chrome等）では、
+        // 没入セッション中も debugOverlay の要素を画面上に表示し続けられる。
+        // 非対応環境（Quest Browser等）では単に無効（no-op）になる。
+        if (debugOverlay) {
+            try {
+                xrExperience.baseExperience.featuresManager.enableFeature(
+                    WebXRFeatureName.DOM_OVERLAY,
+                    "latest",
+                    { element: debugOverlay.element },
+                    true,
+                    false,
+                );
+                debugOverlay.log("dom-overlay feature requested");
+            } catch (err) {
+                debugOverlay.log(`dom-overlay feature unavailable: ${String(err)}`);
+            }
+        }
+
         if (xrExperience.baseExperience.state === WebXRState.NOT_IN_XR) {
+            debugOverlay?.log('enterXRAsync("immersive-ar", "local-floor"): start');
             await xrExperience.baseExperience.enterXRAsync("immersive-ar", "local-floor", xrExperience.renderTarget);
+            debugOverlay?.log('enterXRAsync("immersive-ar", "local-floor"): done');
         }
 
         button.textContent = "終了";
@@ -272,7 +314,24 @@ const enterAr = async (
             framesWaited += 1;
             if (framesWaited < AR_PLACEMENT_WAIT_FRAMES) return;
             scene.onBeforeRenderObservable.remove(placementObserver);
-            placeDioramaRelativeToCamera(scene, dioramaRoot, xrExperience.baseExperience.camera);
+            placeDioramaRelativeToCamera(scene, dioramaRoot, xrExperience.baseExperience.camera, debugOverlay);
+
+            // [実機診断用] 箱庭配下のメッシュ・マテリアル・テクスチャの準備状況をログへ出す。
+            const meshes = dioramaRoot.getChildMeshes();
+            debugOverlay?.log(`diorama meshes: ${meshes.length}`);
+            meshes.forEach((mesh) => {
+                const mat = mesh.material;
+                const tex = mat && "diffuseTexture" in mat ? (mat as { diffuseTexture?: unknown }).diffuseTexture : undefined;
+                const texReady =
+                    tex && typeof (tex as { isReady?: () => boolean }).isReady === "function"
+                        ? (tex as { isReady: () => boolean }).isReady()
+                        : "n/a";
+                debugOverlay?.log(
+                    `  mesh="${mesh.name}" isVisible=${mesh.isVisible} isEnabled=${mesh.isEnabled()} ` +
+                        `isReady=${mesh.isReady(true)} renderingGroupId=${mesh.renderingGroupId} ` +
+                        `material.isReady=${mat ? mat.isReady(mesh) : "n/a"} diffuseTexture.isReady=${texReady}`,
+                );
+            });
         });
 
         const restoreOnExit = (): void => {
@@ -284,6 +343,7 @@ const enterAr = async (
         };
 
         xrExperience.baseExperience.onStateChangedObservable.add((state) => {
+            debugOverlay?.log(`WebXRState changed: ${state}`);
             if (state === WebXRState.NOT_IN_XR) {
                 restoreOnExit();
             }
@@ -292,6 +352,7 @@ const enterAr = async (
         return xrExperience;
     } catch (err) {
         console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
+        debugOverlay?.log(`enterAr failed: ${err instanceof Error ? err.message : String(err)}`);
         // 部分的に確保したリソース（箱庭配置・パススルー背景状態）を後始末する。
         dioramaRoot.position.copyFrom(originalPosition);
         scene.clearColor.a = originalClearAlpha;
