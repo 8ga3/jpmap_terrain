@@ -125,4 +125,18 @@ describe("createBabylonEngine", () => {
         };
         expect(engine.useReverseDepthBuffer).toBe(true);
     });
+
+    it("reverseDepthBuffer:false (WebGL2) 指定時は reverse-Z を有効化しない (WebXRカメラは投影行列をreverse-Z変換しないため、diorama等の小規模スケールデモでは無効化が必要)", async () => {
+        const engine = (await createBabylonEngine(canvas(), "webgl2", {
+            reverseDepthBuffer: false,
+        })) as unknown as { useReverseDepthBuffer: boolean };
+        expect(engine.useReverseDepthBuffer).toBe(false);
+    });
+
+    it("reverseDepthBuffer:false (WebGPU) 指定時は reverse-Z を有効化しない", async () => {
+        const engine = (await createBabylonEngine(canvas(), "webgpu", {
+            reverseDepthBuffer: false,
+        })) as unknown as { useReverseDepthBuffer: boolean };
+        expect(engine.useReverseDepthBuffer).toBe(false);
+    });
 });

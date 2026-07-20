@@ -83,7 +83,17 @@ const start = async (): Promise<void> => {
     // 設計のため）。ARが主要機能である本デモでは、対応が枯れている
     // WebGL2 を既定にしてこのリスクを避ける。
     const engineType = resolveEngine(location.search) ?? "webgl2";
-    const engine = await createBabylonEngine(canvas, engineType);
+    // reverse-Z 深度バッファ（既定で全デモ共通に有効）を無効化する。
+    // diorama は卓上サイズ（メートル単位、near/far比が小さい）でreverse-Zを必要としない一方、
+    // WebXRカメラはブラウザ提供の生の投影行列をそのまま使う（reverse-Z変換されない、
+    // `@babylonjs/core/XR/webXRCamera.js` の `_updateFromXRSession` 参照）ため、
+    // reverse-Z前提の深度クリア値・深度比較関数・`zOffset`符号反転と組み合わさると、
+    // AR中の深度テストの前提が一致しなくなる。実機（Meta Quest 3 / Androidスマホ）検証で、
+    // renderingGroupId/zOffset/メッシュ統合等の深度回避策では解消できなかった不具合
+    // （地形/側面壁のオクルージョン不安定・Androidで基本プリミティブすら描画されない）の
+    // 根本原因である可能性が高いと判明したため、無効化する。詳細は
+    // {@link CreateBabylonEngineOptions.reverseDepthBuffer} 冒頭コメント参照。
+    const engine = await createBabylonEngine(canvas, engineType, { reverseDepthBuffer: false });
     debugOverlay.log(`engine created: ${engine.constructor.name}`);
 
 
