@@ -33,7 +33,10 @@
 # 検討すること。
 services:
   webxr-tunnel:
-    image: cloudflare/cloudflared:latest
+    # `:latest` は将来の更新で突然動作が変わる恐れがあるため、検証済みの安定版タグに固定する。
+    # 更新時は https://github.com/cloudflare/cloudflared/releases を確認し、
+    # このタグと `command` 節（`--no-autoupdate`）を合わせて見直すこと。
+    image: cloudflare/cloudflared:2026.7.2
     container_name: jpmap-terrain-webxr-tunnel
     command: tunnel --no-autoupdate --url http://demo:80
     restart: unless-stopped
