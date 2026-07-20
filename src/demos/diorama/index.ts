@@ -28,6 +28,7 @@ import { createTextureAbcTest } from "./textureAbcTest";
 // [一時的な診断コード] D/Eテスト（メッシュ複雑さ vs テクスチャサイズの切り分け用）。
 // 確認後にrevertして削除する。
 import { createMosaicOnSimplePlaneTest } from "./textureDeTest";
+import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -137,6 +138,24 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
     debugOverlay.log("createDioramaTerrain: done");
+
+    // [一時的な診断コード] `?dioramaDebugMode=wireframe` でテクスチャの代わりに
+    // ワイヤーフレーム表示、`?dioramaDebugMode=green` でテクスチャ無しの単色
+    // （緑）表示に切り替えられるようにする。実機でのAR中の切り分け用
+    // （メッシュ形状自体は見えるか／テクスチャ無しの単色マテリアルなら見えるか）。
+    // 確認後にrevertして削除する。
+    const dioramaDebugMode = new URLSearchParams(location.search).get("dioramaDebugMode");
+    const terrainMaterial = dioramaTerrain.mesh.material as StandardMaterial | null;
+    if (terrainMaterial) {
+        if (dioramaDebugMode === "wireframe") {
+            terrainMaterial.wireframe = true;
+            debugOverlay.log("dioramaDebugMode = wireframe");
+        } else if (dioramaDebugMode === "green") {
+            terrainMaterial.diffuseTexture = null;
+            terrainMaterial.diffuseColor = new Color3(0, 0.6, 0.1);
+            debugOverlay.log("dioramaDebugMode = green (no texture)");
+        }
+    }
 
     // [一時的な診断コード] A（リモートURL直読み・対照群）/ B（canvas→blob→Texture・
     // 本番実装と同じ方式）/ C（canvas→RawTexture・URL読み込みを経由しない方式）の
