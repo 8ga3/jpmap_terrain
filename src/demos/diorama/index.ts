@@ -22,13 +22,6 @@ import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
-import { createArDebugOverlay } from "./arDebugOverlay";
-// [一時的な診断コード] A/B/Cテクスチャ生成方式の切り分け用。確認後にrevertして削除する。
-import { createTextureAbcTest } from "./textureAbcTest";
-// [一時的な診断コード] D/Eテスト（メッシュ複雑さ vs テクスチャサイズの切り分け用）。
-// 確認後にrevertして削除する。
-import { createMosaicOnSimplePlaneTest } from "./textureDeTest";
-import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -69,10 +62,6 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const canvas = createCanvas(mount);
-    // [実機診断用] devtoolsが使えない実機（Meta Quest 3 / Android Chrome等）でも
-    // 画面上で直接ログを確認できるようにする。
-    const debugOverlay = createArDebugOverlay(mount);
-    debugOverlay.log("start() begin");
     // 他デモは既定で `webgpu` を優先するが、本デモは既定を `webgl2` にする
     // （`?engine=webgpu` で明示指定すれば従来通りWebGPUを使える）。
     //
@@ -87,7 +76,6 @@ const start = async (): Promise<void> => {
     // WebGL2 を既定にしてこのリスクを避ける。
     const engineType = resolveEngine(location.search) ?? "webgl2";
     const engine = await createBabylonEngine(canvas, engineType);
-    debugOverlay.log(`engine created: ${engine.constructor.name}`);
 
 
     const scene = new Scene(engine);
@@ -137,100 +125,9 @@ const start = async (): Promise<void> => {
         footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
-    debugOverlay.log("createDioramaTerrain: done");
 
-    // 側面壁の非表示テストで原因が判明した（renderingGroupIdで解決、
-    // dioramaTerrain.ts参照）ため、壁は通常通り表示する。
-
-    // [一時的な診断コード] Questでの検証用に、URLクエリの手入力が不要な
-    // ボタンでの切り替えに変更する。タップするたびに
-    // 通常 → ワイヤーフレーム → 緑（無地・テクスチャ無し） → 通常 と巡回する。
-    // AR突入前にタップしてモードを決めてからARボタンを押す想定。
-    // 確認後にrevertして削除する。
-    const terrainMaterial = dioramaTerrain.mesh.material as StandardMaterial | null;
-    if (terrainMaterial) {
-        const originalDiffuseTexture = terrainMaterial.diffuseTexture;
-        const originalDiffuseColor = terrainMaterial.diffuseColor.clone();
-        const modes = ["normal", "wireframe", "green"] as const;
-        let modeIndex = 0;
-        const applyMode = (mode: (typeof modes)[number]): void => {
-            terrainMaterial.wireframe = mode === "wireframe";
-            if (mode === "green") {
-                terrainMaterial.diffuseTexture = null;
-                terrainMaterial.diffuseColor = new Color3(0, 0.6, 0.1);
-            } else {
-                terrainMaterial.diffuseTexture = originalDiffuseTexture;
-                terrainMaterial.diffuseColor = originalDiffuseColor;
-            }
-            debugOverlay.log(`dioramaDebugMode = ${mode}`);
-        };
-        const debugModeButton = document.createElement("button");
-        Object.assign(debugModeButton.style, {
-            position: "absolute",
-            top: "12px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: "10",
-            padding: "8px 12px",
-            borderRadius: "10px",
-            border: "none",
-            background: "rgba(9,18,32,0.72)",
-            color: "#fff",
-            fontSize: "13px",
-            fontWeight: "600",
-            cursor: "pointer",
-        } satisfies Partial<CSSStyleDeclaration>);
-        debugModeButton.textContent = "表示: normal";
-        debugModeButton.addEventListener("click", () => {
-            modeIndex = (modeIndex + 1) % modes.length;
-            const mode = modes[modeIndex];
-            applyMode(mode);
-            debugModeButton.textContent = `表示: ${mode}`;
-        });
-        mount.appendChild(debugModeButton);
-    }
-
-    // [一時的な診断コード] A（リモートURL直読み・対照群）/ B（canvas→blob→Texture・
-    // 本番実装と同じ方式）/ C（canvas→RawTexture・URL読み込みを経由しない方式）の
-    // 3枚の板ポリを箱庭の隣に並べる。dioramaTerrain.root の位置を毎フレーム追従
-    // させることで、webXrArSession側の変更なしにAR中も一緒に配置される。
-    // 確認後にrevertして削除する。
-    createTextureAbcTest(scene, DEFAULT_CENTER, 15, "std")
-        .then((abcRoot) => {
-            abcRoot.position.set(DEFAULT_TABLE_RADIUS_M * 2, 0, 0);
-            scene.onBeforeRenderObservable.add(() => {
-                abcRoot.position.copyFrom(dioramaTerrain.root.position);
-                abcRoot.position.x += DEFAULT_TABLE_RADIUS_M * 2;
-            });
-            debugOverlay.log("createTextureAbcTest: done");
-        })
-        .catch((err: unknown) => {
-            debugOverlay.log(`createTextureAbcTest failed: ${err instanceof Error ? err.message : String(err)}`);
-        });
-
-    // [一時的な診断コード] テストD: 本番と全く同じ関数で生成した複数タイルの
-    // モザイクテクスチャを、単純な板ポリに貼る（メッシュの複雑さを除外）。
-    // 確認後にrevertして削除する。
-    createMosaicOnSimplePlaneTest(scene, DEFAULT_CENTER, DEFAULT_FOOTPRINT_RADIUS_M, 16, "std")
-        .then((testDRoot) => {
-            testDRoot.position.set(DEFAULT_TABLE_RADIUS_M * 3.5, 0, 0);
-            scene.onBeforeRenderObservable.add(() => {
-                testDRoot.position.copyFrom(dioramaTerrain.root.position);
-                testDRoot.position.x += DEFAULT_TABLE_RADIUS_M * 3.5;
-            });
-            debugOverlay.log("createMosaicOnSimplePlaneTest (D): done");
-        })
-        .catch((err: unknown) => {
-            debugOverlay.log(`createMosaicOnSimplePlaneTest (D) failed: ${err instanceof Error ? err.message : String(err)}`);
-        });
-
-    // テストE（本体メッシュのテクスチャ差し替え）は原因切り分けに使用し、
-    // メッシュ側（backFaceCulling）が原因と判明したため無効化した
-    // （`dioramaTerrain.ts` の `material.backFaceCulling = false` 参照）。
-
-    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, debugOverlay).catch((err: unknown) => {
+    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
-        debugOverlay.log(`setupDioramaWebXrArButton failed: ${err instanceof Error ? err.message : String(err)}`);
     });
 
     engine.runRenderLoop(() => {
