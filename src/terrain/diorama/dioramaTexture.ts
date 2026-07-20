@@ -119,9 +119,17 @@ const loadTileBitmap = async (url: string): Promise<ImageBitmap> => {
 };
 
 /**
+ * 取得失敗タイルの代替塗りつぶし色（土色系の中間トーン）。
+ *
+ * 地形は不透明な地面のため、失敗領域を透明のままにすると背景が透けて
+ * 「穴」に見えてしまう。無地の代替色で塗りつぶし、描画継続を優先する。
+ */
+const FALLBACK_TILE_COLOR = "#8a8270";
+
+/**
  * `computeDioramaTextureLayout` の結果に基づき、実際にタイル画像を取得して
  * 1枚の `DynamicTexture` へ合成する。取得に失敗したタイルは該当領域を
- * 透明のまま残し（描画継続を優先）、コンソールにエラーを出す。
+ * {@link FALLBACK_TILE_COLOR} で塗りつぶし（描画継続を優先）、コンソールにエラーを出す。
  */
 export const buildDioramaMosaicTexture = async (
     scene: Scene,
@@ -146,9 +154,11 @@ export const buildDioramaMosaicTexture = async (
                 bitmap.close();
             } catch (err) {
                 console.error(
-                    `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}:`,
+                    `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}, filling with fallback color:`,
                     err,
                 );
+                ctx.fillStyle = FALLBACK_TILE_COLOR;
+                ctx.fillRect(tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
             }
         }),
     );
