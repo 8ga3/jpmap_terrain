@@ -65,10 +65,8 @@ export const computeDioramaTextureLayout = (
     let maxTileX = -Infinity;
     let minTileY = Infinity;
     let maxTileY = -Infinity;
-    const tileXYs: { x: number; y: number }[] = [];
     for (const p of points) {
         const { x, y } = toTileXY(p.lat, p.lon, zoom);
-        tileXYs.push({ x, y });
         if (x < minTileX) minTileX = x;
         if (x > maxTileX) maxTileX = x;
         if (y < minTileY) minTileY = y;
