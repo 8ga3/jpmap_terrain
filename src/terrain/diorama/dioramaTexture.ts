@@ -73,6 +73,20 @@ const assertFinitePoints = (points: readonly DioramaTexturePoint[]): void => {
     }
 };
 
+/**
+ * モザイク1辺あたりの許容タイル数上限。
+ *
+ * `toTileXY` は経度を [-180, 180) に正規化してタイルX座標を [0, 2^zoom-1] へ
+ * 写像するため、点群が反子午線（±180°）を跨ぐと（ローカル平面近似で単純に
+ * lon±180°を超えた値をそのまま正規化する `dioramaGrid.offsetToLatLon` の
+ * 性質上、実際に起こり得る）、一部の点が lon≈+180 側、別の点が lon≈-180 側に
+ * ラップし、minTileX≈0・maxTileX≈2^zoom-1 という「ほぼ全世界幅」のバウンディング
+ * ボックスになり得る。箱庭のfootprintは手元サイズ相当（実世界で高々数km）を
+ * 想定しており、この規模のタイル数は明らかに異常（反子午線を跨いだ、または
+ * footprintRadiusM/zoomの指定が極端）なため、早期にRangeErrorで検出する。
+ */
+const MAX_MOSAIC_TILES_PER_AXIS = 64;
+
 export const computeDioramaTextureLayout = (
     points: readonly DioramaTexturePoint[],
     zoom: number,
@@ -94,6 +108,15 @@ export const computeDioramaTextureLayout = (
         if (x > maxTileX) maxTileX = x;
         if (y < minTileY) minTileY = y;
         if (y > maxTileY) maxTileY = y;
+    }
+
+    const tilesX = maxTileX - minTileX + 1;
+    const tilesY = maxTileY - minTileY + 1;
+    if (tilesX > MAX_MOSAIC_TILES_PER_AXIS || tilesY > MAX_MOSAIC_TILES_PER_AXIS) {
+        throw new RangeError(
+            `mosaic tile span too large (${tilesX}x${tilesY} tiles, max ${MAX_MOSAIC_TILES_PER_AXIS} per axis); ` +
+                "points may span the antimeridian (±180°) or footprintRadiusM/zoom is too large for this zoom level",
+        );
     }
 
     const tiles: DioramaMosaicTile[] = [];
