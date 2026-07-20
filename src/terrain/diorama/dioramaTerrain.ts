@@ -236,6 +236,14 @@ const buildMesh = async (
     material.backFaceCulling = false;
     mesh.material = material;
     mesh.alwaysSelectAsActiveMesh = true;
+    // 実機（Meta Quest 3）検証で、側面壁（`diorama-skirt`）を非表示にすると
+    // 地形面がAR中に正しく表示されることを確認した。すなわち、地形面自体は
+    // 問題なく描画されているが、側面壁が深度比較上「手前」として扱われ、
+    // 地形面を覆い隠していたことが判明した。renderingGroupId で地形面を
+    // 側面壁より後段（描画順が後）のグループに明示的に割り当てることで、
+    // 地形面が確実に側面壁より後に描画されるようにする
+    // （側面壁は既定の renderingGroupId=0 のまま）。
+    mesh.renderingGroupId = 1;
 
     // 側面壁・底面（土台）。実物のジオラマ模型のように、外周リングから一定深さ下へ
     // 壁を張って底面で閉じることで、地形メッシュ単体では失われがちな水平（基準面）の
