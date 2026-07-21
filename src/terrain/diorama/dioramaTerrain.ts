@@ -68,6 +68,17 @@ export interface DioramaTerrain {
     setCenter(lat: number, lon: number): Promise<void>;
     setFootprintRadius(radiusM: number): Promise<void>;
     setMapType(mapType: MapType): Promise<void>;
+    /**
+     * 中心・フットプリント半径の一方または両方を、1回のrebuild（buildMesh呼び出し）に
+     * まとめて適用する。
+     *
+     * @remarks `setCenter`+`setFootprintRadius` を個別に呼ぶと、それぞれが独立して
+     * `enqueueRebuild` されるため、内部の直列実行キュー（`pendingRebuild`）上で
+     * 2回の完全なrebuild（DEM/テクスチャの再フェッチを含む）が順番に実行され、
+     * ネットワーク往復分のレイテンシが積み重なる。AR中のコントローラー操作
+     * （地図移動・拡大縮小が同時に入力される）等、低遅延性が重要な場面ではこちらを使う。
+     */
+    setView(patch: { center?: DioramaCenter; footprintRadiusM?: number }): Promise<void>;
     dispose(): void;
 }
 
@@ -377,6 +388,20 @@ export const createDioramaTerrain = async (
         },
         setMapType: (mapType: MapType): Promise<void> =>
             enqueueRebuild((current) => ({ ...current, mapType })),
+        setView: (patch: { center?: DioramaCenter; footprintRadiusM?: number }): Promise<void> => {
+            if (patch.footprintRadiusM !== undefined) {
+                try {
+                    assertPositiveFinite(patch.footprintRadiusM, "footprintRadiusM");
+                } catch (err) {
+                    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+                }
+            }
+            return enqueueRebuild((current) => ({
+                ...current,
+                ...(patch.center !== undefined ? { center: patch.center } : {}),
+                ...(patch.footprintRadiusM !== undefined ? { footprintRadiusM: patch.footprintRadiusM } : {}),
+            }));
+        },
         dispose: (): void => {
             disposed = true;
             disposeBuilt(built);
