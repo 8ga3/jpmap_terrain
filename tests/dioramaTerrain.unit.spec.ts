@@ -142,15 +142,16 @@ vi.mock("../src/terrain/diorama/dioramaSkirt", () => ({
     })),
 }));
 
-import { createDioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
+import { createDioramaTerrain, computeAutoZoomLevel } from "../src/terrain/diorama/dioramaTerrain";
 import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
-import { buildDioramaMosaicTexture } from "../src/terrain/diorama/dioramaTexture";
+import { buildDioramaMosaicTexture, computeDioramaTextureLayout } from "../src/terrain/diorama/dioramaTexture";
 import { buildDioramaGridPoints } from "../src/terrain/diorama/dioramaGrid";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 const mockFetchElevations = vi.mocked(fetchDioramaElevations);
 const mockBuildTexture = vi.mocked(buildDioramaMosaicTexture);
+const mockComputeTextureLayout = vi.mocked(computeDioramaTextureLayout);
 const mockBuildGridPoints = vi.mocked(buildDioramaGridPoints);
 const mockMesh = vi.mocked(Mesh);
 const mockTransformNode = vi.mocked(TransformNode);
@@ -168,6 +169,7 @@ beforeEach(() => {
     elevationDelayMs = 0;
     mockFetchElevations.mockClear();
     mockBuildTexture.mockClear();
+    mockComputeTextureLayout.mockClear();
     mockBuildGridPoints.mockClear();
     mockMesh.mockClear();
     mockTransformNode.mockClear();
@@ -443,5 +445,63 @@ describe("dispose後のrebuildガード", () => {
             expect(created.parent).toBeNull();
             expect(created.dispose).toHaveBeenCalled();
         }
+    });
+});
+
+describe("computeAutoZoomLevel", () => {
+    it("footprintRadiusMが基準値と同じ場合、referenceZoomをそのまま返す", () => {
+        expect(computeAutoZoomLevel(800, 14, 2, 18)).toBe(14);
+        expect(computeAutoZoomLevel(800, 16, 2, 18)).toBe(16);
+    });
+
+    it("footprintRadiusMが基準値の2倍ならズームは1段階粗くなる", () => {
+        expect(computeAutoZoomLevel(1600, 14, 2, 18)).toBe(13);
+    });
+
+    it("footprintRadiusMが基準値の半分ならズームは1段階細かくなる", () => {
+        expect(computeAutoZoomLevel(400, 14, 2, 18)).toBe(15);
+    });
+
+    it("日本全体が見える広いfootprintRadiusMでは、下限までズームが粗くなる（タイル数が際限なく増えない）", () => {
+        // 既定上限 2,000,000m 相当の広範囲。
+        const zoom = computeAutoZoomLevel(2_000_000, 14, 2, 18);
+        expect(zoom).toBeGreaterThanOrEqual(2);
+        expect(zoom).toBeLessThan(14);
+    });
+
+    it("極端に小さいfootprintRadiusMでもmaxZoomでクランプされる", () => {
+        expect(computeAutoZoomLevel(1, 16, 2, 18)).toBe(18);
+    });
+
+    it("footprintRadiusMが0以下・非有限ならreferenceZoom（クランプ後）を安全側のフォールバックとして返す", () => {
+        expect(computeAutoZoomLevel(0, 14, 2, 18)).toBe(14);
+        expect(computeAutoZoomLevel(-100, 14, 2, 18)).toBe(14);
+        expect(computeAutoZoomLevel(NaN, 14, 2, 18)).toBe(14);
+    });
+});
+
+describe("demZoom/textureZoom自動算出（buildMesh経由）", () => {
+    it("demZoom/textureZoom省略時、footprintRadiusMに応じて自動算出したズームでDEM/テクスチャを取得する", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, { ...baseOptions, footprintRadiusM: 1600 });
+
+        // footprintRadiusM=1600（基準800の2倍）→ demZoom=13, textureZoom=15（基準より1段階粗い）。
+        expect(mockFetchElevations.mock.calls[0][1]).toBe(13);
+        expect(mockComputeTextureLayout.mock.calls[0][1]).toBe(15);
+
+        terrain.dispose();
+    });
+
+    it("demZoom/textureZoomを明示指定した場合、footprintRadiusMによらずその値を使う（自動算出は無効化）", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, {
+            ...baseOptions,
+            footprintRadiusM: 1_000_000,
+            demZoom: 10,
+            textureZoom: 12,
+        });
+
+        expect(mockFetchElevations.mock.calls[0][1]).toBe(10);
+        expect(mockComputeTextureLayout.mock.calls[0][1]).toBe(12);
+
+        terrain.dispose();
     });
 });

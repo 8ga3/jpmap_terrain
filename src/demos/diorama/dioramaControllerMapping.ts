@@ -96,9 +96,18 @@ export const computeDioramaPanMetersFromStick = (
 /** フットプリント半径ズームの秒間倍率既定値（1秒間フルで倒すと半径が概ね1/2倍/2倍になる）。 */
 export const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
 
-/** フットプリント半径の下限・上限既定値[m]（DEM/テクスチャ取得ズームレベルの実用域に基づく）。 */
+/**
+ * フットプリント半径の下限・上限既定値[m]。
+ *
+ * 上限は、日本全体（北海道〜沖縄、概ね南北2500km程度）がズームアウトで見渡せる
+ * ことを目安に設定する（2000kmあれば、既定中心（富士山付近）から沖縄・北海道
+ * いずれの端までも十分カバーできる）。DEM/テクスチャの取得ズームレベルは
+ * 固定ではなく `footprintRadiusM` に応じて自動的に粗くなる
+ * （`dioramaTerrain.ts` の `computeAutoZoomLevel` 参照）ため、上限を広げても
+ * 取得タイル数が際限なく増えて重くなることはない。
+ */
 export const DEFAULT_FOOTPRINT_RADIUS_MIN_M = 100;
-export const DEFAULT_FOOTPRINT_RADIUS_MAX_M = 5000;
+export const DEFAULT_FOOTPRINT_RADIUS_MAX_M = 2_000_000;
 
 /**
  * 右スティックY軸（またはGUIズームボタン相当の軸値）から、1フレーム分の
