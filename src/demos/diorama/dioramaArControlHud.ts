@@ -170,16 +170,29 @@ const bindHoldButton = (
         entries.push({ el, type, fn });
     };
 
+    // 複数指（複数pointerId）が絡んだ場合に、片方の pointerup/pointercancel で
+    // 軸が0に戻ってしまう（押し続けているのにズームが止まる）のを防ぐため、
+    // ジョイスティックと同様に最初に押下したpointerIdのみを追跡し、
+    // 一致しないpointerIdのup/cancelは無視する。
+    let activePointerId: number | null = null;
     bind(button, "pointerdown", (event) => {
+        const pointerId = (event as PointerEvent).pointerId;
+        if (activePointerId !== null) return;
+        activePointerId = pointerId;
         // ジョイスティックと同様、ポインタキャプチャで固定する。ボタン外へ指が
         // 出た状態で離しても pointerup/pointercancel を確実にこのボタンで受け取れる
         // ようにし、「押しっぱなし」のままズーム軸が残り続けるのを防ぐ。
         // jsdom（テスト環境）は `setPointerCapture` 未実装のため任意呼び出しにする。
-        button.setPointerCapture?.((event as PointerEvent).pointerId);
+        button.setPointerCapture?.(pointerId);
         setAxis(pressedAxis);
     });
-    bind(button, "pointerup", () => setAxis(0));
-    bind(button, "pointercancel", () => setAxis(0));
+    const onPointerEnd = (event: PointerEvent): void => {
+        if (event.pointerId !== activePointerId) return;
+        activePointerId = null;
+        setAxis(0);
+    };
+    bind(button, "pointerup", onPointerEnd as EventListener);
+    bind(button, "pointercancel", onPointerEnd as EventListener);
 
     const isActivationKey = (key: string): boolean => key === "Enter" || key === " ";
     const onKeyDown = ((event: KeyboardEvent) => {
