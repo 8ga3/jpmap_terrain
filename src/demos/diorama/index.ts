@@ -118,7 +118,10 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
 
-    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root).catch((err: unknown) => {
+    setupDioramaWebXrArButton(mount, scene, dioramaTerrain, {
+        center: DEFAULT_CENTER,
+        footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
+    }).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
     });
 
