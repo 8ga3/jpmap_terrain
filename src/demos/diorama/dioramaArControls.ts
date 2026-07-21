@@ -13,9 +13,17 @@
  * 単純に加算して1つの入力として扱う（通常はどちらか一方のみが同時に使われるため、
  * 排他制御は行わない）。
  *
- * `setCenter`/`setFootprintRadius` は非同期の地形再構築（タイル/DEM再取得）を
- * 伴うため毎フレーム呼ぶとネットワーク負荷が高い。移動量・ズーム後の半径を
- * 一定間隔ごとにまとめて適用する（{@link APPLY_INTERVAL_MS}）。
+ * `setCenter`/`setFootprintRadius`（それぞれ独立してDEM/テクスチャの再取得を伴う
+ * 完全な地形rebuildを行う）は毎フレーム呼ぶとネットワーク往復のレイテンシが積み重なる。
+ * 加えて、`dioramaTerrain`内部の直列実行キュー（`pendingRebuild`）は完了を待たずに
+ * 積むと際限なくバックログが溜まる。そのため本モジュールは:
+ * - 前回のrebuild（`setView`呼び出し）が完了するまで次を発行しない
+ *   （固定間隔タイマーではなく「完了待ち合流」方式。実機検証で、固定間隔タイマーが
+ *   rebuild完了を待たずにキューへ積み続け、ジョイスティック入力が数秒遅れて
+ *   順次処理される不具合を確認したため）。
+ * - パン・ズームが同時に変化している場合は `setView`（1回のrebuildで中心と
+ *   フットプリント半径の両方を反映する）にまとめて渡し、2回の独立したrebuildに
+ *   分かれないようにする。
  *
  * 本モジュールが `center`/`footprintRadiusM` の現在値を単独で保持・更新する
  * （`DioramaTerrain` 自体は現在値のgetterを持たないため）。将来のサブタスク
@@ -40,9 +48,6 @@ import {
     type StickAxes,
 } from "./dioramaControllerMapping";
 import { createDioramaArControlHud } from "./dioramaArControlHud";
-
-/** 移動量の適用間隔[ms]（この間隔ごとにまとめて `setCenter`/`setFootprintRadius` を呼ぶ）。 */
-const APPLY_INTERVAL_MS = 300;
 
 /** 左右コントローラーのスティック軸を保持する（未接続時は `{0,0}`）。 */
 interface ControllerStickState {
@@ -128,27 +133,39 @@ export const setupDioramaArControls = (
 
     let pendingEastM = 0;
     let pendingNorthM = 0;
-    let lastAppliedAtMs = performance.now();
+    // 前回の `setView` 呼び出し（rebuild）が完了するまで次を発行しない
+    // （固定間隔タイマーだと、rebuild完了より短い間隔で発行し続けた場合に
+    // `dioramaTerrain` 内部の直列実行キューへ際限なく積み上がってしまう。
+    // 冒頭コメント参照）。
+    let applying = false;
 
-    const flushIfDue = (nowMs: number): void => {
-        if (nowMs - lastAppliedAtMs < APPLY_INTERVAL_MS) return;
-        lastAppliedAtMs = nowMs;
+    const flush = (): void => {
+        if (applying) return;
+        const hasPan = pendingEastM !== 0 || pendingNorthM !== 0;
+        const hasZoom = currentFootprintRadiusM !== lastAppliedFootprintRadiusM;
+        if (!hasPan && !hasZoom) return;
 
-        if (pendingEastM !== 0 || pendingNorthM !== 0) {
+        const patch: { center?: DioramaCenter; footprintRadiusM?: number } = {};
+        if (hasPan) {
             currentCenter = offsetToLatLon(currentCenter, pendingEastM, pendingNorthM);
+            patch.center = currentCenter;
             pendingEastM = 0;
             pendingNorthM = 0;
-            dioramaTerrain.setCenter(currentCenter.lat, currentCenter.lon).catch((err: unknown) => {
-                console.error("[jpmap-terrain diorama demo] setCenter failed:", err);
-            });
+        }
+        if (hasZoom) {
+            patch.footprintRadiusM = currentFootprintRadiusM;
+            lastAppliedFootprintRadiusM = currentFootprintRadiusM;
         }
 
-        if (currentFootprintRadiusM !== lastAppliedFootprintRadiusM) {
-            lastAppliedFootprintRadiusM = currentFootprintRadiusM;
-            dioramaTerrain.setFootprintRadius(currentFootprintRadiusM).catch((err: unknown) => {
-                console.error("[jpmap-terrain diorama demo] setFootprintRadius failed:", err);
+        applying = true;
+        dioramaTerrain
+            .setView(patch)
+            .catch((err: unknown) => {
+                console.error("[jpmap-terrain diorama demo] setView failed:", err);
+            })
+            .finally(() => {
+                applying = false;
             });
-        }
     };
 
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
@@ -170,7 +187,7 @@ export const setupDioramaArControls = (
             currentFootprintRadiusM = clampFootprintRadiusM(currentFootprintRadiusM * factor);
         }
 
-        flushIfDue(performance.now());
+        flush();
     });
 
     return (): void => {

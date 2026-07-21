@@ -281,6 +281,86 @@ describe("setFootprintRadius の入力検証", () => {
     });
 });
 
+describe("setView", () => {
+    it("footprintRadiusM <= 0 は同期例外ではなくRangeErrorでreject", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        let synchronousThrow = false;
+        let result: Promise<void>;
+        try {
+            result = terrain.setView({ footprintRadiusM: -1 });
+        } catch {
+            synchronousThrow = true;
+            result = Promise.resolve();
+        }
+        expect(synchronousThrow).toBe(false);
+        await expect(result).rejects.toThrow(RangeError);
+        terrain.dispose();
+    });
+
+    it("centerのみ指定した場合、footprintRadiusMは変更せず中心のみ更新する", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockBuildGridPoints.mockClear();
+
+        await terrain.setView({ center: { lat: 40, lon: 141 } });
+
+        expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
+        const [center, footprintRadiusM] = mockBuildGridPoints.mock.calls[0];
+        expect(center).toEqual({ lat: 40, lon: 141 });
+        expect(footprintRadiusM).toBe(baseOptions.footprintRadiusM);
+
+        terrain.dispose();
+    });
+
+    it("footprintRadiusMのみ指定した場合、centerは変更せず半径のみ更新する", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockBuildGridPoints.mockClear();
+
+        await terrain.setView({ footprintRadiusM: 1500 });
+
+        expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
+        const [center, footprintRadiusM] = mockBuildGridPoints.mock.calls[0];
+        expect(center).toEqual(baseOptions.center);
+        expect(footprintRadiusM).toBe(1500);
+
+        terrain.dispose();
+    });
+
+    it("centerとfootprintRadiusMを同時指定した場合、1回のrebuildで両方反映する（setCenter+setFootprintRadiusを個別に呼ぶ場合の2回のrebuildと異なる）", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockBuildGridPoints.mockClear();
+
+        await terrain.setView({ center: { lat: 40, lon: 141 }, footprintRadiusM: 1500 });
+
+        expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
+        const [center, footprintRadiusM] = mockBuildGridPoints.mock.calls[0];
+        expect(center).toEqual({ lat: 40, lon: 141 });
+        expect(footprintRadiusM).toBe(1500);
+
+        terrain.dispose();
+    });
+
+    it("並行呼び出しでも直列化キューを通り、後続のsetViewは直前の変更を引き継ぐ", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockBuildGridPoints.mockClear();
+
+        elevationDelayMs = 30;
+        const p1 = terrain.setView({ center: { lat: 36, lon: 140 } });
+        elevationDelayMs = 0;
+        const p2 = terrain.setView({ footprintRadiusM: 500 });
+
+        await Promise.all([p1, p2]);
+
+        expect(mockBuildGridPoints).toHaveBeenCalledTimes(2);
+        const [firstCallArgs, secondCallArgs] = mockBuildGridPoints.mock.calls;
+        expect(firstCallArgs[0]).toEqual({ lat: 36, lon: 140 });
+        expect(firstCallArgs[1]).toBe(baseOptions.footprintRadiusM);
+        expect(secondCallArgs[0]).toEqual({ lat: 36, lon: 140 });
+        expect(secondCallArgs[1]).toBe(500);
+
+        terrain.dispose();
+    });
+});
+
 describe("並行呼び出しのrebuildキュー直列化", () => {
     it("setCenter → setFootprintRadius を並行に呼んでも、後続rebuildは直前の変更を引き継ぐ", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
