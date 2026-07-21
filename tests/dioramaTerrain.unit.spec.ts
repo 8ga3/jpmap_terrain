@@ -65,6 +65,7 @@ vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
             specularColor: null as unknown,
             backFaceCulling: true,
             dispose: vi.fn(),
+            forceCompilationAsync: vi.fn(() => Promise.resolve()),
         };
     }),
 }));
