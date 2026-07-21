@@ -473,10 +473,18 @@ describe("computeAutoZoomLevel", () => {
         expect(computeAutoZoomLevel(1, 16, 2, 18)).toBe(18);
     });
 
-    it("footprintRadiusMが0以下・非有限ならreferenceZoom（クランプ後）を安全側のフォールバックとして返す", () => {
+    it("footprintRadiusMが0以下・NaNならreferenceZoom（クランプ後）を安全側のフォールバックとして返す", () => {
         expect(computeAutoZoomLevel(0, 14, 2, 18)).toBe(14);
         expect(computeAutoZoomLevel(-100, 14, 2, 18)).toBe(14);
         expect(computeAutoZoomLevel(NaN, 14, 2, 18)).toBe(14);
+    });
+
+    it("footprintRadiusMがInfinityなら、巨大な半径として扱いminZoomへフォールバックする", () => {
+        // ratio=Infinity→zoom=referenceZoom-Infinity=-Infinity（非有限）となり、
+        // 0以下・NaN時と同じ安全側フォールバック分岐を通るが、結果はreferenceZoomではなく
+        // minZoom（最も粗いズーム）になる。巨大な半径では粗いズームが適切なため、
+        // 偶然ではあるが妥当な挙動として明示的にテストする。
+        expect(computeAutoZoomLevel(Infinity, 14, 2, 18)).toBe(2);
     });
 });
 

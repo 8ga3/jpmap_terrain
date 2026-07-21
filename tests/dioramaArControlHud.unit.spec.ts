@@ -110,6 +110,47 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(0);
     });
 
+    it("ズームボタンはキーボード操作（Enter/Space押下中）でも軸値が更新される", () => {
+        const hud = build();
+        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+
+        zoomInButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(-1);
+        zoomInButton.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(0);
+
+        zoomInButton.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(-1);
+        zoomInButton.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
+    it("ズームボタンはキーリピート(keydownのrepeat)では再入せず、Enter/Space以外のキーは無視する", () => {
+        const hud = build();
+        const zoomOutButton = hud.element.querySelectorAll("button")[1] as HTMLButtonElement;
+
+        zoomOutButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(0);
+
+        zoomOutButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(1);
+        // ブラウザがEnter長押しで発火するリピートkeydownは無視する（実害はないが再入を避ける）。
+        zoomOutButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
+        expect(hud.getZoomAxis()).toBe(1);
+        zoomOutButton.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
+    it("ズームボタンはフォーカスを失うと（keyupを取りこぼしても）軸値が0へ戻る", () => {
+        const hud = build();
+        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+
+        zoomInButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(hud.getZoomAxis()).toBe(-1);
+        zoomInButton.dispatchEvent(new FocusEvent("blur"));
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
     it("dispose()はHUD要素をDOMから除去する", () => {
         const hud = build();
         expect(document.body.contains(hud.element)).toBe(true);

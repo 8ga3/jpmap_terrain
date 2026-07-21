@@ -152,6 +152,51 @@ const createJoystick = (): { element: HTMLElement; getAxes: () => StickAxes; dis
 };
 
 /**
+ * ズームボタン1個分の「押している間だけ有効」入力を pointer/keyboard 両方に
+ * バインドする。キーボード操作（Tabフォーカス+Enter/Space）でも同じ押しっぱなし
+ * 挙動にすることで、コントローラー/タッチが使えない環境でもズームできるようにする
+ * （アクセシビリティ対応）。
+ * @param setAxis     軸値の設定関数（`() => (axis = value)` 相当）。
+ * @param pressedAxis 押下中に設定する軸値（「+」= -1、「-」= +1）。
+ */
+const bindHoldButton = (
+    button: HTMLButtonElement,
+    setAxis: (axis: number) => void,
+    pressedAxis: number,
+): Array<{ el: HTMLElement; type: string; fn: EventListener }> => {
+    const entries: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
+    const bind = (el: HTMLElement, type: string, fn: EventListener): void => {
+        el.addEventListener(type, fn);
+        entries.push({ el, type, fn });
+    };
+
+    bind(button, "pointerdown", () => setAxis(pressedAxis));
+    bind(button, "pointerup", () => setAxis(0));
+    bind(button, "pointercancel", () => setAxis(0));
+
+    const isActivationKey = (key: string): boolean => key === "Enter" || key === " ";
+    const onKeyDown = ((event: KeyboardEvent) => {
+        if (!isActivationKey(event.key)) return;
+        // キーリピートで再入しても実害はないが、余分な処理を避けるため無視する。
+        if (event.repeat) return;
+        // スペースキーの既定動作（ページスクロール）を防ぐ。
+        event.preventDefault();
+        setAxis(pressedAxis);
+    }) as EventListener;
+    const onKeyUp = ((event: KeyboardEvent) => {
+        if (!isActivationKey(event.key)) return;
+        setAxis(0);
+    }) as EventListener;
+    bind(button, "keydown", onKeyDown);
+    bind(button, "keyup", onKeyUp);
+    // フォーカスを失った際に押しっぱなし扱いのまま残らないようにする
+    // （keyupを取りこぼすケース、例: 押下中にTab/クリックで別要素へ移動した場合）。
+    bind(button, "blur", () => setAxis(0));
+
+    return entries;
+};
+
+/**
  * ズームボタン（+/-）を作成する。押している間だけ軸値を持ち、離すと0に戻る
  * （ジョイスティックと同様、継続的な入力として扱えるようにするため）。
  */
@@ -168,40 +213,23 @@ const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dis
     } satisfies Partial<CSSStyleDeclaration>);
 
     let axis = 0;
-    const listeners: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
-    const bind = (el: HTMLElement, type: string, fn: EventListener): void => {
-        el.addEventListener(type, fn);
-        listeners.push({ el, type, fn });
+    const setAxis = (value: number): void => {
+        axis = value;
     };
+    const listeners: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
 
     // 「+」= ズームイン（フットプリント半径を縮める）= スティック規約の前方向 = 負の軸値。
     const zoomInButton = document.createElement("button");
     styleHudButton(zoomInButton);
     zoomInButton.textContent = "+";
     zoomInButton.setAttribute("aria-label", "ズームイン");
-    bind(zoomInButton, "pointerdown", () => {
-        axis = -1;
-    });
-    bind(zoomInButton, "pointerup", () => {
-        axis = 0;
-    });
-    bind(zoomInButton, "pointercancel", () => {
-        axis = 0;
-    });
+    listeners.push(...bindHoldButton(zoomInButton, setAxis, -1));
 
     const zoomOutButton = document.createElement("button");
     styleHudButton(zoomOutButton);
     zoomOutButton.textContent = "−";
     zoomOutButton.setAttribute("aria-label", "ズームアウト");
-    bind(zoomOutButton, "pointerdown", () => {
-        axis = 1;
-    });
-    bind(zoomOutButton, "pointerup", () => {
-        axis = 0;
-    });
-    bind(zoomOutButton, "pointercancel", () => {
-        axis = 0;
-    });
+    listeners.push(...bindHoldButton(zoomOutButton, setAxis, 1));
 
     container.appendChild(zoomInButton);
     container.appendChild(zoomOutButton);
