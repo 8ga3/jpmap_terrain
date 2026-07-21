@@ -47,11 +47,25 @@ import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaAr
  * （冒頭のコメント参照。`enterXRAsync` 後に呼んでもブラウザ側のWebXRセッションには
  * 反映されない）。
  *
+ * @remarks WebXR仕様（DOM Overlays）上、`domOverlay.root` に指定する要素は
+ * セッション要求（`requestSession`）の時点で**文書に接続されている
+ * （`Node.isConnected`）**必要がある。未接続の要素を渡すと、多くの実装で
+ * `requestSession` 自体が失敗し、AR突入直後に即座にデスクトップ表示へ
+ * 戻ってしまう（Androidスマホ実機検証で確認）。そのため、HUD要素を
+ * `mount` へ追加してから feature を有効化する。
+ *
+ * @param mount HUD要素を追加する親要素（`setupDioramaWebXrArButton` が
+ *   受け取るコンテナ要素と同じものを渡すこと）。
  * @returns 生成したHUD。`setupDioramaArControls` へそのまま渡し、不要になったら
- *   `dispose()` を呼ぶこと。
+ *   `dispose()` を呼ぶこと（`dispose()` は `mount` からの除去も行う）。
  */
-export const createDioramaArControlHudForSession = (xr: WebXRDefaultExperience): DioramaArControlHud => {
+export const createDioramaArControlHudForSession = (
+    xr: WebXRDefaultExperience,
+    mount: HTMLElement,
+): DioramaArControlHud => {
     const hud = createDioramaArControlHud();
+    // `domOverlay.root` は文書に接続済みである必要があるため、feature有効化より前に追加する。
+    mount.appendChild(hud.element);
     try {
         xr.baseExperience.featuresManager.enableFeature(
             WebXRFeatureName.DOM_OVERLAY,
