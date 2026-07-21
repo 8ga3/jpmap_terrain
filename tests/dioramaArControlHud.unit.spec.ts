@@ -8,7 +8,7 @@
  * `setPointerCapture` は jsdom 未実装のため、実装側でオプショナル呼び出し
  * （`?.()`）にしてある前提でテストする。
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { createDioramaArControlHud, type DioramaArControlHud } from "../src/demos/diorama/dioramaArControlHud";
 
 const dispatchPointer = (
@@ -107,6 +107,26 @@ describe("createDioramaArControlHud", () => {
         dispatchPointer(zoomOutButton, "pointerdown", {});
         expect(hud.getZoomAxis()).toBe(1);
         dispatchPointer(zoomOutButton, "pointercancel", {});
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
+    it("ズームボタン押下時にsetPointerCaptureで固定し、ボタン外で離れてもpointerupを受け取れる", () => {
+        const hud = build();
+        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        // jsdomは`setPointerCapture`未実装のため、呼び出しを検証できるようスタブする
+        // （キャプチャの実効果自体はブラウザに委ねる。ここでは正しいpointerIdで
+        // 呼ばれることのみ検証する）。
+        const setPointerCapture = vi.fn();
+        zoomInButton.setPointerCapture = setPointerCapture;
+
+        dispatchPointer(zoomInButton, "pointerdown", { pointerId: 7 });
+        expect(setPointerCapture).toHaveBeenCalledWith(7);
+        expect(hud.getZoomAxis()).toBe(-1);
+
+        // キャプチャにより、ボタン外へ出た状態のpointerupでもこのボタンへ届く想定
+        // （jsdomはキャプチャを実装しないため、ここでは直接ボタンへdispatchして
+        // ハンドラ自体が正しく0へ戻すことを確認する）。
+        dispatchPointer(zoomInButton, "pointerup", { pointerId: 7 });
         expect(hud.getZoomAxis()).toBe(0);
     });
 
