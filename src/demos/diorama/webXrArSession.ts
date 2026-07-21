@@ -109,8 +109,16 @@ const styleArButton = (button: HTMLButtonElement): void => {
     button.setAttribute("title", "ARで表示 (WebXR)");
 };
 
-/** AR突入時、箱庭をユーザー正面へ配置するオフセット[m]（実機カメラ位置から水平前方）。 */
-const AR_PLACEMENT_DISTANCE_M = 1.2;
+/**
+ * AR突入時、箱庭をユーザー正面へ配置するオフセット[m]（実機カメラ位置から水平前方、
+ * 箱庭中心までの距離）。
+ *
+ * @remarks 実機検証で「もう少し近い方がよい」とのフィードバックを受けて、
+ * 当初の1.2mから縮小した。既定の卓上表示半径（{@link module:src/demos/diorama/index.ts}
+ * の `DEFAULT_TABLE_RADIUS_M`、0.35m）を踏まえると、この距離で箱庭の手前端が
+ * ユーザーの目の前25cm程度になり、手を伸ばして触れられる距離感になる。
+ */
+const AR_PLACEMENT_DISTANCE_M = 0.6;
 
 /**
  * 卓上（テーブルトップ）ジオラマとして自然に見えるよう、床面（y=0）ではなく
