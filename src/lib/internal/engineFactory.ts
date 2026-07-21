@@ -33,17 +33,13 @@ export interface CreateBabylonEngineOptions {
      * reverse-Z 深度バッファ（{@link enableReverseDepthBuffer}）を有効化するか。既定は `true`
      * （globe/viewer 等、既存デモの挙動を変えないため）。
      *
-     * @remarks WebXR (`immersive-ar`/`immersive-vr`) セッション中、Babylon の `WebXRCamera` は
-     * 自前の投影行列を計算せず、ブラウザ（デバイス）が `XRView.projectionMatrix` として渡す
-     * 生の行列をそのままコピーする（`@babylonjs/core/XR/webXRCamera.js` の
-     * `_updateFromXRSession` 参照）。この行列は reverse-Z 変換を考慮しない通常の
-     * （forward-Z）投影行列であるため、`useReverseDepthBuffer=true`（reverse-Z 前提の深度
-     * クリア値・深度比較関数・`zOffset`符号反転）と組み合わせると、深度テストの前提が
-     * 一致しなくなる。実機（Meta Quest 3 / Androidスマホ）検証で、地形メッシュと側面壁の
-     * オクルージョンが機種間で不安定になる不具合・Androidで基本プリミティブすら描画されない
-     * 不具合が、`renderingGroupId`/`zOffset`/メッシュ統合等の深度回避策では解消できなかった
-     * ことから、この不整合が根本原因である可能性が高いと判明した
-     * （diorama デモ: `false` を指定する）。
+     * @remarks WebXR セッション中、Babylon の `WebXRCamera` は自前の投影行列を計算せず、
+     * ブラウザが `XRView.projectionMatrix` として渡す生の行列（reverse-Z 変換されない
+     * 通常の forward-Z 行列）をそのまま使う（`@babylonjs/core/XR/webXRCamera.js` の
+     * `_updateFromXRSession` 参照）。このため `useReverseDepthBuffer=true`
+     * （reverse-Z 前提の深度クリア値・比較関数）と組み合わせると、AR中の深度テストの
+     * 前提が一致しなくなる（diorama デモではこれが原因で地形/側面壁のオクルージョンが
+     * 実機で不安定になった。`false` を指定して回避する）。
      */
     reverseDepthBuffer?: boolean;
 }

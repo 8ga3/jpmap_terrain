@@ -2,40 +2,25 @@
  * diorama デモの WebXR (`immersive-ar`) セッション統合。
  *
  * @remarks
- * **設計方針（VR PoC との違い）**: `feature/533-webxr-vr-viewer` ブランチの
- * `src/demos/viewer/webXrVrSession.ts`（immersive-vr PoC）は、実寸大の惑星ECEF座標系を
- * WebXR カメラへ反映するため、リグ（`TransformNode`）の毎フレームECEF位置更新、
- * コントローラースティックによるパン/ズーム、LODバイアス同期、depthNear/depthFarの
- * 動的更新など、惑星スケール特有の複雑な仕組みを必要とした。
+ * **設計方針（VR PoC との違い）**: `feature/533-webxr-vr-viewer` の immersive-vr PoC
+ * （`src/demos/viewer/webXrVrSession.ts`）は実寸大の惑星ECEF座標系を扱うため、リグの
+ * 毎フレームECEF位置更新・コントローラーによるパン/ズーム・LODバイアス同期など
+ * 惑星スケール特有の仕組みを必要とした。一方 diorama は実寸メートルスケールの固定
+ * 卓上モデルで、AR中の視点移動は「ユーザーが物理的に歩く」ことで実現するため、
+ * 本モジュールは PoC よりも大幅に単純である。独自ロジックは「箱庭をユーザー正面に
+ * 配置する」「パススルー背景にする」の2点のみ。
  *
- * 一方、diorama は既に実寸メートルスケールの固定卓上モデル（`dioramaTerrain.root` の
- * 一様スケール適用のみ）であり、AR中の視点移動は「ユーザーが物理的に歩く」ことで
- * 実現する（`local-floor` 参照空間でのヘッドセットトラッキングをそのまま使うだけでよく、
- * 独自のリグ位置更新ロジックは不要）。そのため本モジュールは PoC よりも大幅に単純である：
- * - ECEF座標変換・LODバイアス同期・depth range動的更新は不要（対象外）
- * - コントローラー入力によるパン/ズームも行わない（歩行のみ）
- * - 唯一必要な独自ロジックは「箱庭をユーザー正面に配置する」「パススルー背景にする」の2点
+ * **パススルー表示**: diorama シーンはスカイボックス/地面メッシュを持たないため
+ * `WebXRBackgroundRemover` feature は使わず、`scene.clearColor.a` をAR突入時に 0、
+ * 退出時に元の値へ戻すことでパススルー映像を透過表示する。
  *
- * **パススルー表示の実現方法**: diorama シーンは `scene.createDefaultEnvironment()` の
- * ようなスカイボックス/地面メッシュを持たないため、`WebXRBackgroundRemover` feature
- * （名前付きメッシュの非表示化のみを行う）は無効（no-op）。実際にパススルー映像を
- * 透過表示するには、フレームバッファの alpha を 0 にする必要があるため、
- * `scene.clearColor.a` をAR突入時に 0、退出時に元の値へ戻す。
- *
- * **箱庭の配置**: AR突入直後は `camera.position`/`rotationQuaternion` がまだ実機の
- * トラッキング値に更新されていないことがある（`immersive-ar` セッションは
- * `immersive-vr` と異なり、デスクトップカメラの姿勢を引き継ぐ処理を行わず、
- * 実際の最初の実機フレームが届くまでプレースホルダー値のままになる。
- * `WebXRExperienceHelper.enterXRAsync` 参照）。そのため、突入直後に固定の
- * ワールド座標へ配置すると、実機の初期トラッキング原点との対応関係が
- * 保証されない（実機検証で「見えない」「背後に横倒しで表示される」不具合を確認）。
- * これを避けるため、実機フレームが複数回届いて姿勢が安定してから、
- * その時点の実際のカメラ位置・水平前方向を読み取って相対配置する
- * （{@link placeDioramaRelativeToCamera}）。
- *
- * 卓上（テーブルトップ）ジオラマという体裁に合わせ、床面（y=0）ではなく
- * 目線よりやや低いテーブル高さ相当（{@link AR_TABLE_HEIGHT_M}）に配置する
- * （床検出（hit-test）による実際のテーブル高さ推定は本Issueの範囲外）。
+ * **箱庭の配置**: `immersive-ar` は `immersive-vr` と異なり、`enterXRAsync` 直後は
+ * カメラ姿勢がまだプレースホルダー値で、実機フレームが届くまで実際のトラッキング値に
+ * ならない。突入直後に固定のワールド座標へ配置すると実機の初期トラッキング原点と
+ * ずれるため、姿勢が安定してから実際のカメラ位置・水平前方向を読み取って相対配置する
+ * （{@link placeDioramaRelativeToCamera}）。卓上ジオラマという体裁に合わせ、床面
+ * ではなくテーブル高さ相当（{@link AR_TABLE_HEIGHT_M}）に配置する（床検出による
+ * 実際のテーブル高さ推定は本Issueの範囲外）。
  *
  * 命名メモ: VR PoC 同様、本リポジトリでは "VR" が Playwright Visual Regression テストの
  * 略称としても使われているため、シンボル名には "WebXr" プレフィックスを用いる。
@@ -135,12 +120,10 @@ const AR_TABLE_HEIGHT_M = 0.7;
  * ARセッション突入直後、実機のトラッキング姿勢が反映されるまで待つフレーム数。
  *
  * @remarks
- * `immersive-ar` セッションは `enterXRAsync` 内で `camera.position`/`rotationQuaternion`
- * を一旦プレースホルダー値（原点・単位回転）にリセットするのみで、`immersive-vr` の
- * ようにデスクトップカメラの姿勢を引き継ぐ処理（`compensateOnFirstFrame`）は行わない
+ * `immersive-ar` は `enterXRAsync` 直後、`immersive-vr` と異なりデスクトップカメラの
+ * 姿勢を引き継がず、カメラ位置/回転を一旦プレースホルダー値にリセットする
  * （`WebXRExperienceHelper.enterXRAsync` 参照）。実際の値は最初の実機フレームで
- * 上書きされるが、念のため数フレーム待ってから読み取ることで、初期化タイミングの
- * 揺らぎに対して安全側に倒す。
+ * 上書きされるが、初期化タイミングの揺らぎに対して安全側に倒すため数フレーム待つ。
  */
 const AR_PLACEMENT_WAIT_FRAMES = 3;
 

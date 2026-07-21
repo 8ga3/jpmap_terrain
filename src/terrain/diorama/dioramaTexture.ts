@@ -7,13 +7,11 @@
  * 実際のフェッチ/描画（`buildDioramaMosaicTexture`）から独立してテストできるようにする。
  *
  * @remarks
- * 合成したcanvasは、Babylonの `DynamicTexture` ではなく、`canvas.toBlob()` で
- * 得た画像データを通常の `Texture`（`buffer` 引数にBlobを直接渡す形）として
- * 読み込む。WebXR (`immersive-ar`) の実機検証で、`DynamicTexture` を使うと
- * パススルー合成中に地形面だけが透けて見える（実際の景色が透過する）不具合を
- * 確認したため（単純な板ポリに通常の`Texture`で同じタイル画像を貼ったテストでは
- * 再現しなかった）、原因の完全な特定には至っていないものの、既知良好な
- * `Texture` 経路へ切り替えることで回避する。
+ * 合成した canvas は Babylon の `DynamicTexture` ではなく、`canvas.toBlob()` →
+ * `URL.createObjectURL()` を経由して通常の `Texture` として読み込む。WebXR
+ * (`immersive-ar`) の実機検証で、`DynamicTexture` を使うとパススルー合成中に
+ * 地形面だけが透けて見える不具合を確認したため、動作確認済みの `Texture` 経路へ
+ * 切り替えて回避する。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
@@ -224,21 +222,17 @@ export const buildDioramaMosaicTexture = async (
         throw new Error("[jpmap-terrain diorama] failed to encode texture mosaic canvas to a blob");
     }
 
-    // Babylon の `Texture` は内部で `<img>` 要素（`Tools.LoadImage`）を使って画像を
-    // 読み込むため、`buffer` 引数に Blob を渡すだけでは `url` 引数が実際に
-    // fetch されてしまい失敗する（`buffer` はDDS/KTX等の一部フォーマット向けの
-    // 経路でのみ使われ、標準的な画像読み込み経路では使われない）。
-    // `URL.createObjectURL` で読み込み可能なURLへ変換して渡す。このURLは
-    // 呼び出しごとに一意（UUIDを含む）なため、Babylonのシーン内テクスチャ
-    // キャッシュが再構築時に古いタイル画像を誤って再利用する心配もない。
+    // Babylon の `Texture` は画像を `<img>` 要素（`Tools.LoadImage`）経由で読み込むため、
+    // `URL.createObjectURL` でBlobを読み込み可能なURLへ変換して渡す。呼び出しごとに
+    // 一意なURLになるため、テクスチャキャッシュが古いタイル画像を再利用する心配もない。
     const objectUrl = URL.createObjectURL(blob);
 
     return await new Promise<Texture>((resolve, reject) => {
         const texture = new Texture(
             objectUrl,
             scene,
-            false, // noMipmap=false（ミップマップを生成する。従来のDynamicTexture(generateMipMaps=true)と同等）
-            false, // invertY=false（従来のDynamicTexture.update(false)と同じ向き規約を維持する）
+            false, // noMipmap: ミップマップを生成する
+            false, // invertY
             Texture.TRILINEAR_SAMPLINGMODE,
             () => {
                 URL.revokeObjectURL(objectUrl);
