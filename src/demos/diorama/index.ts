@@ -125,7 +125,7 @@ const start = async (): Promise<void> => {
     // （PC単体でAR無しでも動作確認できるようにする目的）の双方から使われ、
     // どちらで移動しても位置がもう一方に引き継がれる（`dioramaViewController.ts`参照）。
     const viewController = createDioramaViewController(dioramaTerrain, DEFAULT_CENTER, DEFAULT_FOOTPRINT_RADIUS_M);
-    setupDioramaKeyboardControls(scene, viewController);
+    setupDioramaKeyboardControls(scene, camera, viewController);
 
     setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, viewController).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
