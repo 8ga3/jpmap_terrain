@@ -274,6 +274,14 @@ const buildMesh = async (
     skirtMaterial.backFaceCulling = false;
     skirtMesh.material = skirtMaterial;
 
+    // 地形面・側面壁のマテリアル（シェーダー）を、シーンへ追加する前にコンパイルしておく。
+    // rebuild時（`enqueueRebuild`）は新メッシュ生成直後に旧メッシュを破棄するが、
+    // マテリアルの初回シェーダーコンパイルはシーンへ追加後・初回描画時に走る
+    // （Babylonの遅延コンパイル）ため、事前コンパイルしておかないと、旧メッシュ破棄
+    // 後・新メッシュのコンパイル完了までの数フレーム何も描画されず、地図移動のたびに
+    // チラつきが発生する（実機/デスクトップ双方で確認）。
+    await Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]);
+
     return { mesh, material, texture, skirtMesh, skirtMaterial };
 };
 
