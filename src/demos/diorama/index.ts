@@ -92,6 +92,15 @@ const start = async (): Promise<void> => {
     );
     camera.lowerRadiusLimit = DEFAULT_TABLE_RADIUS_M * 1.2;
     camera.upperRadiusLimit = DEFAULT_TABLE_RADIUS_M * 15;
+    // Babylonの既定 `minZ`（near clip、既定値1）は本デモの `lowerRadiusLimit`
+    // （既定0.42m）より大きく、最も寄った状態では箱庭本体がニアクリップされて
+    // 消えてしまう（実機/デスクトップ双方で確認）。箱庭の実寸スケール（卓上サイズ、
+    // 既定 radius 0.42〜5.25m）に合わせて、ニアクリップをできる限りカメラへ
+    // 近づける。`maxZ`も既定（10000）のままだと near:far 比が極端になり深度精度が
+    // 悪化するため、本デモで実際に必要な範囲（upperRadiusLimitに十分な余裕を
+    // 持たせた程度）へ縮小し、既定と同程度以上の深度精度を保つ。
+    camera.minZ = 0.01;
+    camera.maxZ = 50;
     camera.wheelPrecision = 200;
     // タッチのピンチズームは既定（絶対量ベース）だと箱庭の極小スケール
     // （既定 radius 0.42〜5.25m）では過敏になる（実機検証で確認）。
