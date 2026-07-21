@@ -227,7 +227,7 @@ export const setupDioramaWebXrArButton = async (
         xr?.dispose();
         xr = null;
         entering = true;
-        void enterAr(scene, dioramaRoot, viewController, button)
+        void enterAr(mount, scene, dioramaRoot, viewController, button)
             .then((created) => {
                 // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にデモを
@@ -252,6 +252,7 @@ export const setupDioramaWebXrArButton = async (
  *  ボタンを通常表示へ戻したうえで `null` を返す（呼び出し元はクリック可能な状態を維持する）。
  */
 const enterAr = async (
+    mount: HTMLElement,
     scene: Scene,
     dioramaRoot: TransformNode,
     viewController: DioramaViewController,
@@ -279,7 +280,7 @@ const enterAr = async (
         // AR中のコントローラー/GUI操作用HUD + `dom-overlay` feature の登録は、
         // 必ず `enterXRAsync` より前に行う（`dioramaArControls.ts` 冒頭コメント参照。
         // WebXR仕様上、`dom-overlay` はセッション要求時点でのみ有効化できるため）。
-        hud = createDioramaArControlHudForSession(xrExperience);
+        hud = createDioramaArControlHudForSession(xrExperience, mount);
 
         if (xrExperience.baseExperience.state === WebXRState.NOT_IN_XR) {
             await xrExperience.baseExperience.enterXRAsync("immersive-ar", "local-floor", xrExperience.renderTarget);
