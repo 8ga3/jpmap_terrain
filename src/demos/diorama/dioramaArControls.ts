@@ -95,19 +95,44 @@ const zeroStickState = (): ControllerStickState => ({ left: { x: 0, y: 0 }, righ
 /**
  * 追加されたコントローラーのthumbstick入力を `sticks` へ反映するリスナーを登録する
  * （`feature/533-webxr-vr-viewer` の `trackControllerSticks` と同じ設計）。
+ *
+ * @remarks
+ * コントローラーごとに登録した `onMotionControllerInitObservable` /
+ * `onAxisValueChangedObservable` の Observer を `controllerCleanups` に保持し、
+ * コントローラー切断時（`onControllerRemovedObservable`）と本関数の返り値
+ * （登録解除関数）呼び出し時の両方で確実に `remove` する。保持・解除しないと、
+ * コントローラーの再初期化時にリスナーが二重登録され入力が二重反映されたり、
+ * 破棄後もリスナーが残留してメモリリークになる。
  * @returns 登録解除関数。
  */
 const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerStickState): (() => void) => {
+    const controllerCleanups = new Map<WebXRInputSource, () => void>();
+
     const bindController = (controller: WebXRInputSource): void => {
         const handedness = controller.inputSource.handedness;
         if (handedness !== "left" && handedness !== "right") return;
-        controller.onMotionControllerInitObservable.add((motionController) => {
+
+        // `onMotionControllerInitObservable` は稀に同一コントローラーへ複数回発火し
+        // 得る（コントローラーのモーションコントローラーが差し替わるケース）ため、
+        // 発火のたびに前回のthumbstick購読を解除してから登録し直す。
+        let disposeAxisBinding: (() => void) | null = null;
+        const motionControllerObserver = controller.onMotionControllerInitObservable.add((motionController) => {
+            disposeAxisBinding?.();
+            disposeAxisBinding = null;
             const thumbstick = motionController.getComponentOfType("thumbstick");
-            thumbstick?.onAxisValueChangedObservable.add(({ x, y }) => {
+            if (!thumbstick) return;
+            const axisObserver = thumbstick.onAxisValueChangedObservable.add(({ x, y }) => {
                 sticks[handedness] = { x, y };
             });
+            disposeAxisBinding = () => thumbstick.onAxisValueChangedObservable.remove(axisObserver);
+        });
+
+        controllerCleanups.set(controller, () => {
+            controller.onMotionControllerInitObservable.remove(motionControllerObserver);
+            disposeAxisBinding?.();
         });
     };
+
     xr.input.controllers.forEach(bindController);
     const addedObserver = xr.input.onControllerAddedObservable.add(bindController);
     const removedObserver = xr.input.onControllerRemovedObservable.add((controller) => {
@@ -115,10 +140,14 @@ const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerSti
         if (handedness === "left" || handedness === "right") {
             sticks[handedness] = { x: 0, y: 0 };
         }
+        controllerCleanups.get(controller)?.();
+        controllerCleanups.delete(controller);
     });
     return () => {
         xr.input.onControllerAddedObservable.remove(addedObserver);
         xr.input.onControllerRemovedObservable.remove(removedObserver);
+        controllerCleanups.forEach((cleanup) => cleanup());
+        controllerCleanups.clear();
     };
 };
 
