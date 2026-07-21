@@ -170,7 +170,14 @@ const bindHoldButton = (
         entries.push({ el, type, fn });
     };
 
-    bind(button, "pointerdown", () => setAxis(pressedAxis));
+    bind(button, "pointerdown", (event) => {
+        // ジョイスティックと同様、ポインタキャプチャで固定する。ボタン外へ指が
+        // 出た状態で離しても pointerup/pointercancel を確実にこのボタンで受け取れる
+        // ようにし、「押しっぱなし」のままズーム軸が残り続けるのを防ぐ。
+        // jsdom（テスト環境）は `setPointerCapture` 未実装のため任意呼び出しにする。
+        button.setPointerCapture?.((event as PointerEvent).pointerId);
+        setAxis(pressedAxis);
+    });
     bind(button, "pointerup", () => setAxis(0));
     bind(button, "pointercancel", () => setAxis(0));
 
