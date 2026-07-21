@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { DioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
 import { createDioramaViewController } from "../src/demos/diorama/dioramaViewController";
+import { DEFAULT_FOOTPRINT_RADIUS_MAX_M } from "../src/demos/diorama/dioramaControllerMapping";
 
 const makeTerrain = (): { terrain: DioramaTerrain; setView: ReturnType<typeof vi.fn> } => {
     const setView = vi.fn(() => Promise.resolve());
@@ -111,6 +112,6 @@ describe("createDioramaViewController", () => {
         // 極端に長時間・強いズームアウト入力を与えても上限を超えない。
         vc.feedAxes({ x: 0, y: 0 }, 1, 1000);
         const patch = setView.mock.calls[0][0];
-        expect(patch.footprintRadiusM).toBeLessThanOrEqual(5000);
+        expect(patch.footprintRadiusM).toBeLessThanOrEqual(DEFAULT_FOOTPRINT_RADIUS_MAX_M);
     });
 });

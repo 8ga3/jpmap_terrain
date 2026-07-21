@@ -44,9 +44,16 @@ export interface DioramaTerrainOptions {
     ringCount?: number;
     /** 1リングあたりの分割数（既定 48）。 */
     radialSegments?: number;
-    /** 標高取得ズーム（既定 14）。 */
+    /**
+     * 標高取得ズーム。省略時は `footprintRadiusM` に応じて自動算出する
+     * （{@link computeAutoZoomLevel} 参照）。明示指定すると自動算出を無効化し、
+     * ズームアウトしても固定のズームレベルを使い続ける（テスト・デバッグ用途）。
+     */
     demZoom?: number;
-    /** テクスチャ取得ズーム（既定 16）。 */
+    /**
+     * テクスチャ取得ズーム。省略時は `footprintRadiusM` に応じて自動算出する
+     * （{@link computeAutoZoomLevel} 参照）。明示指定すると自動算出を無効化する。
+     */
     textureZoom?: number;
     /** 地図種別（既定 "std"、#542切替対象）。 */
     mapType?: MapType;
@@ -85,8 +92,6 @@ export interface DioramaTerrain {
 const DEFAULTS = {
     ringCount: 12,
     radialSegments: 48,
-    demZoom: 14,
-    textureZoom: 16,
     mapType: "std" as MapType,
     heightScaleFactor: 1,
     baseDepthRatio: 0.15,
@@ -101,12 +106,62 @@ interface ResolvedOptions {
     tableRadiusM: number;
     ringCount: number;
     radialSegments: number;
-    demZoom: number;
-    textureZoom: number;
+    /** 未指定（自動算出）の場合は `undefined`。{@link computeAutoZoomLevel} 参照。 */
+    demZoom: number | undefined;
+    /** 未指定（自動算出）の場合は `undefined`。{@link computeAutoZoomLevel} 参照。 */
+    textureZoom: number | undefined;
     mapType: MapType;
     heightScaleFactor: number;
     baseDepthRatio: number;
 }
+
+/**
+ * ズーム自動算出の基準となる `footprintRadiusM`[m] と、その時に用いる
+ * DEM/テクスチャの取得ズームレベル（従来の固定既定値と同じ組み合わせ）。
+ */
+const AUTO_ZOOM_REFERENCE_FOOTPRINT_RADIUS_M = 800;
+const AUTO_ZOOM_REFERENCE_DEM_ZOOM = 14;
+const AUTO_ZOOM_REFERENCE_TEXTURE_ZOOM = 16;
+
+/**
+ * 自動算出ズームレベルの下限。GSIタイルの実用上のズーム下限（国土スケールの
+ * 広域表示でも意味のある解像度を保つ下限）として、既存の全球ビュー
+ * （`geo/gsiTile.ts` の `WORLD_TEXTURE_MAX_ZOOM=8` 等）を参考に十分低く設定する。
+ */
+const AUTO_ZOOM_MIN = 2;
+/** DEM自動算出ズームの上限。`gsiTile.ts` の全国配信DEM（dem_png）の配信上限と同じ。 */
+const AUTO_DEM_ZOOM_MAX = 14;
+/** テクスチャ自動算出ズームの上限。`gsiTile.ts` の `TILE_MAX_ZOOM` と同じ。 */
+const AUTO_TEXTURE_ZOOM_MAX = 18;
+
+/**
+ * `footprintRadiusM` から DEM/テクスチャの取得ズームレベルを自動算出する。
+ *
+ * @remarks
+ * タイルピラミッドは「ズームレベルが1段階粗くなるごとに1タイルが被覆する実距離が
+ * 2倍になる」という規則的な関係を持つため、`footprintRadiusM` が基準値の2倍に
+ * なるごとにズームを1段階粗くすれば、取得タイル数・頂点あたりのデータ密度が
+ * footprintRadiusM によらずほぼ一定に保たれる。3Dビューア（globeデモ）が
+ * カメラ距離に応じてタイルズームを動的に選ぶのと同じ考え方を、箱庭の
+ * フットプリント半径基準に単純化して適用したもの。
+ *
+ * これにより、ズームアウトして広範囲（日本全体等）を表示する際も取得タイル数が
+ * 際限なく増えず動作が重くならない。固定ズームのままズームアウト上限だけを
+ * 広げると、取得タイル数が急増して重くなる・`computeDioramaTextureLayout` の
+ * `MAX_MOSAIC_TILES_PER_AXIS` 上限に抵触するため、本関数の自動算出と併せて
+ * ズームアウト上限を広げる必要がある。
+ */
+export const computeAutoZoomLevel = (
+    footprintRadiusM: number,
+    referenceZoom: number,
+    minZoom: number = AUTO_ZOOM_MIN,
+    maxZoom: number = AUTO_TEXTURE_ZOOM_MAX,
+): number => {
+    const ratio = footprintRadiusM > 0 ? footprintRadiusM / AUTO_ZOOM_REFERENCE_FOOTPRINT_RADIUS_M : 1;
+    const zoom = referenceZoom - Math.log2(ratio);
+    if (!Number.isFinite(zoom)) return minZoom;
+    return Math.min(maxZoom, Math.max(minZoom, Math.round(zoom)));
+};
 
 /** 有限の正数であることを検証する（0以下・NaN・Infinityを拒否）。 */
 const assertPositiveFinite = (value: number, name: string): void => {
@@ -140,14 +195,14 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     if (!(options.footprintRadiusM > 0)) {
         throw new RangeError(`footprintRadiusM must be > 0 (got ${options.footprintRadiusM})`);
     }
-    const demZoom = options.demZoom ?? DEFAULTS.demZoom;
-    const textureZoom = options.textureZoom ?? DEFAULTS.textureZoom;
+    // demZoom/textureZoomは省略可（省略時はfootprintRadiusMから自動算出、
+    // buildMesh側で行う）。明示指定された場合のみ検証する（非整数/負数は
+    // toTileXY・totalPixelsForZoom（gsiTile.ts/geo/mapping.ts）を不正な
+    // タイル要求・レイアウト計算に導くため）。
+    if (options.demZoom !== undefined) assertNonNegativeInteger(options.demZoom, "demZoom");
+    if (options.textureZoom !== undefined) assertNonNegativeInteger(options.textureZoom, "textureZoom");
     const heightScaleFactor = options.heightScaleFactor ?? DEFAULTS.heightScaleFactor;
     const baseDepthRatio = options.baseDepthRatio ?? DEFAULTS.baseDepthRatio;
-    // 非整数/負数の zoom は toTileXY・totalPixelsForZoom（gsiTile.ts/geo/mapping.ts）を
-    // 不正なタイル要求・レイアウト計算に導くため、早期に検証する。
-    assertNonNegativeInteger(demZoom, "demZoom");
-    assertNonNegativeInteger(textureZoom, "textureZoom");
     assertPositiveFinite(heightScaleFactor, "heightScaleFactor");
     assertNonNegativeFinite(baseDepthRatio, "baseDepthRatio");
     return {
@@ -156,8 +211,8 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
         tableRadiusM: options.tableRadiusM,
         ringCount: options.ringCount ?? DEFAULTS.ringCount,
         radialSegments: options.radialSegments ?? DEFAULTS.radialSegments,
-        demZoom,
-        textureZoom,
+        demZoom: options.demZoom,
+        textureZoom: options.textureZoom,
         mapType: options.mapType ?? DEFAULTS.mapType,
         heightScaleFactor,
         baseDepthRatio,
@@ -187,12 +242,27 @@ const buildMesh = async (
     const points = buildDioramaGridPoints(resolved.center, resolved.footprintRadiusM, gridOptions);
     const indices = buildDioramaGridIndices(gridOptions);
 
+    // demZoom/textureZoomが明示指定されていない場合、footprintRadiusMから自動算出する
+    // （{@link computeAutoZoomLevel} 参照）。ズームアウトして広範囲を表示する際も
+    // 取得タイル数がほぼ一定に保たれ、動作が重くならないようにするため。
+    const demZoom =
+        resolved.demZoom ??
+        computeAutoZoomLevel(resolved.footprintRadiusM, AUTO_ZOOM_REFERENCE_DEM_ZOOM, AUTO_ZOOM_MIN, AUTO_DEM_ZOOM_MAX);
+    const textureZoom =
+        resolved.textureZoom ??
+        computeAutoZoomLevel(
+            resolved.footprintRadiusM,
+            AUTO_ZOOM_REFERENCE_TEXTURE_ZOOM,
+            AUTO_ZOOM_MIN,
+            AUTO_TEXTURE_ZOOM_MAX,
+        );
+
     // computeDioramaTextureLayout は同期処理のため先に算出し、DEM取得と
     // テクスチャタイル取得（いずれもネットワーク待ちを伴う）を Promise.all で並列に
     // 開始する。直列にすると両者の待ち時間が合算されて初期構築/再構築が不要に遅くなる。
-    const textureLayout = computeDioramaTextureLayout(points, resolved.textureZoom);
+    const textureLayout = computeDioramaTextureLayout(points, textureZoom);
     const [elevations, texture] = await Promise.all([
-        fetchDioramaElevations(points, resolved.demZoom),
+        fetchDioramaElevations(points, demZoom),
         buildDioramaMosaicTexture(scene, textureLayout, resolved.mapType),
     ]);
 
