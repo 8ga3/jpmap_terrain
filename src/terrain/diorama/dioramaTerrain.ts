@@ -213,28 +213,17 @@ const buildMesh = async (
     const material = new StandardMaterial("diorama-terrain-material", scene);
     material.diffuseTexture = texture;
     material.specularColor = Color3.Black();
-    // WebXR (`immersive-ar`) のパススルー合成では、レンダリング結果のアルファ値が
-    // そのまま「実世界カメラ映像とどれだけ混ぜるか」に使われる（通常のデスクトップ
-    // 表示ではアルファ値は表示に一切影響しないため気づきにくい）ため、まず
-    // アルファブレンドが一切有効化されないことを保証しておく。
+    // WebXR (`immersive-ar`) のパススルー合成では、描画結果のアルファ値がそのまま
+    // 実世界カメラ映像との合成比率に使われる（デスクトップ表示では気づきにくい）ため、
+    // アルファブレンドが有効化されないことを明示的に保証する。
     material.transparencyMode = Material.MATERIAL_OPAQUE;
     material.diffuseTexture.hasAlpha = false;
-    // 実機（Meta Quest 3）検証で「地形面だけがAR中に透けて見え、側面壁は問題ない」
-    // 不具合を確認した。段階的な切り分け（テクスチャ生成方式A/B/C、メッシュ複雑さ
-    // vsテクスチャサイズD/E、さらにワイヤーフレーム/無地緑のマテリアル切り替え）の
-    // 結果、マテリアル・テクスチャの内容は無関係で、AR中は地形メッシュそのものが
-    // 描画対象から除外されている（フラスタムカリング等でアクティブメッシュ判定に
-    // 含まれない）ことが濃厚と判明した。地形メッシュは側面壁より遥かに広い水平方向の
-    // 外延（footprintRadiusM半径の円盤）を持つ一方、標高差は比較的小さいため、
-    // バウンディングボリュームが非常に薄く偏平になりやすい。加えて root の一様スケール
-    // が極端に小さい（tableRadiusM/footprintRadiusM、既定で概ね1/2000）ため、
-    // ワールド空間のバウンディング情報の算出やAR側のフラスタム判定で、通常の
-    // デスクトップ表示（一般的なカメラ距離・frustum）では問題にならない極端な
-    // ケースとして誤ってカリングされる可能性がある（側面壁は底面まで含む分厚い
-    // ボリュームのため影響を受けにくい）。`alwaysSelectAsActiveMesh` で
-    // フラスタムカリング判定自体を無効化し、常に描画対象に含める。
     material.backFaceCulling = false;
     mesh.material = material;
+    // 地形メッシュは footprintRadiusM 半径の円盤に対し標高差が小さく、バウンディング
+    // ボリュームが薄く偏平になりやすい。加えて root の一様スケールが極端に小さい
+    // （既定で概ね1/2000）ため、誤ってフラスタムカリングされるリスクがある。
+    // `alwaysSelectAsActiveMesh` でカリング判定自体を無効化し、常に描画対象に含める。
     mesh.alwaysSelectAsActiveMesh = true;
 
     // 側面壁・底面（土台）。実物のジオラマ模型のように、外周リングから一定深さ下へ

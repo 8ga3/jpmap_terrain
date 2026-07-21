@@ -62,31 +62,20 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const canvas = createCanvas(mount);
-    // 他デモは既定で `webgpu` を優先するが、本デモは既定を `webgl2` にする
-    // （`?engine=webgpu` で明示指定すれば従来通りWebGPUを使える）。
-    //
-    // 理由: Babylon.js は WebGPU engine で `scene.createDefaultXRExperienceAsync` /
-    // `enterXRAsync` を呼ぶと、XRセッションの `requiredFeatures` へ自動的に
-    // `"webgpu"`（WebXR/WebGPU バインディング仕様の機能記述子）を追加する
-    // （`WebXRSessionManager.initializeSessionAsync` 参照）。この機能を要求された
-    // ブラウザ側のWebXR実装が対応していない場合（Meta Quest Browser 等、
-    // 実機検証で確認済み）、`requestSession` がそのまま reject し、
-    // WebGLへのフォールバックは行われない（Babylon側が意図的にフォールバックしない
-    // 設計のため）。ARが主要機能である本デモでは、対応が枯れている
-    // WebGL2 を既定にしてこのリスクを避ける。
+    // 本デモは既定を `webgl2` にする（他デモの既定 `webgpu` とは異なる）。
+    // WebGPU engine で `enterXRAsync` を呼ぶと、XRセッションの `requiredFeatures` へ
+    // 自動的に `"webgpu"` が追加されるが、Meta Quest Browser 等はこれを拒否し、
+    // WebGLへのフォールバックも行われない（実機検証で確認）。ARが主要機能である
+    // 本デモでは対応が枯れている WebGL2 を既定にする。
     const engineType = resolveEngine(location.search) ?? "webgl2";
-    // reverse-Z 深度バッファ（既定で全デモ共通に有効）を無効化する。
-    // diorama は卓上サイズ（メートル単位、near/far比が小さい）でreverse-Zを必要としない一方、
-    // WebXRカメラはブラウザ提供の生の投影行列をそのまま使う（reverse-Z変換されない、
+    // reverse-Z 深度バッファ（既定で全デモ共通に有効）を無効化する。WebXRカメラは
+    // ブラウザ提供の生の投影行列をそのまま使う（reverse-Z変換されない、
     // `@babylonjs/core/XR/webXRCamera.js` の `_updateFromXRSession` 参照）ため、
-    // reverse-Z前提の深度クリア値・深度比較関数・`zOffset`符号反転と組み合わさると、
-    // AR中の深度テストの前提が一致しなくなる。実機（Meta Quest 3 / Androidスマホ）検証で、
-    // renderingGroupId/zOffset/メッシュ統合等の深度回避策では解消できなかった不具合
-    // （地形/側面壁のオクルージョン不安定・Androidで基本プリミティブすら描画されない）の
-    // 根本原因である可能性が高いと判明したため、無効化する。詳細は
-    // {@link CreateBabylonEngineOptions.reverseDepthBuffer} 冒頭コメント参照。
+    // reverse-Z前提の深度クリア値・比較関数と組み合わせるとAR中の深度テストが
+    // 破綻する（実機検証で確認した地形/側面壁のオクルージョン不具合の根本原因）。
+    // diorama は卓上サイズでreverse-Zを必要としないため無効化する。詳細は
+    // {@link CreateBabylonEngineOptions.reverseDepthBuffer} 参照。
     const engine = await createBabylonEngine(canvas, engineType, { reverseDepthBuffer: false });
-
 
     const scene = new Scene(engine);
     scene.clearColor = new Color4(0.05, 0.07, 0.1, 1);
@@ -102,27 +91,20 @@ const start = async (): Promise<void> => {
     camera.lowerRadiusLimit = DEFAULT_TABLE_RADIUS_M * 1.2;
     camera.upperRadiusLimit = DEFAULT_TABLE_RADIUS_M * 15;
     camera.wheelPrecision = 200;
-    // タッチのピンチズームは既定 (`pinchPrecision`/`angularSensibility` ベースの絶対量)
-    // だと「radius がタブレットサイズ相当」の想定でチューニングされており、箱庭の
-    // 極小スケール（既定 radius 0.42〜5.25m）では同じ指の動きが radius レンジ全体を
-    // 一気に飛び越えるほど過敏になる（実機検証で確認）。`useNaturalPinchZoom` は
-    // ピンチ距離の「比率」で radius を更新するためスケール非依存になり、
-    // tableRadiusM を変えても再チューニング不要になる。
+    // タッチのピンチズームは既定（絶対量ベース）だと箱庭の極小スケール
+    // （既定 radius 0.42〜5.25m）では過敏になる（実機検証で確認）。
+    // `useNaturalPinchZoom` はピンチ距離の「比率」で radius を更新するため
+    // スケール非依存になる。
     camera.useNaturalPinchZoom = true;
-    // pan（右クリックドラッグ・Ctrl+左ドラッグ・タッチの2本指ドラッグ等で
-    // camera.target をずらす操作）は無効化する。
-    // - 円形にクリップされた手元サイズの箱庭は、pan するとフレームアウトしてしまい
-    //   戻す手段もないため、プレビュー用途としては「回転（1本指ドラッグ）＋
-    //   ズーム（ピンチ/ホイール）」のみに絞るほうが自然（実機検証でのフィードバックを反映）。
-    // - 箱庭の実世界中心（緯度経度）・フットプリント半径を変更する「地図移動・拡大縮小」は
-    //   #539 で別途 WebXR コントローラー（免入中のQuestサムスティック等）専用の操作として
-    //   実装予定であり、本カメラの pan（camera.target シフトのみで実データは変わらない）
-    //   とは意味・入力経路が異なる。両者を混同しないよう、本カメラの pan は完全に閉じておく。
+    // pan（camera.target をずらす操作）は無効化する。円形にクリップされた箱庭は
+    // pan するとフレームアウトし戻す手段もないため、操作は「回転＋ズーム」のみに
+    // 絞る。また、箱庭の実世界中心・フットプリント半径を変更する「地図移動・
+    // 拡大縮小」は #539 で別途 XRコントローラー専用の操作として実装予定であり、
+    // 本カメラの pan とは意味が異なるため混同を避ける。
     camera.panningSensibility = 0;
-    // `noPreventDefault=true` だと wheel/pointer イベントで `preventDefault()` を
-    // 呼ばないため、macOS Chrome 等のトラックパッド「ピンチ」（`ctrlKey:true` の wheel
-    // イベントとして配信される）がブラウザ既定のページズームに奪われる（実機検証で確認）。
-    // 明示的に `false` を渡し、Babylon 側で preventDefault させる。
+    // `noPreventDefault=true` だと、macOS Chrome 等のトラックパッド「ピンチ」
+    // （`ctrlKey:true` の wheel イベント）がブラウザ既定のページズームに奪われる
+    // （実機検証で確認）。`false` を渡し Babylon 側で preventDefault させる。
     camera.attachControl(canvas, false);
 
     new HemisphericLight("diorama-ambient-light", new Vector3(0, 1, 0), scene).intensity = 0.6;
