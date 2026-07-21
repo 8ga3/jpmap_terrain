@@ -188,6 +188,7 @@ export const setupDioramaWebXrArButton = async (
     mount.appendChild(button);
 
     let xr: WebXRDefaultExperience | null = null;
+    let entering = false;
     let disposed = false;
 
     const cleanup = (): void => {
@@ -197,14 +198,31 @@ export const setupDioramaWebXrArButton = async (
     };
 
     button.addEventListener("click", () => {
-        if (disposed) return;
+        if (disposed || entering) return;
         if (xr && xr.baseExperience.state !== WebXRState.NOT_IN_XR) {
             void xr.baseExperience.exitXRAsync();
             return;
         }
-        void enterAr(scene, dioramaRoot, button).then((created) => {
-            xr = created;
-        });
+        // 前回セッションの `WebXRDefaultExperience`（input/enterExitUI/renderTarget等の
+        // リソースを保持する）は enterAr() のたびに新規生成するため、再入場前に破棄
+        // しておく（破棄しないと入退場を繰り返すたびにリソースがリークする）。
+        xr?.dispose();
+        xr = null;
+        entering = true;
+        void enterAr(scene, dioramaRoot, button)
+            .then((created) => {
+                // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
+                // セッションを保持せずここで破棄する（呼び出し元は既にデモを
+                // 終了しているため、以後 xr を参照する経路が無くなりリークするのを防ぐ）。
+                if (disposed) {
+                    created?.dispose();
+                    return;
+                }
+                xr = created;
+            })
+            .finally(() => {
+                entering = false;
+            });
     });
 
     return cleanup;
