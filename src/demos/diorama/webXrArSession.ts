@@ -35,8 +35,7 @@ import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 
-import type { DioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
-import type { DioramaCenter } from "../../terrain/diorama/dioramaGrid";
+import type { DioramaViewController } from "./dioramaViewController";
 import { setupDioramaArControls } from "./dioramaArControls";
 
 
@@ -179,16 +178,16 @@ const placeDioramaRelativeToCamera = (
  *
  * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
  * @param scene 対象の `Scene`。
- * @param dioramaTerrain 箱庭地形（`createDioramaTerrain` の返り値）。
- * @param initialControls AR突入時点の実世界中心・フットプリント半径
- *   （コントローラー/GUI操作の起点として使う）。
+ * @param dioramaRoot 箱庭地形の `root`（`createDioramaTerrain` が返す `TransformNode`）。
+ * @param viewController 地図移動・拡大縮小の共有状態保持者（`dioramaViewController.ts`）。
+ *   デスクトップのキーボード操作と共有し、AR突入前後で位置が引き継がれるようにする。
  * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
  */
 export const setupDioramaWebXrArButton = async (
     mount: HTMLElement,
     scene: Scene,
-    dioramaTerrain: DioramaTerrain,
-    initialControls: { center: DioramaCenter; footprintRadiusM: number },
+    dioramaRoot: TransformNode,
+    viewController: DioramaViewController,
 ): Promise<() => void> => {
     const supported = await isImmersiveArSupported();
     if (!supported) return () => {};
@@ -219,7 +218,7 @@ export const setupDioramaWebXrArButton = async (
         xr?.dispose();
         xr = null;
         entering = true;
-        void enterAr(scene, dioramaTerrain, initialControls, button)
+        void enterAr(scene, dioramaRoot, viewController, button)
             .then((created) => {
                 // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にデモを
@@ -245,11 +244,10 @@ export const setupDioramaWebXrArButton = async (
  */
 const enterAr = async (
     scene: Scene,
-    dioramaTerrain: DioramaTerrain,
-    initialControls: { center: DioramaCenter; footprintRadiusM: number },
+    dioramaRoot: TransformNode,
+    viewController: DioramaViewController,
     button: HTMLButtonElement,
 ): Promise<WebXRDefaultExperience | null> => {
-    const dioramaRoot = dioramaTerrain.root;
     let xr: WebXRDefaultExperience | null = null;
     // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
     // 突入前の状態を保存しておく。
@@ -283,10 +281,7 @@ const enterAr = async (
 
         // コントローラー（thumbstick）/GUI（画面タッチ）による地図移動・拡大縮小
         // （`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
-        const disposeArControls = setupDioramaArControls(scene, xrExperience, dioramaTerrain, {
-            initialCenter: initialControls.center,
-            initialFootprintRadiusM: initialControls.footprintRadiusM,
-        });
+        const disposeArControls = setupDioramaArControls(scene, xrExperience, viewController);
 
         // 実機のトラッキング姿勢が反映されるまで数フレーム待ってから配置する
         // （{@link AR_PLACEMENT_WAIT_FRAMES} 冒頭のコメント参照）。

@@ -22,6 +22,8 @@ import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
+import { createDioramaViewController } from "./dioramaViewController";
+import { setupDioramaKeyboardControls } from "./dioramaKeyboardControls";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -118,10 +120,14 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
 
-    setupDioramaWebXrArButton(mount, scene, dioramaTerrain, {
-        center: DEFAULT_CENTER,
-        footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
-    }).catch((err: unknown) => {
+    // 地図移動・拡大縮小の共有状態保持者。AR中のコントローラー/GUI操作
+    // （`setupDioramaWebXrArButton`経由）とデスクトップのキーボード操作
+    // （PC単体でAR無しでも動作確認できるようにする目的）の双方から使われ、
+    // どちらで移動しても位置がもう一方に引き継がれる（`dioramaViewController.ts`参照）。
+    const viewController = createDioramaViewController(dioramaTerrain, DEFAULT_CENTER, DEFAULT_FOOTPRINT_RADIUS_M);
+    setupDioramaKeyboardControls(scene, viewController);
+
+    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, viewController).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
     });
 
