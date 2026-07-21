@@ -186,15 +186,13 @@ const assertNonNegativeInteger = (value: number, name: string): void => {
 
 const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     // tableRadiusM は root.scaling の分母（applyScale）になるため、構築完了を待たず
-    // ここで早期に検証し、不正値（0/負数）による無効なスケール算出を防ぐ。
-    if (!(options.tableRadiusM > 0)) {
-        throw new RangeError(`tableRadiusM must be > 0 (got ${options.tableRadiusM})`);
-    }
+    // ここで早期に検証し、不正値（0以下・NaN・Infinity）による無効なスケール算出を防ぐ。
+    assertPositiveFinite(options.tableRadiusM, "tableRadiusM");
     // footprintRadiusM は buildDioramaGridPoints（dioramaGrid.ts）内でも検証されるが、
-    // ここでも早期に検証し、非同期のタイル取得等を開始する前に失敗させる。
-    if (!(options.footprintRadiusM > 0)) {
-        throw new RangeError(`footprintRadiusM must be > 0 (got ${options.footprintRadiusM})`);
-    }
+    // ここでも早期に検証し、非同期のタイル取得等を開始する前に失敗させる
+    // （0以下・NaN・Infinityを拒否。Infinityはタイルレイアウト計算・自動ズーム
+    // 算出（computeAutoZoomLevel）を不正な値に導く）。
+    assertPositiveFinite(options.footprintRadiusM, "footprintRadiusM");
     // demZoom/textureZoomは省略可（省略時はfootprintRadiusMから自動算出、
     // buildMesh側で行う）。明示指定された場合のみ検証する（非整数/負数は
     // toTileXY・totalPixelsForZoom（gsiTile.ts/geo/mapping.ts）を不正な
