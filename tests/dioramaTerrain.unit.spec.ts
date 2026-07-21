@@ -149,6 +149,7 @@ import { buildDioramaMosaicTexture, computeDioramaTextureLayout } from "../src/t
 import { buildDioramaGridPoints } from "../src/terrain/diorama/dioramaGrid";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 
 const mockFetchElevations = vi.mocked(fetchDioramaElevations);
 const mockBuildTexture = vi.mocked(buildDioramaMosaicTexture);
@@ -156,6 +157,7 @@ const mockComputeTextureLayout = vi.mocked(computeDioramaTextureLayout);
 const mockBuildGridPoints = vi.mocked(buildDioramaGridPoints);
 const mockMesh = vi.mocked(Mesh);
 const mockTransformNode = vi.mocked(TransformNode);
+const mockStandardMaterial = vi.mocked(StandardMaterial);
 
 const baseOptions = {
     center: { lat: 35, lon: 139 },
@@ -174,6 +176,7 @@ beforeEach(() => {
     mockBuildGridPoints.mockClear();
     mockMesh.mockClear();
     mockTransformNode.mockClear();
+    mockStandardMaterial.mockClear();
 });
 
 describe("createDioramaTerrain の入力検証", () => {
@@ -229,6 +232,41 @@ describe("createDioramaTerrain の入力検証", () => {
         mockFetchElevations.mockRejectedValueOnce(new Error("boom"));
         await expect(createDioramaTerrain(dummyScene, baseOptions)).rejects.toThrow("boom");
         expect(mockTransformNode).not.toHaveBeenCalled();
+    });
+
+    it("forceCompilationAsyncが失敗した場合、生成済みのMesh/Material/Textureを破棄してから再throwする（リーク防止）", async () => {
+        // 1回目のStandardMaterial呼び出し（地形面用material）のforceCompilationAsyncを
+        // 失敗させる。skirtMaterial用（2回目の呼び出し）は既定のresolveのままでよい
+        // （Promise.allのため、どちらか一方の失敗で全体が失敗する）。
+        mockStandardMaterial.mockImplementationOnce(
+            function () {
+                return {
+                    diffuseTexture: null as unknown,
+                    diffuseColor: null as unknown,
+                    specularColor: null as unknown,
+                    backFaceCulling: true,
+                    dispose: vi.fn(),
+                    forceCompilationAsync: vi.fn(() => Promise.reject(new Error("compile failed"))),
+                };
+            } as unknown as typeof StandardMaterial,
+        );
+
+        await expect(createDioramaTerrain(dummyScene, baseOptions)).rejects.toThrow("compile failed");
+
+        // mesh/skirtMesh（本テストのbuildMesh呼び出し分）が破棄されていることを確認する。
+        const meshInstances = mockMesh.mock.results.map((r) => r.value as { dispose: () => void });
+        expect(meshInstances.length).toBeGreaterThan(0);
+        meshInstances.forEach((m) => expect(m.dispose).toHaveBeenCalled());
+
+        // material/skirtMaterial（本テストのbuildMesh呼び出し分）が破棄されていることを確認する。
+        const materialInstances = mockStandardMaterial.mock.results.map((r) => r.value as { dispose: () => void });
+        expect(materialInstances.length).toBeGreaterThan(0);
+        materialInstances.forEach((m) => expect(m.dispose).toHaveBeenCalled());
+
+        // texture（buildDioramaMosaicTextureのモック戻り値）が破棄されていることを確認する。
+        const textureResult = await mockBuildTexture.mock.results[mockBuildTexture.mock.results.length - 1]
+            ?.value as { dispose: () => void };
+        expect(textureResult.dispose).toHaveBeenCalled();
     });
 
     it("DEM取得とテクスチャ取得が並列に開始される（直列にならない）", async () => {
