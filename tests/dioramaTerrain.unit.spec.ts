@@ -23,6 +23,7 @@ vi.mock("@babylonjs/core/Meshes/mesh", () => ({
             material: null as unknown,
             parent: null as unknown,
             dispose: vi.fn(),
+            setEnabled: vi.fn(),
         };
     }),
 }));

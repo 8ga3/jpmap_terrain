@@ -288,6 +288,10 @@ const buildMesh = async (
 
     const mesh = new Mesh("diorama-terrain", scene);
     vertexData.applyToMesh(mesh, true);
+    // シェーダーコンパイル完了・root への parent/scale 適用が済むまでは描画対象から
+    // 外しておく（後述のコンパイル待ちの間、未スケールの巨大メッシュが一瞬でも
+    // レンダーループに混入するのを防ぐ）。
+    mesh.setEnabled(false);
 
     const material = new StandardMaterial("diorama-terrain-material", scene);
     material.diffuseTexture = texture;
@@ -330,6 +334,8 @@ const buildMesh = async (
 
     const skirtMesh = new Mesh("diorama-skirt", scene);
     skirtVertexData.applyToMesh(skirtMesh, true);
+    // mesh と同様、コンパイル待ちの間は描画対象から外しておく。
+    skirtMesh.setEnabled(false);
 
     const skirtMaterial = new StandardMaterial("diorama-skirt-material", scene);
     skirtMaterial.diffuseColor = SOIL_COLOR;
@@ -347,8 +353,16 @@ const buildMesh = async (
     // マテリアルの初回シェーダーコンパイルはシーンへ追加後・初回描画時に走る
     // （Babylonの遅延コンパイル）ため、事前コンパイルしておかないと、旧メッシュ破棄
     // 後・新メッシュのコンパイル完了までの数フレーム何も描画されず、地図移動のたびに
-    // チラつきが発生する（実機/デスクトップ双方で確認）。
+    // チラつきが発生する（実機/デスクトップ双方で確認）。なお `new Mesh(...)` は
+    // 生成直後からシーンの描画対象になるため、このコンパイル待ちの間は
+    // `setEnabled(false)`（生成直後）で無効化しておき、root への parent/scale 適用が
+    // 済んでいない未スケールの巨大メッシュがレンダーループへ混入しないようにする。
     await Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]);
+    // コンパイル完了後、呼び出し側が parent/scale を適用する前に描画対象へ戻す。
+    // ここから return までは同期処理のため、無効化されたまま描画される隙間フレームは
+    // 生じない。
+    mesh.setEnabled(true);
+    skirtMesh.setEnabled(true);
 
     return { mesh, material, texture, skirtMesh, skirtMaterial };
 };
