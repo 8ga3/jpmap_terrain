@@ -68,7 +68,7 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getPanAxes()).toEqual({ x: 0, y: 0 });
     });
 
-    it("最大半径を超えるドラッグは単位ベクトルへクランプされる（磁気1以内）", () => {
+    it("最大半径を超えるドラッグは単位ベクトルへクランプされる（大きさ1以内）", () => {
         const hud = build();
         const joystick = hud.element.children[0] as HTMLElement;
 
