@@ -36,7 +36,8 @@ import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExpe
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 
 import type { DioramaViewController } from "./dioramaViewController";
-import { setupDioramaArControls } from "./dioramaArControls";
+import { createDioramaArControlHudForSession, setupDioramaArControls } from "./dioramaArControls";
+import type { DioramaArControlHud } from "./dioramaArControlHud";
 
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
@@ -257,6 +258,7 @@ const enterAr = async (
     button: HTMLButtonElement,
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
+    let hud: DioramaArControlHud | null = null;
     // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
     // 突入前の状態を保存しておく。
     const originalPosition = dioramaRoot.position.clone();
@@ -274,6 +276,11 @@ const enterAr = async (
 
         const xrExperience = xr;
 
+        // AR中のコントローラー/GUI操作用HUD + `dom-overlay` feature の登録は、
+        // 必ず `enterXRAsync` より前に行う（`dioramaArControls.ts` 冒頭コメント参照。
+        // WebXR仕様上、`dom-overlay` はセッション要求時点でのみ有効化できるため）。
+        hud = createDioramaArControlHudForSession(xrExperience);
+
         if (xrExperience.baseExperience.state === WebXRState.NOT_IN_XR) {
             await xrExperience.baseExperience.enterXRAsync("immersive-ar", "local-floor", xrExperience.renderTarget);
         }
@@ -289,7 +296,7 @@ const enterAr = async (
 
         // コントローラー（thumbstick）/GUI（画面タッチ）による地図移動・拡大縮小
         // （`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
-        const disposeArControls = setupDioramaArControls(scene, xrExperience, viewController);
+        const disposeArControls = setupDioramaArControls(scene, xrExperience, hud, viewController);
 
         // 実機のトラッキング姿勢が反映されるまで数フレーム待ってから配置する
         // （{@link AR_PLACEMENT_WAIT_FRAMES} 冒頭のコメント参照）。
@@ -319,9 +326,10 @@ const enterAr = async (
         return xrExperience;
     } catch (err) {
         console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
-        // 部分的に確保したリソース（箱庭配置・パススルー背景状態）を後始末する。
+        // 部分的に確保したリソース（箱庭配置・パススルー背景状態・HUD）を後始末する。
         dioramaRoot.position.copyFrom(originalPosition);
         scene.clearColor.a = originalClearAlpha;
+        hud?.dispose();
         xr?.dispose();
         styleArButton(button);
         return null;
