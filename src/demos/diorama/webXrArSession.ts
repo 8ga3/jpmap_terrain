@@ -4,11 +4,11 @@
  * @remarks
  * **設計方針（VR PoC との違い）**: `feature/533-webxr-vr-viewer` の immersive-vr PoC
  * （`src/demos/viewer/webXrVrSession.ts`）は実寸大の惑星ECEF座標系を扱うため、リグの
- * 毎フレームECEF位置更新・コントローラーによるパン/ズーム・LODバイアス同期など
- * 惑星スケール特有の仕組みを必要とした。一方 diorama は実寸メートルスケールの固定
- * 卓上モデルで、AR中の視点移動は「ユーザーが物理的に歩く」ことで実現するため、
- * 本モジュールは PoC よりも大幅に単純である。独自ロジックは「箱庭をユーザー正面に
- * 配置する」「パススルー背景にする」の2点のみ。
+ * 毎フレームECEF位置更新・LODバイアス同期など惑星スケール特有の仕組みを必要とした。
+ * 一方 diorama は実寸メートルスケールの固定卓上モデルで、AR中の視点移動は
+ * 「ユーザーが物理的に歩く」ことで実現するため、本モジュールは PoC よりも単純である。
+ * 独自ロジックは「箱庭をユーザー正面に配置する」「パススルー背景にする」
+ * 「コントローラー/GUI操作で地図移動・拡大縮小する（`dioramaArControls.ts`）」の3点。
  *
  * **パススルー表示**: diorama シーンはスカイボックス/地面メッシュを持たないため
  * `WebXRBackgroundRemover` feature は使わず、`scene.clearColor.a` をAR突入時に 0、
@@ -34,6 +34,10 @@ import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
+
+import type { DioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
+import type { DioramaCenter } from "../../terrain/diorama/dioramaGrid";
+import { setupDioramaArControls } from "./dioramaArControls";
 
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
@@ -167,20 +171,24 @@ const placeDioramaRelativeToCamera = (
 
 /**
  * diorama デモに ARボタンを追加し、WebXR (`immersive-ar`) セッションの開始/終了、
- * 箱庭のユーザー正面配置、パススルー背景化を行うセットアップを行う。
+ * 箱庭のユーザー正面配置、パススルー背景化、コントローラー/GUI操作
+ * （地図移動・拡大縮小、`dioramaArControls.ts`）を行うセットアップを行う。
  *
  * WebXR (`immersive-ar`) 非対応環境では機能検出後にボタンを表示しない
  * （VR PoC と同じ合意事項）。
  *
  * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
  * @param scene 対象の `Scene`。
- * @param dioramaRoot 箱庭地形の `root`（`createDioramaTerrain` が返す `TransformNode`）。
+ * @param dioramaTerrain 箱庭地形（`createDioramaTerrain` の返り値）。
+ * @param initialControls AR突入時点の実世界中心・フットプリント半径
+ *   （コントローラー/GUI操作の起点として使う）。
  * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
  */
 export const setupDioramaWebXrArButton = async (
     mount: HTMLElement,
     scene: Scene,
-    dioramaRoot: TransformNode,
+    dioramaTerrain: DioramaTerrain,
+    initialControls: { center: DioramaCenter; footprintRadiusM: number },
 ): Promise<() => void> => {
     const supported = await isImmersiveArSupported();
     if (!supported) return () => {};
@@ -211,7 +219,7 @@ export const setupDioramaWebXrArButton = async (
         xr?.dispose();
         xr = null;
         entering = true;
-        void enterAr(scene, dioramaRoot, button)
+        void enterAr(scene, dioramaTerrain, initialControls, button)
             .then((created) => {
                 // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にデモを
@@ -237,9 +245,11 @@ export const setupDioramaWebXrArButton = async (
  */
 const enterAr = async (
     scene: Scene,
-    dioramaRoot: TransformNode,
+    dioramaTerrain: DioramaTerrain,
+    initialControls: { center: DioramaCenter; footprintRadiusM: number },
     button: HTMLButtonElement,
 ): Promise<WebXRDefaultExperience | null> => {
+    const dioramaRoot = dioramaTerrain.root;
     let xr: WebXRDefaultExperience | null = null;
     // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
     // 突入前の状態を保存しておく。
@@ -271,6 +281,13 @@ const enterAr = async (
         // 冒頭のコメント参照）。
         scene.clearColor.a = 0;
 
+        // コントローラー（thumbstick）/GUI（画面タッチ）による地図移動・拡大縮小
+        // （`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
+        const disposeArControls = setupDioramaArControls(scene, xrExperience, dioramaTerrain, {
+            initialCenter: initialControls.center,
+            initialFootprintRadiusM: initialControls.footprintRadiusM,
+        });
+
         // 実機のトラッキング姿勢が反映されるまで数フレーム待ってから配置する
         // （{@link AR_PLACEMENT_WAIT_FRAMES} 冒頭のコメント参照）。
         let framesWaited = 0;
@@ -284,6 +301,7 @@ const enterAr = async (
         const restoreOnExit = (): void => {
             // 配置待ちの途中でセッションが終了した場合、以後 placement を実行しない。
             scene.onBeforeRenderObservable.remove(placementObserver);
+            disposeArControls();
             dioramaRoot.position.copyFrom(originalPosition);
             scene.clearColor.a = originalClearAlpha;
             styleArButton(button);
