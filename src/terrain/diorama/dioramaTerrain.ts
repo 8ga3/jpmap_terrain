@@ -218,6 +218,8 @@ const buildMesh = async (
     // アルファブレンドが有効化されないことを明示的に保証する。
     material.transparencyMode = Material.MATERIAL_OPAQUE;
     material.diffuseTexture.hasAlpha = false;
+    // 地形面は単層の片面ジオメトリのため、視線角度によらず表示されるよう
+    // 裏面カリングを無効化する（側面壁と同じ扱い）。
     material.backFaceCulling = false;
     mesh.material = material;
     // 地形メッシュは footprintRadiusM 半径の円盤に対し標高差が小さく、バウンディング
