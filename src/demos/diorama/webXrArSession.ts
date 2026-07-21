@@ -135,9 +135,9 @@ const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
  * 配置する。カメラの向きが正しく反映されている必要があるため、
  * {@link AR_PLACEMENT_WAIT_FRAMES} フレーム待ってから呼ぶこと。
  *
- * @remarks 診断用に配置結果を `console.debug` へ出力する。実機での配置不具合の
- * 報告時、この出力内容（カメラ位置・前方向・配置結果）があると原因切り分けが
- * 容易になる。
+ * @remarks 診断用に配置結果を `console.debug` へ出力する（開発時のみ）。実機での
+ * 配置不具合の報告時、この出力内容（カメラ位置・前方向・配置結果）があると
+ * 原因切り分けが容易になる。
  */
 const placeDioramaRelativeToCamera = (
     scene: Scene,
@@ -155,12 +155,14 @@ const placeDioramaRelativeToCamera = (
     dioramaRoot.position.copyFrom(camera.position);
     dioramaRoot.position.addInPlace(forward.scale(AR_PLACEMENT_DISTANCE_M));
     dioramaRoot.position.y += AR_TABLE_HEIGHT_M - camera.position.y;
-    console.debug(
-        "[jpmap-terrain diorama demo] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
-        camera.position.asArray(),
-        forward.asArray(),
-        dioramaRoot.position.asArray(),
-    );
+    if (process.env.NODE_ENV !== "production") {
+        console.debug(
+            "[jpmap-terrain diorama demo] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
+            camera.position.asArray(),
+            forward.asArray(),
+            dioramaRoot.position.asArray(),
+        );
+    }
 };
 
 /**

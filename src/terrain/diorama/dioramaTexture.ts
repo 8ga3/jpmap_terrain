@@ -232,7 +232,7 @@ export const buildDioramaMosaicTexture = async (
             objectUrl,
             scene,
             false, // noMipmap: ミップマップを生成する
-            false, // invertY
+            true, // invertY: v=1 が画像上端（=北）になるUV計算（本ファイル冒頭のUV計算参照）に合わせる
             Texture.TRILINEAR_SAMPLINGMODE,
             () => {
                 URL.revokeObjectURL(objectUrl);
