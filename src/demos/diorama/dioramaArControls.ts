@@ -1,6 +1,6 @@
 /**
- * diorama デモのAR中コントローラー/タッチ入力を、実際の
- * `dioramaTerrain.setCenter`/`setFootprintRadius` 呼び出しへ橋渡しする。
+ * diorama デモのAR中コントローラー/タッチ入力を、`DioramaViewController`
+ * （地図移動・拡大縮小の共有状態保持者、`dioramaViewController.ts`）へ橋渡しする。
  *
  * @remarks
  * - Meta Quest等の物理コントローラー（thumbstick）: 左スティック=パン、
@@ -11,24 +11,8 @@
  *
  * 両者は同じ軸表現（[-1,1] の `StickAxes`/ズーム軸値）に正規化し、毎フレーム
  * 単純に加算して1つの入力として扱う（通常はどちらか一方のみが同時に使われるため、
- * 排他制御は行わない）。
- *
- * `setCenter`/`setFootprintRadius`（それぞれ独立してDEM/テクスチャの再取得を伴う
- * 完全な地形rebuildを行う）は毎フレーム呼ぶとネットワーク往復のレイテンシが積み重なる。
- * 加えて、`dioramaTerrain`内部の直列実行キュー（`pendingRebuild`）は完了を待たずに
- * 積むと際限なくバックログが溜まる。そのため本モジュールは:
- * - 前回のrebuild（`setView`呼び出し）が完了するまで次を発行しない
- *   （固定間隔タイマーではなく「完了待ち合流」方式。実機検証で、固定間隔タイマーが
- *   rebuild完了を待たずにキューへ積み続け、ジョイスティック入力が数秒遅れて
- *   順次処理される不具合を確認したため）。
- * - パン・ズームが同時に変化している場合は `setView`（1回のrebuildで中心と
- *   フットプリント半径の両方を反映する）にまとめて渡し、2回の独立したrebuildに
- *   分かれないようにする。
- *
- * 本モジュールが `center`/`footprintRadiusM` の現在値を単独で保持・更新する
- * （`DioramaTerrain` 自体は現在値のgetterを持たないため）。将来のサブタスク
- * （箱庭回転・高さ変更、タイル切替・トップ復帰等）で同じ値を変更する場合も、
- * 本モジュール経由で行うことを想定する（経路を分けると値がずれるため）。
+ * 排他制御は行わない）。実際の地形反映・レイテンシ対策（完了待ち合流方式）は
+ * `DioramaViewController` が担う。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
@@ -38,15 +22,8 @@ import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
 // （AR中もコントロールHUDを表示し続けるために使う）。
 import "@babylonjs/core/XR/features/WebXRDOMOverlay";
 
-import type { DioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
-import type { DioramaCenter } from "../../terrain/diorama/dioramaGrid";
-import { offsetToLatLon } from "../../terrain/diorama/dioramaGrid";
-import {
-    computeDioramaPanMetersFromStick,
-    computeFootprintRadiusFactorFromStick,
-    clampFootprintRadiusM,
-    type StickAxes,
-} from "./dioramaControllerMapping";
+import type { DioramaViewController } from "./dioramaViewController";
+import type { StickAxes } from "./dioramaControllerMapping";
 import { createDioramaArControlHud } from "./dioramaArControlHud";
 
 /** 左右コントローラーのスティック軸を保持する（未接続時は `{0,0}`）。 */
@@ -89,13 +66,6 @@ const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerSti
 /** [-1,1] へクランプする（コントローラー入力とGUI入力の単純加算が範囲を超えないようにする）。 */
 const clamp1 = (v: number): number => Math.max(-1, Math.min(1, v));
 
-export interface DioramaArControlsOptions {
-    /** AR突入時点の実世界中心（デモの既定中心。トップ復帰機能の基準にもなる想定）。 */
-    initialCenter: DioramaCenter;
-    /** AR突入時点のフットプリント半径[m]。 */
-    initialFootprintRadiusM: number;
-}
-
 /**
  * AR中のコントローラー/GUI入力による地図移動・拡大縮小のセットアップを行う。
  * ARセッション開始時に呼び、退出/破棄時に返り値の破棄関数を呼ぶこと。
@@ -103,13 +73,8 @@ export interface DioramaArControlsOptions {
 export const setupDioramaArControls = (
     scene: Scene,
     xr: WebXRDefaultExperience,
-    dioramaTerrain: DioramaTerrain,
-    options: DioramaArControlsOptions,
+    viewController: DioramaViewController,
 ): (() => void) => {
-    let currentCenter = options.initialCenter;
-    let currentFootprintRadiusM = clampFootprintRadiusM(options.initialFootprintRadiusM);
-    let lastAppliedFootprintRadiusM = currentFootprintRadiusM;
-
     const sticks = zeroStickState();
     const untrackSticks = trackControllerSticks(xr, sticks);
 
@@ -131,43 +96,6 @@ export const setupDioramaArControls = (
         );
     }
 
-    let pendingEastM = 0;
-    let pendingNorthM = 0;
-    // 前回の `setView` 呼び出し（rebuild）が完了するまで次を発行しない
-    // （固定間隔タイマーだと、rebuild完了より短い間隔で発行し続けた場合に
-    // `dioramaTerrain` 内部の直列実行キューへ際限なく積み上がってしまう。
-    // 冒頭コメント参照）。
-    let applying = false;
-
-    const flush = (): void => {
-        if (applying) return;
-        const hasPan = pendingEastM !== 0 || pendingNorthM !== 0;
-        const hasZoom = currentFootprintRadiusM !== lastAppliedFootprintRadiusM;
-        if (!hasPan && !hasZoom) return;
-
-        const patch: { center?: DioramaCenter; footprintRadiusM?: number } = {};
-        if (hasPan) {
-            currentCenter = offsetToLatLon(currentCenter, pendingEastM, pendingNorthM);
-            patch.center = currentCenter;
-            pendingEastM = 0;
-            pendingNorthM = 0;
-        }
-        if (hasZoom) {
-            patch.footprintRadiusM = currentFootprintRadiusM;
-            lastAppliedFootprintRadiusM = currentFootprintRadiusM;
-        }
-
-        applying = true;
-        dioramaTerrain
-            .setView(patch)
-            .catch((err: unknown) => {
-                console.error("[jpmap-terrain diorama demo] setView failed:", err);
-            })
-            .finally(() => {
-                applying = false;
-            });
-    };
-
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
         if (!(dtSeconds > 0)) return;
@@ -177,17 +105,8 @@ export const setupDioramaArControls = (
             x: clamp1(sticks.left.x + hudAxes.x),
             y: clamp1(sticks.left.y + hudAxes.y),
         };
-        const { eastM, northM } = computeDioramaPanMetersFromStick(panAxes, dtSeconds, currentFootprintRadiusM);
-        pendingEastM += eastM;
-        pendingNorthM += northM;
-
         const zoomAxisY = clamp1(sticks.right.y + hud.getZoomAxis());
-        const factor = computeFootprintRadiusFactorFromStick(zoomAxisY, dtSeconds);
-        if (factor !== 1) {
-            currentFootprintRadiusM = clampFootprintRadiusM(currentFootprintRadiusM * factor);
-        }
-
-        flush();
+        viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
     });
 
     return (): void => {
