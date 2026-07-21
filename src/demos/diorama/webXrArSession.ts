@@ -260,6 +260,11 @@ const enterAr = async (
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
     let hud: DioramaArControlHud | null = null;
+    // `setupDioramaArControls` の破棄関数。try節内の`const`にすると、それより後の
+    // 処理（`onStateChangedObservable.add`等）で例外が起きた場合に catch から
+    // 呼べず、render observer / controller observer が残留する。外側スコープの
+    // `let` で保持し、catch でも必ず呼べるようにする。
+    let disposeArControls: (() => void) | null = null;
     // AR退出時にデスクトップ表示（通常のシーン状態）へ確実に復元できるよう、
     // 突入前の状態を保存しておく。
     const originalPosition = dioramaRoot.position.clone();
@@ -297,7 +302,7 @@ const enterAr = async (
 
         // コントローラー（thumbstick）/GUI（画面タッチ）による地図移動・拡大縮小
         // （`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
-        const disposeArControls = setupDioramaArControls(scene, xrExperience, hud, viewController);
+        disposeArControls = setupDioramaArControls(scene, xrExperience, hud, viewController);
 
         // 実機のトラッキング姿勢が反映されるまで数フレーム待ってから配置する
         // （{@link AR_PLACEMENT_WAIT_FRAMES} 冒頭のコメント参照）。
@@ -312,7 +317,10 @@ const enterAr = async (
         const restoreOnExit = (): void => {
             // 配置待ちの途中でセッションが終了した場合、以後 placement を実行しない。
             scene.onBeforeRenderObservable.remove(placementObserver);
-            disposeArControls();
+            // 破棄後も参照が残っていると、例外経路や `onStateChangedObservable` の
+            // 二重発火で破棄関数が二重実行され得るため、呼び出し後に参照をクリアする。
+            disposeArControls?.();
+            disposeArControls = null;
             dioramaRoot.position.copyFrom(originalPosition);
             scene.clearColor.a = originalClearAlpha;
             styleArButton(button);
@@ -327,10 +335,16 @@ const enterAr = async (
         return xrExperience;
     } catch (err) {
         console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
-        // 部分的に確保したリソース（箱庭配置・パススルー背景状態・HUD）を後始末する。
+        // 部分的に確保したリソース（箱庭配置・パススルー背景状態・AR controls・HUD）を
+        // 後始末する。`disposeArControls` が設定済み（`setupDioramaArControls` 呼び出し後に
+        // 例外が起きたケース）なら、render observer / controller observer の残留を防ぐため
+        // 必ず呼ぶ。
         dioramaRoot.position.copyFrom(originalPosition);
         scene.clearColor.a = originalClearAlpha;
+        disposeArControls?.();
+        disposeArControls = null;
         hud?.dispose();
+        hud = null;
         xr?.dispose();
         styleArButton(button);
         return null;
