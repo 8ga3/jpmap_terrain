@@ -7,9 +7,13 @@
  * のみを使うため、実Babylon Engineは使わず軽量なフェイクで代替する
  * （deltaTimeを任意に制御でき、レンダーループの1フレーム分を明示的に
  * トリガーできるようにするため）。
+ * `ArcRotateCamera`も同様に`getDirection`のみを使うため、指定した向き
+ * （headingDeg）を返す軽量なフェイクで代替する。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
 import { setupDioramaKeyboardControls } from "../src/demos/diorama/dioramaKeyboardControls";
 
@@ -42,6 +46,21 @@ const createFakeScene = (): FakeScene => {
     };
 };
 
+/**
+ * `headingDeg=0` は forward=(0,0,1)（北）・right=(1,0,0)（東）という既定の向き
+ * （回転補正なしの従来挙動と一致）。`headingDeg`が増えるとカメラが時計回りに
+ * 回転した状態を模す。
+ */
+const makeCamera = (headingDeg = 0): ArcRotateCamera => {
+    const rad = (headingDeg * Math.PI) / 180;
+    const forward = { x: Math.sin(rad), z: Math.cos(rad) };
+    const right = { x: Math.cos(rad), z: -Math.sin(rad) };
+    return {
+        getDirection: (localAxis: Vector3): Vector3 =>
+            localAxis.z !== 0 ? new Vector3(forward.x, 0, forward.z) : new Vector3(right.x, 0, right.z),
+    } as unknown as ArcRotateCamera;
+};
+
 const makeViewController = (): { vc: DioramaViewController; feedAxes: ReturnType<typeof vi.fn> } => {
     const feedAxes = vi.fn();
     const vc = { getCenter: vi.fn(), getFootprintRadiusM: vi.fn(), feedAxes } as unknown as DioramaViewController;
@@ -61,40 +80,67 @@ describe("setupDioramaKeyboardControls", () => {
     it("何も押していなければfeedAxesは{x:0,y:0}・zoomAxis:0で呼ばれる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
         tick(16);
 
         expect(feedAxes).toHaveBeenCalledWith({ x: 0, y: 0 }, 0, 0.016);
     });
 
-    it("矢印キーRight/Wで想定通りのパン軸になる", () => {
+    it("矢印キーはパンに割り当てない（Babylon既定のカメラ回転と衝突するため無視される）", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
         dispatchKey("keydown", "ArrowRight");
+        dispatchKey("keydown", "ArrowUp");
+        tick(16);
+
+        expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
+    });
+
+    it("カメラが既定の向き（北向き）のとき、D/Wで想定通りのパン軸になる", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes } = makeViewController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(0), vc));
+
+        dispatchKey("keydown", "KeyD");
         tick(16);
         expect(feedAxes).toHaveBeenLastCalledWith({ x: 1, y: 0 }, 0, 0.016);
 
         dispatchKey("keydown", "KeyW");
         tick(16);
-        // Right(x=+1) + W(前進, y=-1) → 正規化される
+        // D(東, x=+1) + W(北, y=-1) → 正規化される
         const [axes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
         expect(axes.x).toBeCloseTo(1 / Math.SQRT2, 6);
         expect(axes.y).toBeCloseTo(-1 / Math.SQRT2, 6);
     });
 
+    it("カメラを90°回転させると、Wキーの移動方向もカメラの向き基準で回転する", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes } = makeViewController();
+        // headingDeg=90: forward=(1,0,0)（東）になる。
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(90), vc));
+
+        dispatchKey("keydown", "KeyW");
+        tick(16);
+
+        const [axes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        // 北向き(heading=0)なら{x:0,y:-1}だったが、東向き(heading=90)では東(x軸プラス)へ動く。
+        expect(axes.x).toBeCloseTo(1, 6);
+        expect(axes.y).toBeCloseTo(0, 6);
+    });
+
     it("keyupで押下状態が解除される", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
-        dispatchKey("keydown", "ArrowLeft");
+        dispatchKey("keydown", "KeyA");
         tick(16);
         expect(feedAxes).toHaveBeenLastCalledWith({ x: -1, y: 0 }, 0, 0.016);
 
-        dispatchKey("keyup", "ArrowLeft");
+        dispatchKey("keyup", "KeyA");
         tick(16);
         expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
     });
@@ -102,7 +148,7 @@ describe("setupDioramaKeyboardControls", () => {
     it("PageUp/KeyRでズームイン(-1)、PageDown/KeyFでズームアウト(+1)になる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
         dispatchKey("keydown", "PageUp");
         tick(16);
@@ -117,7 +163,7 @@ describe("setupDioramaKeyboardControls", () => {
     it("Ctrl修飾キー併用時は無視する（ブラウザショートカットを奪わない）", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
         dispatchKey("keydown", "KeyR", { ctrlKey: true });
         tick(16);
@@ -127,7 +173,7 @@ describe("setupDioramaKeyboardControls", () => {
     it("dtSecondsが0以下ならfeedAxesを呼ばない", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
         tick(0);
         expect(feedAxes).not.toHaveBeenCalled();
@@ -136,10 +182,10 @@ describe("setupDioramaKeyboardControls", () => {
     it("破棄関数を呼ぶとイベントリスナー・レンダーオブザーバーが解除される", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        const dispose = setupDioramaKeyboardControls(scene, vc);
+        const dispose = setupDioramaKeyboardControls(scene, makeCamera(), vc);
 
         dispose();
-        dispatchKey("keydown", "ArrowRight");
+        dispatchKey("keydown", "KeyD");
         tick(16);
         // オブザーバーが除去されているため、tick()を呼んでもfeedAxesは呼ばれない。
         expect(feedAxes).not.toHaveBeenCalled();
@@ -148,9 +194,9 @@ describe("setupDioramaKeyboardControls", () => {
     it("windowのblurで押下状態がクリアされる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
 
-        dispatchKey("keydown", "ArrowRight");
+        dispatchKey("keydown", "KeyD");
         window.dispatchEvent(new Event("blur"));
         tick(16);
         expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
