@@ -66,23 +66,43 @@ export const createDioramaViewController = (
         if (!hasPan && !hasZoom) return;
 
         const patch: { center?: DioramaCenter; footprintRadiusM?: number } = {};
+        // `setView` が失敗した場合に取りこぼさず次回へ再送できるよう、
+        // 楽観的な状態確定（currentCenter/lastAppliedFootprintRadiusM の更新）は
+        // 成功時のみ行う。送信予定分は一旦 pending から差し引いておき、
+        // 失敗時のみ復元する（成功時は復元せず currentCenter に取り込む）。
+        let sentEastM = 0;
+        let sentNorthM = 0;
+        let nextCenter: DioramaCenter | undefined;
         if (hasPan) {
-            currentCenter = offsetToLatLon(currentCenter, pendingEastM, pendingNorthM);
-            patch.center = currentCenter;
+            sentEastM = pendingEastM;
+            sentNorthM = pendingNorthM;
+            nextCenter = offsetToLatLon(currentCenter, sentEastM, sentNorthM);
+            patch.center = nextCenter;
             pendingEastM = 0;
             pendingNorthM = 0;
         }
+        let sentFootprintRadiusM: number | undefined;
         if (hasZoom) {
-            patch.footprintRadiusM = currentFootprintRadiusM;
-            lastAppliedFootprintRadiusM = currentFootprintRadiusM;
+            sentFootprintRadiusM = currentFootprintRadiusM;
+            patch.footprintRadiusM = sentFootprintRadiusM;
         }
 
         applying = true;
         dioramaTerrain
             .setView(patch)
-            .catch((err: unknown) => {
-                console.error("[jpmap-terrain diorama demo] setView failed:", err);
-            })
+            .then(
+                () => {
+                    if (nextCenter !== undefined) currentCenter = nextCenter;
+                    if (sentFootprintRadiusM !== undefined) lastAppliedFootprintRadiusM = sentFootprintRadiusM;
+                },
+                (err: unknown) => {
+                    console.error("[jpmap-terrain diorama demo] setView failed:", err);
+                    // lastAppliedFootprintRadiusM は更新していないため、hasZoom判定により
+                    // 次回のflushで自然に再送される。パン分は差し引いていた値を復元する。
+                    pendingEastM += sentEastM;
+                    pendingNorthM += sentNorthM;
+                },
+            )
             .finally(() => {
                 applying = false;
             });

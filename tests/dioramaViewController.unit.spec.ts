@@ -114,4 +114,39 @@ describe("createDioramaViewController", () => {
         const patch = setView.mock.calls[0][0];
         expect(patch.footprintRadiusM).toBeLessThanOrEqual(DEFAULT_FOOTPRINT_RADIUS_MAX_M);
     });
+
+    it("setViewが失敗した場合、centerとfootprintRadiusMは確定させず次回flushで再送する", async () => {
+        const setView = vi.fn().mockRejectedValueOnce(new Error("network error")).mockResolvedValueOnce(undefined);
+        const terrain = { setView } as unknown as DioramaTerrain;
+        const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_RADIUS_M);
+
+        vc.feedAxes({ x: 1, y: 0 }, -1, 1); // パン+ズームを同時に送る
+        expect(setView).toHaveBeenCalledTimes(1);
+        const firstPatch = setView.mock.calls[0][0];
+
+        // 1回目のsetViewが失敗して確定処理が走った後まで待つ。
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // 失敗時は楽観的に確定させないため center は初期値のまま。footprintRadiusM は
+        // （setView成功/失敗に関わらず）feedAxes時点で即座に更新される値なので、
+        // 失敗の有無に関わらず既に目標値（400）になっている点に注意。
+        expect(vc.getCenter()).toEqual(INITIAL_CENTER);
+        expect(vc.getFootprintRadiusM()).toBe(firstPatch.footprintRadiusM);
+
+        // 次回のflush（トリガー呼び出し）で、1回目と同じ移動量・目標半径が再送される。
+        vc.feedAxes({ x: 0, y: 0 }, 0, 1); // 溜まった値をflushさせるためのトリガー呼び出し
+        expect(setView).toHaveBeenCalledTimes(2);
+        const secondPatch = setView.mock.calls[1][0];
+        expect(secondPatch.center).toEqual(firstPatch.center);
+        expect(secondPatch.footprintRadiusM).toBe(firstPatch.footprintRadiusM);
+
+        // 2回目は成功するので、確定処理が反映される。
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(vc.getCenter()).toEqual(firstPatch.center);
+        expect(vc.getFootprintRadiusM()).toBe(firstPatch.footprintRadiusM);
+    });
 });
