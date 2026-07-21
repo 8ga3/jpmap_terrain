@@ -225,6 +225,15 @@ interface BuiltMesh {
     skirtMaterial: StandardMaterial;
 }
 
+/** `BuiltMesh` 一式（メッシュ・マテリアル・テクスチャ）を破棄する。 */
+const disposeBuilt = (b: BuiltMesh): void => {
+    b.mesh.dispose();
+    b.material.dispose();
+    b.texture.dispose();
+    b.skirtMesh.dispose();
+    b.skirtMaterial.dispose();
+};
+
 /**
  * 実世界メートル単位の地形メッシュ（+ 地図テクスチャ材質）を1回分構築する。
  * `dioramaGrid`/`dioramaElevation`/`dioramaTexture` を順に呼び出す統合ポイント。
@@ -357,7 +366,16 @@ const buildMesh = async (
     // 生成直後からシーンの描画対象になるため、このコンパイル待ちの間は
     // `setEnabled(false)`（生成直後）で無効化しておき、root への parent/scale 適用が
     // 済んでいない未スケールの巨大メッシュがレンダーループへ混入しないようにする。
-    await Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]);
+    try {
+        await Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]);
+    } catch (err) {
+        // コンパイル待ちの間に失敗した場合、ここまでで生成済みのMesh/Material/Texture
+        // を破棄せずに投げると、無効化された状態（setEnabled(false)）のまま
+        // シーンに残留してリークする。呼び出し元（enqueueRebuild/初期構築）は
+        // 失敗時に何も後始末しない前提のため、ここで確実に破棄してから再throwする。
+        disposeBuilt({ mesh, material, texture, skirtMesh, skirtMaterial });
+        throw err;
+    }
     // コンパイル完了後、呼び出し側が parent/scale を適用する前に描画対象へ戻す。
     // ここから return までは同期処理のため、無効化されたまま描画される隙間フレームは
     // 生じない。
@@ -399,13 +417,6 @@ export const createDioramaTerrain = async (
     built.skirtMesh.parent = root;
     applyScale();
 
-    const disposeBuilt = (b: BuiltMesh): void => {
-        b.mesh.dispose();
-        b.material.dispose();
-        b.texture.dispose();
-        b.skirtMesh.dispose();
-        b.skirtMaterial.dispose();
-    };
 
     /**
      * 保留中の rebuild チェーン。`enqueueRebuild` はこれに繋げて直列化する。
