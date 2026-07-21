@@ -126,7 +126,7 @@ const AUTO_ZOOM_REFERENCE_TEXTURE_ZOOM = 16;
 /**
  * 自動算出ズームレベルの下限。GSIタイルの実用上のズーム下限（国土スケールの
  * 広域表示でも意味のある解像度を保つ下限）として、既存の全球ビュー
- * （`geo/gsiTile.ts` の `WORLD_TEXTURE_MAX_ZOOM=8` 等）を参考に十分低く設定する。
+ * （`src/terrain/gsiTile.ts` の `WORLD_TEXTURE_MAX_ZOOM=8` 等）を参考に十分低く設定する。
  */
 const AUTO_ZOOM_MIN = 2;
 /** DEM自動算出ズームの上限。`gsiTile.ts` の全国配信DEM（dem_png）の配信上限と同じ。 */

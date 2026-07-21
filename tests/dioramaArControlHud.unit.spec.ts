@@ -130,6 +130,26 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(0);
     });
 
+    it("最初に押下したpointerId以外のpointerup/pointercancelは無視される（複数指操作時の誤解除防止）", () => {
+        const hud = build();
+        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+
+        // pointerId=1で押下開始。
+        dispatchPointer(zoomInButton, "pointerdown", { pointerId: 1 });
+        expect(hud.getZoomAxis()).toBe(-1);
+
+        // 別指（pointerId=2）のup/cancelが誤って届いても、pointerId=1を押下し
+        // 続けている限り軸は0に戻らない。
+        dispatchPointer(zoomInButton, "pointerup", { pointerId: 2 });
+        expect(hud.getZoomAxis()).toBe(-1);
+        dispatchPointer(zoomInButton, "pointercancel", { pointerId: 2 });
+        expect(hud.getZoomAxis()).toBe(-1);
+
+        // 実際に押下していたpointerId=1のupで正しく0へ戻る。
+        dispatchPointer(zoomInButton, "pointerup", { pointerId: 1 });
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
     it("ズームボタンはキーボード操作（Enter/Space押下中）でも軸値が更新される", () => {
         const hud = build();
         const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
