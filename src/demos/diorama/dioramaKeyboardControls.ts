@@ -101,7 +101,12 @@ export const setupDioramaKeyboardControls = (
     };
     const onKeyUp = (event: KeyboardEvent): void => {
         if (!HANDLED_CODES.has(event.code)) return;
+        // pressed の解放は修飾キーの有無に関わらず必ず行う（さもなくば、修飾キーを
+        // 押しながらキーを離した場合にそのキーが「押しっぱなし」扱いのまま残り続ける）。
+        // preventDefault のみ、ブラウザ標準ショートカット（例: Ctrl+R）を奪わないよう
+        // 修飾キー併用時はスキップする（onKeyDownと同じ方針）。
         pressed.delete(event.code);
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
         event.preventDefault();
     };
     // ウィンドウ非アクティブ化等でkeyupを取りこぼすと押しっぱなし状態が残り続けるため、
