@@ -343,6 +343,9 @@ const createHoldButtonGroup = (
 
     buttons.forEach((spec, i) => {
         const button = document.createElement("button");
+        // フォーム内に配置された場合の既定`type="submit"`扱いを避ける
+        // （本HUDはフォームを想定しないが、誤ったクリックでのフォーム送信を防ぐため明示する）。
+        button.type = "button";
         styleHudButton(button);
         button.textContent = spec.label;
         button.setAttribute("aria-label", spec.ariaLabel);
@@ -430,6 +433,9 @@ const createTapButton = (spec: {
     disabled?: boolean;
 }): { element: HTMLButtonElement; onPress: (callback: () => void) => () => void; dispose: () => void } => {
     const button = document.createElement("button");
+    // フォーム内に配置された場合の既定`type="submit"`扱いを避ける
+    // （本HUDはフォームを想定しないが、誤ったクリックでのフォーム送信を防ぐため明示する）。
+    button.type = "button";
     styleHudButton(button);
     if (spec.iconHtml !== undefined) {
         button.innerHTML = spec.iconHtml;

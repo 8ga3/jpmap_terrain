@@ -602,6 +602,33 @@ describe("setupDioramaArControls", () => {
         dispose();
     });
 
+    it("exitXRAsync()が失敗してもunhandled rejectionにならず、コンソールにエラーが出力される（回帰テスト）", async () => {
+        const { scene } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const rejection = new Error("exitXRAsync failed");
+        (xr.baseExperience.exitXRAsync as ReturnType<typeof vi.fn>).mockRejectedValueOnce(rejection);
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        hud.triggerExitArPress();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "[jpmap-terrain diorama demo] failed to exit WebXR AR session:",
+            rejection,
+        );
+
+        consoleErrorSpy.mockRestore();
+        dispose();
+    });
+
     it("物理コントローラーのa-button(プライマリ)押下でtileModeController.cycle()が呼ばれる", () => {
         const { scene } = createFakeScene();
         const controller = makeController("right");

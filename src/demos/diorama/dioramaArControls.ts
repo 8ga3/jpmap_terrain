@@ -374,8 +374,12 @@ export const setupDioramaArControls = (
     // （`webXrArSession.ts`）と同じ `exitXRAsync()` を呼ぶだけでよい。後始末
     // （パススルー解除・箱庭位置の復元・タッチHUD再表示等）は `webXrArSession.ts`
     // 側の `onStateChangedObservable`（`NOT_IN_XR` 遷移で発火）が担う。
+    // `exitXRAsync()` が失敗した場合（Promise reject）に unhandled rejection として
+    // 静かに握りつぶされないよう、`catch` で最低限のログ出力を行う。
     const exitAr = (): void => {
-        void xr.baseExperience.exitXRAsync();
+        xr.baseExperience.exitXRAsync().catch((err: unknown) => {
+            console.error("[jpmap-terrain diorama demo] failed to exit WebXR AR session:", err);
+        });
     };
     const untrackButtons = trackControllerButtonPresses(xr, () => tileModeController.cycle(), exitAr);
     const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
