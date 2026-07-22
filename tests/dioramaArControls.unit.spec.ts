@@ -169,6 +169,49 @@ describe("trackControllerSticks", () => {
         expect(triggers.right).toBe(1);
     });
 
+    it("thumbstick/triggerの値に非有限値・範囲外の値が混入しても、格納時点でサニタイズされる（回帰テスト）", () => {
+        // sticks/triggersへの格納時点でサニタイズしないと、コントローラー由来の
+        // 異常値（NaN等）が setupDioramaArControls 側の `clamp1(sticks... + hud...)`
+        // で合算後にまとめて0扱いされ、同時に加算されるHUD側の正常な入力まで
+        // 無効化されてしまう（sticks/triggers自体は常に正常範囲であるべき）。
+        const controller = makeController("left");
+        const { xr } = makeXr([controller]);
+        const { sticks, triggers } = zeroState();
+
+        trackControllerSticks(xr, sticks, triggers);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: NaN, y: 2 });
+        expect(sticks.left).toEqual({ x: 0, y: 1 });
+
+        fireTrigger(motionController, NaN);
+        expect(triggers.left).toBe(0);
+
+        fireTrigger(motionController, 1.5);
+        expect(triggers.left).toBe(1);
+    });
+
+    it("バインド時点で既に入力済みの初期値も、非有限値・範囲外の値が混入していれば格納時点でサニタイズされる（回帰テスト）", () => {
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { sticks, triggers } = zeroState();
+
+        trackControllerSticks(xr, sticks, triggers);
+
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+            initialAxes: { x: Infinity, y: -2 },
+            initialTriggerValue: Infinity,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        expect(sticks.right).toEqual({ x: 0, y: -1 });
+        expect(triggers.right).toBe(0);
+    });
+
     it("同一コントローラーが再初期化され、新モーションコントローラーにthumbstick/triggerが無い場合、前回値へ固定されず0へリセットする（回帰テスト）", () => {
         const controller = makeController("right");
         const { xr } = makeXr([controller]);
