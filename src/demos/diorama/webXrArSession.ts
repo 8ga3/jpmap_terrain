@@ -284,6 +284,15 @@ const enterAr = async (
     const originalPosition = dioramaRoot.position.clone();
     const originalClearAlpha = scene.clearColor.a;
     try {
+        // AR中は本ファイルが生成する別インスタンスのHUD（コントローラー/GUI操作）を
+        // 表示するため、通常表示向けの常時表示タッチHUDは非表示にする。
+        // `createDioramaArControlHudForSession` によるHUDの生成・`mount` への追加
+        // （後述）は `enterXRAsync` 完了前（実機では体感できる遅延があり得る）に
+        // 行われるため、非表示化をそれより後（`enterXRAsync` 成功後）に行うと、
+        // AR突入処理中に両方のHUDが画面上で二重に重なって表示される期間が生じる。
+        // そのため、AR HUDを生成する前の時点で先に非表示化する。
+        touchControls.setVisible(false);
+
         xr = await scene.createDefaultXRExperienceAsync({
             // 本モジュールは歩行のみで移動するため、既定のテレポート/ポインタ選択機能は
             // 無効化し、入力の競合を避ける（VR PoC と同じ理由）。
@@ -313,11 +322,6 @@ const enterAr = async (
         // 透けて見えるようにする（{@link module:src/demos/diorama/webXrArSession.ts}
         // 冒頭のコメント参照）。
         scene.clearColor.a = 0;
-
-        // AR中は本ファイルが生成する別インスタンスのHUD（コントローラー/GUI操作）を
-        // 表示するため、通常表示向けの常時表示タッチHUDは非表示にする
-        // （同種のGUIが画面上で二重に重なって表示されるのを防ぐ）。
-        touchControls.setVisible(false);
 
         // コントローラー（thumbstick/trigger）/GUI（画面タッチ）による地図移動・拡大縮小・
         // 箱庭回転・高さ変更（`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
