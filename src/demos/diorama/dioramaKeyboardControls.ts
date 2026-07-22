@@ -17,12 +17,16 @@
  * - Z / X: 箱庭の設置高さ変更（Z = 下げる、X = 上げる。XRコントローラーの
  *   左右トリガーと同じ入力表現へ変換する）
  * - T: タイル種別切替（`DioramaTileModeController.cycle()`。std→photo→wireframeの順に巡回）
- * - Home: トップ復帰（`DioramaViewController.resetToInitial()` +
- *   `DioramaOrientationController.resetToInitial()`。ポータル画面への画面遷移ではない）
  *
- * T・Homeは他のキーと異なり「押しっぱなし」ではなく単発トリガーの操作のため、
+ * Tは他のキーと異なり「押しっぱなし」ではなく単発トリガーの操作のため、
  * 毎フレームの `pressed` セット走査（後述）ではなく `keydown` ハンドラ内で直接実行し、
  * キーリピート（長押し時に発火し続ける2回目以降の`keydown`、`event.repeat`）は無視する。
+ *
+ * AR終了操作（B/Yボタン・HUDの「⌂」ボタン、`dioramaArControls.ts`参照）に対応する
+ * キーボード割り当ては無い。デスクトップキーボードは「AR非対応/AR突入前のPC単体での
+ * 動作確認」用途であり、キーボード操作中にWebXRセッションへ実際に入っている状況は
+ * 想定していないため（`immersive-ar`は没入表示でありデスクトップキーボード入力とは
+ * 通常同時に使わない）。
  *
  * 矢印キーは意図的にパンへ割り当てない。`ArcRotateCamera.attachControl` は既定で
  * 矢印キーをカメラの軌道回転（alpha/beta）へバインドしており、同じキーを地図移動にも
@@ -65,8 +69,6 @@ const HEIGHT_DOWN_CODES = new Set(["KeyZ"]);
 const HEIGHT_UP_CODES = new Set(["KeyX"]);
 /** タイル種別切替（単発トリガー）のキー割り当て。 */
 const TILE_MODE_CYCLE_CODES = new Set(["KeyT"]);
-/** トップ復帰（単発トリガー）のキー割り当て。 */
-const RESET_TO_INITIAL_CODES = new Set(["Home"]);
 
 const HANDLED_CODES = new Set<string>([
     ...PAN_FORWARD_CODES,
@@ -80,7 +82,6 @@ const HANDLED_CODES = new Set<string>([
     ...HEIGHT_DOWN_CODES,
     ...HEIGHT_UP_CODES,
     ...TILE_MODE_CYCLE_CODES,
-    ...RESET_TO_INITIAL_CODES,
 ]);
 
 const anyPressed = (pressed: ReadonlySet<string>, codes: ReadonlySet<string>): boolean => {
@@ -108,14 +109,14 @@ const getHorizontalDirectionUnit = (camera: ArcRotateCamera, localAxis: Vector3)
 
 /**
  * diorama デモにキーボード操作（地図移動・拡大縮小・箱庭回転・高さ変更・
- * タイル種別切替・トップ復帰）をセットアップする。AR対応可否・ARセッション状態に
+ * タイル種別切替）をセットアップする。AR対応可否・ARセッション状態に
  * よらず常時有効にする想定（`index.ts` からデモ起動時に一度だけ呼ぶ）。
  *
  * @param camera パン方向をカメラの現在の向き基準へ補正するために参照する
  *   （`ArcRotateCamera` の水平方向）。
  * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
  *   （Q/E＝回転、Z/X＝高さ変更）。
- * @param tileModeController タイル種別の共有状態保持者（T＝巡回、Home＝復帰の一部）。
+ * @param tileModeController タイル種別の共有状態保持者（T＝巡回）。
  * @returns 後始末用の破棄関数。
  */
 export const setupDioramaKeyboardControls = (
@@ -130,19 +131,11 @@ export const setupDioramaKeyboardControls = (
     const onKeyDown = (event: KeyboardEvent): void => {
         if (event.ctrlKey || event.metaKey || event.altKey) return;
         if (!HANDLED_CODES.has(event.code)) return;
-        // T・Homeは単発トリガー（「押しっぱなし」の継続入力ではない）ため、
+        // Tは単発トリガー（「押しっぱなし」の継続入力ではない）ため、
         // `pressed` セットには積まず、ここで直接1回だけ実行する。キーリピート
         // （長押しで発火し続ける2回目以降のkeydown、`event.repeat`）は無視する。
         if (TILE_MODE_CYCLE_CODES.has(event.code)) {
             if (!event.repeat) tileModeController.cycle();
-            event.preventDefault();
-            return;
-        }
-        if (RESET_TO_INITIAL_CODES.has(event.code)) {
-            if (!event.repeat) {
-                viewController.resetToInitial();
-                orientationController.resetToInitial();
-            }
             event.preventDefault();
             return;
         }

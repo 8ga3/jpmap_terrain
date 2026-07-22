@@ -151,17 +151,22 @@ const makeXr = (
     xr: WebXRDefaultExperience;
     addedObservable: FakeObservable<FakeController>;
     removedObservable: FakeObservable<FakeController>;
+    exitXRAsync: ReturnType<typeof vi.fn>;
 } => {
     const addedObservable = new FakeObservable<FakeController>();
     const removedObservable = new FakeObservable<FakeController>();
+    const exitXRAsync = vi.fn(() => Promise.resolve());
     const xr = {
         input: {
             controllers,
             onControllerAddedObservable: addedObservable,
             onControllerRemovedObservable: removedObservable,
         },
+        baseExperience: {
+            exitXRAsync,
+        },
     } as unknown as WebXRDefaultExperience;
-    return { xr, addedObservable, removedObservable };
+    return { xr, addedObservable, removedObservable, exitXRAsync };
 };
 
 const zeroState = (): { sticks: ControllerStickState; triggers: ControllerTriggerState } => ({
@@ -506,46 +511,39 @@ describe("setupDioramaArControls", () => {
         };
     };
 
-    const makeViewController = (): { vc: DioramaViewController; resetToInitial: ReturnType<typeof vi.fn> } => {
-        const resetToInitial = vi.fn();
+    const makeViewController = (): { vc: DioramaViewController } => {
         const vc = {
             getCenter: vi.fn(),
             getFootprintRadiusM: vi.fn(),
             feedAxes: vi.fn(),
-            resetToInitial,
         } as unknown as DioramaViewController;
-        return { vc, resetToInitial };
+        return { vc };
     };
 
-    const makeOrientationController = (): {
-        oc: DioramaOrientationController;
-        resetToInitial: ReturnType<typeof vi.fn>;
-    } => {
-        const resetToInitial = vi.fn();
+    const makeOrientationController = (): { oc: DioramaOrientationController } => {
         const oc = {
             getRotationRad: vi.fn(),
             getHeightOffsetM: vi.fn(),
             feedAxes: vi.fn(),
-            resetToInitial,
         } as unknown as DioramaOrientationController;
-        return { oc, resetToInitial };
+        return { oc };
     };
 
     const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
         const cycle = vi.fn();
-        const tc = { getTileMode: vi.fn(), cycle, resetToInitial: vi.fn() } as unknown as DioramaTileModeController;
+        const tc = { getTileMode: vi.fn(), cycle } as unknown as DioramaTileModeController;
         return { tc, cycle };
     };
 
-    /** 実DOMを使わない `DioramaArControlHud` フェイク。タイル切替/リセットの
+    /** 実DOMを使わない `DioramaArControlHud` フェイク。タイル切替/AR終了の
      *  購読コールバックを保持し、テストから直接発火できるようにする。 */
     type FakeHud = DioramaArControlHud & {
         triggerTileModeCyclePress: () => void;
-        triggerResetToInitialPress: () => void;
+        triggerExitArPress: () => void;
     };
     const makeHud = (): FakeHud => {
         let tileModeCycleCallback: (() => void) | null = null;
-        let resetToInitialCallback: (() => void) | null = null;
+        let exitArCallback: (() => void) | null = null;
         return {
             element: {} as HTMLElement,
             getPanAxes: () => ({ x: 0, y: 0 }),
@@ -558,15 +556,15 @@ describe("setupDioramaArControls", () => {
                     tileModeCycleCallback = null;
                 };
             },
-            onResetToInitialPress: (callback: () => void) => {
-                resetToInitialCallback = callback;
+            onExitArPress: (callback: () => void) => {
+                exitArCallback = callback;
                 return () => {
-                    resetToInitialCallback = null;
+                    exitArCallback = null;
                 };
             },
             dispose: vi.fn(),
             triggerTileModeCyclePress: () => tileModeCycleCallback?.(),
-            triggerResetToInitialPress: () => resetToInitialCallback?.(),
+            triggerExitArPress: () => exitArCallback?.(),
         };
     };
 
@@ -587,20 +585,19 @@ describe("setupDioramaArControls", () => {
         dispose();
     });
 
-    it("HUDのリセットボタン押下でview/orientationControllerのresetToInitial()が呼ばれる", () => {
+    it("HUDのAR終了ボタン押下でxr.baseExperience.exitXRAsync()が呼ばれる", () => {
         const { scene } = createFakeScene();
         const controller = makeController("right");
-        const { xr } = makeXr([controller]);
-        const { vc, resetToInitial: resetView } = makeViewController();
-        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { xr, exitXRAsync } = makeXr([controller]);
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
         const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
 
-        hud.triggerResetToInitialPress();
-        expect(resetView).toHaveBeenCalledTimes(1);
-        expect(resetOrientation).toHaveBeenCalledTimes(1);
+        hud.triggerExitArPress();
+        expect(exitXRAsync).toHaveBeenCalledTimes(1);
 
         dispose();
     });
@@ -630,12 +627,12 @@ describe("setupDioramaArControls", () => {
         dispose();
     });
 
-    it("物理コントローラーのb-button(セカンダリ)押下でview/orientationControllerのresetToInitial()が呼ばれる", () => {
+    it("物理コントローラーのb-button(セカンダリ)押下でxr.baseExperience.exitXRAsync()が呼ばれる", () => {
         const { scene } = createFakeScene();
         const controller = makeController("right");
-        const { xr } = makeXr([controller]);
-        const { vc, resetToInitial: resetView } = makeViewController();
-        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { xr, exitXRAsync } = makeXr([controller]);
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
@@ -650,17 +647,16 @@ describe("setupDioramaArControls", () => {
         controller.onMotionControllerInitObservable.notifyObservers(motionController);
         firePressedChange(bButton, true);
 
-        expect(resetView).toHaveBeenCalledTimes(1);
-        expect(resetOrientation).toHaveBeenCalledTimes(1);
+        expect(exitXRAsync).toHaveBeenCalledTimes(1);
 
         dispose();
     });
 
-    it("dispose()を呼ぶと、以後HUDのタイル切替ボタン押下・物理ボタン押下のいずれもcycle()/resetToInitial()を呼ばない", () => {
+    it("dispose()を呼ぶと、以後HUDのタイル切替ボタン押下・物理ボタン押下のいずれもcycle()/exitXRAsync()を呼ばない", () => {
         const { scene } = createFakeScene();
         const controller = makeController("right");
-        const { xr } = makeXr([controller]);
-        const { vc, resetToInitial: resetView } = makeViewController();
+        const { xr, exitXRAsync } = makeXr([controller]);
+        const { vc } = makeViewController();
         const { oc } = makeOrientationController();
         const { tc, cycle } = makeTileModeController();
         const hud = makeHud();
@@ -678,11 +674,11 @@ describe("setupDioramaArControls", () => {
         dispose();
 
         hud.triggerTileModeCyclePress();
-        hud.triggerResetToInitialPress();
+        hud.triggerExitArPress();
         firePressedChange(aButton, true);
 
         expect(cycle).not.toHaveBeenCalled();
-        expect(resetView).not.toHaveBeenCalled();
+        expect(exitXRAsync).not.toHaveBeenCalled();
         expect(hud.dispose).toHaveBeenCalledTimes(1);
     });
 });

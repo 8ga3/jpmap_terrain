@@ -168,10 +168,12 @@ const start = async (): Promise<void> => {
 
     // AR非対応環境・AR突入前の通常表示でも、物理コントローラー・キーボードが
     // 無いタッチ専用デバイス（Androidスマホ等）で地図移動・拡大縮小・箱庭回転・
-    // 高さ変更・タイル種別切替・トップ復帰を操作できるよう、常時表示のタッチHUDを
+    // 高さ変更・タイル種別切替を操作できるよう、常時表示のタッチHUDを
     // 生成・マウントする（`dioramaTouchControls.ts` 冒頭のコメント参照。AR中に
     // 使われる別インスタンスのHUDとは独立しており、二重入力にはならない）。
-    const touchHud = createDioramaArControlHud();
+    // AR終了ボタンは、終了すべきARセッションが存在しない（＝常時表示中は
+    // 常にAR非突入状態の）このインスタンスでは無効化する。
+    const touchHud = createDioramaArControlHud({ exitArEnabled: false });
     mount.appendChild(touchHud.element);
     const touchControls = setupDioramaTouchControls(
         scene,

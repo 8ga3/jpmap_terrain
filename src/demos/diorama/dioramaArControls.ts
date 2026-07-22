@@ -19,10 +19,14 @@
  * （`dioramaOrientationController.ts`）が同期的に対象ノードへ反映するため、
  * パン/ズームのような完了待ちの仕組みは不要。
  *
- * さらに、タイル種別切替（A/Xボタン）・トップ復帰（B/Yボタン）の入力も配線する
+ * さらに、タイル種別切替（A/Xボタン）・AR終了（B/Yボタン）の入力も配線する
  * （{@link trackControllerButtonPresses}）。これらは継続入力（スティック/トリガー）
- * ではなく単発の押下エッジで駆動するため、`DioramaTileModeController.cycle()`/
- * `resetToInitial()` を直接呼ぶ（毎フレームの軸値反映とは別経路）。
+ * ではなく単発の押下エッジで駆動する。タイル種別切替は
+ * `DioramaTileModeController.cycle()` を呼び、AR終了は
+ * `xr.baseExperience.exitXRAsync()` を直接呼ぶ（右上の既存ARトグルボタン
+ * （`webXrArSession.ts`）と同じ終了経路。呼び出し後の後始末（パススルー解除・
+ * 箱庭位置の復元・タッチHUD再表示等）は同ファイルの `onStateChangedObservable`
+ * が担うため、本モジュールは `exitXRAsync()` を呼ぶだけでよい）。
  *
  * **`dom-overlay` featureの有効化タイミングが重要**: WebXR仕様上、
  * `dom-overlay`（GUI HUDを没入セッション中も表示し続けるための機能）は
@@ -76,7 +80,7 @@ export const createDioramaArControlHudForSession = (
     xr: WebXRDefaultExperience,
     mount: HTMLElement,
 ): DioramaArControlHud => {
-    const hud = createDioramaArControlHud();
+    const hud = createDioramaArControlHud({ exitArEnabled: true });
     // `domOverlay.root` は文書に接続済みである必要があるため、feature有効化より前に追加する。
     mount.appendChild(hud.element);
     try {
@@ -352,7 +356,7 @@ export const trackControllerButtonPresses = (
  * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
  *   （右スティックX＝回転、左右トリガー＝高さ変更）。
  * @param tileModeController タイル種別の共有状態保持者（A/Xボタン・HUDタイル
- *   切替ボタン＝巡回、B/Yボタン・HUDリセットボタン＝トップ復帰の一部）。
+ *   切替ボタン＝巡回）。
  */
 export const setupDioramaArControls = (
     scene: Scene,
@@ -366,17 +370,16 @@ export const setupDioramaArControls = (
     const triggers = zeroTriggerState();
     const untrackSticks = trackControllerSticks(xr, sticks, triggers);
 
-    const resetToInitial = (): void => {
-        viewController.resetToInitial();
-        orientationController.resetToInitial();
+    // B/Yボタン・HUDのAR終了ボタンは、いずれも右上の既存ARトグルボタン
+    // （`webXrArSession.ts`）と同じ `exitXRAsync()` を呼ぶだけでよい。後始末
+    // （パススルー解除・箱庭位置の復元・タッチHUD再表示等）は `webXrArSession.ts`
+    // 側の `onStateChangedObservable`（`NOT_IN_XR` 遷移で発火）が担う。
+    const exitAr = (): void => {
+        void xr.baseExperience.exitXRAsync();
     };
-    const untrackButtons = trackControllerButtonPresses(
-        xr,
-        () => tileModeController.cycle(),
-        resetToInitial,
-    );
+    const untrackButtons = trackControllerButtonPresses(xr, () => tileModeController.cycle(), exitAr);
     const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
-    const unsubscribeResetToInitial = hud.onResetToInitialPress(resetToInitial);
+    const unsubscribeExitAr = hud.onExitArPress(exitAr);
 
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
@@ -406,7 +409,7 @@ export const setupDioramaArControls = (
         untrackSticks();
         untrackButtons();
         unsubscribeTileModeCycle();
-        unsubscribeResetToInitial();
+        unsubscribeExitAr();
         hud.dispose();
     };
 };

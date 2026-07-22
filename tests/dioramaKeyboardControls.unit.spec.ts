@@ -66,44 +66,36 @@ const makeCamera = (headingDeg = 0): ArcRotateCamera => {
 const makeViewController = (): {
     vc: DioramaViewController;
     feedAxes: ReturnType<typeof vi.fn>;
-    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const feedAxes = vi.fn();
-    const resetToInitial = vi.fn();
     const vc = {
         getCenter: vi.fn(),
         getFootprintRadiusM: vi.fn(),
         feedAxes,
-        resetToInitial,
     } as unknown as DioramaViewController;
-    return { vc, feedAxes, resetToInitial };
+    return { vc, feedAxes };
 };
 
 const makeOrientationController = (): {
     oc: DioramaOrientationController;
     feedAxes: ReturnType<typeof vi.fn>;
-    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const feedAxes = vi.fn();
-    const resetToInitial = vi.fn();
     const oc = {
         getRotationRad: vi.fn(),
         getHeightOffsetM: vi.fn(),
         feedAxes,
-        resetToInitial,
     } as unknown as DioramaOrientationController;
-    return { oc, feedAxes, resetToInitial };
+    return { oc, feedAxes };
 };
 
 const makeTileModeController = (): {
     tc: DioramaTileModeController;
     cycle: ReturnType<typeof vi.fn>;
-    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const cycle = vi.fn();
-    const resetToInitial = vi.fn();
-    const tc = { getTileMode: vi.fn(), cycle, resetToInitial } as unknown as DioramaTileModeController;
-    return { tc, cycle, resetToInitial };
+    const tc = { getTileMode: vi.fn(), cycle } as unknown as DioramaTileModeController;
+    return { tc, cycle };
 };
 
 const dispatchKey = (type: "keydown" | "keyup", code: string, modifiers: Partial<KeyboardEventInit> = {}): void => {
@@ -325,23 +317,21 @@ describe("setupDioramaKeyboardControls", () => {
         expect(cycle).toHaveBeenCalledTimes(2);
     });
 
-    it("Homeでview/orientationControllerのresetToInitial()が呼ばれる（押しっぱなしでは連続実行しない）", () => {
-        const { scene } = createFakeScene();
-        const { vc, resetToInitial: resetView } = makeViewController();
-        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+    it("Homeキーは処理されない（AR終了専用の操作であり、キーボード導線には割り当てない）", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "Home");
-        expect(resetView).toHaveBeenCalledTimes(1);
-        expect(resetOrientation).toHaveBeenCalledTimes(1);
+        tick(16);
 
-        window.dispatchEvent(new KeyboardEvent("keydown", { code: "Home", bubbles: true, cancelable: true, repeat: true }));
-        expect(resetView).toHaveBeenCalledTimes(1);
-        expect(resetOrientation).toHaveBeenCalledTimes(1);
+        // Homeは`HANDLED_CODES`に含まれないため、パン等の他のキー処理にも影響しない。
+        expect(viewFeedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
     });
 
-    it("KeyT・Homeは他の移動系キーと異なりpressedセットに積まれず、feedAxesの軸には影響しない", () => {
+    it("KeyTは他の移動系キーと異なりpressedセットに積まれず、feedAxesの軸には影響しない", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc } = makeOrientationController();
@@ -349,7 +339,6 @@ describe("setupDioramaKeyboardControls", () => {
         cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "KeyT");
-        dispatchKey("keydown", "Home");
         tick(16);
 
         expect(viewFeedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
