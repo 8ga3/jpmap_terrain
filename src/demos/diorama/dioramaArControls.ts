@@ -19,6 +19,11 @@
  * （`dioramaOrientationController.ts`）が同期的に対象ノードへ反映するため、
  * パン/ズームのような完了待ちの仕組みは不要。
  *
+ * さらに、タイル種別切替（A/Xボタン）・トップ復帰（B/Yボタン）の入力も配線する
+ * （{@link trackControllerButtonPresses}）。これらは継続入力（スティック/トリガー）
+ * ではなく単発の押下エッジで駆動するため、`DioramaTileModeController.cycle()`/
+ * `resetToInitial()` を直接呼ぶ（毎フレームの軸値反映とは別経路）。
+ *
  * **`dom-overlay` featureの有効化タイミングが重要**: WebXR仕様上、
  * `dom-overlay`（GUI HUDを没入セッション中も表示し続けるための機能）は
  * `domOverlay.root` を `XRSession` の**セッション要求（`requestSession`）時点**の
@@ -37,6 +42,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
+import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
 // `xr-dom-overlay` feature をfeaturesManagerへ登録する副作用 import
 // （AR中もコントロールHUDを表示し続けるために使う）。
@@ -44,6 +50,7 @@ import "@babylonjs/core/XR/features/WebXRDOMOverlay";
 
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
+import type { DioramaTileModeController } from "./dioramaTileModeController";
 import type { StickAxes } from "./dioramaControllerMapping";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
@@ -227,14 +234,125 @@ export const trackControllerSticks = (
 };
 
 /**
- * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更の
- * セットアップを行う。`xrExperience.baseExperience.enterXRAsync(...)` 完了後に呼び、
- * 退出/破棄時に返り値の破棄関数を呼ぶこと。
+ * 各ハンドの「プライマリ」「セカンダリ」ボタンのWebXR入力プロファイル上の
+ * コンポーネントID（Meta Quest/Oculus Touchプロファイルの慣例に基づく）。
+ *
+ * @remarks
+ * 右手の "a-button"/"b-button"、左手の "x-button"/"y-button" は、
+ * `@webxr-input-profiles/motion-controllers` が提供する oculus-touch系
+ * プロファイル（Meta Quest含む多くのVR/ARコントローラーが採用）の
+ * コンポーネントIDと一致する。`getComponent(id)` は該当コンポーネントが
+ * 存在しない場合 `undefined` を返す（例外を投げない）ため、命名が異なる
+ * プロファイルでは {@link PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES} の
+ * フォールバックを使う。
+ */
+const PRIMARY_BUTTON_COMPONENT_ID: Record<"left" | "right", string> = {
+    left: "x-button",
+    right: "a-button",
+};
+const SECONDARY_BUTTON_COMPONENT_ID: Record<"left" | "right", string> = {
+    left: "y-button",
+    right: "b-button",
+};
+/**
+ * 名前付きコンポーネントIDが見つからないプロファイル向けのフォールバック
+ * （`getAllComponentsOfType("button")` の配列インデックス。0=プライマリ、
+ * 1=セカンダリという一般的な並び順を仮定する）。
+ */
+const PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES = { primary: 0, secondary: 1 } as const;
+
+/**
+ * 追加されたコントローラーのプライマリ（A/Xボタン）・セカンダリ（B/Yボタン）の
+ * 押下エッジ（`default`/`touched` → `pressed` への遷移）を検知し、
+ * `onPrimaryPress`/`onSecondaryPress` を呼び出すリスナーを登録する
+ * （`trackControllerSticks` と同じライフサイクル管理方針。コントローラーの
+ * 追加・再初期化・切断のたびに購読を張り替え、返り値の登録解除関数で
+ * 一括解除できる）。
+ *
+ * `WebXRControllerComponent.changes.pressed` は「このコールバック呼び出しで
+ * pressed状態が変化した場合のみ」値を持つため、`current === true` の
+ * タイミング（＝押した瞬間、離した瞬間には発火しない）だけを拾うことで
+ * 単発トリガーにする（継続的な押しっぱなし判定は不要な操作のため）。
+ *
+ * @returns 登録解除関数。
+ */
+export const trackControllerButtonPresses = (
+    xr: WebXRDefaultExperience,
+    onPrimaryPress: () => void,
+    onSecondaryPress: () => void,
+): (() => void) => {
+    const controllerCleanups = new Map<WebXRInputSource, () => void>();
+
+    const bindPressObserver = (component: WebXRControllerComponent, onPress: () => void): (() => void) => {
+        const observer = component.onButtonStateChangedObservable.add((c) => {
+            if (c.changes.pressed?.current === true) onPress();
+        });
+        return () => component.onButtonStateChangedObservable.remove(observer);
+    };
+
+    const bindController = (controller: WebXRInputSource): void => {
+        const handedness = controller.inputSource.handedness;
+        if (handedness !== "left" && handedness !== "right") return;
+
+        let disposePrimaryBinding: (() => void) | null = null;
+        let disposeSecondaryBinding: (() => void) | null = null;
+        const motionControllerObserver = controller.onMotionControllerInitObservable.add((motionController) => {
+            // `trackControllerSticks` と同様、モーションコントローラーの再初期化時に
+            // 前回の購読を解除してから登録し直す。
+            disposePrimaryBinding?.();
+            disposePrimaryBinding = null;
+            disposeSecondaryBinding?.();
+            disposeSecondaryBinding = null;
+
+            const buttons = motionController.getAllComponentsOfType("button");
+            const primary =
+                motionController.getComponent(PRIMARY_BUTTON_COMPONENT_ID[handedness]) ??
+                buttons[PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES.primary];
+            if (primary) {
+                disposePrimaryBinding = bindPressObserver(primary, onPrimaryPress);
+            }
+
+            const secondary =
+                motionController.getComponent(SECONDARY_BUTTON_COMPONENT_ID[handedness]) ??
+                buttons[PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES.secondary];
+            if (secondary) {
+                disposeSecondaryBinding = bindPressObserver(secondary, onSecondaryPress);
+            }
+        });
+
+        controllerCleanups.set(controller, () => {
+            controller.onMotionControllerInitObservable.remove(motionControllerObserver);
+            disposePrimaryBinding?.();
+            disposeSecondaryBinding?.();
+        });
+    };
+
+    xr.input.controllers.forEach(bindController);
+    const addedObserver = xr.input.onControllerAddedObservable.add(bindController);
+    const removedObserver = xr.input.onControllerRemovedObservable.add((controller) => {
+        controllerCleanups.get(controller)?.();
+        controllerCleanups.delete(controller);
+    });
+    return () => {
+        xr.input.onControllerAddedObservable.remove(addedObserver);
+        xr.input.onControllerRemovedObservable.remove(removedObserver);
+        controllerCleanups.forEach((cleanup) => cleanup());
+        controllerCleanups.clear();
+    };
+};
+
+/**
+ * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更・
+ * タイル種別切替・トップ復帰のセットアップを行う。
+ * `xrExperience.baseExperience.enterXRAsync(...)` 完了後に呼び、退出/破棄時に
+ * 返り値の破棄関数を呼ぶこと。
  *
  * @param hud {@link createDioramaArControlHudForSession} で事前に生成したHUD
  *   （`enterXRAsync` より前に呼んでおく必要がある。冒頭のコメント参照）。
  * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
  *   （右スティックX＝回転、左右トリガー＝高さ変更）。
+ * @param tileModeController タイル種別の共有状態保持者（A/Xボタン・HUDタイル
+ *   切替ボタン＝巡回、B/Yボタン・HUDリセットボタン＝トップ復帰の一部）。
  */
 export const setupDioramaArControls = (
     scene: Scene,
@@ -242,10 +360,23 @@ export const setupDioramaArControls = (
     hud: DioramaArControlHud,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
+    tileModeController: DioramaTileModeController,
 ): (() => void) => {
     const sticks = zeroStickState();
     const triggers = zeroTriggerState();
     const untrackSticks = trackControllerSticks(xr, sticks, triggers);
+
+    const resetToInitial = (): void => {
+        viewController.resetToInitial();
+        orientationController.resetToInitial();
+    };
+    const untrackButtons = trackControllerButtonPresses(
+        xr,
+        () => tileModeController.cycle(),
+        resetToInitial,
+    );
+    const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
+    const unsubscribeResetToInitial = hud.onResetToInitialPress(resetToInitial);
 
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
@@ -273,6 +404,10 @@ export const setupDioramaArControls = (
     return (): void => {
         scene.onBeforeRenderObservable.remove(renderObserver);
         untrackSticks();
+        untrackButtons();
+        unsubscribeTileModeCycle();
+        unsubscribeResetToInitial();
         hud.dispose();
     };
 };
+

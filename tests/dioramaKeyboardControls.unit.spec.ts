@@ -16,6 +16,7 @@ import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
 import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
 import { setupDioramaKeyboardControls } from "../src/demos/diorama/dioramaKeyboardControls";
 
 interface FakeScene {
@@ -62,23 +63,47 @@ const makeCamera = (headingDeg = 0): ArcRotateCamera => {
     } as unknown as ArcRotateCamera;
 };
 
-const makeViewController = (): { vc: DioramaViewController; feedAxes: ReturnType<typeof vi.fn> } => {
+const makeViewController = (): {
+    vc: DioramaViewController;
+    feedAxes: ReturnType<typeof vi.fn>;
+    resetToInitial: ReturnType<typeof vi.fn>;
+} => {
     const feedAxes = vi.fn();
-    const vc = { getCenter: vi.fn(), getFootprintRadiusM: vi.fn(), feedAxes } as unknown as DioramaViewController;
-    return { vc, feedAxes };
+    const resetToInitial = vi.fn();
+    const vc = {
+        getCenter: vi.fn(),
+        getFootprintRadiusM: vi.fn(),
+        feedAxes,
+        resetToInitial,
+    } as unknown as DioramaViewController;
+    return { vc, feedAxes, resetToInitial };
 };
 
 const makeOrientationController = (): {
     oc: DioramaOrientationController;
     feedAxes: ReturnType<typeof vi.fn>;
+    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const feedAxes = vi.fn();
+    const resetToInitial = vi.fn();
     const oc = {
         getRotationRad: vi.fn(),
         getHeightOffsetM: vi.fn(),
         feedAxes,
+        resetToInitial,
     } as unknown as DioramaOrientationController;
-    return { oc, feedAxes };
+    return { oc, feedAxes, resetToInitial };
+};
+
+const makeTileModeController = (): {
+    tc: DioramaTileModeController;
+    cycle: ReturnType<typeof vi.fn>;
+    resetToInitial: ReturnType<typeof vi.fn>;
+} => {
+    const cycle = vi.fn();
+    const resetToInitial = vi.fn();
+    const tc = { getTileMode: vi.fn(), cycle, resetToInitial } as unknown as DioramaTileModeController;
+    return { tc, cycle, resetToInitial };
 };
 
 const dispatchKey = (type: "keydown" | "keyup", code: string, modifiers: Partial<KeyboardEventInit> = {}): void => {
@@ -95,7 +120,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         tick(16);
 
@@ -106,7 +132,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "ArrowRight");
         dispatchKey("keydown", "ArrowUp");
@@ -119,7 +146,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(0), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(0), vc, oc, tc));
 
         dispatchKey("keydown", "KeyD");
         tick(16);
@@ -137,8 +165,9 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
         // headingDeg=90: forward=(1,0,0)（東）になる。
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(90), vc, oc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(90), vc, oc, tc));
 
         dispatchKey("keydown", "KeyW");
         tick(16);
@@ -153,7 +182,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "KeyA");
         tick(16);
@@ -168,7 +198,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "PageUp");
         tick(16);
@@ -184,7 +215,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "KeyR", { ctrlKey: true });
         tick(16);
@@ -195,7 +227,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         tick(0);
         expect(feedAxes).not.toHaveBeenCalled();
@@ -205,7 +238,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        const dispose = setupDioramaKeyboardControls(scene, makeCamera(), vc, oc);
+        const { tc } = makeTileModeController();
+        const dispose = setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc);
 
         dispose();
         dispatchKey("keydown", "KeyD");
@@ -218,7 +252,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
         const { oc } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "KeyD");
         window.dispatchEvent(new Event("blur"));
@@ -230,7 +265,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
         const { oc, feedAxes } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "KeyE");
         tick(16);
@@ -246,7 +282,8 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
         const { oc, feedAxes } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         dispatchKey("keydown", "KeyZ");
         tick(16);
@@ -262,9 +299,59 @@ describe("setupDioramaKeyboardControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
         const { oc, feedAxes } = makeOrientationController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
 
         tick(0);
         expect(feedAxes).not.toHaveBeenCalled();
+    });
+
+    it("KeyTでtileModeController.cycle()が呼ばれる（押しっぱなしでは連続実行しない）", () => {
+        const { scene } = createFakeScene();
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc, cycle } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
+
+        dispatchKey("keydown", "KeyT");
+        expect(cycle).toHaveBeenCalledTimes(1);
+
+        // キーリピート（同じキーが離されずに発火し続けるkeydown）では再実行しない。
+        window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyT", bubbles: true, cancelable: true, repeat: true }));
+        expect(cycle).toHaveBeenCalledTimes(1);
+
+        dispatchKey("keyup", "KeyT");
+        dispatchKey("keydown", "KeyT");
+        expect(cycle).toHaveBeenCalledTimes(2);
+    });
+
+    it("Homeでview/orientationControllerのresetToInitial()が呼ばれる（押しっぱなしでは連続実行しない）", () => {
+        const { scene } = createFakeScene();
+        const { vc, resetToInitial: resetView } = makeViewController();
+        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
+
+        dispatchKey("keydown", "Home");
+        expect(resetView).toHaveBeenCalledTimes(1);
+        expect(resetOrientation).toHaveBeenCalledTimes(1);
+
+        window.dispatchEvent(new KeyboardEvent("keydown", { code: "Home", bubbles: true, cancelable: true, repeat: true }));
+        expect(resetView).toHaveBeenCalledTimes(1);
+        expect(resetOrientation).toHaveBeenCalledTimes(1);
+    });
+
+    it("KeyT・Homeは他の移動系キーと異なりpressedセットに積まれず、feedAxesの軸には影響しない", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc, tc));
+
+        dispatchKey("keydown", "KeyT");
+        dispatchKey("keydown", "Home");
+        tick(16);
+
+        expect(viewFeedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
     });
 });

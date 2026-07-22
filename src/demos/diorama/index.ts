@@ -8,11 +8,11 @@
  * 使わない独立実装のため、本デモは `JpmapTerrain` に依存しない。
  * - WebXR (`immersive-ar`) セッション統合（`webXrArSession.ts`）により、箱庭の周りを
  *   歩いて見られるパススルーAR表示に対応する。
- * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更）に対応する。
- *   デスクトップはキーボード（`dioramaKeyboardControls.ts`）、AR中はXRコントローラー/
- *   タッチGUI（`dioramaArControls.ts`）、AR非対応環境・AR突入前の通常表示は
- *   常時表示のタッチHUD（`dioramaTouchControls.ts`）でそれぞれ操作できる。
- *   ライティング・タイル切替・トップ復帰は後続タスクで行う。
+ * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別切替・
+ *   トップ復帰）に対応する。デスクトップはキーボード（`dioramaKeyboardControls.ts`）、
+ *   AR中はXRコントローラー/タッチGUI（`dioramaArControls.ts`）、AR非対応環境・
+ *   AR突入前の通常表示は常時表示のタッチHUD（`dioramaTouchControls.ts`）で
+ *   それぞれ操作できる。ライティング操作は後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
@@ -24,10 +24,11 @@ import { Color4, Color3 } from "@babylonjs/core/Maths/math.color";
 
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
-import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
+import { createDioramaTerrain, type DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
 import { createDioramaViewController } from "./dioramaViewController";
 import { createDioramaOrientationController } from "./dioramaOrientationController";
+import { createDioramaTileModeController } from "./dioramaTileModeController";
 import { setupDioramaKeyboardControls } from "./dioramaKeyboardControls";
 import { createDioramaArControlHud } from "./dioramaArControlHud";
 import { setupDioramaTouchControls } from "./dioramaTouchControls";
@@ -40,6 +41,8 @@ const DEFAULT_CENTER = { lat: 35.3436, lon: 138.7203 };
 const DEFAULT_FOOTPRINT_RADIUS_M = 800;
 /** 既定の卓上表示半径[m]（手元サイズ）。 */
 const DEFAULT_TABLE_RADIUS_M = 0.35;
+/** 既定のタイル種別（標準地図）。 */
+const DEFAULT_TILE_MODE: DioramaTileMode = "std";
 
 /**
  * `?engine=` クエリ文字列から描画エンジン種別を解決する（他デモと同じ規約）。
@@ -134,6 +137,7 @@ const start = async (): Promise<void> => {
         center: DEFAULT_CENTER,
         footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
+        tileMode: DEFAULT_TILE_MODE,
     });
 
     // 箱庭の配置・向き・地形を3階層のTransformNodeへ分離する
@@ -156,16 +160,26 @@ const start = async (): Promise<void> => {
     // 箱庭の回転・高さオフセットの共有状態保持者（`dioramaOrientationController.ts`参照）。
     // viewControllerと同様、AR/キーボードの双方から使われる。
     const orientationController = createDioramaOrientationController(orientationRoot);
-    setupDioramaKeyboardControls(scene, camera, viewController, orientationController);
+    // タイル種別（標準地図/写真/ワイヤーフレーム）の共有状態保持者
+    // （`dioramaTileModeController.ts`参照）。viewController/orientationControllerと
+    // 同様、AR/キーボード/タッチHUDの全入力経路から共有される。
+    const tileModeController = createDioramaTileModeController(dioramaTerrain, DEFAULT_TILE_MODE);
+    setupDioramaKeyboardControls(scene, camera, viewController, orientationController, tileModeController);
 
     // AR非対応環境・AR突入前の通常表示でも、物理コントローラー・キーボードが
     // 無いタッチ専用デバイス（Androidスマホ等）で地図移動・拡大縮小・箱庭回転・
-    // 高さ変更を操作できるよう、常時表示のタッチHUDを生成・マウントする
-    // （`dioramaTouchControls.ts` 冒頭のコメント参照。AR中に使われる別インスタンスの
-    // HUDとは独立しており、二重入力にはならない）。
+    // 高さ変更・タイル種別切替・トップ復帰を操作できるよう、常時表示のタッチHUDを
+    // 生成・マウントする（`dioramaTouchControls.ts` 冒頭のコメント参照。AR中に
+    // 使われる別インスタンスのHUDとは独立しており、二重入力にはならない）。
     const touchHud = createDioramaArControlHud();
     mount.appendChild(touchHud.element);
-    const touchControls = setupDioramaTouchControls(scene, touchHud, viewController, orientationController);
+    const touchControls = setupDioramaTouchControls(
+        scene,
+        touchHud,
+        viewController,
+        orientationController,
+        tileModeController,
+    );
 
     setupDioramaWebXrArButton(
         mount,
@@ -173,6 +187,7 @@ const start = async (): Promise<void> => {
         placementRoot,
         viewController,
         orientationController,
+        tileModeController,
         touchControls,
     ).catch((err: unknown) => {
         console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);

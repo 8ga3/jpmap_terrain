@@ -19,9 +19,12 @@
  * - 右スティックX（左右）: 箱庭の回転（本モジュールで実装、{@link computeDioramaRotationRadFromStick}）
  * - トリガー（左右）: 箱庭の設置高さ変更（本モジュールで実装、{@link computeDioramaHeightMetersFromTriggers}）
  * - グリップ + 左スティック（モディファイア）: 太陽の方位角・高度（別途実装予定）
- * - A/Xボタン: 地図タイル種別切替（別途実装予定）
- * - B/Yボタン: トップ（初期center/footprintRadius）復帰（別途実装予定）
+ * - A/Xボタン / GUIタイル切替ボタン: 地図タイル種別切替（本モジュールで実装、
+ *   {@link nextDioramaTileMode}。std→photo→wireframeの順に巡回する）
+ * - B/Yボタン / GUIリセットボタン: トップ（初期center/footprintRadius・回転・高さ）復帰
+ *   （箱庭の表示状態を初期値へ戻す。ポータル画面への画面遷移ではない）
  */
+import type { DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
 
 /** スティック/ジョイスティック入力のデッドゾーン既定値。 */
 export const DEFAULT_STICK_DEADZONE = 0.15;
@@ -220,4 +223,24 @@ export const clampDioramaHeightOffsetM = (
 ): number => {
     const safe = Number.isNaN(offsetM) ? 0 : offsetM;
     return Math.min(maxM, Math.max(minM, safe));
+};
+
+/**
+ * タイル種別の巡回順序（A/Xボタン・GUIタイル切替ボタン共通）。
+ * `DioramaTileMode`（`dioramaTerrain.ts`、型のみimport）を直接使うことで、
+ * 巡回対象の値集合を型定義側と同期させる。
+ */
+export const DIORAMA_TILE_MODE_CYCLE_ORDER: readonly DioramaTileMode[] = ["std", "photo", "wireframe"];
+
+/**
+ * 現在のタイル種別から、巡回順序（{@link DIORAMA_TILE_MODE_CYCLE_ORDER}）における
+ * 次のタイル種別を返す純粋関数。末尾（wireframe）の次は先頭（std）へ戻る。
+ *
+ * @param current 現在のタイル種別。巡回順序に含まれない値が渡された場合
+ *   （型システム上は起こり得ないが、念のため）は先頭（std）を返す。
+ */
+export const nextDioramaTileMode = (current: DioramaTileMode): DioramaTileMode => {
+    const currentIndex = DIORAMA_TILE_MODE_CYCLE_ORDER.indexOf(current);
+    if (currentIndex < 0) return DIORAMA_TILE_MODE_CYCLE_ORDER[0];
+    return DIORAMA_TILE_MODE_CYCLE_ORDER[(currentIndex + 1) % DIORAMA_TILE_MODE_CYCLE_ORDER.length];
 };

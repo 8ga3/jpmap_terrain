@@ -7,7 +7,7 @@
  * - resolveOptions の入力検証（tableRadiusM/footprintRadiusM/demZoom/textureZoom/
  *   heightScaleFactor/baseDepthRatio が不正な場合は RangeError で reject）
  * - setFootprintRadius の入力検証（不正値は同期例外ではなく Promise 拒否になる）
- * - setCenter/setFootprintRadius/setMapType の並行呼び出しが rebuild キューにより
+ * - setCenter/setFootprintRadius/setTileMode の並行呼び出しが rebuild キューにより
  *   直列化され、後続の rebuild が直前の rebuild 適用後の最新状態を引き継ぐこと
  *   （呼び出し時点ではなく実行時点の状態を基準にすること）
  * - あるrebuildが失敗してもキューは止まらず、後続のrebuildは実行されること
@@ -403,6 +403,46 @@ describe("setView", () => {
     });
 });
 
+describe("setTileMode / wireframe表示", () => {
+    it("setTileMode('wireframe')はbuildDioramaMosaicTextureを呼ばず、materialをwireframe表示にする", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, baseOptions);
+        mockBuildTexture.mockClear();
+        mockStandardMaterial.mockClear();
+
+        await terrain.setTileMode("wireframe");
+
+        expect(mockBuildTexture).not.toHaveBeenCalled();
+        // rebuild後の地形material（1つ目の呼び出し。2つ目は側面壁用）がwireframe化されていること。
+        const material = mockStandardMaterial.mock.results[0]?.value as {
+            wireframe?: boolean;
+            diffuseTexture: unknown;
+        };
+        expect(material.wireframe).toBe(true);
+        expect(material.diffuseTexture).toBeNull();
+
+        terrain.dispose();
+    });
+
+    it("wireframeからstd/photoへ戻すと、再びbuildDioramaMosaicTextureが呼ばれテクスチャが設定される", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, { ...baseOptions, tileMode: "wireframe" });
+        mockBuildTexture.mockClear();
+        mockStandardMaterial.mockClear();
+
+        await terrain.setTileMode("photo");
+
+        expect(mockBuildTexture).toHaveBeenCalledTimes(1);
+        expect(mockBuildTexture.mock.calls[0][2]).toBe("photo");
+        const material = mockStandardMaterial.mock.results[0]?.value as {
+            wireframe?: boolean;
+            diffuseTexture: unknown;
+        };
+        expect(material.wireframe).not.toBe(true);
+        expect(material.diffuseTexture).not.toBeNull();
+
+        terrain.dispose();
+    });
+});
+
 describe("並行呼び出しのrebuildキュー直列化", () => {
     it("setCenter → setFootprintRadius を並行に呼んでも、後続rebuildは直前の変更を引き継ぐ", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
@@ -437,7 +477,7 @@ describe("並行呼び出しのrebuildキュー直列化", () => {
 
         mockFetchElevations.mockRejectedValueOnce(new Error("network error"));
         const p1 = terrain.setCenter(36, 140);
-        const p2 = terrain.setMapType("photo");
+        const p2 = terrain.setTileMode("photo");
 
         await expect(p1).rejects.toThrow("network error");
         await expect(p2).resolves.toBeUndefined();

@@ -11,6 +11,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
 import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
 import type { DioramaArControlHud } from "../src/demos/diorama/dioramaArControlHud";
 import { setupDioramaTouchControls } from "../src/demos/diorama/dioramaTouchControls";
 
@@ -43,36 +44,76 @@ const createFakeScene = (): FakeScene => {
     };
 };
 
-const makeViewController = (): { vc: DioramaViewController; feedAxes: ReturnType<typeof vi.fn> } => {
+const makeViewController = (): {
+    vc: DioramaViewController;
+    feedAxes: ReturnType<typeof vi.fn>;
+    resetToInitial: ReturnType<typeof vi.fn>;
+} => {
     const feedAxes = vi.fn();
-    const vc = { getCenter: vi.fn(), getFootprintRadiusM: vi.fn(), feedAxes } as unknown as DioramaViewController;
-    return { vc, feedAxes };
+    const resetToInitial = vi.fn();
+    const vc = {
+        getCenter: vi.fn(),
+        getFootprintRadiusM: vi.fn(),
+        feedAxes,
+        resetToInitial,
+    } as unknown as DioramaViewController;
+    return { vc, feedAxes, resetToInitial };
 };
 
 const makeOrientationController = (): {
     oc: DioramaOrientationController;
     feedAxes: ReturnType<typeof vi.fn>;
+    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const feedAxes = vi.fn();
+    const resetToInitial = vi.fn();
     const oc = {
         getRotationRad: vi.fn(),
         getHeightOffsetM: vi.fn(),
         feedAxes,
+        resetToInitial,
     } as unknown as DioramaOrientationController;
-    return { oc, feedAxes };
+    return { oc, feedAxes, resetToInitial };
 };
 
-const makeHud = (overrides: Partial<DioramaArControlHud> = {}): DioramaArControlHud => {
+const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
+    const cycle = vi.fn();
+    const tc = { getTileMode: vi.fn(), cycle, resetToInitial: vi.fn() } as unknown as DioramaTileModeController;
+    return { tc, cycle };
+};
+
+type FakeHud = DioramaArControlHud & {
+    triggerTileModeCyclePress: () => void;
+    triggerResetToInitialPress: () => void;
+};
+
+const makeHud = (overrides: Partial<DioramaArControlHud> = {}): FakeHud => {
     const element = document.createElement("div");
+    let tileModeCycleCallback: (() => void) | null = null;
+    let resetToInitialCallback: (() => void) | null = null;
     return {
         element,
         getPanAxes: () => ({ x: 0, y: 0 }),
         getZoomAxis: () => 0,
         getRotationAxis: () => 0,
         getHeightAxis: () => 0,
+        onTileModeCyclePress: (callback: () => void) => {
+            tileModeCycleCallback = callback;
+            return () => {
+                tileModeCycleCallback = null;
+            };
+        },
+        onResetToInitialPress: (callback: () => void) => {
+            resetToInitialCallback = callback;
+            return () => {
+                resetToInitialCallback = null;
+            };
+        },
         dispose: vi.fn(),
+        triggerTileModeCyclePress: () => tileModeCycleCallback?.(),
+        triggerResetToInitialPress: () => resetToInitialCallback?.(),
         ...overrides,
-    } as DioramaArControlHud;
+    } as FakeHud;
 };
 
 const cleanups: Array<() => void> = [];
@@ -85,8 +126,9 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
         tick(16);
@@ -99,8 +141,9 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud({ getPanAxes: () => ({ x: 0.5, y: -0.5 }), getZoomAxis: () => -1 });
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
         tick(16);
@@ -112,8 +155,9 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
         const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud({ getRotationAxis: () => 1 });
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
         tick(16);
@@ -125,15 +169,16 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
         const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { tc } = makeTileModeController();
 
         const hudUp = makeHud({ getHeightAxis: () => 1 });
-        const controlsUp = setupDioramaTouchControls(scene, hudUp, vc, oc);
+        const controlsUp = setupDioramaTouchControls(scene, hudUp, vc, oc, tc);
         tick(16);
         expect(orientationFeedAxes).toHaveBeenLastCalledWith(0, 0, 1, 0.016);
         controlsUp.dispose();
 
         const hudDown = makeHud({ getHeightAxis: () => -1 });
-        const controlsDown = setupDioramaTouchControls(scene, hudDown, vc, oc);
+        const controlsDown = setupDioramaTouchControls(scene, hudDown, vc, oc, tc);
         cleanups.push(controlsDown.dispose);
         tick(16);
         expect(orientationFeedAxes).toHaveBeenLastCalledWith(0, 1, 0, 0.016);
@@ -143,8 +188,9 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
         tick(0);
@@ -157,8 +203,9 @@ describe("setupDioramaTouchControls", () => {
         const { scene } = createFakeScene();
         const { vc } = makeViewController();
         const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
         controls.setVisible(false);
@@ -174,13 +221,14 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud({
             getPanAxes: () => ({ x: 1, y: 1 }),
             getZoomAxis: () => 1,
             getRotationAxis: () => 1,
             getHeightAxis: () => 1,
         });
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
         controls.setVisible(false);
@@ -200,12 +248,53 @@ describe("setupDioramaTouchControls", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
 
         controls.dispose();
         tick(16);
 
         expect(viewFeedAxes).not.toHaveBeenCalled();
+    });
+
+    it("HUDのタイル切替ボタンが押されるとtileModeController.cycle()が呼ばれる", () => {
+        const { scene } = createFakeScene();
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc, cycle } = makeTileModeController();
+        const hud = makeHud();
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
+        cleanups.push(controls.dispose);
+
+        hud.triggerTileModeCyclePress();
+        expect(cycle).toHaveBeenCalledTimes(1);
+    });
+
+    it("HUDのリセットボタンが押されるとview/orientationControllerのresetToInitial()が呼ばれる", () => {
+        const { scene } = createFakeScene();
+        const { vc, resetToInitial: resetView } = makeViewController();
+        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
+        cleanups.push(controls.dispose);
+
+        hud.triggerResetToInitialPress();
+        expect(resetView).toHaveBeenCalledTimes(1);
+        expect(resetOrientation).toHaveBeenCalledTimes(1);
+    });
+
+    it("dispose()を呼ぶとHUDのタイル切替/リセットボタンの購読が解除される", () => {
+        const { scene } = createFakeScene();
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc, cycle } = makeTileModeController();
+        const hud = makeHud();
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
+
+        controls.dispose();
+        hud.triggerTileModeCyclePress();
+        expect(cycle).not.toHaveBeenCalled();
     });
 });
