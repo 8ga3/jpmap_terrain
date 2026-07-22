@@ -21,8 +21,11 @@
  * - グリップ + 左スティック（モディファイア）: 太陽の方位角・高度（別途実装予定）
  * - A/Xボタン / GUIタイル切替ボタン: 地図タイル種別切替（本モジュールで実装、
  *   {@link nextDioramaTileMode}。std→photo→wireframeの順に巡回する）
- * - B/Yボタン / GUIリセットボタン: トップ（初期center/footprintRadius・回転・高さ）復帰
- *   （箱庭の表示状態を初期値へ戻す。ポータル画面への画面遷移ではない）
+ * - B/Yボタン / GUIのARを終了するボタン: ARモードを終了し通常表示へ戻る
+ *   （`dioramaArControls.ts`が`xr.baseExperience.exitXRAsync()`を直接呼ぶ。
+ *   AR中でなければ意味を持たない操作のため、常時表示のタッチHUD側では
+ *   このボタンをグレーアウトして無効化する。箱庭の表示状態
+ *   （center/footprintRadius/回転/高さ）はリセットしない）
  */
 import type { DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
 

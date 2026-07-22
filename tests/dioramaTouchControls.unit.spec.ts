@@ -47,50 +47,44 @@ const createFakeScene = (): FakeScene => {
 const makeViewController = (): {
     vc: DioramaViewController;
     feedAxes: ReturnType<typeof vi.fn>;
-    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const feedAxes = vi.fn();
-    const resetToInitial = vi.fn();
     const vc = {
         getCenter: vi.fn(),
         getFootprintRadiusM: vi.fn(),
         feedAxes,
-        resetToInitial,
     } as unknown as DioramaViewController;
-    return { vc, feedAxes, resetToInitial };
+    return { vc, feedAxes };
 };
 
 const makeOrientationController = (): {
     oc: DioramaOrientationController;
     feedAxes: ReturnType<typeof vi.fn>;
-    resetToInitial: ReturnType<typeof vi.fn>;
 } => {
     const feedAxes = vi.fn();
-    const resetToInitial = vi.fn();
     const oc = {
         getRotationRad: vi.fn(),
         getHeightOffsetM: vi.fn(),
         feedAxes,
-        resetToInitial,
     } as unknown as DioramaOrientationController;
-    return { oc, feedAxes, resetToInitial };
+    return { oc, feedAxes };
 };
 
 const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
     const cycle = vi.fn();
-    const tc = { getTileMode: vi.fn(), cycle, resetToInitial: vi.fn() } as unknown as DioramaTileModeController;
+    const tc = { getTileMode: vi.fn(), cycle } as unknown as DioramaTileModeController;
     return { tc, cycle };
 };
 
 type FakeHud = DioramaArControlHud & {
     triggerTileModeCyclePress: () => void;
-    triggerResetToInitialPress: () => void;
+    triggerExitArPress: () => void;
 };
 
 const makeHud = (overrides: Partial<DioramaArControlHud> = {}): FakeHud => {
     const element = document.createElement("div");
     let tileModeCycleCallback: (() => void) | null = null;
-    let resetToInitialCallback: (() => void) | null = null;
+    let exitArCallback: (() => void) | null = null;
     return {
         element,
         getPanAxes: () => ({ x: 0, y: 0 }),
@@ -103,15 +97,15 @@ const makeHud = (overrides: Partial<DioramaArControlHud> = {}): FakeHud => {
                 tileModeCycleCallback = null;
             };
         },
-        onResetToInitialPress: (callback: () => void) => {
-            resetToInitialCallback = callback;
+        onExitArPress: (callback: () => void) => {
+            exitArCallback = callback;
             return () => {
-                resetToInitialCallback = null;
+                exitArCallback = null;
             };
         },
         dispose: vi.fn(),
         triggerTileModeCyclePress: () => tileModeCycleCallback?.(),
-        triggerResetToInitialPress: () => resetToInitialCallback?.(),
+        triggerExitArPress: () => exitArCallback?.(),
         ...overrides,
     } as FakeHud;
 };
@@ -271,21 +265,20 @@ describe("setupDioramaTouchControls", () => {
         expect(cycle).toHaveBeenCalledTimes(1);
     });
 
-    it("HUDのリセットボタンが押されるとview/orientationControllerのresetToInitial()が呼ばれる", () => {
+    it("HUDのAR終了ボタンは購読されない（常時表示インスタンスでは終了すべきARセッションが無いため）", () => {
         const { scene } = createFakeScene();
-        const { vc, resetToInitial: resetView } = makeViewController();
-        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
         const controls = setupDioramaTouchControls(scene, hud, vc, oc, tc);
         cleanups.push(controls.dispose);
 
-        hud.triggerResetToInitialPress();
-        expect(resetView).toHaveBeenCalledTimes(1);
-        expect(resetOrientation).toHaveBeenCalledTimes(1);
+        // 本モジュールは`onExitArPress`を購読しないため、押下しても例外なく何も起きない。
+        expect(() => hud.triggerExitArPress()).not.toThrow();
     });
 
-    it("dispose()を呼ぶとHUDのタイル切替/リセットボタンの購読が解除される", () => {
+    it("dispose()を呼ぶとHUDのタイル切替ボタンの購読が解除される", () => {
         const { scene } = createFakeScene();
         const { vc } = makeViewController();
         const { oc } = makeOrientationController();

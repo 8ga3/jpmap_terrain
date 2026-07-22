@@ -7,8 +7,8 @@
  * `DioramaViewController`/`DioramaOrientationController` と同じ「AR中のコントローラー/
  * GUI操作とデスクトップのキーボード操作の両方から共有される、単独の状態保持者」という
  * 設計方針を踏襲する。ただしタイル種別切替は継続入力（スティック/トリガー）ではなく
- * 単発のタップ/ボタン押下で駆動するため、`feedAxes` ではなく `cycle()`（巡回）/
- * `resetToInitial()`（初期タイル種別へ復帰）という単発アクションのAPIにする。
+ * 単発のタップ/ボタン押下で駆動するため、`feedAxes` ではなく `cycle()`（巡回）という
+ * 単発アクションのAPIにする。
  *
  * `setTileMode`（`dioramaTerrain.setTileMode`が内部で使う）は非同期の地形rebuild
  * （ラスタタイル再取得を伴う。ワイヤーフレーム切替時はスキップされるが、
@@ -25,8 +25,6 @@ export interface DioramaTileModeController {
     getTileMode(): DioramaTileMode;
     /** 巡回順序（std→photo→wireframe→std…）で次のタイル種別へ切り替える。 */
     cycle(): void;
-    /** タイル種別を、生成時に渡された初期値へ戻す（「トップ復帰」操作の一部）。 */
-    resetToInitial(): void;
 }
 
 /**
@@ -45,8 +43,8 @@ export const createDioramaTileModeController = (
     // 最終結果が食い違う）。
     let inFlightTileMode: DioramaTileMode | null = null;
     // 次に適用したい目標タイル種別。前回の `setTileMode` 完了待ちの間に発生した
-    // 追加の `cycle()`/`resetToInitial()` 呼び出しは、この値を上書きするだけで
-    // （＝最後の要求のみが有効）、キューには積まない。
+    // 追加の `cycle()` 呼び出しは、この値を上書きするだけで（＝最後の要求のみが有効）、
+    // キューには積まない。
     let pendingTileMode: DioramaTileMode | null = null;
     let applying = false;
 
@@ -86,9 +84,6 @@ export const createDioramaTileModeController = (
             // 「これから適用される値」を基準にする）。
             const base = pendingTileMode ?? inFlightTileMode ?? currentTileMode;
             apply(nextDioramaTileMode(base));
-        },
-        resetToInitial: (): void => {
-            apply(initialTileMode);
         },
     };
 };

@@ -38,16 +38,6 @@ export interface DioramaViewController {
      * 1フレーム分適用する。呼び出し元が毎フレーム呼ぶこと。
      */
     feedAxes(panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void;
-    /**
-     * 中心・フットプリント半径を、生成時に渡された初期値（`initialCenter`/
-     * `initialFootprintRadiusM`）へ絶対値でリセットする（「トップ復帰」操作）。
-     *
-     * @remarks 蓄積中のパン差分（`pendingEastM`/`pendingNorthM`）は破棄し、
-     * 絶対値の中心へ直接ジャンプする。`setView` 呼び出し中（`applying`）の
-     * 場合は即座には送信されず、次回 `feedAxes` 呼び出し時の `flush()` で
-     * 自然に反映される（既存のパン/ズームと同じ完了待ち合流の仕組みに乗せる）。
-     */
-    resetToInitial(): void;
 }
 
 /**
@@ -66,17 +56,12 @@ export const createDioramaViewController = (
 
     let pendingEastM = 0;
     let pendingNorthM = 0;
-    // `resetToInitial()` によるトップ復帰時、相対パン差分ではなく絶対値で中心を
-    // 送信するためのオーバーライド。設定されている間は `pendingEastM`/`pendingNorthM`
-    // による相対移動より優先する（両者は同時に意味を持たないため、resetToInitial側で
-    // 相対差分を破棄してから設定する）。
-    let pendingAbsoluteCenter: DioramaCenter | null = null;
     // 前回の `setView` 呼び出し（rebuild）が完了するまで次を発行しない。
     let applying = false;
 
     const flush = (): void => {
         if (applying) return;
-        const hasPan = pendingAbsoluteCenter !== null || pendingEastM !== 0 || pendingNorthM !== 0;
+        const hasPan = pendingEastM !== 0 || pendingNorthM !== 0;
         const hasZoom = currentFootprintRadiusM !== lastAppliedFootprintRadiusM;
         if (!hasPan && !hasZoom) return;
 
@@ -87,24 +72,14 @@ export const createDioramaViewController = (
         // 失敗時のみ復元する（成功時は復元せず currentCenter に取り込む）。
         let sentEastM = 0;
         let sentNorthM = 0;
-        let sentAbsoluteCenter: DioramaCenter | null = null;
         let nextCenter: DioramaCenter | undefined;
         if (hasPan) {
-            if (pendingAbsoluteCenter !== null) {
-                sentAbsoluteCenter = pendingAbsoluteCenter;
-                nextCenter = sentAbsoluteCenter;
-                pendingAbsoluteCenter = null;
-                // 絶対値リセットは相対パン差分と意味が競合するため、蓄積中のオフセットも破棄する。
-                pendingEastM = 0;
-                pendingNorthM = 0;
-            } else {
-                sentEastM = pendingEastM;
-                sentNorthM = pendingNorthM;
-                nextCenter = offsetToLatLon(currentCenter, sentEastM, sentNorthM);
-                pendingEastM = 0;
-                pendingNorthM = 0;
-            }
+            sentEastM = pendingEastM;
+            sentNorthM = pendingNorthM;
+            nextCenter = offsetToLatLon(currentCenter, sentEastM, sentNorthM);
             patch.center = nextCenter;
+            pendingEastM = 0;
+            pendingNorthM = 0;
         }
         let sentFootprintRadiusM: number | undefined;
         if (hasZoom) {
@@ -123,13 +98,9 @@ export const createDioramaViewController = (
                 (err: unknown) => {
                     console.error("[jpmap-terrain diorama demo] setView failed:", err);
                     // lastAppliedFootprintRadiusM は更新していないため、hasZoom判定により
-                    // 次回のflushで自然に再送される。パン分（絶対値/相対差分のいずれか）を復元する。
-                    if (sentAbsoluteCenter !== null) {
-                        pendingAbsoluteCenter = sentAbsoluteCenter;
-                    } else {
-                        pendingEastM += sentEastM;
-                        pendingNorthM += sentNorthM;
-                    }
+                    // 次回のflushで自然に再送される。パン分は差し引いていた値を復元する。
+                    pendingEastM += sentEastM;
+                    pendingNorthM += sentNorthM;
                 },
             )
             .finally(() => {
@@ -152,13 +123,6 @@ export const createDioramaViewController = (
                 currentFootprintRadiusM = clampFootprintRadiusM(currentFootprintRadiusM * factor);
             }
 
-            flush();
-        },
-        resetToInitial: (): void => {
-            pendingEastM = 0;
-            pendingNorthM = 0;
-            pendingAbsoluteCenter = initialCenter;
-            currentFootprintRadiusM = clampFootprintRadiusM(initialFootprintRadiusM);
             flush();
         },
     };
