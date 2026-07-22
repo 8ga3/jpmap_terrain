@@ -161,6 +161,10 @@ export const trackControllerSticks = (
                     sticks[handedness] = { x, y };
                 });
                 disposeAxisBinding = () => thumbstick.onAxisValueChangedObservable.remove(axisObserver);
+                // バインド時点で既に倒されている場合、`onAxisValueChangedObservable` は
+                // その後の「変化」でのみ発火するため、現在値を初期反映しておかないと
+                // 検知できない（次項のtriggerと同じ理由）。
+                sticks[handedness] = thumbstick.axes;
             }
 
             const trigger = motionController.getComponentOfType("trigger");
@@ -169,6 +173,12 @@ export const trackControllerSticks = (
                     triggers[handedness] = component.value;
                 });
                 disposeTriggerBinding = () => trigger.onButtonStateChangedObservable.remove(buttonObserver);
+                // `onMotionControllerInitObservable` 発火時点で既にトリガーが押されている
+                // 場合（例: コントローラー接続直後から押しっぱなしのケース）、
+                // `onButtonStateChangedObservable` はその後の「状態変化」でのみ発火するため
+                // 押しっぱなし状態を取りこぼす。バインド直後に現在値を一度読み取って
+                // 反映しておくことで、この取りこぼしを防ぐ。
+                triggers[handedness] = trigger.value;
             }
         });
 

@@ -46,6 +46,7 @@ interface FakeTriggerComponent {
 }
 
 interface FakeThumbstickComponent {
+    axes: { x: number; y: number };
     onAxisValueChangedObservable: FakeObservable<{ x: number; y: number }>;
 }
 
@@ -57,9 +58,21 @@ interface FakeMotionController {
     getComponentOfType(type: string): FakeThumbstickComponent | FakeTriggerComponent | undefined;
 }
 
-const makeMotionController = (opts: { hasThumbstick: boolean; hasTrigger: boolean }): FakeMotionController => {
-    const thumbstick: FakeThumbstickComponent = { onAxisValueChangedObservable: new FakeObservable() };
-    const trigger: FakeTriggerComponent = { value: 0, onButtonStateChangedObservable: new FakeObservable() };
+const makeMotionController = (opts: {
+    hasThumbstick: boolean;
+    hasTrigger: boolean;
+    /** バインド時点（`onMotionControllerInitObservable`発火時）で既に入力されている値。 */
+    initialAxes?: { x: number; y: number };
+    initialTriggerValue?: number;
+}): FakeMotionController => {
+    const thumbstick: FakeThumbstickComponent = {
+        axes: opts.initialAxes ?? { x: 0, y: 0 },
+        onAxisValueChangedObservable: new FakeObservable(),
+    };
+    const trigger: FakeTriggerComponent = {
+        value: opts.initialTriggerValue ?? 0,
+        onButtonStateChangedObservable: new FakeObservable(),
+    };
     return {
         hasThumbstick: opts.hasThumbstick,
         hasTrigger: opts.hasTrigger,
@@ -128,6 +141,32 @@ describe("trackControllerSticks", () => {
 
         expect(sticks.left).toEqual({ x: 0.5, y: -0.5 });
         expect(triggers.left).toBe(0.8);
+    });
+
+    it("バインド時点で既にthumbstick/triggerが入力済みの場合、変化イベントを待たず初期値を反映する（回帰テスト）", () => {
+        // `onAxisValueChangedObservable`/`onButtonStateChangedObservable` は
+        // その後の「変化」でのみ発火するため、初期反映を行わないと、
+        // コントローラー接続/再初期化時点で既に入力されていた値
+        // （スティックを倒したまま・トリガーを押したままのケース）を
+        // 取りこぼし、ユーザーが一旦離して押し直すまで反映されない不具合になる。
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { sticks, triggers } = zeroState();
+
+        trackControllerSticks(xr, sticks, triggers);
+
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+            initialAxes: { x: 1, y: 1 },
+            initialTriggerValue: 1,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        // 変化イベント（onAxisValueChangedObservable/onButtonStateChangedObservable）を
+        // 一切発火させていない時点で、既にバインド時点の値が反映されていること。
+        expect(sticks.right).toEqual({ x: 1, y: 1 });
+        expect(triggers.right).toBe(1);
     });
 
     it("同一コントローラーが再初期化され、新モーションコントローラーにthumbstick/triggerが無い場合、前回値へ固定されず0へリセットする（回帰テスト）", () => {
