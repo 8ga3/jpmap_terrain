@@ -2,9 +2,11 @@
  * diorama デモの「AR非対応環境・AR突入前の通常表示」向けタッチ操作。
  *
  * @remarks
- * `dioramaArControlHud.ts` のGUI（仮想ジョイスティック + ズーム/回転/高さボタン）を
- * 常時マウントし、AR/XRセッションの有無に関わらず毎フレーム入力を
- * `DioramaViewController`/`DioramaOrientationController` へ反映する。
+ * `dioramaArControlHud.ts` のGUI（仮想ジョイスティック + ズーム/回転/高さ/
+ * タイル切替/リセットボタン）を常時マウントし、AR/XRセッションの有無に関わらず
+ * 毎フレーム入力を `DioramaViewController`/`DioramaOrientationController` へ反映する。
+ * タイル種別切替・トップ復帰（単発タップ）はHUDのイベント購読
+ * （`onTileModeCyclePress`/`onResetToInitialPress`）経由で配線する。
  *
  * **背景**: 本Issue追加当初、地図移動・拡大縮小・箱庭回転・高さ変更は
  * デスクトップキーボード（`dioramaKeyboardControls.ts`）とAR中のXRコントローラー/
@@ -21,7 +23,10 @@
  * 両方を同時表示するとジョイスティック/ボタンが二重に重なって表示されてしまう。
  * そのため本モジュールが返す {@link DioramaTouchControls.setVisible} を
  * `index.ts` 経由で `webXrArSession.ts` のAR入退場処理から呼び、AR中は非表示
- * （`display:none`）にする。
+ * （`display:none`）にする。タイル切替/リセットボタンは非表示中は
+ * `display:none` の子要素としてクリック自体を受け付けなくなるため、
+ * `feedAxes` と異なり明示的な `visible` ガードは不要（冒頭の懸念は継続入力
+ * （押しっぱなし軸値）特有のもので、単発タップのクリックイベントには当てはまらない）。
  *
  * **非表示中はHUDの軸値を無視する**: `display:none` はDOM上の見た目を隠すのみで、
  * HUD内部の軸値（ボタンの押下状態）が0へリセットされる保証はない
@@ -35,6 +40,7 @@ import type { Scene } from "@babylonjs/core/scene";
 
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
+import type { DioramaTileModeController } from "./dioramaTileModeController";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
 
 export interface DioramaTouchControls {
@@ -49,17 +55,27 @@ export interface DioramaTouchControls {
 }
 
 /**
- * 常時表示のタッチHUDによる地図移動・拡大縮小・箱庭回転・高さ変更のセットアップを
- * 行う。`index.ts` からデモ起動時に一度だけ呼ぶこと（AR突入可否に関わらず、
- * デモの生存期間中ずっと有効にする）。
+ * 常時表示のタッチHUDによる地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別
+ * 切替・トップ復帰のセットアップを行う。`index.ts` からデモ起動時に一度だけ
+ * 呼ぶこと（AR突入可否に関わらず、デモの生存期間中ずっと有効にする）。
+ *
+ * @param tileModeController タイル種別の共有状態保持者（HUDタイル切替ボタン＝巡回、
+ *   HUDリセットボタン＝トップ復帰の一部）。
  */
 export const setupDioramaTouchControls = (
     scene: Scene,
     hud: DioramaArControlHud,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
+    tileModeController: DioramaTileModeController,
 ): DioramaTouchControls => {
     let visible = true;
+
+    const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
+    const unsubscribeResetToInitial = hud.onResetToInitialPress(() => {
+        viewController.resetToInitial();
+        orientationController.resetToInitial();
+    });
 
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         // 非表示中はHUDの軸値を無視する（冒頭のコメント参照。押下状態が0に
@@ -85,6 +101,8 @@ export const setupDioramaTouchControls = (
         },
         dispose: (): void => {
             scene.onBeforeRenderObservable.remove(renderObserver);
+            unsubscribeTileModeCycle();
+            unsubscribeResetToInitial();
         },
     };
 };

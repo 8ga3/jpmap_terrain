@@ -1,5 +1,6 @@
 /**
- * `dioramaArControls.ts` の `trackControllerSticks`/`clamp1`/`clamp01` のunit test。
+ * `dioramaArControls.ts` の `trackControllerSticks`/`trackControllerButtonPresses`/
+ * `clamp1`/`clamp01`/`setupDioramaArControls` のunit test。
  *
  * @remarks
  * `WebXRInputSource`/モーションコントローラー/コンポーネントのObservableは
@@ -8,13 +9,24 @@
  * 代替する。実際のWebXRセッション（`WebXRDefaultExperience`本体）は
  * `webXrArSession.unit.spec.ts` と同じ理由でテスト対象外とし、本ファイルは
  * コントローラーの追加・再初期化・切断に伴う `sticks`/`triggers` の状態遷移
- * ロジックのみを検証する。
+ * ロジックのみを検証する。`setupDioramaArControls` は、HUD/物理ボタンの
+ * タイル切替・トップ復帰イベントが `DioramaTileModeController`/
+ * `DioramaViewController`/`DioramaOrientationController` へ正しく橋渡しされる
+ * ことを検証する（`Scene`は`dioramaTouchControls.unit.spec.ts`と同じ軽量フェイク、
+ * `WebXRDefaultExperience`は本ファイル既存の`makeXr`を使う）。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
+import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
+import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
+import type { DioramaArControlHud } from "../src/demos/diorama/dioramaArControlHud";
 
 import {
     trackControllerSticks,
+    trackControllerButtonPresses,
+    setupDioramaArControls,
     clamp1,
     clamp01,
     type ControllerStickState,
@@ -56,7 +68,27 @@ interface FakeMotionController {
     thumbstick: FakeThumbstickComponent;
     trigger: FakeTriggerComponent;
     getComponentOfType(type: string): FakeThumbstickComponent | FakeTriggerComponent | undefined;
+    getComponent(id: string): FakeButtonComponent | undefined;
+    getAllComponentsOfType(type: string): FakeButtonComponent[];
 }
+
+/** ボタンコンポーネント（A/X・B/Yボタン相当）のフェイク。`changes.pressed`は
+ *  `WebXRControllerComponent.changes.pressed`（変化があった場合のみ値を持つ）を模す。 */
+interface FakeButtonComponent {
+    changes: { pressed?: { current: boolean; previous: boolean } };
+    onButtonStateChangedObservable: FakeObservable<FakeButtonComponent>;
+}
+
+const makeButtonComponent = (): FakeButtonComponent => ({
+    changes: {},
+    onButtonStateChangedObservable: new FakeObservable(),
+});
+
+/** ボタンの押下状態変化（`WebXRControllerComponent.changes.pressed`相当）を発火する。 */
+const firePressedChange = (button: FakeButtonComponent, current: boolean): void => {
+    button.changes = { pressed: { current, previous: !current } };
+    button.onButtonStateChangedObservable.notifyObservers(button);
+};
 
 const makeMotionController = (opts: {
     hasThumbstick: boolean;
@@ -64,6 +96,10 @@ const makeMotionController = (opts: {
     /** バインド時点（`onMotionControllerInitObservable`発火時）で既に入力されている値。 */
     initialAxes?: { x: number; y: number };
     initialTriggerValue?: number;
+    /** `getComponent(id)` で名前引きできるボタン（例: `{"a-button": comp}`）。 */
+    namedButtons?: Record<string, FakeButtonComponent>;
+    /** `getAllComponentsOfType("button")` が返す一覧（名前引き失敗時のフォールバック検証用）。 */
+    buttonList?: FakeButtonComponent[];
 }): FakeMotionController => {
     const thumbstick: FakeThumbstickComponent = {
         axes: opts.initialAxes ?? { x: 0, y: 0 },
@@ -83,8 +119,16 @@ const makeMotionController = (opts: {
             if (type === "trigger" && opts.hasTrigger) return trigger;
             return undefined;
         },
+        getComponent(id: string) {
+            return opts.namedButtons?.[id];
+        },
+        getAllComponentsOfType(type: string) {
+            if (type === "button") return opts.buttonList ?? [];
+            return [];
+        },
     };
 };
+
 
 interface FakeController {
     inputSource: { handedness: "left" | "right" };
@@ -284,6 +328,362 @@ describe("trackControllerSticks", () => {
         // 解除後に入力を発火しても状態は変化しない。
         motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: 1 });
         expect(sticks.left).toEqual({ x: 0, y: 0 });
+    });
+});
+
+describe("trackControllerButtonPresses", () => {
+    it("右手はa-button=プライマリ、b-button=セカンダリとして押下エッジを検知する", () => {
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const onPrimaryPress = vi.fn();
+        const onSecondaryPress = vi.fn();
+
+        trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+
+        const aButton = makeButtonComponent();
+        const bButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "a-button": aButton, "b-button": bButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        firePressedChange(aButton, true);
+        expect(onPrimaryPress).toHaveBeenCalledTimes(1);
+        expect(onSecondaryPress).not.toHaveBeenCalled();
+
+        firePressedChange(bButton, true);
+        expect(onSecondaryPress).toHaveBeenCalledTimes(1);
+    });
+
+    it("左手はx-button=プライマリ、y-button=セカンダリとして押下エッジを検知する", () => {
+        const controller = makeController("left");
+        const { xr } = makeXr([controller]);
+        const onPrimaryPress = vi.fn();
+        const onSecondaryPress = vi.fn();
+
+        trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+
+        const xButton = makeButtonComponent();
+        const yButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "x-button": xButton, "y-button": yButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        firePressedChange(xButton, true);
+        expect(onPrimaryPress).toHaveBeenCalledTimes(1);
+
+        firePressedChange(yButton, true);
+        expect(onSecondaryPress).toHaveBeenCalledTimes(1);
+    });
+
+    it("離した瞬間（pressed:false）ではコールバックを呼ばない（押した瞬間のみの単発トリガー）", () => {
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const onPrimaryPress = vi.fn();
+        const onSecondaryPress = vi.fn();
+
+        trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+
+        const aButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "a-button": aButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        firePressedChange(aButton, true);
+        expect(onPrimaryPress).toHaveBeenCalledTimes(1);
+        firePressedChange(aButton, false);
+        expect(onPrimaryPress).toHaveBeenCalledTimes(1);
+    });
+
+    it("名前付きコンポーネントが見つからないプロファイルでは、getAllComponentsOfType('button')のインデックス0/1へフォールバックする", () => {
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const onPrimaryPress = vi.fn();
+        const onSecondaryPress = vi.fn();
+
+        trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+
+        const button0 = makeButtonComponent();
+        const button1 = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            buttonList: [button0, button1],
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        firePressedChange(button0, true);
+        expect(onPrimaryPress).toHaveBeenCalledTimes(1);
+
+        firePressedChange(button1, true);
+        expect(onSecondaryPress).toHaveBeenCalledTimes(1);
+    });
+
+    it("コントローラー切断時にボタンobserverが解除される", () => {
+        const controller = makeController("right");
+        const { xr, removedObservable } = makeXr([controller]);
+        const onPrimaryPress = vi.fn();
+        const onSecondaryPress = vi.fn();
+
+        trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+
+        const aButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "a-button": aButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        expect(aButton.onButtonStateChangedObservable.observerCount).toBe(1);
+
+        removedObservable.notifyObservers(controller);
+        expect(aButton.onButtonStateChangedObservable.observerCount).toBe(0);
+
+        // 切断後にボタンを発火しても、購読解除済みのためコールバックは呼ばれない。
+        firePressedChange(aButton, true);
+        expect(onPrimaryPress).not.toHaveBeenCalled();
+    });
+
+    it("返り値の登録解除関数を呼ぶと、既存コントローラーのボタンobserverが解除される", () => {
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const onPrimaryPress = vi.fn();
+        const onSecondaryPress = vi.fn();
+
+        const untrack = trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+
+        const aButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "a-button": aButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        untrack();
+
+        expect(aButton.onButtonStateChangedObservable.observerCount).toBe(0);
+        firePressedChange(aButton, true);
+        expect(onPrimaryPress).not.toHaveBeenCalled();
+    });
+});
+
+describe("setupDioramaArControls", () => {
+    interface FakeScene {
+        scene: Scene;
+        tick: (deltaTimeMs: number) => void;
+    }
+
+    const createFakeScene = (): FakeScene => {
+        let callback: (() => void) | null = null;
+        let deltaTimeMs = 16;
+        const scene = {
+            onBeforeRenderObservable: {
+                add: (fn: () => void) => {
+                    callback = fn;
+                    return fn;
+                },
+                remove: () => {
+                    callback = null;
+                },
+            },
+            getEngine: () => ({ getDeltaTime: () => deltaTimeMs }),
+        } as unknown as Scene;
+        return {
+            scene,
+            tick: (ms: number) => {
+                deltaTimeMs = ms;
+                callback?.();
+            },
+        };
+    };
+
+    const makeViewController = (): { vc: DioramaViewController; resetToInitial: ReturnType<typeof vi.fn> } => {
+        const resetToInitial = vi.fn();
+        const vc = {
+            getCenter: vi.fn(),
+            getFootprintRadiusM: vi.fn(),
+            feedAxes: vi.fn(),
+            resetToInitial,
+        } as unknown as DioramaViewController;
+        return { vc, resetToInitial };
+    };
+
+    const makeOrientationController = (): {
+        oc: DioramaOrientationController;
+        resetToInitial: ReturnType<typeof vi.fn>;
+    } => {
+        const resetToInitial = vi.fn();
+        const oc = {
+            getRotationRad: vi.fn(),
+            getHeightOffsetM: vi.fn(),
+            feedAxes: vi.fn(),
+            resetToInitial,
+        } as unknown as DioramaOrientationController;
+        return { oc, resetToInitial };
+    };
+
+    const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
+        const cycle = vi.fn();
+        const tc = { getTileMode: vi.fn(), cycle, resetToInitial: vi.fn() } as unknown as DioramaTileModeController;
+        return { tc, cycle };
+    };
+
+    /** 実DOMを使わない `DioramaArControlHud` フェイク。タイル切替/リセットの
+     *  購読コールバックを保持し、テストから直接発火できるようにする。 */
+    type FakeHud = DioramaArControlHud & {
+        triggerTileModeCyclePress: () => void;
+        triggerResetToInitialPress: () => void;
+    };
+    const makeHud = (): FakeHud => {
+        let tileModeCycleCallback: (() => void) | null = null;
+        let resetToInitialCallback: (() => void) | null = null;
+        return {
+            element: {} as HTMLElement,
+            getPanAxes: () => ({ x: 0, y: 0 }),
+            getZoomAxis: () => 0,
+            getRotationAxis: () => 0,
+            getHeightAxis: () => 0,
+            onTileModeCyclePress: (callback: () => void) => {
+                tileModeCycleCallback = callback;
+                return () => {
+                    tileModeCycleCallback = null;
+                };
+            },
+            onResetToInitialPress: (callback: () => void) => {
+                resetToInitialCallback = callback;
+                return () => {
+                    resetToInitialCallback = null;
+                };
+            },
+            dispose: vi.fn(),
+            triggerTileModeCyclePress: () => tileModeCycleCallback?.(),
+            triggerResetToInitialPress: () => resetToInitialCallback?.(),
+        };
+    };
+
+    it("HUDのタイル切替ボタン押下でtileModeController.cycle()が呼ばれる", () => {
+        const { scene } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc, cycle } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        hud.triggerTileModeCyclePress();
+        expect(cycle).toHaveBeenCalledTimes(1);
+
+        dispose();
+    });
+
+    it("HUDのリセットボタン押下でview/orientationControllerのresetToInitial()が呼ばれる", () => {
+        const { scene } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { vc, resetToInitial: resetView } = makeViewController();
+        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        hud.triggerResetToInitialPress();
+        expect(resetView).toHaveBeenCalledTimes(1);
+        expect(resetOrientation).toHaveBeenCalledTimes(1);
+
+        dispose();
+    });
+
+    it("物理コントローラーのa-button(プライマリ)押下でtileModeController.cycle()が呼ばれる", () => {
+        const { scene } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc, cycle } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        const aButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "a-button": aButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        firePressedChange(aButton, true);
+
+        expect(cycle).toHaveBeenCalledTimes(1);
+
+        dispose();
+    });
+
+    it("物理コントローラーのb-button(セカンダリ)押下でview/orientationControllerのresetToInitial()が呼ばれる", () => {
+        const { scene } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { vc, resetToInitial: resetView } = makeViewController();
+        const { oc, resetToInitial: resetOrientation } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        const bButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "b-button": bButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        firePressedChange(bButton, true);
+
+        expect(resetView).toHaveBeenCalledTimes(1);
+        expect(resetOrientation).toHaveBeenCalledTimes(1);
+
+        dispose();
+    });
+
+    it("dispose()を呼ぶと、以後HUDのタイル切替ボタン押下・物理ボタン押下のいずれもcycle()/resetToInitial()を呼ばない", () => {
+        const { scene } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller]);
+        const { vc, resetToInitial: resetView } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc, cycle } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        const aButton = makeButtonComponent();
+        const motionController = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+            namedButtons: { "a-button": aButton },
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+
+        dispose();
+
+        hud.triggerTileModeCyclePress();
+        hud.triggerResetToInitialPress();
+        firePressedChange(aButton, true);
+
+        expect(cycle).not.toHaveBeenCalled();
+        expect(resetView).not.toHaveBeenCalled();
+        expect(hud.dispose).toHaveBeenCalledTimes(1);
     });
 });
 
