@@ -1,15 +1,17 @@
 /**
- * diorama デモのAR中操作GUI（オンスクリーン仮想ジョイスティック + ズームボタン）。
+ * diorama デモの操作GUI（オンスクリーン仮想ジョイスティック + ズーム/回転/高さボタン）。
  *
  * @remarks
- * WebXR (`immersive-ar`) の物理コントローラー（Meta Quest等のthumbstick）が無い環境
- * （Androidスマホ等のハンドヘルドAR、画面タッチのみ）でも地図移動・拡大縮小を
- * 操作できるようにする代替入力。「タッチ・ピンチ・スワイプだけでは操作の発見性・
- * 精度が不十分」という実機検証を踏まえ、常時可視の仮想ジョイスティック（ドラッグで
- * パン方向・強度を指定）と、明示的なズームボタン（+/-）をGUIとして提供する。
+ * 物理コントローラー・キーボードが無い環境（Androidスマホ等の画面タッチのみの
+ * 環境）でも、地図移動・拡大縮小・箱庭回転・高さ変更を操作できるようにする
+ * 代替入力。「タッチ・ピンチ・スワイプだけでは操作の発見性・精度が不十分」という
+ * 実機検証を踏まえ、常時可視の仮想ジョイスティック（ドラッグでパン方向・強度を
+ * 指定）と、明示的なズーム/回転/高さボタンをGUIとして提供する。
  *
- * WebXRの `dom-overlay` feature（`webXrArSession.ts` 側で有効化）と組み合わせ、
- * 没入セッション中も本HUDの `element` を画面上に表示し続けられる。
+ * WebXR (`immersive-ar`) 中は `dom-overlay` feature（`webXrArSession.ts` 側で
+ * 有効化）と組み合わせ、没入セッション中も本HUDの `element` を画面上に表示し
+ * 続けられる。AR非対応環境・AR突入前の通常表示でも同じHUDを常時マウントし、
+ * 同じGUIで操作できるようにする（`dioramaTouchControls.ts` 参照）。
  *
  * DOM/ポインタイベントのみに依存し、Babylon.js/WebXRには依存しないため
  * jsdom上で単体テスト可能。
@@ -33,6 +35,19 @@ export interface DioramaArControlHud {
     getPanAxes(): StickAxes;
     /** 現在のズーム軸値（「+」ボタン押下中は -1、「-」ボタン押下中は +1、それ以外は 0）。 */
     getZoomAxis(): number;
+    /**
+     * 現在の回転軸値（[-1,1]）。「⟳」（時計回り）ボタン押下中は +1、
+     * 「⟲」（反時計回り）ボタン押下中は -1、それ以外は 0。
+     * `computeDioramaRotationRadFromStick` の軸規約（正入力=正方向の回転）に合わせる。
+     */
+    getRotationAxis(): number;
+    /**
+     * 現在の高さ変更軸値（[-1,1]）。「▲」（上昇）ボタン押下中は +1、
+     * 「▼」（下降）ボタン押下中は -1、それ以外は 0。呼び出し側で
+     * `computeDioramaHeightMetersFromTriggers` の左右トリガー引数
+     * （`rightTriggerValue = max(0, axis)`、`leftTriggerValue = max(0, -axis)`）へ変換する。
+     */
+    getHeightAxis(): number;
     /** HUDのDOM要素を破棄し、登録したイベントリスナーを解放する。 */
     dispose(): void;
 }
@@ -217,19 +232,33 @@ const bindHoldButton = (
 };
 
 /**
- * ズームボタン（+/-）を作成する。押している間だけ軸値を持ち、離すと0に戻る
- * （ジョイスティックと同様、継続的な入力として扱えるようにするため）。
+ * ホールドボタン1個分の仕様（ラベル・aria-label・押下中に設定する軸値）。
  */
-const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } => {
+interface HoldButtonSpec {
+    label: string;
+    ariaLabel: string;
+    /** 押下中に設定する軸値。 */
+    axisValue: number;
+}
+
+/**
+ * 縦に並んだ2つのホールドボタン（押している間だけ軸値を持ち、離すと0に戻る）を
+ * 生成する共通ファクトリ。ズーム・回転・高さ変更ボタンはいずれも
+ * 「符号の異なる2ボタンで単一の軸値[-1,1]を共有する」という同じ構造のため、
+ * 配置（`position`）とボタン仕様（`buttons`）のみを差し替えて再利用する。
+ */
+const createHoldButtonGroup = (
+    position: Partial<CSSStyleDeclaration>,
+    buttons: readonly [HoldButtonSpec, HoldButtonSpec],
+): { element: HTMLElement; getAxis: () => number; dispose: () => void } => {
     const container = document.createElement("div");
     Object.assign(container.style, {
         position: "absolute",
-        right: "16px",
-        bottom: "16px",
         display: "flex",
         flexDirection: "column",
         gap: "10px",
         pointerEvents: "auto",
+        ...position,
     } satisfies Partial<CSSStyleDeclaration>);
 
     let axis = 0;
@@ -238,21 +267,14 @@ const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dis
     };
     const listeners: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
 
-    // 「+」= ズームイン（フットプリント半径を縮める）= スティック規約の前方向 = 負の軸値。
-    const zoomInButton = document.createElement("button");
-    styleHudButton(zoomInButton);
-    zoomInButton.textContent = "+";
-    zoomInButton.setAttribute("aria-label", "ズームイン");
-    listeners.push(...bindHoldButton(zoomInButton, setAxis, -1));
-
-    const zoomOutButton = document.createElement("button");
-    styleHudButton(zoomOutButton);
-    zoomOutButton.textContent = "−";
-    zoomOutButton.setAttribute("aria-label", "ズームアウト");
-    listeners.push(...bindHoldButton(zoomOutButton, setAxis, 1));
-
-    container.appendChild(zoomInButton);
-    container.appendChild(zoomOutButton);
+    for (const spec of buttons) {
+        const button = document.createElement("button");
+        styleHudButton(button);
+        button.textContent = spec.label;
+        button.setAttribute("aria-label", spec.ariaLabel);
+        listeners.push(...bindHoldButton(button, setAxis, spec.axisValue));
+        container.appendChild(button);
+    }
 
     return {
         element: container,
@@ -264,8 +286,44 @@ const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dis
 };
 
 /**
- * diorama AR操作GUI（仮想ジョイスティック + ズームボタン）を生成する。
- * 返り値の `element` は呼び出し元（`webXrArSession.ts`）が `dom-overlay` feature へ渡す。
+ * ズームボタン（+/-）を作成する。押している間だけ軸値を持ち、離すと0に戻る
+ * （ジョイスティックと同様、継続的な入力として扱えるようにするため）。
+ * 画面右下に配置する。
+ */
+const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } =>
+    // 「+」= ズームイン（フットプリント半径を縮める）= スティック規約の前方向 = 負の軸値。
+    createHoldButtonGroup({ right: "16px", bottom: "16px" }, [
+        { label: "+", ariaLabel: "ズームイン", axisValue: -1 },
+        { label: "−", ariaLabel: "ズームアウト", axisValue: 1 },
+    ]);
+
+/**
+ * 箱庭回転ボタン（⟲/⟳）を作成する。画面右上（ARボタンの下）に配置し、
+ * ARボタンや `back-link`（`public/diorama.html`）と重ならないようにする。
+ */
+const createRotateButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } =>
+    createHoldButtonGroup({ right: "16px", top: "64px" }, [
+        { label: "⟲", ariaLabel: "反時計回りに回転", axisValue: -1 },
+        { label: "⟳", ariaLabel: "時計回りに回転", axisValue: 1 },
+    ]);
+
+/**
+ * 箱庭の設置高さ変更ボタン（▲/▼）を作成する。画面左上（`back-link` の下）に
+ * 配置し、他のUI要素と重ならないようにする。
+ */
+const createHeightButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } =>
+    createHoldButtonGroup({ left: "16px", top: "56px" }, [
+        { label: "▲", ariaLabel: "高さを上げる", axisValue: 1 },
+        { label: "▼", ariaLabel: "高さを下げる", axisValue: -1 },
+    ]);
+
+/**
+ * diorama 操作GUI（仮想ジョイスティック + ズーム/回転/高さボタン）を生成する。
+ * AR中は返り値の `element` を呼び出し元（`webXrArSession.ts`）が `dom-overlay`
+ * feature へ渡す。AR非対応環境・AR突入前の通常表示でも同じGUIを常時マウントし、
+ * タッチ操作だけで地図移動・拡大縮小・箱庭回転・高さ変更ができるようにする
+ * （物理コントローラー・キーボードが無いAndroidスマホ等での操作導線を確保する目的。
+ * `dioramaTouchControls.ts` 参照）。
  */
 export const createDioramaArControlHud = (): DioramaArControlHud => {
     const root = document.createElement("div");
@@ -279,16 +337,24 @@ export const createDioramaArControlHud = (): DioramaArControlHud => {
 
     const joystick = createJoystick();
     const zoomButtons = createZoomButtons();
+    const rotateButtons = createRotateButtons();
+    const heightButtons = createHeightButtons();
     root.appendChild(joystick.element);
     root.appendChild(zoomButtons.element);
+    root.appendChild(rotateButtons.element);
+    root.appendChild(heightButtons.element);
 
     return {
         element: root,
         getPanAxes: () => joystick.getAxes(),
         getZoomAxis: () => zoomButtons.getAxis(),
+        getRotationAxis: () => rotateButtons.getAxis(),
+        getHeightAxis: () => heightButtons.getAxis(),
         dispose: () => {
             joystick.dispose();
             zoomButtons.dispose();
+            rotateButtons.dispose();
+            heightButtons.dispose();
             root.remove();
         },
     };

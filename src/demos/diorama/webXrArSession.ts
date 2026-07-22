@@ -37,6 +37,7 @@ import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
+import type { DioramaTouchControls } from "./dioramaTouchControls";
 import { createDioramaArControlHudForSession, setupDioramaArControls } from "./dioramaArControls";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
 
@@ -196,6 +197,9 @@ const placeDioramaRelativeToCamera = (
  *   デスクトップのキーボード操作と共有し、AR突入前後で位置が引き継がれるようにする。
  * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
  *   （`dioramaOrientationController.ts`）。デスクトップのキーボード操作と共有する。
+ * @param touchControls AR非対応環境・AR突入前の通常表示向けの常時表示タッチHUD
+ *   （`dioramaTouchControls.ts`）。AR中は同種のGUIが二重に重なって表示されない
+ *   よう、AR突入時に非表示、退出時に再表示する。
  * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
  */
 export const setupDioramaWebXrArButton = async (
@@ -204,6 +208,7 @@ export const setupDioramaWebXrArButton = async (
     dioramaRoot: TransformNode,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
+    touchControls: DioramaTouchControls,
 ): Promise<() => void> => {
     const supported = await isImmersiveArSupported();
     if (!supported) return () => {};
@@ -234,7 +239,7 @@ export const setupDioramaWebXrArButton = async (
         xr?.dispose();
         xr = null;
         entering = true;
-        void enterAr(mount, scene, dioramaRoot, viewController, orientationController, button)
+        void enterAr(mount, scene, dioramaRoot, viewController, orientationController, touchControls, button)
             .then((created) => {
                 // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にデモを
@@ -264,6 +269,7 @@ const enterAr = async (
     dioramaRoot: TransformNode,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
+    touchControls: DioramaTouchControls,
     button: HTMLButtonElement,
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
@@ -308,6 +314,11 @@ const enterAr = async (
         // 冒頭のコメント参照）。
         scene.clearColor.a = 0;
 
+        // AR中は本ファイルが生成する別インスタンスのHUD（コントローラー/GUI操作）を
+        // 表示するため、通常表示向けの常時表示タッチHUDは非表示にする
+        // （同種のGUIが画面上で二重に重なって表示されるのを防ぐ）。
+        touchControls.setVisible(false);
+
         // コントローラー（thumbstick/trigger）/GUI（画面タッチ）による地図移動・拡大縮小・
         // 箱庭回転・高さ変更（`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
         disposeArControls = setupDioramaArControls(scene, xrExperience, hud, viewController, orientationController);
@@ -331,6 +342,7 @@ const enterAr = async (
             disposeArControls = null;
             dioramaRoot.position.copyFrom(originalPosition);
             scene.clearColor.a = originalClearAlpha;
+            touchControls.setVisible(true);
             styleArButton(button);
         };
 
@@ -346,9 +358,11 @@ const enterAr = async (
         // 部分的に確保したリソース（箱庭配置・パススルー背景状態・AR controls・HUD）を
         // 後始末する。`disposeArControls` が設定済み（`setupDioramaArControls` 呼び出し後に
         // 例外が起きたケース）なら、render observer / controller observer の残留を防ぐため
-        // 必ず呼ぶ。
+        // 必ず呼ぶ。`touchControls.setVisible(true)` は `setVisible(false)` 呼び出し前に
+        // 例外が起きた場合でも冪等（既に表示中なら何もしない）なので無条件に呼ぶ。
         dioramaRoot.position.copyFrom(originalPosition);
         scene.clearColor.a = originalClearAlpha;
+        touchControls.setVisible(true);
         disposeArControls?.();
         disposeArControls = null;
         hud?.dispose();

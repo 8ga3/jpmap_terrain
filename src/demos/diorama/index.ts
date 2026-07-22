@@ -9,6 +9,9 @@
  * - WebXR (`immersive-ar`) セッション統合（`webXrArSession.ts`）により、箱庭の周りを
  *   歩いて見られるパススルーAR表示に対応する。
  * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更）に対応する。
+ *   デスクトップはキーボード（`dioramaKeyboardControls.ts`）、AR中はXRコントローラー/
+ *   タッチGUI（`dioramaArControls.ts`）、AR非対応環境・AR突入前の通常表示は
+ *   常時表示のタッチHUD（`dioramaTouchControls.ts`）でそれぞれ操作できる。
  *   ライティング・タイル切替・トップ復帰は後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
@@ -26,6 +29,8 @@ import { setupDioramaWebXrArButton } from "./webXrArSession";
 import { createDioramaViewController } from "./dioramaViewController";
 import { createDioramaOrientationController } from "./dioramaOrientationController";
 import { setupDioramaKeyboardControls } from "./dioramaKeyboardControls";
+import { createDioramaArControlHud } from "./dioramaArControlHud";
+import { setupDioramaTouchControls } from "./dioramaTouchControls";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -153,11 +158,25 @@ const start = async (): Promise<void> => {
     const orientationController = createDioramaOrientationController(orientationRoot);
     setupDioramaKeyboardControls(scene, camera, viewController, orientationController);
 
-    setupDioramaWebXrArButton(mount, scene, placementRoot, viewController, orientationController).catch(
-        (err: unknown) => {
-            console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
-        },
-    );
+    // AR非対応環境・AR突入前の通常表示でも、物理コントローラー・キーボードが
+    // 無いタッチ専用デバイス（Androidスマホ等）で地図移動・拡大縮小・箱庭回転・
+    // 高さ変更を操作できるよう、常時表示のタッチHUDを生成・マウントする
+    // （`dioramaTouchControls.ts` 冒頭のコメント参照。AR中に使われる別インスタンスの
+    // HUDとは独立しており、二重入力にはならない）。
+    const touchHud = createDioramaArControlHud();
+    mount.appendChild(touchHud.element);
+    const touchControls = setupDioramaTouchControls(scene, touchHud, viewController, orientationController);
+
+    setupDioramaWebXrArButton(
+        mount,
+        scene,
+        placementRoot,
+        viewController,
+        orientationController,
+        touchControls,
+    ).catch((err: unknown) => {
+        console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
+    });
 
     engine.runRenderLoop(() => {
         scene.render();
