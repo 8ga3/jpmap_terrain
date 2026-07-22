@@ -106,6 +106,18 @@ export interface ControllerTriggerState {
 const zeroTriggerState = (): ControllerTriggerState => ({ left: 0, right: 0 });
 
 /**
+ * [-1,1] へクランプする（コントローラー入力とGUI入力の単純加算が範囲を超えないように
+ * する）。`NaN`/`Infinity` 等の非有限値は 0 へフォールバックしてからクランプする
+ * （`Math.min`/`Math.max` は `NaN` を伝播させ、クランプの保証が崩れてしまうため）。
+ */
+export const clamp1 = (v: number): number => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
+/**
+ * [0,1] へクランプする（トリガー押下量とGUI高さボタン由来の合算値の範囲を揃える）。
+ * `clamp1` と同様、非有限値は 0 へフォールバックしてからクランプする。
+ */
+export const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
+
+/**
  * 追加されたコントローラーのthumbstick/trigger入力を `sticks`/`triggers` へ反映する
  * リスナーを登録する（`feature/533-webxr-vr-viewer` の `trackControllerSticks` と
  * 同じ設計。トリガーは箱庭の高さ変更操作向けに本Issueで追加）。
@@ -158,19 +170,25 @@ export const trackControllerSticks = (
             const thumbstick = motionController.getComponentOfType("thumbstick");
             if (thumbstick) {
                 const axisObserver = thumbstick.onAxisValueChangedObservable.add(({ x, y }) => {
-                    sticks[handedness] = { x, y };
+                    // 格納時点で[-1,1]へクランプ・非有限値を0へフォールバックする。
+                    // ここでサニタイズしないと、コントローラー由来の異常値（NaN等）が
+                    // 後段の `clamp1(sticks... + hud...)` で合算後にまとめて0扱いされ、
+                    // 同時に加算されるHUD側の正常な入力まで無効化されてしまう。
+                    sticks[handedness] = { x: clamp1(x), y: clamp1(y) };
                 });
                 disposeAxisBinding = () => thumbstick.onAxisValueChangedObservable.remove(axisObserver);
                 // バインド時点で既に倒されている場合、`onAxisValueChangedObservable` は
                 // その後の「変化」でのみ発火するため、現在値を初期反映しておかないと
                 // 検知できない（次項のtriggerと同じ理由）。
-                sticks[handedness] = thumbstick.axes;
+                sticks[handedness] = { x: clamp1(thumbstick.axes.x), y: clamp1(thumbstick.axes.y) };
             }
 
             const trigger = motionController.getComponentOfType("trigger");
             if (trigger) {
                 const buttonObserver = trigger.onButtonStateChangedObservable.add((component) => {
-                    triggers[handedness] = component.value;
+                    // sticksと同じ理由で、格納時点で[0,1]へクランプ・非有限値を
+                    // 0へフォールバックする。
+                    triggers[handedness] = clamp01(component.value);
                 });
                 disposeTriggerBinding = () => trigger.onButtonStateChangedObservable.remove(buttonObserver);
                 // `onMotionControllerInitObservable` 発火時点で既にトリガーが押されている
@@ -178,7 +196,7 @@ export const trackControllerSticks = (
                 // `onButtonStateChangedObservable` はその後の「状態変化」でのみ発火するため
                 // 押しっぱなし状態を取りこぼす。バインド直後に現在値を一度読み取って
                 // 反映しておくことで、この取りこぼしを防ぐ。
-                triggers[handedness] = trigger.value;
+                triggers[handedness] = clamp01(trigger.value);
             }
         });
 
@@ -207,18 +225,6 @@ export const trackControllerSticks = (
         controllerCleanups.clear();
     };
 };
-
-/**
- * [-1,1] へクランプする（コントローラー入力とGUI入力の単純加算が範囲を超えないように
- * する）。`NaN`/`Infinity` 等の非有限値は 0 へフォールバックしてからクランプする
- * （`Math.min`/`Math.max` は `NaN` を伝播させ、クランプの保証が崩れてしまうため）。
- */
-export const clamp1 = (v: number): number => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
-/**
- * [0,1] へクランプする（トリガー押下量とGUI高さボタン由来の合算値の範囲を揃える）。
- * `clamp1` と同様、非有限値は 0 へフォールバックしてからクランプする。
- */
-export const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
 /**
  * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更の
