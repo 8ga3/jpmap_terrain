@@ -12,8 +12,9 @@
  *
  * **対象ノードは `dioramaTerrain.root` ではなく、専用の `orientationRoot` を渡すこと**
  * （`index.ts` が生成する）。理由: AR中は `webXrArSession.ts` の
- * `placeDioramaRelativeToCamera`/`restoreOnExit` が `dioramaTerrain.root.position` を
- * 実機カメラ位置基準の絶対値で書き換える。もし本コントローラーが同じノードの
+ * `placeDioramaRelativeToCamera`/`restoreOnExit` が `placementRoot.position`
+ * （`webXrArSession.ts` に渡す配置用ノード。`index.ts` が生成する）を実機カメラ位置
+ * 基準の絶対値で書き換える。もし本コントローラーが同じノードの
  * `position.y` を高さオフセットとして書き込むと、AR入退場のたびに上書き・消失して
  * しまう。また、回転を「AR配置で絶対位置を持つノード」に適用すると、そのノードの
  * ローカル原点（＝世界原点）を中心に箱庭全体が公転してしまい、「その場で回転」に
