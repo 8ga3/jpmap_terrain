@@ -21,9 +21,15 @@
  * 両方を同時表示するとジョイスティック/ボタンが二重に重なって表示されてしまう。
  * そのため本モジュールが返す {@link DioramaTouchControls.setVisible} を
  * `index.ts` 経由で `webXrArSession.ts` のAR入退場処理から呼び、AR中は非表示
- * （`display:none`）にする。非表示中はボタン類がポインタイベントを受け取れず
- * 内部軸値は常に0のままになるため、毎フレームの入力反映ループ自体は止めず
- * 単純化のため常時実行する（0入力のfeedAxesは実質no-opで軽量なため）。
+ * （`display:none`）にする。
+ *
+ * **非表示中はHUDの軸値を無視する**: `display:none` はDOM上の見た目を隠すのみで、
+ * HUD内部の軸値（ボタンの押下状態）が0へリセットされる保証はない
+ * （例: ボタンを押下したままAR突入し `display:none` になった場合、
+ * ブラウザ実装によっては当該要素への `pointerup`/`keyup` が発火せず、押下中の
+ * 軸値が残り続け得る）。非表示中もHUDの軸値をそのままfeedし続けると、
+ * 復帰後に気づかぬまま箱庭が動き続ける不具合になり得るため、`setVisible(false)`
+ * の間は内部フラグでHUDの軸値を一切読まず、`feedAxes` 自体を呼ばないようにする。
  */
 import type { Scene } from "@babylonjs/core/scene";
 
@@ -34,7 +40,8 @@ import type { DioramaArControlHud } from "./dioramaArControlHud";
 export interface DioramaTouchControls {
     /**
      * HUDの表示/非表示を切り替える（AR中は `webXrArSession.ts` 側からfalseを
-     * 渡し、AR専用のHUDとの二重表示を避ける）。
+     * 渡し、AR専用のHUDとの二重表示を避ける）。非表示中はHUDの軸値を一切
+     * 読まない（冒頭のコメント参照）。
      */
     setVisible(visible: boolean): void;
     /** 後始末用の破棄関数。 */
@@ -52,7 +59,12 @@ export const setupDioramaTouchControls = (
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
 ): DioramaTouchControls => {
+    let visible = true;
+
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
+        // 非表示中はHUDの軸値を無視する（冒頭のコメント参照。押下状態が0に
+        // リセットされている保証がないため、読み取り自体を行わない）。
+        if (!visible) return;
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
         if (!(dtSeconds > 0)) return;
 
@@ -67,8 +79,9 @@ export const setupDioramaTouchControls = (
     });
 
     return {
-        setVisible: (visible: boolean): void => {
-            hud.element.style.display = visible ? "" : "none";
+        setVisible: (value: boolean): void => {
+            visible = value;
+            hud.element.style.display = value ? "" : "none";
         },
         dispose: (): void => {
             scene.onBeforeRenderObservable.remove(renderObserver);

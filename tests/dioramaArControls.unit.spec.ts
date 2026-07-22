@@ -1,5 +1,5 @@
 /**
- * `dioramaArControls.ts` の `trackControllerSticks` のunit test。
+ * `dioramaArControls.ts` の `trackControllerSticks`/`clamp1`/`clamp01` のunit test。
  *
  * @remarks
  * `WebXRInputSource`/モーションコントローラー/コンポーネントのObservableは
@@ -15,6 +15,8 @@ import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExpe
 
 import {
     trackControllerSticks,
+    clamp1,
+    clamp01,
     type ControllerStickState,
     type ControllerTriggerState,
 } from "../src/demos/diorama/dioramaArControls";
@@ -200,5 +202,40 @@ describe("trackControllerSticks", () => {
         // 解除後に入力を発火しても状態は変化しない。
         motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: 1 });
         expect(sticks.left).toEqual({ x: 0, y: 0 });
+    });
+});
+
+describe("clamp1", () => {
+    it("範囲内の値はそのまま返す", () => {
+        expect(clamp1(0.5)).toBe(0.5);
+        expect(clamp1(-0.5)).toBe(-0.5);
+    });
+
+    it("範囲外の値は[-1,1]へクランプする", () => {
+        expect(clamp1(2)).toBe(1);
+        expect(clamp1(-2)).toBe(-1);
+    });
+
+    it("非有限値（NaN/Infinity）は0へフォールバックする（回帰テスト）", () => {
+        expect(clamp1(NaN)).toBe(0);
+        expect(clamp1(Infinity)).toBe(0);
+        expect(clamp1(-Infinity)).toBe(0);
+    });
+});
+
+describe("clamp01", () => {
+    it("範囲内の値はそのまま返す", () => {
+        expect(clamp01(0.5)).toBe(0.5);
+    });
+
+    it("範囲外の値は[0,1]へクランプする", () => {
+        expect(clamp01(2)).toBe(1);
+        expect(clamp01(-1)).toBe(0);
+    });
+
+    it("非有限値（NaN/Infinity）は0へフォールバックする（回帰テスト）", () => {
+        expect(clamp01(NaN)).toBe(0);
+        expect(clamp01(Infinity)).toBe(0);
+        expect(clamp01(-Infinity)).toBe(0);
     });
 });
