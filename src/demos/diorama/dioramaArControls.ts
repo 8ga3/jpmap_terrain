@@ -92,14 +92,14 @@ export const createDioramaArControlHudForSession = (
 };
 
 /** 左右コントローラーのスティック軸を保持する（未接続時は `{0,0}`）。 */
-interface ControllerStickState {
+export interface ControllerStickState {
     left: StickAxes;
     right: StickAxes;
 }
 const zeroStickState = (): ControllerStickState => ({ left: { x: 0, y: 0 }, right: { x: 0, y: 0 } });
 
 /** 左右コントローラーのトリガー押下量（[0,1]）を保持する（未接続時は `0`）。 */
-interface ControllerTriggerState {
+export interface ControllerTriggerState {
     left: number;
     right: number;
 }
@@ -118,9 +118,15 @@ const zeroTriggerState = (): ControllerTriggerState => ({ left: 0, right: 0 });
  * 両方で確実に `remove` する。保持・解除しないと、コントローラーの再初期化時に
  * リスナーが二重登録され入力が二重反映されたり、破棄後もリスナーが残留して
  * メモリリークになる。
+ *
+ * また、`onMotionControllerInitObservable` 発火のたびに `sticks`/`triggers` を
+ * 一旦ニュートラル値へリセットしてから thumbstick/trigger の有無を判定・購読する。
+ * リセットしないと、差し替え後のモーションコントローラーに thumbstick/trigger が
+ * 無い場合（プロファイルの違い等）に、以後どのobserverからも更新されず前回値
+ * （押しっぱなし相当）が残留し続け、回転/高さが暴走する不具合になり得るため。
  * @returns 登録解除関数。
  */
-const trackControllerSticks = (
+export const trackControllerSticks = (
     xr: WebXRDefaultExperience,
     sticks: ControllerStickState,
     triggers: ControllerTriggerState,
@@ -141,6 +147,13 @@ const trackControllerSticks = (
             disposeAxisBinding = null;
             disposeTriggerBinding?.();
             disposeTriggerBinding = null;
+            // 差し替え後のモーションコントローラーに thumbstick/trigger が無い場合、
+            // 以後どのobserverからも更新されず前回の値（押しっぱなし相当）が残留し
+            // 続けてしまう。再初期化のたびに一旦ニュートラル値へリセットしてから
+            // 判定・購読することで、コンポーネントが見つからない場合でも
+            // 回転/高さが暴走しないようにする。
+            sticks[handedness] = { x: 0, y: 0 };
+            triggers[handedness] = 0;
 
             const thumbstick = motionController.getComponentOfType("thumbstick");
             if (thumbstick) {
