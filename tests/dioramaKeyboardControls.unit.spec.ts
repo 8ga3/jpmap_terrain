@@ -15,6 +15,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
+import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
 import { setupDioramaKeyboardControls } from "../src/demos/diorama/dioramaKeyboardControls";
 
 interface FakeScene {
@@ -67,6 +68,19 @@ const makeViewController = (): { vc: DioramaViewController; feedAxes: ReturnType
     return { vc, feedAxes };
 };
 
+const makeOrientationController = (): {
+    oc: DioramaOrientationController;
+    feedAxes: ReturnType<typeof vi.fn>;
+} => {
+    const feedAxes = vi.fn();
+    const oc = {
+        getRotationRad: vi.fn(),
+        getHeightOffsetM: vi.fn(),
+        feedAxes,
+    } as unknown as DioramaOrientationController;
+    return { oc, feedAxes };
+};
+
 const dispatchKey = (type: "keydown" | "keyup", code: string, modifiers: Partial<KeyboardEventInit> = {}): void => {
     window.dispatchEvent(new KeyboardEvent(type, { code, bubbles: true, cancelable: true, ...modifiers }));
 };
@@ -80,7 +94,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("何も押していなければfeedAxesは{x:0,y:0}・zoomAxis:0で呼ばれる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         tick(16);
 
@@ -90,7 +105,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("矢印キーはパンに割り当てない（Babylon既定のカメラ回転と衝突するため無視される）", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         dispatchKey("keydown", "ArrowRight");
         dispatchKey("keydown", "ArrowUp");
@@ -102,7 +118,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("カメラが既定の向き（北向き）のとき、D/Wで想定通りのパン軸になる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(0), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(0), vc, oc));
 
         dispatchKey("keydown", "KeyD");
         tick(16);
@@ -119,8 +136,9 @@ describe("setupDioramaKeyboardControls", () => {
     it("カメラを90°回転させると、Wキーの移動方向もカメラの向き基準で回転する", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
+        const { oc } = makeOrientationController();
         // headingDeg=90: forward=(1,0,0)（東）になる。
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(90), vc));
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(90), vc, oc));
 
         dispatchKey("keydown", "KeyW");
         tick(16);
@@ -134,7 +152,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("keyupで押下状態が解除される", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         dispatchKey("keydown", "KeyA");
         tick(16);
@@ -148,7 +167,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("PageUp/KeyRでズームイン(-1)、PageDown/KeyFでズームアウト(+1)になる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         dispatchKey("keydown", "PageUp");
         tick(16);
@@ -163,7 +183,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("Ctrl修飾キー併用時は無視する（ブラウザショートカットを奪わない）", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         dispatchKey("keydown", "KeyR", { ctrlKey: true });
         tick(16);
@@ -173,7 +194,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("dtSecondsが0以下ならfeedAxesを呼ばない", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         tick(0);
         expect(feedAxes).not.toHaveBeenCalled();
@@ -182,7 +204,8 @@ describe("setupDioramaKeyboardControls", () => {
     it("破棄関数を呼ぶとイベントリスナー・レンダーオブザーバーが解除される", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        const dispose = setupDioramaKeyboardControls(scene, makeCamera(), vc);
+        const { oc } = makeOrientationController();
+        const dispose = setupDioramaKeyboardControls(scene, makeCamera(), vc, oc);
 
         dispose();
         dispatchKey("keydown", "KeyD");
@@ -194,11 +217,54 @@ describe("setupDioramaKeyboardControls", () => {
     it("windowのblurで押下状態がクリアされる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
-        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc));
+        const { oc } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
 
         dispatchKey("keydown", "KeyD");
         window.dispatchEvent(new Event("blur"));
         tick(16);
         expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
+    });
+
+    it("Qで負方向、Eで正方向の回転軸がorientationController.feedAxesへ渡される", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc } = makeViewController();
+        const { oc, feedAxes } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+
+        dispatchKey("keydown", "KeyE");
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith(1, 0, 0, 0.016);
+
+        dispatchKey("keyup", "KeyE");
+        dispatchKey("keydown", "KeyQ");
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith(-1, 0, 0, 0.016);
+    });
+
+    it("Zで下降(leftTrigger=1)、Xで上昇(rightTrigger=1)がorientationController.feedAxesへ渡される", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc } = makeViewController();
+        const { oc, feedAxes } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+
+        dispatchKey("keydown", "KeyZ");
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith(0, 1, 0, 0.016);
+
+        dispatchKey("keyup", "KeyZ");
+        dispatchKey("keydown", "KeyX");
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith(0, 0, 1, 0.016);
+    });
+
+    it("dtSecondsが0以下ならorientationController.feedAxesも呼ばない", () => {
+        const { scene, tick } = createFakeScene();
+        const { vc } = makeViewController();
+        const { oc, feedAxes } = makeOrientationController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(), vc, oc));
+
+        tick(0);
+        expect(feedAxes).not.toHaveBeenCalled();
     });
 });
