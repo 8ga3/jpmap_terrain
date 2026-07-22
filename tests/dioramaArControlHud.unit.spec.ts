@@ -41,18 +41,24 @@ afterEach(() => {
 });
 
 describe("createDioramaArControlHud", () => {
-    it("ジョイスティック要素とズームボタン(+/-)を含むDOM構造を生成する", () => {
+    it("ジョイスティック要素とズーム/回転/高さボタンを含むDOM構造を生成する", () => {
         const hud = build();
         const buttons = hud.element.querySelectorAll("button");
-        expect(buttons.length).toBe(2);
+        expect(buttons.length).toBe(6);
         expect(buttons[0]?.getAttribute("aria-label")).toBe("ズームイン");
         expect(buttons[1]?.getAttribute("aria-label")).toBe("ズームアウト");
+        expect(buttons[2]?.getAttribute("aria-label")).toBe("反時計回りに回転");
+        expect(buttons[3]?.getAttribute("aria-label")).toBe("時計回りに回転");
+        expect(buttons[4]?.getAttribute("aria-label")).toBe("高さを上げる");
+        expect(buttons[5]?.getAttribute("aria-label")).toBe("高さを下げる");
     });
 
-    it("初期状態のパン軸・ズーム軸は0", () => {
+    it("初期状態のパン軸・ズーム軸・回転軸・高さ軸は0", () => {
         const hud = build();
         expect(hud.getPanAxes()).toEqual({ x: 0, y: 0 });
         expect(hud.getZoomAxis()).toBe(0);
+        expect(hud.getRotationAxis()).toBe(0);
+        expect(hud.getHeightAxis()).toBe(0);
     });
 
     it("ジョイスティックをドラッグするとパン軸が更新され、離すと0に戻る", () => {
@@ -189,6 +195,40 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(-1);
         zoomInButton.dispatchEvent(new FocusEvent("blur"));
         expect(hud.getZoomAxis()).toBe(0);
+    });
+
+    it("回転ボタン「⟲」押下で回転軸が-1、「⟳」押下で+1、離すと0に戻る", () => {
+        const hud = build();
+        const buttons = hud.element.querySelectorAll("button");
+        const ccwButton = buttons[2] as HTMLButtonElement;
+        const cwButton = buttons[3] as HTMLButtonElement;
+
+        dispatchPointer(ccwButton, "pointerdown", {});
+        expect(hud.getRotationAxis()).toBe(-1);
+        dispatchPointer(ccwButton, "pointerup", {});
+        expect(hud.getRotationAxis()).toBe(0);
+
+        dispatchPointer(cwButton, "pointerdown", {});
+        expect(hud.getRotationAxis()).toBe(1);
+        dispatchPointer(cwButton, "pointercancel", {});
+        expect(hud.getRotationAxis()).toBe(0);
+    });
+
+    it("高さボタン「▲」押下で高さ軸が+1、「▼」押下で-1、離すと0に戻る", () => {
+        const hud = build();
+        const buttons = hud.element.querySelectorAll("button");
+        const upButton = buttons[4] as HTMLButtonElement;
+        const downButton = buttons[5] as HTMLButtonElement;
+
+        dispatchPointer(upButton, "pointerdown", {});
+        expect(hud.getHeightAxis()).toBe(1);
+        dispatchPointer(upButton, "pointerup", {});
+        expect(hud.getHeightAxis()).toBe(0);
+
+        dispatchPointer(downButton, "pointerdown", {});
+        expect(hud.getHeightAxis()).toBe(-1);
+        dispatchPointer(downButton, "pointercancel", {});
+        expect(hud.getHeightAxis()).toBe(0);
     });
 
     it("dispose()はHUD要素をDOMから除去する", () => {

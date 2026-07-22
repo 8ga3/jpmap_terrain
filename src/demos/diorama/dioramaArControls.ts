@@ -200,6 +200,8 @@ export const trackControllerSticks = (
 
 /** [-1,1] へクランプする（コントローラー入力とGUI入力の単純加算が範囲を超えないようにする）。 */
 const clamp1 = (v: number): number => Math.max(-1, Math.min(1, v));
+/** [0,1] へクランプする（トリガー押下量とGUI高さボタン由来の合算値の範囲を揃える）。 */
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
 /**
  * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更の
@@ -234,7 +236,15 @@ export const setupDioramaArControls = (
         const zoomAxisY = clamp1(sticks.right.y + hud.getZoomAxis());
         viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
 
-        orientationController.feedAxes(sticks.right.x, triggers.left, triggers.right, dtSeconds);
+        // 右スティックX（物理コントローラー）とHUDの回転ボタンの軸値を合算する
+        // （パン/ズームと同じ「単純加算してクランプ」方式）。
+        const rotationAxisX = clamp1(sticks.right.x + hud.getRotationAxis());
+        // HUDの高さボタンは単一の符号付き軸[-1,1]（上昇=正）で表現されるため、
+        // 物理トリガー値[0,1]へ変換してから合算・クランプする。
+        const hudHeightAxis = hud.getHeightAxis();
+        const leftTriggerValue = clamp01(triggers.left + Math.max(0, -hudHeightAxis));
+        const rightTriggerValue = clamp01(triggers.right + Math.max(0, hudHeightAxis));
+        orientationController.feedAxes(rotationAxisX, leftTriggerValue, rightTriggerValue, dtSeconds);
     });
 
     return (): void => {
