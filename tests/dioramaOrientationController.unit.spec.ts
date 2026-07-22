@@ -120,35 +120,4 @@ describe("createDioramaOrientationController", () => {
         expect(oc.getHeightOffsetM()).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
         expect(node.position.y).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
     });
-
-    it("resetToInitial()で回転・高さオフセットが生成時点の値へ戻る", () => {
-        const { node } = makeNode();
-        const oc = createDioramaOrientationController(node);
-
-        oc.feedAxes(1, 0, 1, 1);
-        expect(oc.getRotationRad()).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
-        expect(oc.getHeightOffsetM()).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
-
-        oc.resetToInitial();
-
-        expect(oc.getRotationRad()).toBe(0);
-        expect(oc.getHeightOffsetM()).toBe(0);
-        expect(node.rotation.y).toBe(0);
-        expect(node.position.y).toBe(0);
-    });
-
-    it("resetToInitial()は生成時点のノードの値（0以外）へ戻す（ゼロへの固定ではない）", () => {
-        const { node } = makeNode();
-        node.rotation.y = 1.2;
-        node.position.y = 0.1;
-        const oc = createDioramaOrientationController(node);
-
-        oc.feedAxes(1, 0, 1, 1); // 変化させる
-        oc.resetToInitial();
-
-        expect(oc.getRotationRad()).toBeCloseTo(1.2, 10);
-        expect(oc.getHeightOffsetM()).toBeCloseTo(0.1, 10);
-        expect(node.rotation.y).toBeCloseTo(1.2, 10);
-        expect(node.position.y).toBeCloseTo(0.1, 10);
-    });
 });

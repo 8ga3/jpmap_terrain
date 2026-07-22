@@ -101,21 +101,4 @@ describe("createDioramaTileModeController", () => {
         expect(consoleErrorSpy).toHaveBeenCalled();
         consoleErrorSpy.mockRestore();
     });
-
-    it("resetToInitial()で初期タイル種別へsetTileModeが呼ばれる", async () => {
-        const { terrain, setTileMode } = makeTerrain();
-        const tc = createDioramaTileModeController(terrain, "wireframe");
-
-        tc.cycle();
-        await Promise.resolve();
-        await Promise.resolve();
-        expect(tc.getTileMode()).toBe("std");
-
-        tc.resetToInitial();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(setTileMode).toHaveBeenLastCalledWith("wireframe");
-        expect(tc.getTileMode()).toBe("wireframe");
-    });
 });

@@ -1,18 +1,21 @@
 /**
  * diorama デモの操作GUI（オンスクリーン仮想ジョイスティック + ズーム/回転/高さボタン +
- * タイル種別切替/トップ復帰ボタン）。
+ * タイル種別切替/AR終了ボタン）。
  *
  * @remarks
  * 物理コントローラー・キーボードが無い環境（Androidスマホ等の画面タッチのみの
- * 環境）でも、地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別切替・トップ復帰を
+ * 環境）でも、地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別切替・AR終了を
  * 操作できるようにする代替入力。「タッチ・ピンチ・スワイプだけでは操作の発見性・精度が
  * 不十分」という実機検証を踏まえ、常時可視の仮想ジョイスティック（ドラッグでパン方向・
- * 強度を指定）と、明示的なズーム/回転/高さ/タイル切替/リセットボタンをGUIとして提供する。
+ * 強度を指定）と、明示的なズーム/回転/高さ/タイル切替/AR終了ボタンをGUIとして提供する。
  *
  * WebXR (`immersive-ar`) 中は `dom-overlay` feature（`webXrArSession.ts` 側で
  * 有効化）と組み合わせ、没入セッション中も本HUDの `element` を画面上に表示し
  * 続けられる。AR非対応環境・AR突入前の通常表示でも同じHUDを常時マウントし、
- * 同じGUIで操作できるようにする（`dioramaTouchControls.ts` 参照）。
+ * 同じGUIで操作できるようにする（`dioramaTouchControls.ts` 参照）。ただし
+ * 「AR終了」ボタンはAR中でなければ意味を持たない操作のため、通常表示側の
+ * インスタンスでは無効化（グレーアウト）する（{@link createDioramaArControlHud}の
+ * `exitArEnabled` オプション参照）。
  *
  * DOM/ポインタイベントのみに依存し、Babylon.js/WebXRには依存しないため
  * jsdom上で単体テスト可能。
@@ -58,11 +61,13 @@ export interface DioramaArControlHud {
      */
     onTileModeCyclePress(callback: () => void): () => void;
     /**
-     * トップ復帰ボタン（単発タップ）の押下イベントを購読する。
-     * {@link onTileModeCyclePress} と同じ単発トリガーの規約。
+     * AR終了ボタン（単発タップ）の押下イベントを購読する。
+     * {@link onTileModeCyclePress} と同じ単発トリガーの規約。`exitArEnabled: false`
+     * （{@link createDioramaArControlHud}参照）で生成した場合、ボタンは無効化
+     * （`disabled`）されているため本コールバックは呼ばれない。
      * @returns 購読解除関数。
      */
-    onResetToInitialPress(callback: () => void): () => void;
+    onExitArPress(callback: () => void): () => void;
     /** HUDのDOM要素を破棄し、登録したイベントリスナーを解放する。 */
     dispose(): void;
 }
@@ -108,8 +113,8 @@ const styleHudButton = (button: HTMLButtonElement): void => {
  * 輪郭線同士を重ねると交差線に見えてしまい「手前が奥を隠す」重なりに見えない
  * ため、この設計にしている。
  *
- * 隣接する「⌂」（トップ復帰）ボタンとの縦方向のバランスは、本アイコンの形状を
- * 変える（菱形を扁平でなくする）のではなく、`RESET_ICON_FONT_SIZE`で「⌂」側の
+ * 隣接する「⌂」（AR終了）ボタンとの縦方向のバランスは、本アイコンの形状を
+ * 変える（菱形を扁平でなくする）のではなく、`EXIT_AR_ICON_FONT_SIZE`で「⌂」側の
  * フォントサイズを大きくすることで調整する（{@link createTopCenterButtons}参照）。
  */
 const TILE_MODE_ICON_SVG = `
@@ -412,9 +417,17 @@ const createTapButton = (spec: {
      * `label`使用時のフォントサイズ上書き（既定は`styleHudButton`の20px）。
      * グリフごとの見た目の大きさ（インク量）は文字種によって異なるため、
      * 隣接するボタンとの視覚的なバランスを取るために使う
-     * （{@link RESET_ICON_FONT_SIZE}参照）。
+     * （{@link EXIT_AR_ICON_FONT_SIZE}参照）。
      */
     fontSize?: string;
+    /**
+     * 生成直後から無効化（`disabled`）するかどうか（既定 `false`）。
+     * ネイティブの `disabled` 属性を使うため、`click`（ポインタ・キーボード双方）が
+     * 一切発火しなくなる（`onPress`で購読したコールバックも呼ばれない）。
+     * 見た目も半透明にし、視覚的に「今は使えない」ことを示す
+     * （{@link createDioramaArControlHud}の`exitArEnabled`オプション参照）。
+     */
+    disabled?: boolean;
 }): { element: HTMLButtonElement; onPress: (callback: () => void) => () => void; dispose: () => void } => {
     const button = document.createElement("button");
     styleHudButton(button);
@@ -427,6 +440,11 @@ const createTapButton = (spec: {
         button.style.fontSize = spec.fontSize;
     }
     button.setAttribute("aria-label", spec.ariaLabel);
+    if (spec.disabled) {
+        button.disabled = true;
+        button.style.opacity = "0.35";
+        button.style.cursor = "default";
+    }
 
     const callbacks = new Set<() => void>();
     const onClick = (): void => {
@@ -448,7 +466,7 @@ const createTapButton = (spec: {
 };
 
 /**
- * トップ復帰ボタン（「⌂」文字グリフ）のフォントサイズ。
+ * AR終了ボタン（「⌂」文字グリフ）のフォントサイズ。
  *
  * @remarks
  * 隣接するタイル種別切替ボタン（自作SVGアイコン、{@link TILE_MODE_ICON_SVG}）と
@@ -459,17 +477,28 @@ const createTapButton = (spec: {
  * 菱形部分は幅18px×高さ13px）。アイコンの形自体は変えず、「⌂」側の
  * フォントサイズのみを大きくして視覚的なバランスを取る。
  */
-const RESET_ICON_FONT_SIZE = "28px";
+const EXIT_AR_ICON_FONT_SIZE = "28px";
 
 /**
- * タイル種別切替・トップ復帰ボタンを横並びで作成する。画面上部中央
+ * AR終了ボタンの `aria-label`。無効化時も同じ文言を使う（`disabled`状態自体は
+ * ネイティブ属性としてスクリーンリーダー等に伝わるため、文言を分ける必要はない）。
+ */
+const EXIT_AR_BUTTON_ARIA_LABEL = "ARを終了して通常表示に戻る";
+
+/**
+ * タイル種別切替・AR終了ボタンを横並びで作成する。画面上部中央
  * （左上の `back-link`（`public/diorama.html`）・右上のARボタンの間の空き
  * スペース）に配置し、既存のUI要素と重ならないようにする。
+ *
+ * @param exitArEnabled AR終了ボタンを有効化するか（{@link createDioramaArControlHud}
+ *   の同名オプション参照）。
  */
-const createTopCenterButtons = (): {
+const createTopCenterButtons = (
+    exitArEnabled: boolean,
+): {
     element: HTMLElement;
     tileModeButton: ReturnType<typeof createTapButton>;
-    resetButton: ReturnType<typeof createTapButton>;
+    exitArButton: ReturnType<typeof createTapButton>;
     dispose: () => void;
 } => {
     const container = document.createElement("div");
@@ -487,35 +516,42 @@ const createTopCenterButtons = (): {
         iconHtml: TILE_MODE_ICON_SVG,
         ariaLabel: "地図の種類を切り替え（標準地図・写真・ワイヤーフレーム）",
     });
-    const resetButton = createTapButton({
+    const exitArButton = createTapButton({
         label: "⌂",
-        ariaLabel: "表示を初期状態に戻す（中心・拡大率・回転・高さ）",
-        fontSize: RESET_ICON_FONT_SIZE,
+        ariaLabel: EXIT_AR_BUTTON_ARIA_LABEL,
+        fontSize: EXIT_AR_ICON_FONT_SIZE,
+        disabled: !exitArEnabled,
     });
     container.appendChild(tileModeButton.element);
-    container.appendChild(resetButton.element);
+    container.appendChild(exitArButton.element);
 
     return {
         element: container,
         tileModeButton,
-        resetButton,
+        exitArButton,
         dispose: (): void => {
             tileModeButton.dispose();
-            resetButton.dispose();
+            exitArButton.dispose();
         },
     };
 };
 
 /**
  * diorama 操作GUI（仮想ジョイスティック + ズーム/回転/高さボタン + タイル種別切替/
- * トップ復帰ボタン）を生成する。AR中は返り値の `element` を呼び出し元
+ * AR終了ボタン）を生成する。AR中は返り値の `element` を呼び出し元
  * （`webXrArSession.ts`）が `dom-overlay` feature へ渡す。AR非対応環境・AR突入前の
  * 通常表示でも同じGUIを常時マウントし、タッチ操作だけで地図移動・拡大縮小・
- * 箱庭回転・高さ変更・タイル種別切替・トップ復帰ができるようにする
+ * 箱庭回転・高さ変更・タイル種別切替ができるようにする
  * （物理コントローラー・キーボードが無いAndroidスマホ等での操作導線を確保する目的。
  * `dioramaTouchControls.ts` 参照）。
+ *
+ * @param options.exitArEnabled AR終了ボタンを有効化するか。
+ *   AR中（`webXrArSession.ts`の`createDioramaArControlHudForSession`経由）は
+ *   `true`。AR非対応環境・AR突入前の常時表示（`index.ts`が生成するインスタンス）は
+ *   終了すべきARセッションが存在しないため `false`（ボタンは`disabled`＋半透明表示
+ *   になり、タップしても何も起きない）。
  */
-export const createDioramaArControlHud = (): DioramaArControlHud => {
+export const createDioramaArControlHud = (options: { exitArEnabled: boolean }): DioramaArControlHud => {
     const root = document.createElement("div");
     Object.assign(root.style, {
         position: "absolute",
@@ -529,7 +565,7 @@ export const createDioramaArControlHud = (): DioramaArControlHud => {
     const zoomButtons = createZoomButtons();
     const rotateButtons = createRotateButtons();
     const heightButtons = createHeightButtons();
-    const topCenterButtons = createTopCenterButtons();
+    const topCenterButtons = createTopCenterButtons(options.exitArEnabled);
     root.appendChild(joystick.element);
     root.appendChild(zoomButtons.element);
     root.appendChild(rotateButtons.element);
@@ -543,7 +579,7 @@ export const createDioramaArControlHud = (): DioramaArControlHud => {
         getRotationAxis: () => rotateButtons.getAxis(),
         getHeightAxis: () => heightButtons.getAxis(),
         onTileModeCyclePress: (callback: () => void): (() => void) => topCenterButtons.tileModeButton.onPress(callback),
-        onResetToInitialPress: (callback: () => void): (() => void) => topCenterButtons.resetButton.onPress(callback),
+        onExitArPress: (callback: () => void): (() => void) => topCenterButtons.exitArButton.onPress(callback),
         dispose: () => {
             joystick.dispose();
             zoomButtons.dispose();

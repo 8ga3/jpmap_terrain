@@ -29,8 +29,8 @@ const dispatchPointer = (
 };
 
 const huds: DioramaArControlHud[] = [];
-const build = (): DioramaArControlHud => {
-    const hud = createDioramaArControlHud();
+const build = (exitArEnabled = true): DioramaArControlHud => {
+    const hud = createDioramaArControlHud({ exitArEnabled });
     document.body.appendChild(hud.element);
     huds.push(hud);
     return hud;
@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe("createDioramaArControlHud", () => {
-    it("ジョイスティック要素とズーム/回転/高さ/タイル切替/リセットボタンを含むDOM構造を生成する", () => {
+    it("ジョイスティック要素とズーム/回転/高さ/タイル切替/AR終了ボタンを含むDOM構造を生成する", () => {
         const hud = build();
         const buttons = hud.element.querySelectorAll("button");
         expect(buttons.length).toBe(8);
@@ -52,7 +52,7 @@ describe("createDioramaArControlHud", () => {
         expect(buttons[4]?.getAttribute("aria-label")).toBe("高さを上げる");
         expect(buttons[5]?.getAttribute("aria-label")).toBe("高さを下げる");
         expect(buttons[6]?.getAttribute("aria-label")).toBe("地図の種類を切り替え（標準地図・写真・ワイヤーフレーム）");
-        expect(buttons[7]?.getAttribute("aria-label")).toBe("表示を初期状態に戻す（中心・拡大率・回転・高さ）");
+        expect(buttons[7]?.getAttribute("aria-label")).toBe("ARを終了して通常表示に戻る");
     });
 
     it("初期状態のパン軸・ズーム軸・回転軸・高さ軸は0", () => {
@@ -273,17 +273,17 @@ describe("createDioramaArControlHud", () => {
         expect(callback).toHaveBeenCalledTimes(2);
     });
 
-    it("トップ復帰ボタンをクリックするとonResetToInitialPressで購読したコールバックが呼ばれる", () => {
+    it("トップ復帰ボタンをクリックするとonExitArPressで購読したコールバックが呼ばれる", () => {
         const hud = build();
-        const resetButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
         const callback = vi.fn();
 
-        hud.onResetToInitialPress(callback);
-        resetButton.click();
+        hud.onExitArPress(callback);
+        exitArButton.click();
         expect(callback).toHaveBeenCalledTimes(1);
     });
 
-    it("onTileModeCyclePress/onResetToInitialPressの購読解除関数を呼ぶと、以後クリックしてもコールバックは呼ばれない", () => {
+    it("onTileModeCyclePress/onExitArPressの購読解除関数を呼ぶと、以後クリックしてもコールバックは呼ばれない", () => {
         const hud = build();
         const tileModeButton = hud.element.querySelectorAll("button")[6] as HTMLButtonElement;
         const callback = vi.fn();
@@ -292,6 +292,32 @@ describe("createDioramaArControlHud", () => {
         unsubscribe();
         tileModeButton.click();
         expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("exitArEnabled:falseで生成した場合、AR終了ボタンはdisabledになり半透明表示になる", () => {
+        const hud = build(false);
+        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+
+        expect(exitArButton.disabled).toBe(true);
+        expect(exitArButton.style.opacity).toBe("0.35");
+    });
+
+    it("exitArEnabled:falseの場合、AR終了ボタンをクリックしてもonExitArPressのコールバックは呼ばれない", () => {
+        const hud = build(false);
+        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const callback = vi.fn();
+
+        hud.onExitArPress(callback);
+        exitArButton.click();
+
+        expect(callback).not.toHaveBeenCalled();
+    });
+
+    it("exitArEnabled:trueの場合、AR終了ボタンはdisabledにならない", () => {
+        const hud = build(true);
+        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+
+        expect(exitArButton.disabled).toBe(false);
     });
 
     it("dispose()はHUD要素をDOMから除去する", () => {

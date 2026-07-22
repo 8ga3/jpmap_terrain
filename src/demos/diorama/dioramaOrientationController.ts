@@ -48,13 +48,6 @@ export interface DioramaOrientationController {
      * 0 または 1）を1フレーム分適用する。呼び出し元が毎フレーム呼ぶこと。
      */
     feedAxes(rotationAxisX: number, leftTriggerValue: number, rightTriggerValue: number, dtSeconds: number): void;
-    /**
-     * 回転角・高さオフセットを、生成時点の `orientationRoot` の値（通常は 0）へ
-     * リセットする（「トップ復帰」操作）。回転・高さ変更は同期的に反映されるため
-     * （`DioramaViewController.resetToInitial` と異なり）rebuild完了待ちは不要で、
-     * 呼び出し直後に `orientationRoot` へ反映される。
-     */
-    resetToInitial(): void;
 }
 
 /**
@@ -63,14 +56,11 @@ export interface DioramaOrientationController {
  * @param orientationRoot 回転・高さオフセットの適用先ノード（冒頭のコメント参照。
  *   `dioramaTerrain.root` ではなく専用の中間ノードを渡すこと）。初期状態は
  *   `orientationRoot.rotation.y`/`orientationRoot.position.y` の現在値を引き継ぐ
- *   （通常は生成直後の 0 のままで問題ない）。`resetToInitial()` はこの生成時点の
- *   値へ戻す。
+ *   （通常は生成直後の 0 のままで問題ない）。
  */
 export const createDioramaOrientationController = (orientationRoot: TransformNode): DioramaOrientationController => {
-    const initialRotationRad = orientationRoot.rotation.y;
-    const initialHeightOffsetM = clampDioramaHeightOffsetM(orientationRoot.position.y);
-    let rotationRad = initialRotationRad;
-    let heightOffsetM = initialHeightOffsetM;
+    let rotationRad = orientationRoot.rotation.y;
+    let heightOffsetM = clampDioramaHeightOffsetM(orientationRoot.position.y);
     orientationRoot.position.y = heightOffsetM;
 
     return {
@@ -95,12 +85,6 @@ export const createDioramaOrientationController = (orientationRoot: TransformNod
                 heightOffsetM = clampDioramaHeightOffsetM(heightOffsetM + deltaM);
                 orientationRoot.position.y = heightOffsetM;
             }
-        },
-        resetToInitial: (): void => {
-            rotationRad = initialRotationRad;
-            heightOffsetM = initialHeightOffsetM;
-            orientationRoot.rotation.y = rotationRad;
-            orientationRoot.position.y = heightOffsetM;
         },
     };
 };
