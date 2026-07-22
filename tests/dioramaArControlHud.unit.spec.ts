@@ -156,6 +156,34 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(0);
     });
 
+    it("片方のボタンを押したまま別指でもう片方を押して離しても、押し続けている方の軸値は残る（複数指同時押下の回帰テスト）", () => {
+        // 以前は2ボタンで単一のaxis変数を共有していたため、「+」を押したまま
+        // 別指で「-」を押してから「-」だけ離すと、「-」側のpointerup処理が軸を
+        // 無条件に0へ戻してしまい、「+」を押し続けているのに入力が止まる
+        // 不具合があった。ボタンごとに独立した押下状態を保持し合算する方式へ
+        // 変更したことで、この不具合が解消されていることを確認する。
+        const hud = build();
+        const [zoomInButton, zoomOutButton] = hud.element.querySelectorAll("button");
+
+        // 指1で「+」（zoomIn, axisValue=-1）を押しっぱなしにする。
+        dispatchPointer(zoomInButton as HTMLButtonElement, "pointerdown", { pointerId: 1 });
+        expect(hud.getZoomAxis()).toBe(-1);
+
+        // 別指2で「-」（zoomOut, axisValue=+1）も押す（同時押下）。
+        // 両方押下中は合算されて相殺され0になる。
+        dispatchPointer(zoomOutButton as HTMLButtonElement, "pointerdown", { pointerId: 2 });
+        expect(hud.getZoomAxis()).toBe(0);
+
+        // 「-」だけ離す。「+」は指1で押下し続けているため、軸値は-1に戻るべき
+        // （0のまま固定されてはならない）。
+        dispatchPointer(zoomOutButton as HTMLButtonElement, "pointerup", { pointerId: 2 });
+        expect(hud.getZoomAxis()).toBe(-1);
+
+        // 最後に「+」も離せば0に戻る。
+        dispatchPointer(zoomInButton as HTMLButtonElement, "pointerup", { pointerId: 1 });
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
     it("ズームボタンはキーボード操作（Enter/Space押下中）でも軸値が更新される", () => {
         const hud = build();
         const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;

@@ -171,13 +171,14 @@ const createJoystick = (): { element: HTMLElement; getAxes: () => StickAxes; dis
  * バインドする。キーボード操作（Tabフォーカス+Enter/Space）でも同じ押しっぱなし
  * 挙動にすることで、コントローラー/タッチが使えない環境でもズームできるようにする
  * （アクセシビリティ対応）。
- * @param setAxis     軸値の設定関数（`() => (axis = value)` 相当）。
- * @param pressedAxis 押下中に設定する軸値（「+」= -1、「-」= +1）。
+ *
+ * @param onActiveChange このボタンの押下状態が変化するたびに呼ばれる
+ *   （`true`=押下開始、`false`=押下終了）。呼び出し元（`createHoldButtonGroup`）が
+ *   グループ内の他ボタンの押下状態と合算し、最終的な軸値を算出する。
  */
 const bindHoldButton = (
     button: HTMLButtonElement,
-    setAxis: (axis: number) => void,
-    pressedAxis: number,
+    onActiveChange: (active: boolean) => void,
 ): Array<{ el: HTMLElement; type: string; fn: EventListener }> => {
     const entries: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
     const bind = (el: HTMLElement, type: string, fn: EventListener): void => {
@@ -186,9 +187,8 @@ const bindHoldButton = (
     };
 
     // 複数指（複数pointerId）が絡んだ場合に、片方の pointerup/pointercancel で
-    // 軸が0に戻ってしまう（押し続けているのにズームが止まる）のを防ぐため、
-    // ジョイスティックと同様に最初に押下したpointerIdのみを追跡し、
-    // 一致しないpointerIdのup/cancelは無視する。
+    // このボタン自身の押下状態が誤って解除されないよう、最初に押下したpointerIdの
+    // みを追跡し、一致しないpointerIdのup/cancelは無視する。
     let activePointerId: number | null = null;
     bind(button, "pointerdown", (event) => {
         const pointerId = (event as PointerEvent).pointerId;
@@ -196,15 +196,15 @@ const bindHoldButton = (
         activePointerId = pointerId;
         // ジョイスティックと同様、ポインタキャプチャで固定する。ボタン外へ指が
         // 出た状態で離しても pointerup/pointercancel を確実にこのボタンで受け取れる
-        // ようにし、「押しっぱなし」のままズーム軸が残り続けるのを防ぐ。
+        // ようにし、「押しっぱなし」のまま解除漏れになるのを防ぐ。
         // jsdom（テスト環境）は `setPointerCapture` 未実装のため任意呼び出しにする。
         button.setPointerCapture?.(pointerId);
-        setAxis(pressedAxis);
+        onActiveChange(true);
     });
     const onPointerEnd = (event: PointerEvent): void => {
         if (event.pointerId !== activePointerId) return;
         activePointerId = null;
-        setAxis(0);
+        onActiveChange(false);
     };
     bind(button, "pointerup", onPointerEnd as EventListener);
     bind(button, "pointercancel", onPointerEnd as EventListener);
@@ -216,17 +216,17 @@ const bindHoldButton = (
         if (event.repeat) return;
         // スペースキーの既定動作（ページスクロール）を防ぐ。
         event.preventDefault();
-        setAxis(pressedAxis);
+        onActiveChange(true);
     }) as EventListener;
     const onKeyUp = ((event: KeyboardEvent) => {
         if (!isActivationKey(event.key)) return;
-        setAxis(0);
+        onActiveChange(false);
     }) as EventListener;
     bind(button, "keydown", onKeyDown);
     bind(button, "keyup", onKeyUp);
     // フォーカスを失った際に押しっぱなし扱いのまま残らないようにする
     // （keyupを取りこぼすケース、例: 押下中にTab/クリックで別要素へ移動した場合）。
-    bind(button, "blur", () => setAxis(0));
+    bind(button, "blur", () => onActiveChange(false));
 
     return entries;
 };
@@ -241,11 +241,24 @@ interface HoldButtonSpec {
     axisValue: number;
 }
 
+/** [-1,1] へクランプする（想定外にホールドボタンの合算軸値が範囲を超えないようにする）。 */
+const clampAxis = (v: number): number => Math.max(-1, Math.min(1, v));
+
 /**
  * 縦に並んだ2つのホールドボタン（押している間だけ軸値を持ち、離すと0に戻る）を
  * 生成する共通ファクトリ。ズーム・回転・高さ変更ボタンはいずれも
  * 「符号の異なる2ボタンで単一の軸値[-1,1]を共有する」という同じ構造のため、
  * 配置（`position`）とボタン仕様（`buttons`）のみを差し替えて再利用する。
+ *
+ * @remarks
+ * 各ボタンの押下状態は互いに独立して管理し（`activeStates`）、軸値は
+ * 「現在押下中の全ボタンのaxisValueの合計」として毎回算出する。以前は
+ * 2ボタンで単一の `axis` 変数を共有方式（後勝ち・単純代入）だったため、
+ * 複数指で「+」を押したまま別指で「−」を押してから「−」だけ離すと、
+ * 「−」側のpointerup処理が軸を無条件に0へ戻してしまい、「+」を押し続けて
+ * いるにも関わらず入力が止まる不具合があった（実機のマルチタッチ操作で
+ * 発生し得る）。ボタンごとに独立した押下状態を保持し合算する方式に変更する
+ * ことで、他方のボタンの押下状態を破壊しないようにした。
  */
 const createHoldButtonGroup = (
     position: Partial<CSSStyleDeclaration>,
@@ -261,20 +274,32 @@ const createHoldButtonGroup = (
         ...position,
     } satisfies Partial<CSSStyleDeclaration>);
 
+    // ボタンごとの押下状態（インデックス対応）。
+    const activeStates: boolean[] = buttons.map(() => false);
     let axis = 0;
-    const setAxis = (value: number): void => {
-        axis = value;
+    const recomputeAxis = (): void => {
+        let sum = 0;
+        buttons.forEach((spec, i) => {
+            if (activeStates[i]) sum += spec.axisValue;
+        });
+        axis = clampAxis(sum);
     };
+
     const listeners: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
 
-    for (const spec of buttons) {
+    buttons.forEach((spec, i) => {
         const button = document.createElement("button");
         styleHudButton(button);
         button.textContent = spec.label;
         button.setAttribute("aria-label", spec.ariaLabel);
-        listeners.push(...bindHoldButton(button, setAxis, spec.axisValue));
+        listeners.push(
+            ...bindHoldButton(button, (active) => {
+                activeStates[i] = active;
+                recomputeAxis();
+            }),
+        );
         container.appendChild(button);
-    }
+    });
 
     return {
         element: container,
