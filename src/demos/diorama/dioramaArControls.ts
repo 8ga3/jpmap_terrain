@@ -198,10 +198,17 @@ export const trackControllerSticks = (
     };
 };
 
-/** [-1,1] へクランプする（コントローラー入力とGUI入力の単純加算が範囲を超えないようにする）。 */
-const clamp1 = (v: number): number => Math.max(-1, Math.min(1, v));
-/** [0,1] へクランプする（トリガー押下量とGUI高さボタン由来の合算値の範囲を揃える）。 */
-const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+/**
+ * [-1,1] へクランプする（コントローラー入力とGUI入力の単純加算が範囲を超えないように
+ * する）。`NaN`/`Infinity` 等の非有限値は 0 へフォールバックしてからクランプする
+ * （`Math.min`/`Math.max` は `NaN` を伝播させ、クランプの保証が崩れてしまうため）。
+ */
+export const clamp1 = (v: number): number => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
+/**
+ * [0,1] へクランプする（トリガー押下量とGUI高さボタン由来の合算値の範囲を揃える）。
+ * `clamp1` と同様、非有限値は 0 へフォールバックしてからクランプする。
+ */
+export const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
 
 /**
  * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更の
