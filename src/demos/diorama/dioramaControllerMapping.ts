@@ -181,7 +181,8 @@ export const DEFAULT_HEIGHT_SPEED_M_PER_SEC = 0.15;
  * 右トリガー = 上げる（+）、左トリガー = 下げる（-）。両方同時に押されている場合は
  * 差分（right - left）を使う。
  *
- * @param leftTriggerValue 左トリガー押下量 [0,1]（範囲外・非有限値は 0 として扱う）。
+ * @param leftTriggerValue 左トリガー押下量 [0,1]。範囲外の値（例: -1, 1.5）は [0,1] へ
+ *   クランプし、非有限値（`NaN`/`Infinity`等）は 0 として扱う。
  * @param rightTriggerValue 右トリガー押下量 [0,1]（同上）。
  */
 export const computeDioramaHeightMetersFromTriggers = (
