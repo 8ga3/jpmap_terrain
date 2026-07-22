@@ -55,6 +55,15 @@ describe("createDioramaArControlHud", () => {
         expect(buttons[7]?.getAttribute("aria-label")).toBe("ARを終了して通常表示に戻る");
     });
 
+    it("全ボタンにtype=\"button\"が明示されている（フォーム内配置時の誤ったsubmit扱いを防ぐ回帰テスト）", () => {
+        const hud = build();
+        const buttons = hud.element.querySelectorAll("button");
+        expect(buttons.length).toBeGreaterThan(0);
+        buttons.forEach((button) => {
+            expect((button as HTMLButtonElement).type).toBe("button");
+        });
+    });
+
     it("初期状態のパン軸・ズーム軸・回転軸・高さ軸は0", () => {
         const hud = build();
         expect(hud.getPanAxes()).toEqual({ x: 0, y: 0 });
