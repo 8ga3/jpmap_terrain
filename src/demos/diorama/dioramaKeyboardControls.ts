@@ -12,6 +12,10 @@
  * - WASD: 地図中心の移動（パン、カメラの現在の向き基準。後述）
  * - PageUp・R / PageDown・F: フットプリント半径のズーム
  *   （PageUp・R = ズームイン/縮小、PageDown・F = ズームアウト/拡大）
+ * - Q / E: 箱庭の回転（Q = 反時計回り相当の負方向、E = 正方向。XRコントローラーの
+ *   右スティックXと同じ軸表現へ変換して `DioramaOrientationController` へ渡す）
+ * - Z / X: 箱庭の設置高さ変更（Z = 下げる、X = 上げる。XRコントローラーの
+ *   左右トリガーと同じ入力表現へ変換する）
  *
  * 矢印キーは意図的にパンへ割り当てない。`ArcRotateCamera.attachControl` は既定で
  * 矢印キーをカメラの軌道回転（alpha/beta）へバインドしており、同じキーを地図移動にも
@@ -35,6 +39,7 @@ import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import type { DioramaViewController } from "./dioramaViewController";
+import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { StickAxes } from "./dioramaControllerMapping";
 
 /** 前進（画面奥へ）・後退・左・右（いずれもカメラ視点基準）のキー割り当て。 */
@@ -44,6 +49,12 @@ const PAN_LEFT_CODES = new Set(["KeyA"]);
 const PAN_RIGHT_CODES = new Set(["KeyD"]);
 const ZOOM_IN_CODES = new Set(["PageUp", "KeyR"]);
 const ZOOM_OUT_CODES = new Set(["PageDown", "KeyF"]);
+/** 箱庭回転のキー割り当て（Q = 負方向、E = 正方向）。 */
+const ROTATE_NEGATIVE_CODES = new Set(["KeyQ"]);
+const ROTATE_POSITIVE_CODES = new Set(["KeyE"]);
+/** 箱庭の設置高さ変更のキー割り当て（Z = 下げる、X = 上げる）。 */
+const HEIGHT_DOWN_CODES = new Set(["KeyZ"]);
+const HEIGHT_UP_CODES = new Set(["KeyX"]);
 
 const HANDLED_CODES = new Set<string>([
     ...PAN_FORWARD_CODES,
@@ -52,6 +63,10 @@ const HANDLED_CODES = new Set<string>([
     ...PAN_RIGHT_CODES,
     ...ZOOM_IN_CODES,
     ...ZOOM_OUT_CODES,
+    ...ROTATE_NEGATIVE_CODES,
+    ...ROTATE_POSITIVE_CODES,
+    ...HEIGHT_DOWN_CODES,
+    ...HEIGHT_UP_CODES,
 ]);
 
 const anyPressed = (pressed: ReadonlySet<string>, codes: ReadonlySet<string>): boolean => {
@@ -78,18 +93,21 @@ const getHorizontalDirectionUnit = (camera: ArcRotateCamera, localAxis: Vector3)
 };
 
 /**
- * diorama デモにキーボード操作（地図移動・拡大縮小）をセットアップする。
- * AR対応可否・ARセッション状態によらず常時有効にする想定
+ * diorama デモにキーボード操作（地図移動・拡大縮小・箱庭回転・高さ変更）を
+ * セットアップする。AR対応可否・ARセッション状態によらず常時有効にする想定
  * （`index.ts` からデモ起動時に一度だけ呼ぶ）。
  *
  * @param camera パン方向をカメラの現在の向き基準へ補正するために参照する
  *   （`ArcRotateCamera` の水平方向）。
+ * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
+ *   （Q/E＝回転、Z/X＝高さ変更）。
  * @returns 後始末用の破棄関数。
  */
 export const setupDioramaKeyboardControls = (
     scene: Scene,
     camera: ArcRotateCamera,
     viewController: DioramaViewController,
+    orientationController: DioramaOrientationController,
 ): (() => void) => {
     const pressed = new Set<string>();
 
@@ -155,6 +173,15 @@ export const setupDioramaKeyboardControls = (
         if (anyPressed(pressed, ZOOM_OUT_CODES)) zoomAxisY += 1;
 
         viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
+
+        let rotationAxisX = 0;
+        if (anyPressed(pressed, ROTATE_POSITIVE_CODES)) rotationAxisX += 1;
+        if (anyPressed(pressed, ROTATE_NEGATIVE_CODES)) rotationAxisX -= 1;
+
+        // トリガー押下量[0,1]の等価入力として、押されていれば1、そうでなければ0を渡す。
+        const leftTriggerValue = anyPressed(pressed, HEIGHT_DOWN_CODES) ? 1 : 0;
+        const rightTriggerValue = anyPressed(pressed, HEIGHT_UP_CODES) ? 1 : 0;
+        orientationController.feedAxes(rotationAxisX, leftTriggerValue, rightTriggerValue, dtSeconds);
     });
 
     return (): void => {

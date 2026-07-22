@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
+import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
 import { isImmersiveArSupported, setupDioramaWebXrArButton } from "../src/demos/diorama/webXrArSession";
 
 describe("isImmersiveArSupported", () => {
@@ -26,13 +27,20 @@ describe("isImmersiveArSupported", () => {
 describe("setupDioramaWebXrArButton", () => {
     it("非対応環境ではボタンを追加せず、no-opのcleanupを返す", async () => {
         const mount = document.createElement("div");
-        // 非対応分岐では scene/dioramaRoot/viewController に一切アクセスしないため、
-        // 型を満たすだけのダミー値で十分。
+        // 非対応分岐では scene/dioramaRoot/viewController/orientationController に
+        // 一切アクセスしないため、型を満たすだけのダミー値で十分。
         const scene = {} as Scene;
         const dioramaRoot = {} as TransformNode;
         const viewController = {} as DioramaViewController;
+        const orientationController = {} as DioramaOrientationController;
 
-        const cleanup = await setupDioramaWebXrArButton(mount, scene, dioramaRoot, viewController);
+        const cleanup = await setupDioramaWebXrArButton(
+            mount,
+            scene,
+            dioramaRoot,
+            viewController,
+            orientationController,
+        );
 
         expect(mount.childElementCount).toBe(0);
         expect(() => cleanup()).not.toThrow();

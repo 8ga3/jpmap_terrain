@@ -7,9 +7,16 @@ import {
     computeDioramaPanMetersFromStick,
     computeFootprintRadiusFactorFromStick,
     clampFootprintRadiusM,
+    computeDioramaRotationRadFromStick,
+    computeDioramaHeightMetersFromTriggers,
+    clampDioramaHeightOffsetM,
     DEFAULT_STICK_DEADZONE,
     DEFAULT_FOOTPRINT_RADIUS_MIN_M,
     DEFAULT_FOOTPRINT_RADIUS_MAX_M,
+    DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+    DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+    DEFAULT_HEIGHT_OFFSET_MIN_M,
+    DEFAULT_HEIGHT_OFFSET_MAX_M,
 } from "../src/demos/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -118,5 +125,89 @@ describe("DEFAULT_STICK_DEADZONE", () => {
     it("[0,1)の妥当な既定値である", () => {
         expect(DEFAULT_STICK_DEADZONE).toBeGreaterThan(0);
         expect(DEFAULT_STICK_DEADZONE).toBeLessThan(1);
+    });
+});
+
+describe("computeDioramaRotationRadFromStick", () => {
+    it("入力がdeadzone以下なら回転角0", () => {
+        expect(computeDioramaRotationRadFromStick(0.05, 1)).toBe(0);
+    });
+
+    it("dtSecondsが0以下なら回転角0", () => {
+        expect(computeDioramaRotationRadFromStick(1, 0)).toBe(0);
+        expect(computeDioramaRotationRadFromStick(1, -1)).toBe(0);
+    });
+
+    it("rotationSpeedRadPerSecが非有限なら回転角0", () => {
+        expect(computeDioramaRotationRadFromStick(1, 1, NaN)).toBe(0);
+        expect(computeDioramaRotationRadFromStick(1, 1, Infinity)).toBe(0);
+    });
+
+    it("フルスティック入力で speed*dt の回転角を返す", () => {
+        const result = computeDioramaRotationRadFromStick(1, 1, DEFAULT_ROTATION_SPEED_RAD_PER_SEC);
+        expect(result).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
+    });
+
+    it("負の入力で負の回転角を返す", () => {
+        const result = computeDioramaRotationRadFromStick(-1, 1, DEFAULT_ROTATION_SPEED_RAD_PER_SEC);
+        expect(result).toBeCloseTo(-DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
+    });
+});
+
+describe("computeDioramaHeightMetersFromTriggers", () => {
+    it("両トリガー未入力なら高さ変更量0", () => {
+        expect(computeDioramaHeightMetersFromTriggers(0, 0, 1)).toBe(0);
+    });
+
+    it("dtSecondsが0以下なら高さ変更量0", () => {
+        expect(computeDioramaHeightMetersFromTriggers(0, 1, 0)).toBe(0);
+        expect(computeDioramaHeightMetersFromTriggers(0, 1, -1)).toBe(0);
+    });
+
+    it("heightSpeedMPerSecが非有限なら高さ変更量0", () => {
+        expect(computeDioramaHeightMetersFromTriggers(0, 1, 1, NaN)).toBe(0);
+    });
+
+    it("右トリガーのみフル押下で上昇（正の変更量）", () => {
+        const result = computeDioramaHeightMetersFromTriggers(0, 1, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC);
+        expect(result).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+    });
+
+    it("左トリガーのみフル押下で下降（負の変更量）", () => {
+        const result = computeDioramaHeightMetersFromTriggers(1, 0, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC);
+        expect(result).toBeCloseTo(-DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+    });
+
+    it("両方フル押下は相殺されて0", () => {
+        expect(computeDioramaHeightMetersFromTriggers(1, 1, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC)).toBe(0);
+    });
+
+    it("範囲外・非有限のトリガー値は0/1へクランプしてから計算する", () => {
+        const result = computeDioramaHeightMetersFromTriggers(-1, 1.5, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC);
+        expect(result).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+        expect(computeDioramaHeightMetersFromTriggers(NaN, 1, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC)).toBeCloseTo(
+            DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+            10,
+        );
+    });
+});
+
+describe("clampDioramaHeightOffsetM", () => {
+    it("範囲内の値はそのまま返す", () => {
+        expect(clampDioramaHeightOffsetM(0.1)).toBe(0.1);
+    });
+
+    it("下限未満は下限へ、上限超過は上限へクランプする", () => {
+        expect(clampDioramaHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MIN_M - 1)).toBe(DEFAULT_HEIGHT_OFFSET_MIN_M);
+        expect(clampDioramaHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MAX_M + 1)).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
+    });
+
+    it("NaNは0（オフセット無し）側へフォールバックしてからクランプする", () => {
+        expect(clampDioramaHeightOffsetM(NaN)).toBe(0);
+    });
+
+    it("カスタムのmin/maxを指定できる", () => {
+        expect(clampDioramaHeightOffsetM(-1, -0.5, 0.5)).toBe(-0.5);
+        expect(clampDioramaHeightOffsetM(1, -0.5, 0.5)).toBe(0.5);
     });
 });

@@ -36,6 +36,7 @@ import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExpe
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 
 import type { DioramaViewController } from "./dioramaViewController";
+import type { DioramaOrientationController } from "./dioramaOrientationController";
 import { createDioramaArControlHudForSession, setupDioramaArControls } from "./dioramaArControls";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
 
@@ -187,9 +188,14 @@ const placeDioramaRelativeToCamera = (
  *
  * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
  * @param scene 対象の `Scene`。
- * @param dioramaRoot 箱庭地形の `root`（`createDioramaTerrain` が返す `TransformNode`）。
+ * @param dioramaRoot 箱庭配置の適用先ノード（`index.ts` が生成する `placementRoot`。
+ *   AR突入時にユーザー正面へ絶対位置で配置される。回転・高さオフセットは
+ *   このノードの子である `orientationRoot` に適用されるため、本関数はそれらに
+ *   触れない。`dioramaOrientationController.ts` 冒頭のコメント参照）。
  * @param viewController 地図移動・拡大縮小の共有状態保持者（`dioramaViewController.ts`）。
  *   デスクトップのキーボード操作と共有し、AR突入前後で位置が引き継がれるようにする。
+ * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
+ *   （`dioramaOrientationController.ts`）。デスクトップのキーボード操作と共有する。
  * @returns 後始末用の破棄関数。呼び出し元がデモを終了する際に呼ぶ。
  */
 export const setupDioramaWebXrArButton = async (
@@ -197,6 +203,7 @@ export const setupDioramaWebXrArButton = async (
     scene: Scene,
     dioramaRoot: TransformNode,
     viewController: DioramaViewController,
+    orientationController: DioramaOrientationController,
 ): Promise<() => void> => {
     const supported = await isImmersiveArSupported();
     if (!supported) return () => {};
@@ -227,7 +234,7 @@ export const setupDioramaWebXrArButton = async (
         xr?.dispose();
         xr = null;
         entering = true;
-        void enterAr(mount, scene, dioramaRoot, viewController, button)
+        void enterAr(mount, scene, dioramaRoot, viewController, orientationController, button)
             .then((created) => {
                 // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にデモを
@@ -256,6 +263,7 @@ const enterAr = async (
     scene: Scene,
     dioramaRoot: TransformNode,
     viewController: DioramaViewController,
+    orientationController: DioramaOrientationController,
     button: HTMLButtonElement,
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
@@ -300,9 +308,9 @@ const enterAr = async (
         // 冒頭のコメント参照）。
         scene.clearColor.a = 0;
 
-        // コントローラー（thumbstick）/GUI（画面タッチ）による地図移動・拡大縮小
-        // （`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
-        disposeArControls = setupDioramaArControls(scene, xrExperience, hud, viewController);
+        // コントローラー（thumbstick/trigger）/GUI（画面タッチ）による地図移動・拡大縮小・
+        // 箱庭回転・高さ変更（`dioramaArControls.ts` 参照）。ARセッション中を通して有効にする。
+        disposeArControls = setupDioramaArControls(scene, xrExperience, hud, viewController, orientationController);
 
         // 実機のトラッキング姿勢が反映されるまで数フレーム待ってから配置する
         // （{@link AR_PLACEMENT_WAIT_FRAMES} 冒頭のコメント参照）。

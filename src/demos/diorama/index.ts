@@ -8,13 +8,14 @@
  * 使わない独立実装のため、本デモは `JpmapTerrain` に依存しない。
  * - WebXR (`immersive-ar`) セッション統合（`webXrArSession.ts`）により、箱庭の周りを
  *   歩いて見られるパススルーAR表示に対応する。
- * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更・ライティング・
- *   タイル切替・トップ復帰）は後続タスクで行う。
+ * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更）に対応する。
+ *   ライティング・タイル切替・トップ復帰は後続タスクで行う。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color4, Color3 } from "@babylonjs/core/Maths/math.color";
 
@@ -23,6 +24,7 @@ import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import { setupDioramaWebXrArButton } from "./webXrArSession";
 import { createDioramaViewController } from "./dioramaViewController";
+import { createDioramaOrientationController } from "./dioramaOrientationController";
 import { setupDioramaKeyboardControls } from "./dioramaKeyboardControls";
 
 const DEMO_MOUNT_ID = "root";
@@ -129,16 +131,33 @@ const start = async (): Promise<void> => {
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
     });
 
+    // 箱庭の配置・向き・地形を3階層のTransformNodeへ分離する
+    // （`dioramaOrientationController.ts` 冒頭のコメント参照）。
+    // - placementRoot: AR配置（`webXrArSession.ts`）/デスクトップ既定位置（原点）が
+    //   position.x/y/z を絶対値で書く。
+    // - orientationRoot: `DioramaOrientationController` が rotation.y（回転）・
+    //   position.y（高さオフセット、placementRoot基準のローカル値）を書く。
+    // - dioramaTerrain.root: 既存のスケールのみ（無変更）。
+    const placementRoot = new TransformNode("diorama-placement-root", scene);
+    const orientationRoot = new TransformNode("diorama-orientation-root", scene);
+    orientationRoot.parent = placementRoot;
+    dioramaTerrain.root.parent = orientationRoot;
+
     // 地図移動・拡大縮小の共有状態保持者。AR中のコントローラー/GUI操作
     // （`setupDioramaWebXrArButton`経由）とデスクトップのキーボード操作
     // （PC単体でAR無しでも動作確認できるようにする目的）の双方から使われ、
     // どちらで移動しても位置がもう一方に引き継がれる（`dioramaViewController.ts`参照）。
     const viewController = createDioramaViewController(dioramaTerrain, DEFAULT_CENTER, DEFAULT_FOOTPRINT_RADIUS_M);
-    setupDioramaKeyboardControls(scene, camera, viewController);
+    // 箱庭の回転・高さオフセットの共有状態保持者（`dioramaOrientationController.ts`参照）。
+    // viewControllerと同様、AR/キーボードの双方から使われる。
+    const orientationController = createDioramaOrientationController(orientationRoot);
+    setupDioramaKeyboardControls(scene, camera, viewController, orientationController);
 
-    setupDioramaWebXrArButton(mount, scene, dioramaTerrain.root, viewController).catch((err: unknown) => {
-        console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
-    });
+    setupDioramaWebXrArButton(mount, scene, placementRoot, viewController, orientationController).catch(
+        (err: unknown) => {
+            console.error("[jpmap-terrain diorama demo] failed to set up WebXR AR button:", err);
+        },
+    );
 
     engine.runRenderLoop(() => {
         scene.render();
