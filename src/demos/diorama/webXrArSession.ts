@@ -244,7 +244,14 @@ export const setupDioramaWebXrArButton = async (
                 // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にデモを
                 // 終了しているため、以後 xr を参照する経路が無くなりリークするのを防ぐ）。
+                // `created` が非nullの場合、enterAr() 内で `touchControls.setVisible(false)`
+                // が実行済みだが、`created.dispose()` は `onStateChangedObservable` による
+                // `restoreOnExit`（`enterAr()` 内、NOT_IN_XR遷移で発火）を必ずしも
+                // 経由しないため、ここで明示的に `setVisible(true)` を呼び、タッチHUDが
+                // 非表示のまま残留しないようにする（`setVisible(true)` は冪等なので、
+                // 既に表示状態でも無条件に呼んで問題ない）。
                 if (disposed) {
+                    touchControls.setVisible(true);
                     created?.dispose();
                     return;
                 }
