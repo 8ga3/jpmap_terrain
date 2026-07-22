@@ -9,8 +9,8 @@
  * 自体は常に実世界メートル単位（中心からの東西・南北オフセット + 標高）で構築する。
  * 回転・高さ変更（コントローラー操作、`src/demos/diorama/dioramaOrientationController.ts`
  * 参照）は `root` 自体ではなく、`root` の親として `index.ts` が生成する専用の
- * `orientationRoot` に対して適用する（AR配置ロジックとの競合を避けるため。
- * `dioramaOrientationController.ts` 冒頭のコメント参照）。
+ * `orientationRoot` に対して適用する（AR配置ロジックとの競合を避けるため）。
+ * 詳細は `dioramaOrientationController.ts` 冒頭のコメント参照。
  * 中心・フットプリント半径・地図種別の変更は、既存メッシュを破棄して
  * 作り直す（箱庭は視錐台駆動の連続更新ではなく、離散的な操作単位で
  * 再構築する設計のため）。

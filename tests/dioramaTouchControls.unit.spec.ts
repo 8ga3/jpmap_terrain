@@ -168,6 +168,34 @@ describe("setupDioramaTouchControls", () => {
         expect(hud.element.style.display).toBe("");
     });
 
+    it("setVisible(false)の間はHUDの軸値が非ゼロのまま残っていてもfeedAxesを一切呼ばない（回帰テスト）", () => {
+        // display:none がHUD内部の押下状態を0へリセットする保証はない
+        // （押下中にAR突入したケース等）ため、非表示中は値を読み取り自体しないこと。
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const hud = makeHud({
+            getPanAxes: () => ({ x: 1, y: 1 }),
+            getZoomAxis: () => 1,
+            getRotationAxis: () => 1,
+            getHeightAxis: () => 1,
+        });
+        const controls = setupDioramaTouchControls(scene, hud, vc, oc);
+        cleanups.push(controls.dispose);
+
+        controls.setVisible(false);
+        tick(16);
+
+        expect(viewFeedAxes).not.toHaveBeenCalled();
+        expect(orientationFeedAxes).not.toHaveBeenCalled();
+
+        controls.setVisible(true);
+        tick(16);
+
+        expect(viewFeedAxes).toHaveBeenCalledWith({ x: 1, y: 1 }, 1, 0.016);
+        expect(orientationFeedAxes).toHaveBeenCalledWith(1, 0, 1, 0.016);
+    });
+
     it("dispose()を呼ぶとレンダーオブザーバーが解除され、以後feedAxesは呼ばれない", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
