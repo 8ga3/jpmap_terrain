@@ -14,6 +14,11 @@
  * 排他制御は行わない）。実際の地形反映・レイテンシ対策（完了待ち合流方式）は
  * `DioramaViewController` が担う。
  *
+ * 本モジュールは箱庭の回転（右スティックX）・設置高さ変更（左右トリガー）の
+ * 入力も併せて配線する。こちらは `DioramaOrientationController`
+ * （`dioramaOrientationController.ts`）が同期的に対象ノードへ反映するため、
+ * パン/ズームのような完了待ちの仕組みは不要。
+ *
  * **`dom-overlay` featureの有効化タイミングが重要**: WebXR仕様上、
  * `dom-overlay`（GUI HUDを没入セッション中も表示し続けるための機能）は
  * `domOverlay.root` を `XRSession` の**セッション要求（`requestSession`）時点**の
@@ -38,6 +43,7 @@ import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
 import "@babylonjs/core/XR/features/WebXRDOMOverlay";
 
 import type { DioramaViewController } from "./dioramaViewController";
+import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { StickAxes } from "./dioramaControllerMapping";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
@@ -92,20 +98,33 @@ interface ControllerStickState {
 }
 const zeroStickState = (): ControllerStickState => ({ left: { x: 0, y: 0 }, right: { x: 0, y: 0 } });
 
+/** 左右コントローラーのトリガー押下量（[0,1]）を保持する（未接続時は `0`）。 */
+interface ControllerTriggerState {
+    left: number;
+    right: number;
+}
+const zeroTriggerState = (): ControllerTriggerState => ({ left: 0, right: 0 });
+
 /**
- * 追加されたコントローラーのthumbstick入力を `sticks` へ反映するリスナーを登録する
- * （`feature/533-webxr-vr-viewer` の `trackControllerSticks` と同じ設計）。
+ * 追加されたコントローラーのthumbstick/trigger入力を `sticks`/`triggers` へ反映する
+ * リスナーを登録する（`feature/533-webxr-vr-viewer` の `trackControllerSticks` と
+ * 同じ設計。トリガーは箱庭の高さ変更操作向けに本Issueで追加）。
  *
  * @remarks
  * コントローラーごとに登録した `onMotionControllerInitObservable` /
- * `onAxisValueChangedObservable` の Observer を `controllerCleanups` に保持し、
- * コントローラー切断時（`onControllerRemovedObservable`）と本関数の返り値
- * （登録解除関数）呼び出し時の両方で確実に `remove` する。保持・解除しないと、
- * コントローラーの再初期化時にリスナーが二重登録され入力が二重反映されたり、
- * 破棄後もリスナーが残留してメモリリークになる。
+ * `onAxisValueChangedObservable` / `onButtonStateChangedObservable` の Observer を
+ * `controllerCleanups` に保持し、コントローラー切断時
+ * （`onControllerRemovedObservable`）と本関数の返り値（登録解除関数）呼び出し時の
+ * 両方で確実に `remove` する。保持・解除しないと、コントローラーの再初期化時に
+ * リスナーが二重登録され入力が二重反映されたり、破棄後もリスナーが残留して
+ * メモリリークになる。
  * @returns 登録解除関数。
  */
-const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerStickState): (() => void) => {
+const trackControllerSticks = (
+    xr: WebXRDefaultExperience,
+    sticks: ControllerStickState,
+    triggers: ControllerTriggerState,
+): (() => void) => {
     const controllerCleanups = new Map<WebXRInputSource, () => void>();
 
     const bindController = (controller: WebXRInputSource): void => {
@@ -114,22 +133,36 @@ const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerSti
 
         // `onMotionControllerInitObservable` は稀に同一コントローラーへ複数回発火し
         // 得る（コントローラーのモーションコントローラーが差し替わるケース）ため、
-        // 発火のたびに前回のthumbstick購読を解除してから登録し直す。
+        // 発火のたびに前回のthumbstick/trigger購読を解除してから登録し直す。
         let disposeAxisBinding: (() => void) | null = null;
+        let disposeTriggerBinding: (() => void) | null = null;
         const motionControllerObserver = controller.onMotionControllerInitObservable.add((motionController) => {
             disposeAxisBinding?.();
             disposeAxisBinding = null;
+            disposeTriggerBinding?.();
+            disposeTriggerBinding = null;
+
             const thumbstick = motionController.getComponentOfType("thumbstick");
-            if (!thumbstick) return;
-            const axisObserver = thumbstick.onAxisValueChangedObservable.add(({ x, y }) => {
-                sticks[handedness] = { x, y };
-            });
-            disposeAxisBinding = () => thumbstick.onAxisValueChangedObservable.remove(axisObserver);
+            if (thumbstick) {
+                const axisObserver = thumbstick.onAxisValueChangedObservable.add(({ x, y }) => {
+                    sticks[handedness] = { x, y };
+                });
+                disposeAxisBinding = () => thumbstick.onAxisValueChangedObservable.remove(axisObserver);
+            }
+
+            const trigger = motionController.getComponentOfType("trigger");
+            if (trigger) {
+                const buttonObserver = trigger.onButtonStateChangedObservable.add((component) => {
+                    triggers[handedness] = component.value;
+                });
+                disposeTriggerBinding = () => trigger.onButtonStateChangedObservable.remove(buttonObserver);
+            }
         });
 
         controllerCleanups.set(controller, () => {
             controller.onMotionControllerInitObservable.remove(motionControllerObserver);
             disposeAxisBinding?.();
+            disposeTriggerBinding?.();
         });
     };
 
@@ -139,6 +172,7 @@ const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerSti
         const handedness = controller.inputSource.handedness;
         if (handedness === "left" || handedness === "right") {
             sticks[handedness] = { x: 0, y: 0 };
+            triggers[handedness] = 0;
         }
         controllerCleanups.get(controller)?.();
         controllerCleanups.delete(controller);
@@ -155,21 +189,25 @@ const trackControllerSticks = (xr: WebXRDefaultExperience, sticks: ControllerSti
 const clamp1 = (v: number): number => Math.max(-1, Math.min(1, v));
 
 /**
- * AR中のコントローラー/GUI入力による地図移動・拡大縮小のセットアップを行う。
- * `xrExperience.baseExperience.enterXRAsync(...)` 完了後に呼び、退出/破棄時に
- * 返り値の破棄関数を呼ぶこと。
+ * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更の
+ * セットアップを行う。`xrExperience.baseExperience.enterXRAsync(...)` 完了後に呼び、
+ * 退出/破棄時に返り値の破棄関数を呼ぶこと。
  *
  * @param hud {@link createDioramaArControlHudForSession} で事前に生成したHUD
  *   （`enterXRAsync` より前に呼んでおく必要がある。冒頭のコメント参照）。
+ * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
+ *   （右スティックX＝回転、左右トリガー＝高さ変更）。
  */
 export const setupDioramaArControls = (
     scene: Scene,
     xr: WebXRDefaultExperience,
     hud: DioramaArControlHud,
     viewController: DioramaViewController,
+    orientationController: DioramaOrientationController,
 ): (() => void) => {
     const sticks = zeroStickState();
-    const untrackSticks = trackControllerSticks(xr, sticks);
+    const triggers = zeroTriggerState();
+    const untrackSticks = trackControllerSticks(xr, sticks, triggers);
 
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
@@ -182,6 +220,8 @@ export const setupDioramaArControls = (
         };
         const zoomAxisY = clamp1(sticks.right.y + hud.getZoomAxis());
         viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
+
+        orientationController.feedAxes(sticks.right.x, triggers.left, triggers.right, dtSeconds);
     });
 
     return (): void => {

@@ -5,9 +5,12 @@
  * サンプリング）・`dioramaTexture`（ラスタタイルのモザイク合成）を統合し、
  * Babylon.js の `Mesh` として構築する。
  *
- * 縮小スケール・回転・高さ変更（後続タスクで実装するコントローラー操作）は、
- * すべて公開する `root`（`TransformNode`）に対して適用する想定で、メッシュ自体は
- * 常に実世界メートル単位（中心からの東西・南北オフセット + 標高）で構築する。
+ * 縮小スケールは公開する `root`（`TransformNode`）に対して適用する想定で、メッシュ
+ * 自体は常に実世界メートル単位（中心からの東西・南北オフセット + 標高）で構築する。
+ * 回転・高さ変更（コントローラー操作、`src/demos/diorama/dioramaOrientationController.ts`
+ * 参照）は `root` 自体ではなく、`root` の親として `index.ts` が生成する専用の
+ * `orientationRoot` に対して適用する（AR配置ロジックとの競合を避けるため。
+ * `dioramaOrientationController.ts` 冒頭のコメント参照）。
  * 中心・フットプリント半径・地図種別の変更は、既存メッシュを破棄して
  * 作り直す（箱庭は視錐台駆動の連続更新ではなく、離散的な操作単位で
  * 再構築する設計のため）。
@@ -70,7 +73,7 @@ export interface DioramaTerrainOptions {
 export interface DioramaTerrain {
     /** 現在の地形メッシュ（`setCenter` 等での再構築時に差し替わる）。 */
     readonly mesh: Mesh;
-    /** スケール・回転・高さ変更の適用点（後続タスクが利用）。 */
+    /** 卓上表示用のスケール適用点。回転・高さオフセットは親ノードで扱う（冒頭のコメント参照）。 */
     readonly root: TransformNode;
     setCenter(lat: number, lon: number): Promise<void>;
     setFootprintRadius(radiusM: number): Promise<void>;

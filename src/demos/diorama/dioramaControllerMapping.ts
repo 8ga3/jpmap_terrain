@@ -12,12 +12,12 @@
  * 本モジュールは実寸大の惑星ECEF座標系ではなく、箱庭の実世界フットプリント半径
  * （`footprintRadiusM`）を基準にする点が異なる。
  *
- * 操作割り当て（本モジュールで確定した一覧、以降のコントローラー操作機能もこれに従う）:
+ * 操作割り当て（PR #549で確定した一覧、以降のコントローラー操作機能もこれに従う）:
  * - 左スティック / GUI仮想ジョイスティック: 地図中心の東西・南北移動（パン）
  * - 右スティックY（前後） / GUIズームボタン: フットプリント半径のズーム
  *   （前方向・GUIの「+」= ズームイン/縮小、後方向・GUIの「-」= ズームアウト/拡大）
- * - 右スティックX（左右）: 箱庭の回転（別途実装予定）
- * - トリガー（左右）: 箱庭の設置高さ変更（別途実装予定）
+ * - 右スティックX（左右）: 箱庭の回転（本モジュールで実装、{@link computeDioramaRotationRadFromStick}）
+ * - トリガー（左右）: 箱庭の設置高さ変更（本モジュールで実装、{@link computeDioramaHeightMetersFromTriggers}）
  * - グリップ + 左スティック（モディファイア）: 太陽の方位角・高度（別途実装予定）
  * - A/Xボタン: 地図タイル種別切替（別途実装予定）
  * - B/Yボタン: トップ（初期center/footprintRadius）復帰（別途実装予定）
@@ -143,5 +143,80 @@ export const clampFootprintRadiusM = (
     maxM: number = DEFAULT_FOOTPRINT_RADIUS_MAX_M,
 ): number => {
     const safe = Number.isNaN(radiusM) ? minM : radiusM;
+    return Math.min(maxM, Math.max(minM, safe));
+};
+
+/** 箱庭回転操作の秒間最大角速度[rad/s]（フルスティック時）の既定値。 */
+export const DEFAULT_ROTATION_SPEED_RAD_PER_SEC = Math.PI / 2; // 90°/秒
+
+/**
+ * 右スティックX軸（またはキーボード等価入力の軸値）から、1フレーム分の箱庭回転角[rad]を
+ * 算出する（累積方式。呼び出し元が現在の回転角へ加算して使う）。
+ *
+ * 正の入力（右へ倒す）で正方向（Babylonの左手系Y軸回転規約に従う）へ回転する。
+ * 回転には上限・下限（クランプ）を設けない（自由に周回できる）。
+ *
+ * @param axisX スティックのX軸入力（[-1,1] 想定）。
+ */
+export const computeDioramaRotationRadFromStick = (
+    axisX: number,
+    dtSeconds: number,
+    rotationSpeedRadPerSec: number = DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+    deadzone: number = DEFAULT_STICK_DEADZONE,
+): number => {
+    if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return 0;
+    if (!Number.isFinite(rotationSpeedRadPerSec)) return 0;
+    const x = applyStickDeadzone(axisX, deadzone);
+    if (x === 0) return 0;
+    return x * rotationSpeedRadPerSec * dtSeconds;
+};
+
+/** 箱庭の高さ変更操作の秒間最大速度[m/s]（フルトリガー押下時）の既定値。 */
+export const DEFAULT_HEIGHT_SPEED_M_PER_SEC = 0.15;
+
+/**
+ * 左右トリガー押下量（各 [0,1]、コントローラー無し環境ではキーボード等価入力として
+ * 0 または 1 を渡す）から、1フレーム分の箱庭高さ変更量[m]を算出する（累積方式）。
+ *
+ * 右トリガー = 上げる（+）、左トリガー = 下げる（-）。両方同時に押されている場合は
+ * 差分（right - left）を使う。
+ *
+ * @param leftTriggerValue 左トリガー押下量 [0,1]（範囲外・非有限値は 0 として扱う）。
+ * @param rightTriggerValue 右トリガー押下量 [0,1]（同上）。
+ */
+export const computeDioramaHeightMetersFromTriggers = (
+    leftTriggerValue: number,
+    rightTriggerValue: number,
+    dtSeconds: number,
+    heightSpeedMPerSec: number = DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+): number => {
+    if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return 0;
+    if (!Number.isFinite(heightSpeedMPerSec)) return 0;
+    const left = Number.isFinite(leftTriggerValue) ? Math.max(0, Math.min(1, leftTriggerValue)) : 0;
+    const right = Number.isFinite(rightTriggerValue) ? Math.max(0, Math.min(1, rightTriggerValue)) : 0;
+    const axis = right - left;
+    if (axis === 0) return 0;
+    return axis * heightSpeedMPerSec * dtSeconds;
+};
+
+/**
+ * 箱庭の高さオフセット可動域既定値[m]（既定卓上表示半径 tableRadiusM=0.35m を踏まえた
+ * 目安。上下に概ね半径分程度動かせれば十分で、動かしすぎるとカメラの注視点
+ * （常に世界原点、`index.ts` の `ArcRotateCamera` target）から外れて見づらくなる）。
+ */
+export const DEFAULT_HEIGHT_OFFSET_MIN_M = -0.3;
+export const DEFAULT_HEIGHT_OFFSET_MAX_M = 0.3;
+
+/**
+ * 箱庭の高さオフセットを [minM, maxM] へクランプする。
+ * `NaN` は 0（オフセット無し）へフォールバックしてからクランプする
+ * （`clampFootprintRadiusM` と同じ方針）。
+ */
+export const clampDioramaHeightOffsetM = (
+    offsetM: number,
+    minM: number = DEFAULT_HEIGHT_OFFSET_MIN_M,
+    maxM: number = DEFAULT_HEIGHT_OFFSET_MAX_M,
+): number => {
+    const safe = Number.isNaN(offsetM) ? 0 : offsetM;
     return Math.min(maxM, Math.max(minM, safe));
 };
