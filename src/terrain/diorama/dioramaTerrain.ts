@@ -11,9 +11,15 @@
  * 参照）は `root` 自体ではなく、`root` の親として `index.ts` が生成する専用の
  * `orientationRoot` に対して適用する（AR配置ロジックとの競合を避けるため）。
  * 詳細は `dioramaOrientationController.ts` 冒頭のコメント参照。
- * 中心・フットプリント半径・地図種別の変更は、既存メッシュを破棄して
+ * 中心・フットプリント半径・タイル種別の変更は、既存メッシュを破棄して
  * 作り直す（箱庭は視錐台駆動の連続更新ではなく、離散的な操作単位で
  * 再構築する設計のため）。
+ *
+ * **タイル種別（{@link DioramaTileMode}）**: ラスタタイルの `MapType`（"std"/"photo"）に
+ * 加えて、地形の形状のみを確認しやすい「ワイヤーフレーム」表示を追加している。
+ * `"wireframe"` 指定時はラスタタイルの取得・モザイク合成（ネットワーク往復を伴う）を
+ * 丸ごとスキップし、`StandardMaterial.wireframe = true` + 単色（{@link WIREFRAME_COLOR}）
+ * で描画する。他の2種別（std/photo）は従来通り `buildDioramaMosaicTexture` を使う。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -34,6 +40,12 @@ import {
 import { fetchDioramaElevations } from "./dioramaElevation";
 import { computeDioramaTextureLayout, buildDioramaMosaicTexture } from "./dioramaTexture";
 import { buildDioramaSkirtGeometry } from "./dioramaSkirt";
+
+/**
+ * 箱庭地形のタイル種別。ラスタタイルの `MapType`（"std"=標準地図/"photo"=写真）に加え、
+ * ラスタタイルを使わずポリゴン形状のみをワイヤーフレームで表示する `"wireframe"` を持つ。
+ */
+export type DioramaTileMode = MapType | "wireframe";
 
 /** 箱庭地形の構築オプション。 */
 export interface DioramaTerrainOptions {
@@ -58,8 +70,8 @@ export interface DioramaTerrainOptions {
      * （{@link computeAutoZoomLevel} 参照）。明示指定すると自動算出を無効化する。
      */
     textureZoom?: number;
-    /** 地図種別（既定 "std"、#542切替対象）。 */
-    mapType?: MapType;
+    /** タイル種別（既定 "std"）。 */
+    tileMode?: DioramaTileMode;
     /** 標高の垂直誇張倍率（`root` の一様スケール適用前、既定 1）。 */
     heightScaleFactor?: number;
     /**
@@ -77,7 +89,7 @@ export interface DioramaTerrain {
     readonly root: TransformNode;
     setCenter(lat: number, lon: number): Promise<void>;
     setFootprintRadius(radiusM: number): Promise<void>;
-    setMapType(mapType: MapType): Promise<void>;
+    setTileMode(tileMode: DioramaTileMode): Promise<void>;
     /**
      * 中心・フットプリント半径の一方または両方を、1回のrebuild（buildMesh呼び出し）に
      * まとめて適用する。
@@ -95,13 +107,15 @@ export interface DioramaTerrain {
 const DEFAULTS = {
     ringCount: 12,
     radialSegments: 48,
-    mapType: "std" as MapType,
+    tileMode: "std" as DioramaTileMode,
     heightScaleFactor: 1,
     baseDepthRatio: 0.15,
 };
 
 /** 側面壁・底面（土台）の色（土色）。 */
 const SOIL_COLOR = new Color3(0.36, 0.26, 0.16);
+/** ワイヤーフレーム表示時の線色（パススルー背景・夜間相当の暗い照明でも視認できる明るい緑）。 */
+const WIREFRAME_COLOR = new Color3(0.4, 0.95, 0.6);
 
 interface ResolvedOptions {
     center: DioramaCenter;
@@ -113,7 +127,7 @@ interface ResolvedOptions {
     demZoom: number | undefined;
     /** 未指定（自動算出）の場合は `undefined`。{@link computeAutoZoomLevel} 参照。 */
     textureZoom: number | undefined;
-    mapType: MapType;
+    tileMode: DioramaTileMode;
     heightScaleFactor: number;
     baseDepthRatio: number;
 }
@@ -214,7 +228,7 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
         radialSegments: options.radialSegments ?? DEFAULTS.radialSegments,
         demZoom: options.demZoom,
         textureZoom: options.textureZoom,
-        mapType: options.mapType ?? DEFAULTS.mapType,
+        tileMode: options.tileMode ?? DEFAULTS.tileMode,
         heightScaleFactor,
         baseDepthRatio,
     };
@@ -223,7 +237,8 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
 interface BuiltMesh {
     mesh: Mesh;
     material: StandardMaterial;
-    texture: Texture;
+    /** ワイヤーフレーム表示時（ラスタタイル未取得）は `undefined`。 */
+    texture: Texture | undefined;
     skirtMesh: Mesh;
     skirtMaterial: StandardMaterial;
 }
@@ -232,7 +247,7 @@ interface BuiltMesh {
 const disposeBuilt = (b: BuiltMesh): void => {
     b.mesh.dispose();
     b.material.dispose();
-    b.texture.dispose();
+    b.texture?.dispose();
     b.skirtMesh.dispose();
     b.skirtMaterial.dispose();
 };
@@ -270,10 +285,16 @@ const buildMesh = async (
     // computeDioramaTextureLayout は同期処理のため先に算出し、DEM取得と
     // テクスチャタイル取得（いずれもネットワーク待ちを伴う）を Promise.all で並列に
     // 開始する。直列にすると両者の待ち時間が合算されて初期構築/再構築が不要に遅くなる。
+    // ワイヤーフレーム表示（`resolved.tileMode === "wireframe"`）はラスタタイルを
+    // 使わないため、`buildDioramaMosaicTexture`（ネットワーク往復を伴う）自体を
+    // スキップする（`textureLayout`のUV計算は他の描画に影響しないため、簡潔さを
+    // 優先し引き続き計算する）。
     const textureLayout = computeDioramaTextureLayout(points, textureZoom);
     const [elevations, texture] = await Promise.all([
         fetchDioramaElevations(points, demZoom),
-        buildDioramaMosaicTexture(scene, textureLayout, resolved.mapType),
+        resolved.tileMode === "wireframe"
+            ? Promise.resolve(undefined)
+            : buildDioramaMosaicTexture(scene, textureLayout, resolved.tileMode),
     ]);
 
     // 中心点の標高を基準面とし、箱庭が root.position.y=0 付近に収まるようにする。
@@ -306,13 +327,22 @@ const buildMesh = async (
     mesh.setEnabled(false);
 
     const material = new StandardMaterial("diorama-terrain-material", scene);
-    material.diffuseTexture = texture;
     material.specularColor = Color3.Black();
     // WebXR (`immersive-ar`) のパススルー合成では、描画結果のアルファ値がそのまま
     // 実世界カメラ映像との合成比率に使われる（デスクトップ表示では気づきにくい）ため、
     // アルファブレンドが有効化されないことを明示的に保証する。
     material.transparencyMode = Material.MATERIAL_OPAQUE;
-    material.diffuseTexture.hasAlpha = false;
+    if (texture) {
+        material.diffuseTexture = texture;
+        material.diffuseTexture.hasAlpha = false;
+    } else {
+        // ワイヤーフレーム表示: 単色の線のみで地形の起伏・グリッド形状を確認できるようにする。
+        // 太陽光の当たらない斜面でも視認できるよう、拡散色と同じ色を発光色にも設定する
+        // （ライティング角度に依存せず一定の明るさで線が見えるようにするため）。
+        material.wireframe = true;
+        material.diffuseColor = WIREFRAME_COLOR;
+        material.emissiveColor = WIREFRAME_COLOR;
+    }
     // 地形面は単層の片面ジオメトリのため、視線角度によらず表示されるよう
     // 裏面カリングを無効化する（側面壁と同じ扱い）。
     material.backFaceCulling = false;
@@ -423,7 +453,7 @@ export const createDioramaTerrain = async (
 
     /**
      * 保留中の rebuild チェーン。`enqueueRebuild` はこれに繋げて直列化する。
-     * `setCenter`/`setFootprintRadius`/`setMapType` が並行に呼ばれても、rebuild が
+     * `setCenter`/`setFootprintRadius`/`setTileMode` が並行に呼ばれても、rebuild が
      * 呼び出し順に1つずつ実行されるようにし、以下の競合を防ぐ:
      * - 後から開始したが先に完了した rebuild が `built`/`resolved` を上書きし、
      *   別の（本来もっと新しい）rebuild の結果を消してしまう
@@ -490,8 +520,8 @@ export const createDioramaTerrain = async (
             }
             return enqueueRebuild((current) => ({ ...current, footprintRadiusM: radiusM }));
         },
-        setMapType: (mapType: MapType): Promise<void> =>
-            enqueueRebuild((current) => ({ ...current, mapType })),
+        setTileMode: (tileMode: DioramaTileMode): Promise<void> =>
+            enqueueRebuild((current) => ({ ...current, tileMode })),
         setView: (patch: { center?: DioramaCenter; footprintRadiusM?: number }): Promise<void> => {
             if (patch.footprintRadiusM !== undefined) {
                 try {

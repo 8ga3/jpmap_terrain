@@ -41,16 +41,18 @@ afterEach(() => {
 });
 
 describe("createDioramaArControlHud", () => {
-    it("ジョイスティック要素とズーム/回転/高さボタンを含むDOM構造を生成する", () => {
+    it("ジョイスティック要素とズーム/回転/高さ/タイル切替/リセットボタンを含むDOM構造を生成する", () => {
         const hud = build();
         const buttons = hud.element.querySelectorAll("button");
-        expect(buttons.length).toBe(6);
+        expect(buttons.length).toBe(8);
         expect(buttons[0]?.getAttribute("aria-label")).toBe("ズームイン");
         expect(buttons[1]?.getAttribute("aria-label")).toBe("ズームアウト");
         expect(buttons[2]?.getAttribute("aria-label")).toBe("反時計回りに回転");
         expect(buttons[3]?.getAttribute("aria-label")).toBe("時計回りに回転");
         expect(buttons[4]?.getAttribute("aria-label")).toBe("高さを上げる");
         expect(buttons[5]?.getAttribute("aria-label")).toBe("高さを下げる");
+        expect(buttons[6]?.getAttribute("aria-label")).toBe("地図の種類を切り替え（標準地図・写真・ワイヤーフレーム）");
+        expect(buttons[7]?.getAttribute("aria-label")).toBe("表示を初期状態に戻す（中心・拡大率・回転・高さ）");
     });
 
     it("初期状態のパン軸・ズーム軸・回転軸・高さ軸は0", () => {
@@ -257,6 +259,39 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getHeightAxis()).toBe(-1);
         dispatchPointer(downButton, "pointercancel", {});
         expect(hud.getHeightAxis()).toBe(0);
+    });
+
+    it("タイル切替ボタンをクリックするとonTileModeCyclePressで購読したコールバックが呼ばれる", () => {
+        const hud = build();
+        const tileModeButton = hud.element.querySelectorAll("button")[6] as HTMLButtonElement;
+        const callback = vi.fn();
+
+        hud.onTileModeCyclePress(callback);
+        tileModeButton.click();
+        expect(callback).toHaveBeenCalledTimes(1);
+        tileModeButton.click();
+        expect(callback).toHaveBeenCalledTimes(2);
+    });
+
+    it("トップ復帰ボタンをクリックするとonResetToInitialPressで購読したコールバックが呼ばれる", () => {
+        const hud = build();
+        const resetButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const callback = vi.fn();
+
+        hud.onResetToInitialPress(callback);
+        resetButton.click();
+        expect(callback).toHaveBeenCalledTimes(1);
+    });
+
+    it("onTileModeCyclePress/onResetToInitialPressの購読解除関数を呼ぶと、以後クリックしてもコールバックは呼ばれない", () => {
+        const hud = build();
+        const tileModeButton = hud.element.querySelectorAll("button")[6] as HTMLButtonElement;
+        const callback = vi.fn();
+
+        const unsubscribe = hud.onTileModeCyclePress(callback);
+        unsubscribe();
+        tileModeButton.click();
+        expect(callback).not.toHaveBeenCalled();
     });
 
     it("dispose()はHUD要素をDOMから除去する", () => {
