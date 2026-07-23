@@ -23,6 +23,9 @@ import {
     DEFAULT_HEIGHT_OFFSET_MAX_M,
     DEFAULT_HEADING_SNAP_STEP_RAD,
     DEFAULT_HEADING_SNAP_HYSTERESIS_RAD,
+    computeHorizontalDisplacement,
+    isInsideDioramaDeadZone,
+    DEFAULT_DEAD_ZONE_HYSTERESIS_M,
 } from "../src/demos/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -310,6 +313,63 @@ describe("snapHeadingRad", () => {
 
     it("stepRadが0以下の場合は前回値（未指定なら0）を維持する", () => {
         expect(snapHeadingRad(1, 0.5, 0)).toBe(0.5);
+    });
+});
+
+describe("computeHorizontalDisplacement", () => {
+    it("fromからtoへの単位ベクトルと距離を返す", () => {
+        const { unit, distanceM } = computeHorizontalDisplacement(0, 0, 0, 5);
+        expect(unit).toEqual({ x: 0, z: 1 });
+        expect(distanceM).toBeCloseTo(5);
+    });
+
+    it("斜め方向でも正しい単位ベクトル・距離を返す", () => {
+        const { unit, distanceM } = computeHorizontalDisplacement(0, 0, 3, 4);
+        expect(unit.x).toBeCloseTo(0.6);
+        expect(unit.z).toBeCloseTo(0.8);
+        expect(distanceM).toBeCloseTo(5);
+    });
+
+    it("fromとtoが同一（距離0）の場合は{x:0,z:0}・距離0を返す", () => {
+        expect(computeHorizontalDisplacement(1, 1, 1, 1)).toEqual({ unit: { x: 0, z: 0 }, distanceM: 0 });
+    });
+
+    it("非有限値を含む場合は{x:0,z:0}・距離0を返す", () => {
+        expect(computeHorizontalDisplacement(NaN, 0, 0, 0)).toEqual({ unit: { x: 0, z: 0 }, distanceM: 0 });
+        expect(computeHorizontalDisplacement(0, 0, Infinity, 0)).toEqual({ unit: { x: 0, z: 0 }, distanceM: 0 });
+    });
+});
+
+describe("isInsideDioramaDeadZone", () => {
+    it("既定のヒステリシス幅は0.05m", () => {
+        expect(DEFAULT_DEAD_ZONE_HYSTERESIS_M).toBe(0.05);
+    });
+
+    it("外側にいた場合、距離が半径以下になった時点でデッドゾーン内と判定する", () => {
+        expect(isInsideDioramaDeadZone(0.3, false, 0.35)).toBe(true);
+        expect(isInsideDioramaDeadZone(0.35, false, 0.35)).toBe(true);
+        expect(isInsideDioramaDeadZone(0.36, false, 0.35)).toBe(false);
+    });
+
+    it("内側にいた場合、半径+ヒステリシスを超えるまでデッドゾーン内のまま維持する", () => {
+        expect(isInsideDioramaDeadZone(0.39, true, 0.35)).toBe(true);
+        expect(isInsideDioramaDeadZone(0.399, true, 0.35)).toBe(true);
+        expect(isInsideDioramaDeadZone(0.41, true, 0.35)).toBe(false);
+    });
+
+    it("カスタムのヒステリシス幅を指定できる", () => {
+        expect(isInsideDioramaDeadZone(0.5, true, 0.35, 0.2)).toBe(true);
+        expect(isInsideDioramaDeadZone(0.56, true, 0.35, 0.2)).toBe(false);
+    });
+
+    it("非有限値のdistanceMは前フレームの判定を維持する", () => {
+        expect(isInsideDioramaDeadZone(NaN, true, 0.35)).toBe(true);
+        expect(isInsideDioramaDeadZone(NaN, false, 0.35)).toBe(false);
+    });
+
+    it("負のdeadZoneRadiusMは前フレームの判定を維持する", () => {
+        expect(isInsideDioramaDeadZone(0.1, false, -1)).toBe(false);
+        expect(isInsideDioramaDeadZone(0.1, true, -1)).toBe(true);
     });
 });
 
