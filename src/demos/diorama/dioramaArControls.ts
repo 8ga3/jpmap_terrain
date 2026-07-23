@@ -460,7 +460,16 @@ export const setupDioramaArControls = (
             dioramaPosition.x,
             dioramaPosition.z,
         );
-        wasInsideDeadZone = isInsideDioramaDeadZone(distanceM, wasInsideDeadZone, tableRadiusM);
+        const isNowInsideDeadZone = isInsideDioramaDeadZone(distanceM, wasInsideDeadZone, tableRadiusM);
+        if (isNowInsideDeadZone && !wasInsideDeadZone) {
+            // デッドゾーンへ新規に入った（外側→内側へ遷移した）タイミングで
+            // スナップ基準をリセットする。リセットしないと、デッドゾーン内で
+            // 立ち位置が大きく変わった場合に、抜けた直後の`snapHeadingRad`が
+            // 「入る前の古いスナップ角」を前回値としてヒステリシス判定してしまい、
+            // 復帰直後にパン方向の基準が不自然に固着し得る（回帰テスト参照）。
+            previousSnappedHeadingRad = undefined;
+        }
+        wasInsideDeadZone = isNowInsideDeadZone;
 
         let panAxes: StickAxes = { x: 0, y: 0 };
         if (!wasInsideDeadZone) {
