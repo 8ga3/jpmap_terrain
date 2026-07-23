@@ -37,13 +37,29 @@
  * 軸値が残り続け得る）。非表示中もHUDの軸値をそのままfeedし続けると、
  * 復帰後に気づかぬまま箱庭が動き続ける不具合になり得るため、`setVisible(false)`
  * の間は内部フラグでHUDの軸値を一切読まず、`feedAxes` 自体を呼ばないようにする。
+ *
+ * **パン方向はカメラ（`ArcRotateCamera`）の現在の水平向き基準**:
+ * バーチャルジョイスティックの入力を単純に東西・南北へ直接マッピングすると、
+ * ユーザーがカメラを（マウスドラッグ等で）回転させた後、画面上の「前」と実際の
+ * 移動方向（絶対座標の北）が一致せず操作しづらい（`dioramaKeyboardControls.ts`の
+ * WASDで先に対応済みの問題と同種）。そのため毎フレームカメラの現在の水平前方向を
+ * 取得し、ジョイスティック入力をその向き基準で東西・南北へ回転変換してから
+ * `DioramaViewController` へ渡す（`dioramaKeyboardControls.ts`と同じ
+ * `getHorizontalDirectionUnit`/`computePanAxesFromDirectionalInput` を共有する）。
+ * デスクトップ/タッチのカメラ向きはユーザー操作由来で安定しており、AR中の
+ * ヘッドセット頭部トラッキングのようなセンサー揺らぎが無いため、
+ * `dioramaArControls.ts` のような向きスナップ（ヒステリシス付き8方位丸め）は不要。
  */
 import type { Scene } from "@babylonjs/core/scene";
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
+import { computePanAxesFromDirectionalInput, type StickAxes } from "./dioramaControllerMapping";
+import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 
 export interface DioramaTouchControls {
     /**
@@ -61,10 +77,13 @@ export interface DioramaTouchControls {
  * 切替のセットアップを行う。`index.ts` からデモ起動時に一度だけ
  * 呼ぶこと（AR突入可否に関わらず、デモの生存期間中ずっと有効にする）。
  *
+ * @param camera パン方向をカメラの現在の向き基準へ補正するために参照する
+ *   （`ArcRotateCamera` の水平方向。`dioramaKeyboardControls.ts`と同じ）。
  * @param tileModeController タイル種別の共有状態保持者（HUDタイル切替ボタン＝巡回）。
  */
 export const setupDioramaTouchControls = (
     scene: Scene,
+    camera: ArcRotateCamera,
     hud: DioramaArControlHud,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
@@ -81,7 +100,19 @@ export const setupDioramaTouchControls = (
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
         if (!(dtSeconds > 0)) return;
 
-        viewController.feedAxes(hud.getPanAxes(), hud.getZoomAxis(), dtSeconds);
+        // カメラの現在の水平前方向・右方向へジョイスティック入力を投影し、ワールド座標
+        // （東西・南北）へ変換する（`dioramaKeyboardControls.ts`のWASDと同じ方式）。
+        const hudAxes = hud.getPanAxes();
+        // Gamepad規約: ジョイスティックのy軸は前方向（奥へ倒す）が負値。
+        const forwardAxis = -hudAxes.y;
+        const rightAxis = hudAxes.x;
+        let panAxes: StickAxes = { x: 0, y: 0 };
+        if (forwardAxis !== 0 || rightAxis !== 0) {
+            const forwardUnit = getHorizontalDirectionUnit(camera, Vector3.Forward(scene.useRightHandedSystem));
+            const rightUnit = getHorizontalDirectionUnit(camera, Vector3.Right());
+            panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
+        }
+        viewController.feedAxes(panAxes, hud.getZoomAxis(), dtSeconds);
 
         // 高さボタンは単一の符号付き軸[-1,1]（上昇=正）で表現されるため、
         // `computeDioramaHeightMetersFromTriggers` の左右トリガー引数へ変換する。
