@@ -95,6 +95,7 @@ import {
     snapHeadingRad,
     computeHorizontalDisplacement,
     isInsideDioramaDeadZone,
+    angleDeltaRad,
 } from "./dioramaControllerMapping";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
@@ -474,10 +475,14 @@ export const setupDioramaArControls = (
             const snappedHeadingRad = snapHeadingRad(rawHeadingRad, previousSnappedHeadingRad);
             previousSnappedHeadingRad = snappedHeadingRad;
             // 生の向き角からスナップ後の向き角への差分だけ、奥方向の単位ベクトルを
-            // 回転させる。右方向は奥方向をさらに90°回転（時計回り）させて求める
+            // 回転させる。単純な引き算（`snappedHeadingRad - rawHeadingRad`）は
+            // ±π境界を跨ぐと差分がほぼ`±2π`（実際の最短差はほぼ0）になり得るため、
+            // `angleDeltaRad`で`(-π, π]`へ正規化した最短差分を使う（`Math.sin`/
+            // `Math.cos`へ渡す引数を小さく保ち、数値誤差の増大を避ける）。
+            // 右方向は奥方向をさらに90°回転（時計回り）させて求める
             // （`computeHeadingRadFromHorizontal`の規約: 北→東が時計回りのため、
             // 奥方向を基準に+90°した方向が「右」に一致する）。
-            const headingDeltaRad = snappedHeadingRad - rawHeadingRad;
+            const headingDeltaRad = angleDeltaRad(rawHeadingRad, snappedHeadingRad);
             const forwardUnit = rotateHorizontalUnitVector(localAwayFromUserUnit, headingDeltaRad);
             const rightUnit = rotateHorizontalUnitVector(forwardUnit, Math.PI / 2);
 

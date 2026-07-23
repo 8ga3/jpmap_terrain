@@ -26,6 +26,8 @@ import {
     computeHorizontalDisplacement,
     isInsideDioramaDeadZone,
     DEFAULT_DEAD_ZONE_HYSTERESIS_M,
+    angleDeltaRad,
+    normalizeAngleRad,
 } from "../src/demos/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -313,6 +315,41 @@ describe("snapHeadingRad", () => {
 
     it("stepRadが0以下の場合は前回値（未指定なら0）を維持する", () => {
         expect(snapHeadingRad(1, 0.5, 0)).toBe(0.5);
+    });
+});
+
+describe("normalizeAngleRad", () => {
+    it("(-π, π]の範囲内の値はそのまま返す", () => {
+        expect(normalizeAngleRad(0)).toBeCloseTo(0);
+        expect(normalizeAngleRad(Math.PI)).toBeCloseTo(Math.PI);
+        expect(normalizeAngleRad(-Math.PI / 2)).toBeCloseTo(-Math.PI / 2);
+    });
+
+    it("範囲外の値は(-π, π]へラップする", () => {
+        expect(normalizeAngleRad(Math.PI * 1.5)).toBeCloseTo(-Math.PI / 2);
+        expect(normalizeAngleRad(-Math.PI * 1.5)).toBeCloseTo(Math.PI / 2);
+        expect(normalizeAngleRad(Math.PI * 3)).toBeCloseTo(Math.PI);
+    });
+});
+
+describe("angleDeltaRad", () => {
+    it("通常の範囲内では単純な引き算と一致する", () => {
+        expect(angleDeltaRad(0, Math.PI / 4)).toBeCloseTo(Math.PI / 4);
+        expect(angleDeltaRad(Math.PI / 4, 0)).toBeCloseTo(-Math.PI / 4);
+    });
+
+    it("±π境界を跨ぐ場合でも最短差分（絶対値がπ以下）を返す（回帰テスト）", () => {
+        // raw≈-π, snapped=π は実際には反対方向へのわずかな差（π - (-π+0.01) ≈ -0.01+2π→-0.01）。
+        // 単純な引き算（snapped - raw）だとほぼ2πになってしまう問題の回帰テスト。
+        const raw = -Math.PI + 0.01;
+        const snapped = Math.PI;
+        const delta = angleDeltaRad(raw, snapped);
+        expect(Math.abs(delta)).toBeLessThanOrEqual(Math.PI);
+        expect(delta).toBeCloseTo(-0.01);
+    });
+
+    it("同じ角度なら差分は0", () => {
+        expect(angleDeltaRad(Math.PI / 3, Math.PI / 3)).toBeCloseTo(0);
     });
 });
 
