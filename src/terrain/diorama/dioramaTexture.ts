@@ -7,17 +7,32 @@
  * 実際のフェッチ/描画（`buildDioramaMosaicTexture`）から独立してテストできるようにする。
  *
  * @remarks
- * 合成した canvas は Babylon の `DynamicTexture` ではなく、`canvas.toBlob()` →
- * `URL.createObjectURL()` を経由して通常の `Texture` として読み込む。WebXR
- * (`immersive-ar`) の実機検証で、`DynamicTexture` を使うとパススルー合成中に
- * 地形面だけが透けて見える不具合を確認したため、動作確認済みの `Texture` 経路へ
- * 切り替えて回避する。
+ * テクスチャ生成の経路は以下の変遷を経ている（Meta Quest 3実機検証に基づく）。
+ * 1. 当初 Babylon の `DynamicTexture` を使用 → WebXR (`immersive-ar`) の
+ *    パススルー合成中に地形面だけが透けて見える不具合を確認し、`canvas.toBlob()` →
+ *    `URL.createObjectURL()` → 通常の `Texture`（`<img>`要素経由でデコード）という
+ *    経路へ切り替えて回避した。
+ * 2. その後、Quest 3実機でのプロファイリングにより、`canvas.toBlob()`
+ *    （PNGエンコード）が地図移動（`setView`）再構築のたびに約4秒かかる支配的な
+ *    ボトルネックであることが判明した。JPEGへのエンコード形式変更を試したが、
+ *    実機では改善しなかった（immersive-arセッション中は `canvas.toBlob()`
+ *    自体が約4秒かかることが判明。エンコード形式ではなくAPI自体の問題）。
+ * 3. 最終的に `canvas.toBlob()`（非同期エンコード）と `<img>` 要素デコードの
+ *    両方を回避するため、`ctx.getImageData()` で同期的に生ピクセルを取得し、
+ *    Babylonの `RawTexture.CreateRGBATexture` へ直接アップロードする方式へ
+ *    変更した。エンコード・デコードの往復が一切ないため、実機で最速。
+ *    なお `DynamicTexture` の透過不具合の根本原因は完全には特定できていない
+ *    ため、本方式でも同様の不具合が再発しないか実機での確認が必須
+ *    （合成用canvasは `{ alpha: false }` で生成し、アルファ起因の透過リスクを
+ *    設計上排除している）。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
 
 import { TILE_SIZE, toTileXY, textureUrl, type MapType } from "../gsiTile";
 import { totalPixelsForZoom, latLonToPixel } from "../geo/mapping";
+import { measureAsync } from "./dioramaPerfLog";
 
 /** テクスチャ取得対象の1点（lat/lon のみを要求。他フィールドは無視）。 */
 export interface DioramaTexturePoint {
@@ -180,7 +195,7 @@ const FALLBACK_TILE_COLOR = "#8a8270";
 
 /**
  * `computeDioramaTextureLayout` の結果に基づき、実際にタイル画像を取得して
- * 1枚のオフスクリーン `<canvas>` へ合成し、`Texture` として読み込む。取得に
+ * 1枚のオフスクリーン `<canvas>` へ合成し、`RawTexture` として読み込む。取得に
  * 失敗したタイルは該当領域を {@link FALLBACK_TILE_COLOR} で塗りつぶし
  * （描画継続を優先）、コンソールにエラーを出す。
  */
@@ -193,55 +208,58 @@ export const buildDioramaMosaicTexture = async (
     const canvas = document.createElement("canvas");
     canvas.width = layout.mosaicWidthPx;
     canvas.height = layout.mosaicHeightPx;
-    const ctx = canvas.getContext("2d");
+    // `{ alpha: false }`: 合成用canvasを不透明として扱わせる。GSIタイル画像に
+    // アルファチャンネルが含まれる場合でも、`getImageData` で読み戻した際の
+    // アルファ値は常に255（不透明）になる（ブラウザ仕様）。これにより、地形面の
+    // アルファが意図せず下がってWebXR (`immersive-ar`) のパススルー合成中に
+    // 地形が透けて見える不具合（本ファイル冒頭の経緯コメント参照）を、
+    // アルファ値の混入という観点からは設計上排除できる。
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) {
         throw new Error("[jpmap-terrain diorama] failed to acquire 2D context for texture mosaic canvas");
     }
 
-    await Promise.all(
-        layout.tiles.map(async (tile) => {
-            const url = textureUrl(mapType, layout.zoom, tile.x, tile.y);
-            try {
-                const bitmap = await loadTileBitmap(url);
-                ctx.drawImage(bitmap, tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
-                bitmap.close();
-            } catch (err) {
-                console.error(
-                    `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}, filling with fallback color:`,
-                    err,
-                );
-                ctx.fillStyle = FALLBACK_TILE_COLOR;
-                ctx.fillRect(tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
-            }
-        }),
+    // 実機（Meta Quest 3）でのみ顕在化する遅延調査用の計測: タイル取得（ネットワーク）+
+    // canvas合成の合計時間。タイルは並列フェッチのため、この時間はほぼネットワーク往復
+    // （最も遅いタイル）が支配的。
+    await measureAsync(`tiles-fetch-compose (${layout.tiles.length} tiles)`, () =>
+        Promise.all(
+            layout.tiles.map(async (tile) => {
+                const url = textureUrl(mapType, layout.zoom, tile.x, tile.y);
+                try {
+                    const bitmap = await loadTileBitmap(url);
+                    ctx.drawImage(bitmap, tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
+                    bitmap.close();
+                } catch (err) {
+                    console.error(
+                        `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}, filling with fallback color:`,
+                        err,
+                    );
+                    ctx.fillStyle = FALLBACK_TILE_COLOR;
+                    ctx.fillRect(tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
+                }
+            }),
+        ),
     );
 
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve));
-    if (!blob) {
-        throw new Error("[jpmap-terrain diorama] failed to encode texture mosaic canvas to a blob");
-    }
-
-    // Babylon の `Texture` は画像を `<img>` 要素（`Tools.LoadImage`）経由で読み込むため、
-    // `URL.createObjectURL` でBlobを読み込み可能なURLへ変換して渡す。呼び出しごとに
-    // 一意なURLになるため、テクスチャキャッシュが古いタイル画像を再利用する心配もない。
-    const objectUrl = URL.createObjectURL(blob);
-
-    return await new Promise<Texture>((resolve, reject) => {
-        const texture = new Texture(
-            objectUrl,
+    // 遅延調査用の計測: canvasから生ピクセルデータを読み戻し（同期処理）、
+    // Babylonの `RawTexture` へ直接アップロードする所要時間。`canvas.toBlob()`
+    // によるPNG/JPEGエンコードや `<img>` 要素でのデコードを一切経由しないため、
+    // 本ファイル冒頭の経緯コメントにある通り、Quest 3実機でWebXRセッション中に
+    // `canvas.toBlob()` 自体が約4秒かかっていた問題を回避できる。
+    return measureAsync("pixels-readback-and-upload", async () => {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const texture = RawTexture.CreateRGBATexture(
+            imageData.data,
+            canvas.width,
+            canvas.height,
             scene,
-            false, // noMipmap: ミップマップを生成する
+            true, // generateMipMaps: ミップマップを生成する（従来のTexture(noMipmap=false)と同等）
             true, // invertY: v=1 が画像上端（=北）になるUV計算（本ファイル冒頭のUV計算参照）に合わせる
             Texture.TRILINEAR_SAMPLINGMODE,
-            () => {
-                URL.revokeObjectURL(objectUrl);
-                resolve(texture);
-            },
-            (message, exception: unknown) => {
-                URL.revokeObjectURL(objectUrl);
-                reject(exception instanceof Error ? exception : new Error(message ?? "failed to load diorama texture mosaic"));
-            },
         );
         texture.name = name;
+        return texture;
     });
 };
+
