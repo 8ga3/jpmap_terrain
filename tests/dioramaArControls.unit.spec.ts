@@ -953,6 +953,58 @@ describe("setupDioramaArControls", () => {
 
         dispose();
     });
+
+    it("デッドゾーンへ入ると向きスナップの基準がリセットされ、抜けた直後に古い基準の固着（ヒステリシスの誤適用）が起きない（回帰テスト）", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        // 1. 北(0°)の位置から開始し、previousSnappedHeadingRadを0（北）で確立する。
+        const dioramaRoot = makeDioramaRoot({ x: 0, z: 0.6 });
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+
+        tick(16);
+        const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
+        const [beforeDeadZonePanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [
+            { x: number; y: number },
+        ];
+        expect(beforeDeadZonePanAxes.x).toBeCloseTo(0);
+        expect(beforeDeadZonePanAxes.y).toBeCloseTo(-1);
+
+        // 2. デッドゾーン内へ移動する（previousSnappedHeadingRadが更新されなくなる）。
+        dioramaRoot.position.x = 0;
+        dioramaRoot.position.z = 0.1;
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
+
+        // 3. デッドゾーンを抜け、新しい向き（0.4rad≈22.9°、北(0°)とNE(45°)の
+        //    ちょうど中間よりNE寄り＝最寄りバケットはNE(45°)）へ移動する。
+        //    修正前（previousSnappedHeadingRadをリセットしない）だと、古い基準
+        //    （北=0）からの差分(0.4rad)がヒステリシス閾値（22.5°+5°=27.5°
+        //    ≈0.48rad）以内のため誤って北のまま固着してしまう回帰があった。
+        const headingRad = 0.4;
+        const distanceM = 0.6;
+        dioramaRoot.position.x = distanceM * Math.sin(headingRad);
+        dioramaRoot.position.z = distanceM * Math.cos(headingRad);
+        tick(16);
+
+        const [afterDeadZonePanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [
+            { x: number; y: number },
+        ];
+        // 修正後は北への固着ではなく、最寄りバケットNE(45°)へ即座にスナップする。
+        expect(afterDeadZonePanAxes.x).toBeCloseTo(Math.SQRT1_2);
+        expect(afterDeadZonePanAxes.y).toBeCloseTo(-Math.SQRT1_2);
+
+        dispose();
+    });
 });
 
 
