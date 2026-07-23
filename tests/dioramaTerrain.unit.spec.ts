@@ -234,6 +234,27 @@ describe("createDioramaTerrain の入力検証", () => {
         ).rejects.toThrow(RangeError);
     });
 
+    it("gridSegments が非整数の場合はRangeErrorでreject", async () => {
+        await expect(
+            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: 4.5 }),
+        ).rejects.toThrow(RangeError);
+    });
+
+    it("gridSegments が0以下の場合はRangeErrorでreject", async () => {
+        await expect(
+            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: 0 }),
+        ).rejects.toThrow(RangeError);
+    });
+
+    it("gridSegments が NaN/Infinity の場合はRangeErrorでreject", async () => {
+        await expect(
+            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: NaN }),
+        ).rejects.toThrow(RangeError);
+        await expect(
+            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: Infinity }),
+        ).rejects.toThrow(RangeError);
+    });
+
     it("正常な値では正常に構築できる", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         expect(terrain.mesh).toBeDefined();

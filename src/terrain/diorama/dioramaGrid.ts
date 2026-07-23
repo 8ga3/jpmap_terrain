@@ -95,6 +95,20 @@ export const offsetToLatLon = (
 };
 
 /**
+ * `gridSegments` が有限な整数かつ1以上であることを検証する。
+ * 非整数（例: 4.5）や `NaN`/`Infinity` を許すと、`vertsPerSide = gridSegments + 1` を
+ * 使う添字計算（`buildDioramaGridIndices`/`extractGridPerimeterIndices`）が非整数の
+ * 頂点インデックスを生成し、`Uint32Array` への変換時に切り捨てられて誤った頂点を
+ * 参照する破綻したメッシュになる。3関数（`buildDioramaGridPoints`/
+ * `buildDioramaGridIndices`/`extractGridPerimeterIndices`）すべてで検証する。
+ */
+const assertValidGridSegments = (gridSegments: number): void => {
+    if (!(Number.isInteger(gridSegments) && gridSegments >= 1)) {
+        throw new RangeError(`gridSegments must be an integer >= 1 (got ${gridSegments})`);
+    }
+};
+
+/**
  * 正方形（行列状）グリッドの点列を生成する。
  * 並び順: row-major（row=0..gridSegments、各row内でcol=0..gridSegments）。
  * row=0 が北端(z=+footprintHalfSizeM)、col=0 が西端(x=-footprintHalfSizeM)。
@@ -106,11 +120,9 @@ export const buildDioramaGridPoints = (
     options: DioramaGridOptions,
 ): DioramaGridPoint[] => {
     const { gridSegments } = options;
-    if (gridSegments < 1) {
-        throw new RangeError(`gridSegments must be >= 1 (got ${gridSegments})`);
-    }
-    if (!(footprintHalfSizeM > 0)) {
-        throw new RangeError(`footprintHalfSizeM must be > 0 (got ${footprintHalfSizeM})`);
+    assertValidGridSegments(gridSegments);
+    if (!(Number.isFinite(footprintHalfSizeM) && footprintHalfSizeM > 0)) {
+        throw new RangeError(`footprintHalfSizeM must be a positive finite number (got ${footprintHalfSizeM})`);
     }
 
     const points: DioramaGridPoint[] = [];
@@ -136,6 +148,7 @@ export const buildDioramaGridIndices = (
     options: DioramaGridOptions,
 ): Uint32Array => {
     const { gridSegments } = options;
+    assertValidGridSegments(gridSegments);
     const vertsPerSide = gridSegments + 1;
     const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
 
@@ -165,6 +178,7 @@ export const extractGridPerimeterIndices = (
     options: DioramaGridOptions,
 ): number[] => {
     const { gridSegments } = options;
+    assertValidGridSegments(gridSegments);
     const vertsPerSide = gridSegments + 1;
     const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
 
