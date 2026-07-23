@@ -28,6 +28,7 @@ import {
     DEFAULT_DEAD_ZONE_HYSTERESIS_M,
     angleDeltaRad,
     normalizeAngleRad,
+    applyDPadGate,
 } from "../src/demos/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -54,6 +55,39 @@ describe("applyStickDeadzone", () => {
         expect(applyStickDeadzone(NaN, 0.15)).toBe(0);
         expect(applyStickDeadzone(0.5, NaN)).toBe(0);
         expect(applyStickDeadzone(Infinity, 0.15)).toBe(0);
+    });
+});
+
+describe("applyDPadGate", () => {
+    it("|x| > |y| ならxのみ残しyを0にする", () => {
+        expect(applyDPadGate(0.8, 0.2)).toEqual({ x: 0.8, y: 0 });
+        expect(applyDPadGate(-0.8, 0.2)).toEqual({ x: -0.8, y: 0 });
+        expect(applyDPadGate(0.8, -0.2)).toEqual({ x: 0.8, y: 0 });
+    });
+
+    it("|y| > |x| ならyのみ残しxを0にする", () => {
+        expect(applyDPadGate(0.2, 0.8)).toEqual({ x: 0, y: 0.8 });
+        expect(applyDPadGate(0.2, -0.8)).toEqual({ x: 0, y: -0.8 });
+    });
+
+    it("下方向(y=-0.9)にわずかな左右ドリフト(x=0.2)が混ざっても、yのみ残る（回帰テスト）", () => {
+        expect(applyDPadGate(0.2, -0.9)).toEqual({ x: 0, y: -0.9 });
+        expect(applyDPadGate(-0.2, -0.9)).toEqual({ x: 0, y: -0.9 });
+    });
+
+    it("|x| === |y| の場合はxを優先する", () => {
+        expect(applyDPadGate(0.5, 0.5)).toEqual({ x: 0.5, y: 0 });
+        expect(applyDPadGate(-0.5, 0.5)).toEqual({ x: -0.5, y: 0 });
+    });
+
+    it("両方0の場合は{x:0,y:0}を返す", () => {
+        expect(applyDPadGate(0, 0)).toEqual({ x: 0, y: 0 });
+    });
+
+    it("非有限値は0へフォールバックしてから判定する", () => {
+        expect(applyDPadGate(NaN, 0.5)).toEqual({ x: 0, y: 0.5 });
+        expect(applyDPadGate(0.5, NaN)).toEqual({ x: 0.5, y: 0 });
+        expect(applyDPadGate(Infinity, 0.1)).toEqual({ x: 0, y: 0.1 });
     });
 });
 

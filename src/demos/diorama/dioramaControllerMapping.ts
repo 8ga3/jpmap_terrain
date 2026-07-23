@@ -17,6 +17,16 @@
  * - 右スティックY（前後） / GUIズームボタン: フットプリント半径のズーム
  *   （前方向・GUIの「+」= ズームイン/縮小、後方向・GUIの「-」= ズームアウト/拡大）
  * - 右スティックX（左右）: 箱庭の回転（本モジュールで実装、{@link computeDioramaRotationRadFromStick}）
+ *
+ * **右スティックは十字ボタン相当の排他動作**: 物理コントローラーの右スティックは
+ * X（回転）・Y（ズーム）を同時に検知しうるが、上下・左右いずれか一方だけを
+ * 操作するつもりでもわずかに斜めへずれやすく、意図しない同時発火（下へ倒して
+ * ズームしているつもりが、わずかな左右のずれで回転も発火する等）が起きやすい。
+ * そのため物理スティックの生入力（`dioramaArControls.ts`の`sticks.right`）へは
+ * 個別デッドゾーン処理の前段で{@link applyDPadGate}を適用し、支配的な軸のみを
+ * 有効にする（十字ボタンと同じ「一方向のみ」の挙動。速度自体はアナログのまま）。
+ * GUIのズーム/回転ボタン（`dioramaArControlHud.ts`）はもともと個別のボタンで
+ * 排他的なため、本ゲート処理の対象外（適用不要）。
  * - トリガー（左右）: 箱庭の設置高さ変更（本モジュールで実装、{@link computeDioramaHeightMetersFromTriggers}）
  * - グリップ + 左スティック（モディファイア）: 太陽の方位角・高度（別途実装予定）
  * - A/Xボタン / GUIタイル切替ボタン: 地図タイル種別切替（本モジュールで実装、
@@ -52,6 +62,38 @@ export interface StickAxes {
     x: number;
     y: number;
 }
+
+/**
+ * 2軸スティック入力を「十字ボタン（十字キー）的な排他動作」へ整形する。
+ *
+ * @remarks
+ * 右スティック（X軸=箱庭回転、Y軸=ズーム、`dioramaArControls.ts`参照）は、
+ * 本来は単純な十字ボタンの代替として上下・左右のいずれか一方だけを
+ * 操作するつもりで倒しても、物理スティックの構造上わずかに斜めに
+ * ずれてしまいやすい。X/Yを完全に独立してデッドゾーン処理すると、
+ * 「下へ倒してズームしているつもりが、わずかな左右のずれで同時に
+ * 回転も発火してしまう」という誤操作が起きる。
+ *
+ * 本関数は、X/Yのうち絶対値が大きい方（支配的な軸）のみ元の値を残し、
+ * もう一方を強制的に `0` にすることで、常にどちらか一方の軸のみが
+ * 有効になる十字ボタン相当の入力へ変換する。速度自体は従来通り
+ * アナログ（倒し具合に比例）のまま、同時発火のみを防ぐ。
+ *
+ * 呼び出し側で各軸のデッドゾーン処理（{@link applyStickDeadzone}を
+ * 内部で使う {@link computeDioramaRotationRadFromStick}/
+ * {@link computeFootprintRadiusFactorFromStick}）を行う前段として使うこと。
+ *
+ * @param x スティックのX軸入力（[-1,1] 想定）。
+ * @param y スティックのY軸入力（[-1,1] 想定）。
+ * @returns `|x| >= |y|` ならXのみ残し `y:0`、そうでなければYのみ残し `x:0`。
+ *   非有限値（`NaN`/`Infinity`等）は `0` として扱う。
+ */
+export const applyDPadGate = (x: number, y: number): StickAxes => {
+    const safeX = Number.isFinite(x) ? x : 0;
+    const safeY = Number.isFinite(y) ? y : 0;
+    if (Math.abs(safeX) >= Math.abs(safeY)) return { x: safeX, y: 0 };
+    return { x: 0, y: safeY };
+};
 
 /** {@link computeDioramaPanMetersFromStick} のオプション。 */
 export interface PanFromStickOptions {

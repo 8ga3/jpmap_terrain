@@ -50,6 +50,14 @@
  * （`dioramaOrientationController.ts`）が同期的に対象ノードへ反映するため、
  * パン/ズームのような完了待ちの仕組みは不要。
  *
+ * **右スティックは十字ボタン相当の排他動作（X=回転・Y=ズーム）**: 物理スティックは
+ * 上下・左右いずれか一方だけを操作するつもりでもわずかに斜めへずれやすく、
+ * X/Yを完全に独立して扱うと意図しない同時発火（下へ倒してズームしているつもりが、
+ * わずかな左右のずれで回転も発火する等）が起きる。そのため物理スティックの
+ * 生入力（`sticks.right`）へは{@link applyDPadGate}（`dioramaControllerMapping.ts`）を
+ * 適用し、支配的な軸のみを有効にしてからHUDの軸値と合算する。GUIのズーム/回転
+ * ボタンはもともと個別のボタンで排他的なため、本ゲート処理の対象外。
+ *
  * さらに、タイル種別切替（A/Xボタン）・AR終了（B/Yボタン）の入力も配線する
  * （{@link trackControllerButtonPresses}）。これらは継続入力（スティック/トリガー）
  * ではなく単発の押下エッジで駆動する。タイル種別切替は
@@ -96,6 +104,7 @@ import {
     computeHorizontalDisplacement,
     isInsideDioramaDeadZone,
     angleDeltaRad,
+    applyDPadGate,
 } from "./dioramaControllerMapping";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
@@ -501,12 +510,19 @@ export const setupDioramaArControls = (
             const rightAxis = clamp1(sticks.left.x + hudAxes.x);
             panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
         }
-        const zoomAxisY = clamp1(sticks.right.y + hud.getZoomAxis());
+        // 右スティックの物理入力は十字ボタン相当の排他動作へ整形する
+        // （X=回転・Y=ズームが斜めドリフトで同時発火しないようにする。
+        // `dioramaControllerMapping.ts`冒頭のコメント参照）。GUIのズーム/回転
+        // ボタン（`hud.getZoomAxis()`/`hud.getRotationAxis()`）はもともと個別の
+        // ボタンで排他的なため、本ゲート処理を適用するのは物理スティックの
+        // 生入力のみでよい。
+        const gatedRightStick = applyDPadGate(sticks.right.x, sticks.right.y);
+        const zoomAxisY = clamp1(gatedRightStick.y + hud.getZoomAxis());
         viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
 
-        // 右スティックX（物理コントローラー）とHUDの回転ボタンの軸値を合算する
-        // （パン/ズームと同じ「単純加算してクランプ」方式）。
-        const rotationAxisX = clamp1(sticks.right.x + hud.getRotationAxis());
+        // 右スティックX（物理コントローラー、ゲート適用後）とHUDの回転ボタンの
+        // 軸値を合算する（パン/ズームと同じ「単純加算してクランプ」方式）。
+        const rotationAxisX = clamp1(gatedRightStick.x + hud.getRotationAxis());
         // HUDの高さボタンは単一の符号付き軸[-1,1]（上昇=正）で表現されるため、
         // 物理トリガー値[0,1]へ変換してから合算・クランプする。
         const hudHeightAxis = hud.getHeightAxis();
