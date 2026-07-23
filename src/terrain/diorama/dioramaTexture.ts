@@ -258,6 +258,11 @@ export const buildDioramaMosaicTexture = async (
             true, // invertY: v=1 が画像上端（=北）になるUV計算（本ファイル冒頭のUV計算参照）に合わせる
             Texture.TRILINEAR_SAMPLINGMODE,
         );
+        // UVが境界付近で僅かに0..1をはみ出す場合に反対側の端からサンプリングされる
+        // （WRAP、既定値）のを防ぐため、タイル系テクスチャと同様にCLAMPを明示する
+        // （`geo/globeTileManager.ts` の `tex.wrapU/wrapV = Texture.CLAMP_ADDRESSMODE` と同じ意図）。
+        texture.wrapU = Texture.CLAMP_ADDRESSMODE;
+        texture.wrapV = Texture.CLAMP_ADDRESSMODE;
         texture.name = name;
         return texture;
     });
