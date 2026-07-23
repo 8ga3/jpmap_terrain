@@ -145,8 +145,26 @@ const fireTrigger = (motionController: FakeMotionController, value: number): voi
     motionController.trigger.onButtonStateChangedObservable.notifyObservers(motionController.trigger);
 };
 
+/**
+ * ARカメラ（`WebXRCamera`）の水平forward/right方向を模したフェイク。
+ * `headingRad` は `computeHeadingRadFromHorizontal`（`atan2(x,z)`、北=0・東=π/2）
+ * と同じ規約で、カメラが向いている水平方向を表す。
+ */
+const makeFakeCamera = (
+    headingRad: number,
+): { getDirection: (localAxis: { x: number; y: number; z: number }) => { x: number; y: number; z: number } } => {
+    const forward = { x: Math.sin(headingRad), y: 0, z: Math.cos(headingRad) };
+    const right = { x: Math.cos(headingRad), y: 0, z: -Math.sin(headingRad) };
+    return {
+        // `Vector3.Forward()`はz成分が非0、`Vector3.Right()`はx成分が非0という
+        // Babylonの座標軸規約を使って呼び出し元の軸を判別する（`localAxis.y`は常に0で無視）。
+        getDirection: (localAxis) => (localAxis.z !== 0 ? { ...forward } : { ...right }),
+    };
+};
+
 const makeXr = (
     controllers: FakeController[],
+    options: { cameraHeadingRad?: number } = {},
 ): {
     xr: WebXRDefaultExperience;
     addedObservable: FakeObservable<FakeController>;
@@ -164,6 +182,7 @@ const makeXr = (
         },
         baseExperience: {
             exitXRAsync,
+            camera: makeFakeCamera(options.cameraHeadingRad ?? 0),
         },
     } as unknown as WebXRDefaultExperience;
     return { xr, addedObservable, removedObservable, exitXRAsync };
@@ -541,12 +560,12 @@ describe("setupDioramaArControls", () => {
         triggerTileModeCyclePress: () => void;
         triggerExitArPress: () => void;
     };
-    const makeHud = (): FakeHud => {
+    const makeHud = (overrides: { panAxes?: { x: number; y: number } } = {}): FakeHud => {
         let tileModeCycleCallback: (() => void) | null = null;
         let exitArCallback: (() => void) | null = null;
         return {
             element: {} as HTMLElement,
-            getPanAxes: () => ({ x: 0, y: 0 }),
+            getPanAxes: () => overrides.panAxes ?? { x: 0, y: 0 },
             getZoomAxis: () => 0,
             getRotationAxis: () => 0,
             getHeightAxis: () => 0,
@@ -707,6 +726,112 @@ describe("setupDioramaArControls", () => {
         expect(cycle).not.toHaveBeenCalled();
         expect(exitXRAsync).not.toHaveBeenCalled();
         expect(hud.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("ARカメラが東(90°)を向いている場合、スティックを前方向へ倒すとpanAxesは東方向（x=1,y=0）になる", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        const { xr } = makeXr([controller], { cameraHeadingRad: Math.PI / 2 });
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        // Gamepad規約: y=-1がスティックを奥（前方向）へ倒した状態。
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+
+        tick(16);
+
+        const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
+        expect(feedAxes).toHaveBeenCalled();
+        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        expect(panAxes.x).toBeCloseTo(1);
+        expect(panAxes.y).toBeCloseTo(0);
+
+        dispose();
+    });
+
+    it("ARカメラが北(0°、既定)を向いている場合、スティックを前方向へ倒すとpanAxesは北方向（x=0,y=-1）のまま", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        const { xr } = makeXr([controller]);
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+
+        tick(16);
+
+        const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
+        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        expect(panAxes.x).toBeCloseTo(0);
+        expect(panAxes.y).toBeCloseTo(-1);
+
+        dispose();
+    });
+
+    it("HUDの仮想ジョイスティック入力もARカメラの向き基準で東西・南北へ変換される", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        const { xr } = makeXr([controller], { cameraHeadingRad: Math.PI });
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        // カメラが南(180°)を向いている状態で、HUDの仮想ジョイスティックを前方向へ倒す。
+        const hud = makeHud({ panAxes: { x: 0, y: -1 } });
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        tick(16);
+
+        const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
+        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        // 南向きで前進 = 南（north成分が負）へ移動するため、y軸(前方向が負値の規約)は正になる。
+        expect(panAxes.x).toBeCloseTo(0);
+        expect(panAxes.y).toBeCloseTo(1);
+
+        dispose();
+    });
+
+    it("複数フレームにわたりカメラの向きが小刻みに変動しても、8方位スナップによりpanAxesが安定する", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        const { xr } = makeXr([controller], { cameraHeadingRad: 0.05 });
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController();
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+
+        tick(16);
+        const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
+        const [firstPanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+
+        // 0.05rad(≈2.9°)は45°スナップ・5°ヒステリシスの範囲内の揺らぎのため、
+        // 北(0°)のバケットに留まり続けpanAxesは変化しないはず。
+        tick(16);
+        const [secondPanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+
+        expect(firstPanAxes.x).toBeCloseTo(0);
+        expect(firstPanAxes.y).toBeCloseTo(-1);
+        expect(secondPanAxes.x).toBeCloseTo(firstPanAxes.x);
+        expect(secondPanAxes.y).toBeCloseTo(firstPanAxes.y);
+
+        dispose();
     });
 });
 
