@@ -191,15 +191,23 @@ export const DEFAULT_HEADING_SNAP_HYSTERESIS_RAD = Math.PI / 36; // 5°
 const TWO_PI = Math.PI * 2;
 
 /** 任意の角度[rad]を `(-π, π]` へ正規化する。 */
-const normalizeAngleRad = (angleRad: number): number => {
+export const normalizeAngleRad = (angleRad: number): number => {
     let normalized = angleRad % TWO_PI;
     if (normalized > Math.PI) normalized -= TWO_PI;
     if (normalized <= -Math.PI) normalized += TWO_PI;
     return normalized;
 };
 
-/** `a` から `b` への最短の符号付き角度差（`(-π, π]`）。 */
-const angleDeltaRad = (a: number, b: number): number => normalizeAngleRad(b - a);
+/**
+ * `a` から `b` への最短の符号付き角度差（`(-π, π]`）。
+ *
+ * 単純な引き算（`b - a`）だと、±π境界を跨ぐ場合に差分がほぼ`±2π`（実際の
+ * 最短差はほぼ0）になり得る。`Math.sin`/`Math.cos`へ渡す前提の値
+ * （{@link rotateHorizontalUnitVector}等）では、引数が大きくなるほど
+ * 浮動小数点の相対誤差が増え、安定化のための丸め処理が意図通りに働かなく
+ * なるおそれがあるため、`(-π, π]`へ正規化した最短差分を返す。
+ */
+export const angleDeltaRad = (a: number, b: number): number => normalizeAngleRad(b - a);
 
 /**
  * ヒステリシス付きで向き角を離散方位（既定8方位）へスナップする。
