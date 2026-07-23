@@ -6,7 +6,10 @@
  * （正方形の4辺を巡る閉曲線）から一定深さ下へ側面壁を張り、底面で閉じることで
  * 解決する。上面メッシュ（`dioramaGrid`/`dioramaTerrain`）とは別の `Mesh`・別材質
  * （土色）として構築する想定の、純粋なジオメトリ生成関数。外周点列の形状に依存
- * しないため、正方形に限らず任意の凸多角形の外周でも動作する。
+ * しないため、正方形に限らず任意の凸多角形の外周で動作するが、底面中心は原点
+ * `(0, baseY, 0)` に固定して扇形分割するため、**外周が原点を内包する凸多角形**
+ * （中心が原点にある正方形/正多角形等）であることが前提となる（下記
+ * `buildDioramaSkirtGeometry` のコメントも参照）。
  */
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 
@@ -77,6 +80,12 @@ const setVertexColor = (colors: Float32Array, index: number, multiplier: number)
  * 側面壁の「上ほど明るく下ほど暗い」グラデーションは、法線・ライティングに依存しない
  * 頂点カラー（{@link WALL_TOP_COLOR_MULTIPLIER}/{@link WALL_BOTTOM_COLOR_MULTIPLIER}）
  * として明示的に付与する。
+ *
+ * @remarks
+ * 底面中心は `outerRing` から算出せず、常に原点 `(0, baseY, 0)` に固定して外周からの
+ * 扇形分割を行う。そのため `outerRing` は**原点を内包する凸多角形**（中心が原点に
+ * ある正方形/正多角形等）であることが前提となる。原点を内包しない外周を渡すと、
+ * 底面の扇形三角形が自己交差し破綻する。
  */
 export const buildDioramaSkirtGeometry = (
     outerRing: readonly DioramaSkirtRingPoint[],
