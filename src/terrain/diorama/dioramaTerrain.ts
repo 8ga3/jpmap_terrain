@@ -1,9 +1,10 @@
 /**
- * 箱庭ジオラマ地形（円形放射状メッシュ + 縮小スケール）。
+ * 箱庭ジオラマ地形（正方形グリッドメッシュ + 縮小スケール）。
  *
- * `dioramaGrid`（放射状グリッド・純粋関数）・`dioramaElevation`（DEMバイリニア
+ * `dioramaGrid`（正方形・行列状グリッド・純粋関数）・`dioramaElevation`（DEMバイリニア
  * サンプリング）・`dioramaTexture`（ラスタタイルのモザイク合成）を統合し、
- * Babylon.js の `Mesh` として構築する。
+ * Babylon.js の `Mesh` として構築する。フットプリントの外形は正方形そのもの（円形
+ * マスク処理は行わない。Meta Quest 3 実機のWebXRパフォーマンスを優先する方針）。
  *
  * 縮小スケールは公開する `root`（`TransformNode`）に対して適用する想定で、メッシュ
  * 自体は常に実世界メートル単位（中心からの東西・南北オフセット + 標高）で構築する。
@@ -34,6 +35,7 @@ import type { MapType } from "../gsiTile";
 import {
     buildDioramaGridPoints,
     buildDioramaGridIndices,
+    extractGridPerimeterIndices,
     type DioramaCenter,
     type DioramaGridOptions,
 } from "./dioramaGrid";
@@ -51,22 +53,20 @@ export type DioramaTileMode = MapType | "wireframe";
 export interface DioramaTerrainOptions {
     /** 実世界の中心（測地座標）。 */
     center: DioramaCenter;
-    /** 実世界フットプリント半径[m]（拡大縮小操作で可変になる想定）。 */
-    footprintRadiusM: number;
+    /** 実世界フットプリントの半辺長[m]（正方形の中心から辺までの距離。拡大縮小操作で可変になる想定）。 */
+    footprintHalfSizeM: number;
     /** 卓上表示半径[m]（`root` の縮小スケール算出に使用）。 */
     tableRadiusM: number;
-    /** 同心円リング数（既定 12）。 */
-    ringCount?: number;
-    /** 1リングあたりの分割数（既定 48）。 */
-    radialSegments?: number;
+    /** 正方形グリッドの1辺あたりの分割数（既定 24）。頂点数は `(gridSegments+1)^2`。 */
+    gridSegments?: number;
     /**
-     * 標高取得ズーム。省略時は `footprintRadiusM` に応じて自動算出する
+     * 標高取得ズーム。省略時は `footprintHalfSizeM` に応じて自動算出する
      * （{@link computeAutoZoomLevel} 参照）。明示指定すると自動算出を無効化し、
      * ズームアウトしても固定のズームレベルを使い続ける（テスト・デバッグ用途）。
      */
     demZoom?: number;
     /**
-     * テクスチャ取得ズーム。省略時は `footprintRadiusM` に応じて自動算出する
+     * テクスチャ取得ズーム。省略時は `footprintHalfSizeM` に応じて自動算出する
      * （{@link computeAutoZoomLevel} 参照）。明示指定すると自動算出を無効化する。
      */
     textureZoom?: number;
@@ -75,9 +75,9 @@ export interface DioramaTerrainOptions {
     /** 標高の垂直誇張倍率（`root` の一様スケール適用前、既定 1）。 */
     heightScaleFactor?: number;
     /**
-     * 側面壁（土台）の深さ ÷ footprintRadiusM（既定 0.15）。
+     * 側面壁（土台）の深さ ÷ footprintHalfSizeM（既定 0.15）。
      * `root` の一様スケール適用後は tableRadiusM に対する比率として一定になるため、
-     * フットプリント半径を変えても見た目の壁厚は変わらない。
+     * フットプリントの半辺長を変えても見た目の壁厚は変わらない。
      */
     baseDepthRatio?: number;
 }
@@ -88,25 +88,25 @@ export interface DioramaTerrain {
     /** 卓上表示用のスケール適用点。回転・高さオフセットは親ノードで扱う（冒頭のコメント参照）。 */
     readonly root: TransformNode;
     setCenter(lat: number, lon: number): Promise<void>;
-    setFootprintRadius(radiusM: number): Promise<void>;
+    setFootprintHalfSize(halfSizeM: number): Promise<void>;
     setTileMode(tileMode: DioramaTileMode): Promise<void>;
     /**
-     * 中心・フットプリント半径の一方または両方を、1回のrebuild（buildMesh呼び出し）に
+     * 中心・フットプリント半辺長の一方または両方を、1回のrebuild（buildMesh呼び出し）に
      * まとめて適用する。
      *
-     * @remarks `setCenter`+`setFootprintRadius` を個別に呼ぶと、それぞれが独立して
+     * @remarks `setCenter`+`setFootprintHalfSize` を個別に呼ぶと、それぞれが独立して
      * `enqueueRebuild` されるため、内部の直列実行キュー（`pendingRebuild`）上で
      * 2回の完全なrebuild（DEM/テクスチャの再フェッチを含む）が順番に実行され、
      * ネットワーク往復分のレイテンシが積み重なる。AR中のコントローラー操作
      * （地図移動・拡大縮小が同時に入力される）等、低遅延性が重要な場面ではこちらを使う。
      */
-    setView(patch: { center?: DioramaCenter; footprintRadiusM?: number }): Promise<void>;
+    setView(patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void>;
     dispose(): void;
 }
 
 const DEFAULTS = {
-    ringCount: 12,
-    radialSegments: 48,
+    // Meta Quest 3 実機での検証結果に応じて調整予定の暫定値。
+    gridSegments: 24,
     tileMode: "std" as DioramaTileMode,
     heightScaleFactor: 1,
     baseDepthRatio: 0.15,
@@ -119,10 +119,9 @@ const WIREFRAME_COLOR = new Color3(0.4, 0.95, 0.6);
 
 interface ResolvedOptions {
     center: DioramaCenter;
-    footprintRadiusM: number;
+    footprintHalfSizeM: number;
     tableRadiusM: number;
-    ringCount: number;
-    radialSegments: number;
+    gridSegments: number;
     /** 未指定（自動算出）の場合は `undefined`。{@link computeAutoZoomLevel} 参照。 */
     demZoom: number | undefined;
     /** 未指定（自動算出）の場合は `undefined`。{@link computeAutoZoomLevel} 参照。 */
@@ -133,10 +132,10 @@ interface ResolvedOptions {
 }
 
 /**
- * ズーム自動算出の基準となる `footprintRadiusM`[m] と、その時に用いる
+ * ズーム自動算出の基準となる `footprintHalfSizeM`[m] と、その時に用いる
  * DEM/テクスチャの取得ズームレベル（従来の固定既定値と同じ組み合わせ）。
  */
-const AUTO_ZOOM_REFERENCE_FOOTPRINT_RADIUS_M = 800;
+const AUTO_ZOOM_REFERENCE_FOOTPRINT_HALF_SIZE_M = 800;
 const AUTO_ZOOM_REFERENCE_DEM_ZOOM = 14;
 const AUTO_ZOOM_REFERENCE_TEXTURE_ZOOM = 16;
 
@@ -152,15 +151,15 @@ const AUTO_DEM_ZOOM_MAX = 14;
 const AUTO_TEXTURE_ZOOM_MAX = 18;
 
 /**
- * `footprintRadiusM` から DEM/テクスチャの取得ズームレベルを自動算出する。
+ * `footprintHalfSizeM` から DEM/テクスチャの取得ズームレベルを自動算出する。
  *
  * @remarks
  * タイルピラミッドは「ズームレベルが1段階粗くなるごとに1タイルが被覆する実距離が
- * 2倍になる」という規則的な関係を持つため、`footprintRadiusM` が基準値の2倍に
+ * 2倍になる」という規則的な関係を持つため、`footprintHalfSizeM` が基準値の2倍に
  * なるごとにズームを1段階粗くすれば、取得タイル数・頂点あたりのデータ密度が
- * footprintRadiusM によらずほぼ一定に保たれる。3Dビューア（globeデモ）が
+ * footprintHalfSizeM によらずほぼ一定に保たれる。3Dビューア（globeデモ）が
  * カメラ距離に応じてタイルズームを動的に選ぶのと同じ考え方を、箱庭の
- * フットプリント半径基準に単純化して適用したもの。
+ * フットプリント半辺長基準に単純化して適用したもの。
  *
  * これにより、ズームアウトして広範囲（日本全体等）を表示する際も取得タイル数が
  * 際限なく増えず動作が重くならない。固定ズームのままズームアウト上限だけを
@@ -169,12 +168,12 @@ const AUTO_TEXTURE_ZOOM_MAX = 18;
  * ズームアウト上限を広げる必要がある。
  */
 export const computeAutoZoomLevel = (
-    footprintRadiusM: number,
+    footprintHalfSizeM: number,
     referenceZoom: number,
     minZoom: number = AUTO_ZOOM_MIN,
     maxZoom: number = AUTO_TEXTURE_ZOOM_MAX,
 ): number => {
-    const ratio = footprintRadiusM > 0 ? footprintRadiusM / AUTO_ZOOM_REFERENCE_FOOTPRINT_RADIUS_M : 1;
+    const ratio = footprintHalfSizeM > 0 ? footprintHalfSizeM / AUTO_ZOOM_REFERENCE_FOOTPRINT_HALF_SIZE_M : 1;
     const zoom = referenceZoom - Math.log2(ratio);
     if (!Number.isFinite(zoom)) return minZoom;
     return Math.min(maxZoom, Math.max(minZoom, Math.round(zoom)));
@@ -205,12 +204,12 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     // tableRadiusM は root.scaling の分母（applyScale）になるため、構築完了を待たず
     // ここで早期に検証し、不正値（0以下・NaN・Infinity）による無効なスケール算出を防ぐ。
     assertPositiveFinite(options.tableRadiusM, "tableRadiusM");
-    // footprintRadiusM は buildDioramaGridPoints（dioramaGrid.ts）内でも検証されるが、
+    // footprintHalfSizeM は buildDioramaGridPoints（dioramaGrid.ts）内でも検証されるが、
     // ここでも早期に検証し、非同期のタイル取得等を開始する前に失敗させる
     // （0以下・NaN・Infinityを拒否。Infinityはタイルレイアウト計算・自動ズーム
     // 算出（computeAutoZoomLevel）を不正な値に導く）。
-    assertPositiveFinite(options.footprintRadiusM, "footprintRadiusM");
-    // demZoom/textureZoomは省略可（省略時はfootprintRadiusMから自動算出、
+    assertPositiveFinite(options.footprintHalfSizeM, "footprintHalfSizeM");
+    // demZoom/textureZoomは省略可（省略時はfootprintHalfSizeMから自動算出、
     // buildMesh側で行う）。明示指定された場合のみ検証する（非整数/負数は
     // toTileXY・totalPixelsForZoom（gsiTile.ts/geo/mapping.ts）を不正な
     // タイル要求・レイアウト計算に導くため）。
@@ -222,10 +221,9 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     assertNonNegativeFinite(baseDepthRatio, "baseDepthRatio");
     return {
         center: options.center,
-        footprintRadiusM: options.footprintRadiusM,
+        footprintHalfSizeM: options.footprintHalfSizeM,
         tableRadiusM: options.tableRadiusM,
-        ringCount: options.ringCount ?? DEFAULTS.ringCount,
-        radialSegments: options.radialSegments ?? DEFAULTS.radialSegments,
+        gridSegments: options.gridSegments ?? DEFAULTS.gridSegments,
         demZoom: options.demZoom,
         textureZoom: options.textureZoom,
         tileMode: options.tileMode ?? DEFAULTS.tileMode,
@@ -260,23 +258,20 @@ const buildMesh = async (
     scene: Scene,
     resolved: ResolvedOptions,
 ): Promise<BuiltMesh> => {
-    const gridOptions: DioramaGridOptions = {
-        ringCount: resolved.ringCount,
-        radialSegments: resolved.radialSegments,
-    };
-    const points = buildDioramaGridPoints(resolved.center, resolved.footprintRadiusM, gridOptions);
+    const gridOptions: DioramaGridOptions = { gridSegments: resolved.gridSegments };
+    const points = buildDioramaGridPoints(resolved.center, resolved.footprintHalfSizeM, gridOptions);
     const indices = buildDioramaGridIndices(gridOptions);
 
-    // demZoom/textureZoomが明示指定されていない場合、footprintRadiusMから自動算出する
+    // demZoom/textureZoomが明示指定されていない場合、footprintHalfSizeMから自動算出する
     // （{@link computeAutoZoomLevel} 参照）。ズームアウトして広範囲を表示する際も
     // 取得タイル数がほぼ一定に保たれ、動作が重くならないようにするため。
     const demZoom =
         resolved.demZoom ??
-        computeAutoZoomLevel(resolved.footprintRadiusM, AUTO_ZOOM_REFERENCE_DEM_ZOOM, AUTO_ZOOM_MIN, AUTO_DEM_ZOOM_MAX);
+        computeAutoZoomLevel(resolved.footprintHalfSizeM, AUTO_ZOOM_REFERENCE_DEM_ZOOM, AUTO_ZOOM_MIN, AUTO_DEM_ZOOM_MAX);
     const textureZoom =
         resolved.textureZoom ??
         computeAutoZoomLevel(
-            resolved.footprintRadiusM,
+            resolved.footprintHalfSizeM,
             AUTO_ZOOM_REFERENCE_TEXTURE_ZOOM,
             AUTO_ZOOM_MIN,
             AUTO_TEXTURE_ZOOM_MAX,
@@ -297,8 +292,13 @@ const buildMesh = async (
             : buildDioramaMosaicTexture(scene, textureLayout, resolved.tileMode),
     ]);
 
-    // 中心点の標高を基準面とし、箱庭が root.position.y=0 付近に収まるようにする。
-    const baseElevation = elevations[0];
+    // 基準面の標高として、中心に最も近い格子点の標高を使う（行列状グリッドは
+    // gridSegmentsが奇数の場合、中心(0,0)ちょうどには頂点を持たないため）。
+    // グリッド解像度に対して中心からのずれは高々半セル分であり、箱庭全体を
+    // root.position.y=0 付近へ収めるための基準としては十分な精度。
+    const centerRow = Math.round(resolved.gridSegments / 2);
+    const centerCol = centerRow;
+    const baseElevation = elevations[centerRow * (resolved.gridSegments + 1) + centerCol];
 
     const positions = new Float32Array(points.length * 3);
     const uvs = new Float32Array(points.length * 2);
@@ -347,32 +347,37 @@ const buildMesh = async (
     // 裏面カリングを無効化する（側面壁と同じ扱い）。
     material.backFaceCulling = false;
     mesh.material = material;
-    // 地形メッシュは footprintRadiusM 半径の円盤に対し標高差が小さく、バウンディング
-    // ボリュームが薄く偏平になりやすい。加えて root の一様スケールが極端に小さい
-    // （既定で概ね1/2000）ため、誤ってフラスタムカリングされるリスクがある。
+    // 地形メッシュは footprintHalfSizeM を半辺長とする正方形に対し標高差が小さく、
+    // バウンディングボリュームが薄く偏平になりやすい。加えて root の一様スケールが
+    // 極端に小さい（既定で概ね1/2000）ため、誤ってフラスタムカリングされるリスクがある。
     // `alwaysSelectAsActiveMesh` でカリング判定自体を無効化し、常に描画対象に含める。
     mesh.alwaysSelectAsActiveMesh = true;
 
-    // 側面壁・底面（土台）。実物のジオラマ模型のように、外周リングから一定深さ下へ
-    // 壁を張って底面で閉じることで、地形メッシュ単体では失われがちな水平（基準面）の
-    // 手がかりを与える。壁の深さは footprintRadiusM に比例させ、root の一様スケール
-    // 適用後は tableRadiusM に対する比率として一定になるようにする
-    // （フットプリント半径を変えても見た目の壁厚が変わらない）。
+    // 側面壁・底面（土台）。実物のジオラマ模型のように、外周（正方形の4辺）から一定
+    // 深さ下へ壁を張って底面で閉じることで、地形メッシュ単体では失われがちな水平
+    // （基準面）の手がかりを与える。壁の深さは footprintHalfSizeM に比例させ、root の
+    // 一様スケール適用後は tableRadiusM に対する比率として一定になるようにする
+    // （フットプリントの半辺長を変えても見た目の壁厚が変わらない）。
     let minY = Infinity;
     for (let i = 1; i < positions.length; i += 3) {
         if (positions[i] < minY) minY = positions[i];
     }
-    const baseY = minY - resolved.footprintRadiusM * resolved.baseDepthRatio;
-    const outerRingStart = 1 + (resolved.ringCount - 1) * resolved.radialSegments;
-    const outerRing = Array.from({ length: resolved.radialSegments }, (_, i) => {
-        const idx = outerRingStart + i;
-        return { x: positions[idx * 3], y: positions[idx * 3 + 1], z: positions[idx * 3 + 2] };
-    });
+    const baseY = minY - resolved.footprintHalfSizeM * resolved.baseDepthRatio;
+    const perimeterIndices = extractGridPerimeterIndices(gridOptions);
+    const outerRing = perimeterIndices.map((idx) => ({
+        x: positions[idx * 3],
+        y: positions[idx * 3 + 1],
+        z: positions[idx * 3 + 2],
+    }));
     const skirtGeometry = buildDioramaSkirtGeometry(outerRing, baseY);
     const skirtVertexData = new VertexData();
     skirtVertexData.positions = skirtGeometry.positions;
     skirtVertexData.indices = skirtGeometry.indices;
     skirtVertexData.normals = skirtGeometry.normals;
+    // 側面壁の高さ方向グラデーション（上端が明るく下端が暗い）用の頂点カラー。
+    // `Mesh.useVertexColors` は既定で true のため、追加設定なしでマテリアルの
+    // 拡散色（土色）へ自動的に乗算される。
+    skirtVertexData.colors = skirtGeometry.colors;
 
     const skirtMesh = new Mesh("diorama-skirt", scene);
     skirtVertexData.applyToMesh(skirtMesh, true);
@@ -439,10 +444,10 @@ export const createDioramaTerrain = async (
         if (!(resolved.tableRadiusM > 0)) {
             throw new RangeError(`tableRadiusM must be > 0 (got ${resolved.tableRadiusM})`);
         }
-        if (!(resolved.footprintRadiusM > 0)) {
-            throw new RangeError(`footprintRadiusM must be > 0 (got ${resolved.footprintRadiusM})`);
+        if (!(resolved.footprintHalfSizeM > 0)) {
+            throw new RangeError(`footprintHalfSizeM must be > 0 (got ${resolved.footprintHalfSizeM})`);
         }
-        const scale = resolved.tableRadiusM / resolved.footprintRadiusM;
+        const scale = resolved.tableRadiusM / resolved.footprintHalfSizeM;
         root.scaling.setAll(scale);
     };
 
@@ -453,7 +458,7 @@ export const createDioramaTerrain = async (
 
     /**
      * 保留中の rebuild チェーン。`enqueueRebuild` はこれに繋げて直列化する。
-     * `setCenter`/`setFootprintRadius`/`setTileMode` が並行に呼ばれても、rebuild が
+     * `setCenter`/`setFootprintHalfSize`/`setTileMode` が並行に呼ばれても、rebuild が
      * 呼び出し順に1つずつ実行されるようにし、以下の競合を防ぐ:
      * - 後から開始したが先に完了した rebuild が `built`/`resolved` を上書きし、
      *   別の（本来もっと新しい）rebuild の結果を消してしまう
@@ -510,22 +515,22 @@ export const createDioramaTerrain = async (
         root,
         setCenter: (lat: number, lon: number): Promise<void> =>
             enqueueRebuild((current) => ({ ...current, center: { lat, lon } })),
-        setFootprintRadius: (radiusM: number): Promise<void> => {
+        setFootprintHalfSize: (halfSizeM: number): Promise<void> => {
             try {
-                assertPositiveFinite(radiusM, "radiusM");
+                assertPositiveFinite(halfSizeM, "halfSizeM");
             } catch (err) {
                 // 呼び出し側の一貫したエラーハンドリング（Promise.catch/await+try-catch）のため、
                 // 同期例外ではなく reject として返す（他のメソッドと同じ非同期契約に揃える）。
                 return Promise.reject(err instanceof Error ? err : new Error(String(err)));
             }
-            return enqueueRebuild((current) => ({ ...current, footprintRadiusM: radiusM }));
+            return enqueueRebuild((current) => ({ ...current, footprintHalfSizeM: halfSizeM }));
         },
         setTileMode: (tileMode: DioramaTileMode): Promise<void> =>
             enqueueRebuild((current) => ({ ...current, tileMode })),
-        setView: (patch: { center?: DioramaCenter; footprintRadiusM?: number }): Promise<void> => {
-            if (patch.footprintRadiusM !== undefined) {
+        setView: (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
+            if (patch.footprintHalfSizeM !== undefined) {
                 try {
-                    assertPositiveFinite(patch.footprintRadiusM, "footprintRadiusM");
+                    assertPositiveFinite(patch.footprintHalfSizeM, "footprintHalfSizeM");
                 } catch (err) {
                     return Promise.reject(err instanceof Error ? err : new Error(String(err)));
                 }
@@ -533,7 +538,7 @@ export const createDioramaTerrain = async (
             return enqueueRebuild((current) => ({
                 ...current,
                 ...(patch.center !== undefined ? { center: patch.center } : {}),
-                ...(patch.footprintRadiusM !== undefined ? { footprintRadiusM: patch.footprintRadiusM } : {}),
+                ...(patch.footprintHalfSizeM !== undefined ? { footprintHalfSizeM: patch.footprintHalfSizeM } : {}),
             }));
         },
         dispose: (): void => {

@@ -2,8 +2,8 @@
  * 箱庭ジオラマビューア（diorama）デモ。
  *
  * @remarks
- * 地形を手元サイズの円形「箱庭」として表示するWebXR対応デモ。地形は
- * `terrain/diorama/dioramaTerrain`（放射状グリッド + 実世界DEM/タイル取得 +
+ * 地形を手元サイズの正方形「箱庭」として表示するWebXR対応デモ。地形は
+ * `terrain/diorama/dioramaTerrain`（正方形グリッド + 実世界DEM/タイル取得 +
  * 縮小スケール）で構築する。GlobeScene（実寸大ECEF楕円体 + floating origin）は
  * 使わない独立実装のため、本デモは `JpmapTerrain` に依存しない。
  * - WebXR (`immersive-ar`) セッション統合（`webXrArSession.ts`）により、箱庭の周りを
@@ -37,8 +37,8 @@ const DEMO_MOUNT_ID = "root";
 
 /** 既定の箱庭中心（富士山・富士宮口五合目付近の山腹。単調な斜面が見える地点）。 */
 const DEFAULT_CENTER = { lat: 35.3436, lon: 138.7203 };
-/** 既定の実世界フットプリント半径[m]。 */
-const DEFAULT_FOOTPRINT_RADIUS_M = 800;
+/** 既定の実世界フットプリントの半辺長[m]。 */
+const DEFAULT_FOOTPRINT_HALF_SIZE_M = 800;
 /** 既定の卓上表示半径[m]（手元サイズ）。 */
 const DEFAULT_TABLE_RADIUS_M = 0.35;
 /** 既定のタイル種別（標準地図）。 */
@@ -117,9 +117,9 @@ const start = async (): Promise<void> => {
     // `useNaturalPinchZoom` はピンチ距離の「比率」で radius を更新するため
     // スケール非依存になる。
     camera.useNaturalPinchZoom = true;
-    // pan（camera.target をずらす操作）は無効化する。円形にクリップされた箱庭は
+    // pan（camera.target をずらす操作）は無効化する。正方形にクリップされた箱庭は
     // pan するとフレームアウトし戻す手段もないため、操作は「回転＋ズーム」のみに
-    // 絞る。また、箱庭の実世界中心・フットプリント半径を変更する「地図移動・
+    // 絞る。また、箱庭の実世界中心・フットプリントの半辺長を変更する「地図移動・
     // 拡大縮小」は別途 XRコントローラー専用の操作として実装予定であり、
     // 本カメラの pan とは意味が異なるため混同を避ける。
     camera.panningSensibility = 0;
@@ -135,7 +135,7 @@ const start = async (): Promise<void> => {
 
     const dioramaTerrain = await createDioramaTerrain(scene, {
         center: DEFAULT_CENTER,
-        footprintRadiusM: DEFAULT_FOOTPRINT_RADIUS_M,
+        footprintHalfSizeM: DEFAULT_FOOTPRINT_HALF_SIZE_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
         tileMode: DEFAULT_TILE_MODE,
     });
@@ -156,7 +156,7 @@ const start = async (): Promise<void> => {
     // （`setupDioramaWebXrArButton`経由）とデスクトップのキーボード操作
     // （PC単体でAR無しでも動作確認できるようにする目的）の双方から使われ、
     // どちらで移動しても位置がもう一方に引き継がれる（`dioramaViewController.ts`参照）。
-    const viewController = createDioramaViewController(dioramaTerrain, DEFAULT_CENTER, DEFAULT_FOOTPRINT_RADIUS_M);
+    const viewController = createDioramaViewController(dioramaTerrain, DEFAULT_CENTER, DEFAULT_FOOTPRINT_HALF_SIZE_M);
     // 箱庭の回転・高さオフセットの共有状態保持者（`dioramaOrientationController.ts`参照）。
     // viewControllerと同様、AR/キーボードの双方から使われる。
     const orientationController = createDioramaOrientationController(orientationRoot);

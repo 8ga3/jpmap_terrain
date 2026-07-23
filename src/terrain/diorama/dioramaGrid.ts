@@ -1,13 +1,17 @@
 /**
- * 箱庭ジオラマの放射状（極座標）グリッド生成。
+ * 箱庭ジオラマの正方形（行列状）グリッド生成。
  *
- * 「正方形タイルを円形にクリップする」問題を、放射状グリッド自体の外形が
- * そのまま円になることで構造的に回避する（シェーダーdiscard/ステンシル/
- * ジオメトリ切断は不要）。中心からの距離が小さい範囲（footprintRadiusM は
- * 手元サイズの箱庭が対象とする実世界footprint半径であり、通常は高々数km）
- * を対象とするため、緯度経度への変換は WGS84 楕円体の曲率半径に基づく
- * 局所平面近似（東西/南北の1度あたりメートル）で十分な精度を持つ
- * （globe 地形が必要とする ECEF 全球規模の厳密性は不要）。
+ * 標高タイル（矩形のラスタデータ）は行列状のピクセル配列であり、グリッド自体も
+ * 行列状（row/col）にすることで、標高サンプリング・メッシュ生成が素直な二重ループで
+ * 済み、中心への頂点集中（旧・放射状グリッドで生じていたシワ状アーティファクト）が
+ * 構造的に発生しない。フットプリントの外形は正方形そのものになる（円形クリップは
+ * 行わない。Meta Quest 3 実機でのWebXRパフォーマンスを優先し、円形の見た目自体を
+ * 採用しない方針としたため）。
+ *
+ * 中心からの距離が小さい範囲（footprintHalfSizeM は手元サイズの箱庭が対象とする
+ * 実世界フットプリントの半辺長であり、通常は高々数km）を対象とするため、緯度経度への
+ * 変換は WGS84 楕円体の曲率半径に基づく局所平面近似（東西/南北の1度あたりメートル）で
+ * 十分な精度を持つ（globe 地形が必要とする ECEF 全球規模の厳密性は不要）。
  */
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
@@ -20,12 +24,10 @@ export interface DioramaCenter {
     lon: number;
 }
 
-/** 放射状グリッドの分割設定。 */
+/** 正方形グリッドの分割設定。 */
 export interface DioramaGridOptions {
-    /** 中心を除く同心円リング数（>= 1）。 */
-    ringCount: number;
-    /** 1リングあたりの分割数（>= 3）。 */
-    radialSegments: number;
+    /** 1辺あたりの分割数（>= 1）。頂点数は `(gridSegments+1) * (gridSegments+1)`。 */
+    gridSegments: number;
 }
 
 /** グリッド上の1点。 */
@@ -38,10 +40,10 @@ export interface DioramaGridPoint {
     lat: number;
     /** 経度[deg]（DEM/テクスチャ取得用）。 */
     lon: number;
-    /** リング番号（0 = 中心点）。 */
-    ring: number;
-    /** リング内のセグメント番号（中心点は 0）。 */
-    segment: number;
+    /** 行番号（0 = 北端、gridSegments = 南端）。 */
+    row: number;
+    /** 列番号（0 = 西端、gridSegments = 東端）。 */
+    col: number;
 }
 
 /**
@@ -93,38 +95,33 @@ export const offsetToLatLon = (
 };
 
 /**
- * 放射状（同心円）グリッドの点列を生成する。
- * 並び順: 中心点(1個) → ring=1..ringCount（各 radialSegments 個、角度0=北、時計回り）。
- * 合計点数は `1 + ringCount * radialSegments`。
+ * 正方形（行列状）グリッドの点列を生成する。
+ * 並び順: row-major（row=0..gridSegments、各row内でcol=0..gridSegments）。
+ * row=0 が北端(z=+footprintHalfSizeM)、col=0 が西端(x=-footprintHalfSizeM)。
+ * 合計点数は `(gridSegments+1) * (gridSegments+1)`。
  */
 export const buildDioramaGridPoints = (
     center: DioramaCenter,
-    footprintRadiusM: number,
+    footprintHalfSizeM: number,
     options: DioramaGridOptions,
 ): DioramaGridPoint[] => {
-    const { ringCount, radialSegments } = options;
-    if (ringCount < 1) {
-        throw new RangeError(`ringCount must be >= 1 (got ${ringCount})`);
+    const { gridSegments } = options;
+    if (gridSegments < 1) {
+        throw new RangeError(`gridSegments must be >= 1 (got ${gridSegments})`);
     }
-    if (radialSegments < 3) {
-        throw new RangeError(`radialSegments must be >= 3 (got ${radialSegments})`);
-    }
-    if (!(footprintRadiusM > 0)) {
-        throw new RangeError(`footprintRadiusM must be > 0 (got ${footprintRadiusM})`);
+    if (!(footprintHalfSizeM > 0)) {
+        throw new RangeError(`footprintHalfSizeM must be > 0 (got ${footprintHalfSizeM})`);
     }
 
-    const points: DioramaGridPoint[] = [
-        { x: 0, z: 0, lat: center.lat, lon: center.lon, ring: 0, segment: 0 },
-    ];
-    for (let ring = 1; ring <= ringCount; ring++) {
-        const radius = (footprintRadiusM * ring) / ringCount;
-        for (let segment = 0; segment < radialSegments; segment++) {
-            const angle = (2 * Math.PI * segment) / radialSegments;
-            // 角度0を北(+z)とし、時計回り（東→南→西）に進める。
-            const x = radius * Math.sin(angle);
-            const z = radius * Math.cos(angle);
+    const points: DioramaGridPoint[] = [];
+    for (let row = 0; row <= gridSegments; row++) {
+        // row=0→z=+footprintHalfSizeM（北端）、row=gridSegments→z=-footprintHalfSizeM（南端）。
+        const z = footprintHalfSizeM * (1 - (2 * row) / gridSegments);
+        for (let col = 0; col <= gridSegments; col++) {
+            // col=0→x=-footprintHalfSizeM（西端）、col=gridSegments→x=+footprintHalfSizeM（東端）。
+            const x = footprintHalfSizeM * ((2 * col) / gridSegments - 1);
             const { lat, lon } = offsetToLatLon(center, x, z);
-            points.push({ x, z, lat, lon, ring, segment });
+            points.push({ x, z, lat, lon, row, col });
         }
     }
     return points;
@@ -132,40 +129,54 @@ export const buildDioramaGridPoints = (
 
 /**
  * `buildDioramaGridPoints` の点列に対応する三角形インデックスを生成する。
- * - 中心 → ring1: 扇形（radialSegments 枚）
- * - ring(r) → ring(r+1): 帯（radialSegments * 2 枚 / 段）
- * 頂点順は Babylon 既定（左手系, Y-up）で表を向くよう時計回りにする。
+ * 1セル（row,col）につき2枚の三角形（対角線 a-d で分割）。
+ * 頂点順は Babylon 既定（左手系, Y-up）で表（+Y方向）を向くよう構成する。
  */
 export const buildDioramaGridIndices = (
     options: DioramaGridOptions,
 ): Uint32Array => {
-    const { ringCount, radialSegments } = options;
+    const { gridSegments } = options;
+    const vertsPerSide = gridSegments + 1;
+    const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
+
     const indices: number[] = [];
-    const ringStart = (ring: number): number =>
-        ring === 0 ? 0 : 1 + (ring - 1) * radialSegments;
-
-    // 中心 → ring1 の扇形。
-    const ring1Start = ringStart(1);
-    for (let seg = 0; seg < radialSegments; seg++) {
-        const a = ring1Start + seg;
-        const b = ring1Start + ((seg + 1) % radialSegments);
-        indices.push(0, b, a);
-    }
-
-    // ring(r) → ring(r+1) の帯。
-    for (let ring = 1; ring < ringCount; ring++) {
-        const innerStart = ringStart(ring);
-        const outerStart = ringStart(ring + 1);
-        for (let seg = 0; seg < radialSegments; seg++) {
-            const segNext = (seg + 1) % radialSegments;
-            const i0 = innerStart + seg;
-            const i1 = innerStart + segNext;
-            const o0 = outerStart + seg;
-            const o1 = outerStart + segNext;
-            indices.push(i0, o1, o0);
-            indices.push(i0, i1, o1);
+    for (let row = 0; row < gridSegments; row++) {
+        for (let col = 0; col < gridSegments; col++) {
+            const a = gridIndex(row, col);
+            const b = gridIndex(row, col + 1);
+            const c = gridIndex(row + 1, col);
+            const d = gridIndex(row + 1, col + 1);
+            indices.push(a, c, b, b, c, d);
         }
     }
-
     return new Uint32Array(indices);
+};
+
+/**
+ * `buildDioramaGridPoints` の点列から、正方形の外周（4辺）を巡る点インデックス列を
+ * 抽出する。側面壁（`dioramaSkirt.buildDioramaSkirtGeometry`）が外周の閉曲線を
+ * 必要とするため、行列状グリッドの境界を単一の閉じたループとして取り出す。
+ *
+ * 巡回順は 北辺(西→東) → 東辺(北→南) → 南辺(東→西) → 西辺(南→北) で、
+ * 各辺の始点（四隅）が重複しないよう次の辺の開始点から詰める。これは旧・放射状
+ * グリッドの角度増加方向（北→東→南→西の時計回り）と同じ回転方向になる。
+ */
+export const extractGridPerimeterIndices = (
+    options: DioramaGridOptions,
+): number[] => {
+    const { gridSegments } = options;
+    const vertsPerSide = gridSegments + 1;
+    const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
+
+    const perimeter: number[] = [];
+    // 北辺: row=0, col=0..gridSegments-1（西→東）。
+    for (let col = 0; col < gridSegments; col++) perimeter.push(gridIndex(0, col));
+    // 東辺: col=gridSegments, row=0..gridSegments-1（北→南）。
+    for (let row = 0; row < gridSegments; row++) perimeter.push(gridIndex(row, gridSegments));
+    // 南辺: row=gridSegments, col=gridSegments..1（東→西）。
+    for (let col = gridSegments; col > 0; col--) perimeter.push(gridIndex(gridSegments, col));
+    // 西辺: col=0, row=gridSegments..1（南→北）。
+    for (let row = gridSegments; row > 0; row--) perimeter.push(gridIndex(row, 0));
+
+    return perimeter;
 };
