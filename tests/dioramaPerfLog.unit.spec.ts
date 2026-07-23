@@ -26,11 +26,17 @@ afterEach(() => {
 
 describe("measureAsync", () => {
     it("fnの戻り値をそのまま解決する", async () => {
+        // 本テストの主眼は戻り値の伝播であり、console.debugの呼び出し自体は
+        // 検証対象ではないため、テスト出力のノイズを避けるために抑制する。
+        vi.spyOn(console, "debug").mockImplementation(() => {});
         const result = await measureAsync("test-label", async () => 42);
         expect(result).toBe(42);
     });
 
     it("fnが失敗した場合はそのエラーをそのまま伝播する", async () => {
+        // 本テストの主眼はエラー伝播であり、console.debugの呼び出し自体は
+        // 検証対象ではないため、テスト出力のノイズを避けるために抑制する。
+        vi.spyOn(console, "debug").mockImplementation(() => {});
         const err = new Error("boom");
         await expect(
             measureAsync("test-label", async () => {
