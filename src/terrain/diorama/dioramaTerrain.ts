@@ -57,7 +57,7 @@ export interface DioramaTerrainOptions {
     footprintHalfSizeM: number;
     /** 卓上表示半径[m]（`root` の縮小スケール算出に使用）。 */
     tableRadiusM: number;
-    /** 正方形グリッドの1辺あたりの分割数（既定 24）。頂点数は `(gridSegments+1)^2`。 */
+    /** 正方形グリッドの1辺あたりの分割数（既定 48）。頂点数は `(gridSegments+1)^2`。 */
     gridSegments?: number;
     /**
      * 標高取得ズーム。省略時は `footprintHalfSizeM` に応じて自動算出する
@@ -106,7 +106,7 @@ export interface DioramaTerrain {
 
 const DEFAULTS = {
     // Meta Quest 3 実機での検証結果に応じて調整予定の暫定値。
-    gridSegments: 24,
+    gridSegments: 48,
     tileMode: "std" as DioramaTileMode,
     heightScaleFactor: 1,
     baseDepthRatio: 0.15,
