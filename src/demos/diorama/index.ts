@@ -117,7 +117,7 @@ const start = async (): Promise<void> => {
     // `useNaturalPinchZoom` はピンチ距離の「比率」で radius を更新するため
     // スケール非依存になる。
     camera.useNaturalPinchZoom = true;
-    // pan（camera.target をずらす操作）は無効化する。正方形にクリップされた箱庭は
+    // pan（camera.target をずらす操作）は無効化する。正方形の箱庭は
     // pan するとフレームアウトし戻す手段もないため、操作は「回転＋ズーム」のみに
     // 絞る。また、箱庭の実世界中心・フットプリントの半辺長を変更する「地図移動・
     // 拡大縮小」は別途 XRコントローラー専用の操作として実装予定であり、

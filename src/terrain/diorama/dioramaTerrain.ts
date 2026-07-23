@@ -55,7 +55,13 @@ export interface DioramaTerrainOptions {
     center: DioramaCenter;
     /** 実世界フットプリントの半辺長[m]（正方形の中心から辺までの距離。拡大縮小操作で可変になる想定）。 */
     footprintHalfSizeM: number;
-    /** 卓上表示半径[m]（`root` の縮小スケール算出に使用）。 */
+    /**
+     * 卓上表示半径[m]（`root` の縮小スケール算出に使用）。
+     * 中心から最も遠い点（正方形の対角線の先端＝四隅）までの距離がこの値になるよう
+     * スケールする。デッドゾーン半径（`dioramaArControls.ts`）やカメラのズーム下限
+     * （`index.ts` の `lowerRadiusLimit`）も「中心からの最大半径」として本値を
+     * 前提にしているため、この意味づけに揃える。
+     */
     tableRadiusM: number;
     /** 正方形グリッドの1辺あたりの分割数（既定 48）。頂点数は `(gridSegments+1)^2`。 */
     gridSegments?: number;
@@ -447,7 +453,12 @@ export const createDioramaTerrain = async (
         if (!(resolved.footprintHalfSizeM > 0)) {
             throw new RangeError(`footprintHalfSizeM must be > 0 (got ${resolved.footprintHalfSizeM})`);
         }
-        const scale = resolved.tableRadiusM / resolved.footprintHalfSizeM;
+        // 正方形フットプリントの最遠点（四隅）は中心から footprintHalfSizeM * √2 の
+        // 距離にある。tableRadiusM は「中心からの最大半径」（デッドゾーン半径・
+        // カメラのズーム下限が前提とする意味）として扱うため、辺の中点ではなく
+        // 対角線の先端（四隅）が tableRadiusM に収まるようスケールする。
+        const farthestPointM = resolved.footprintHalfSizeM * Math.SQRT2;
+        const scale = resolved.tableRadiusM / farthestPointM;
         root.scaling.setAll(scale);
     };
 
