@@ -99,6 +99,146 @@ export const computeDioramaPanMetersFromStick = (
     };
 };
 
+/**
+ * 水平面（XZ平面、東西・南北に相当）の単位ベクトル。`y`成分は扱わない
+ * （呼び出し側で「カメラの水平forward/right」等をXZ平面へ投影済みの値を渡すこと）。
+ */
+export interface HorizontalUnitVector {
+    x: number;
+    z: number;
+}
+
+/**
+ * 水平単位ベクトルから向き角[rad]を算出する（`atan2(x, z)`）。
+ *
+ * 本モジュール内の角度は全てこの規約（`z`軸=北=0rad、`x`軸=東=+π/2rad、
+ * 時計回りが正方向）に統一する。Babylonの左手系Y軸回転規約（`rotation.y`が
+ * 正方向で+Z軸から+X軸へ回転する）と一致するよう選んでいるため、
+ * {@link computeDioramaRotationRadFromStick} が加算する回転角とも整合する。
+ *
+ * @returns ベクトルが零ベクトル、または非有限値を含む場合は `0`。
+ */
+export const computeHeadingRadFromHorizontal = (x: number, z: number): number => {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return 0;
+    if (x === 0 && z === 0) return 0;
+    return Math.atan2(x, z);
+};
+
+/**
+ * 水平単位ベクトルを `deltaRad` だけ回転させる。
+ *
+ * {@link computeHeadingRadFromHorizontal} と同じ`atan2(x, z)`規約に基づいて
+ * 自己完結的に導出した回転式を使う（Babylonの`Matrix.RotationY`等、外部の
+ * 回転規約には依存しない）。`vec` の向き角を `h` とすると、返り値は
+ * 向き角 `h + deltaRad` で同じ長さのベクトルになる。
+ */
+export const rotateHorizontalUnitVector = (vec: HorizontalUnitVector, deltaRad: number): HorizontalUnitVector => {
+    if (!Number.isFinite(deltaRad) || deltaRad === 0) return { x: vec.x, z: vec.z };
+    const cos = Math.cos(deltaRad);
+    const sin = Math.sin(deltaRad);
+    return {
+        x: vec.x * cos + vec.z * sin,
+        z: vec.z * cos - vec.x * sin,
+    };
+};
+
+/**
+ * 前後・左右の方向入力（各[-1,1]、斜め入力は合成後に1へ正規化）を、現在の
+ * 前方向・右方向の水平単位ベクトルへ投影し、{@link computeDioramaPanMetersFromStick}
+ * にそのまま渡せる `StickAxes`（x=東、y軸は前方向が負値というGamepad規約）へ
+ * 変換する。
+ *
+ * `dioramaKeyboardControls.ts`（`ArcRotateCamera`の向き基準のWASD）と
+ * `dioramaArControls.ts`（AR中のXRカメラ向き基準のスティック/タッチ）の
+ * 両方から共有される（同じ「向き基準へ入力を投影する」処理の重複を避ける）。
+ *
+ * @param forwardAxis 前方向入力（前進が正）。
+ * @param rightAxis 右方向入力（右が正）。
+ * @param forwardUnit 現在の前方向の水平単位ベクトル。
+ * @param rightUnit 現在の右方向の水平単位ベクトル（`forwardUnit`と直交する単位ベクトル）。
+ */
+export const computePanAxesFromDirectionalInput = (
+    forwardAxis: number,
+    rightAxis: number,
+    forwardUnit: HorizontalUnitVector,
+    rightUnit: HorizontalUnitVector,
+): StickAxes => {
+    if (forwardAxis === 0 && rightAxis === 0) return { x: 0, y: 0 };
+    let eastUnit = forwardAxis * forwardUnit.x + rightAxis * rightUnit.x;
+    let northUnit = forwardAxis * forwardUnit.z + rightAxis * rightUnit.z;
+    // 斜め入力（例: 前進+右同時）が軸沿い入力よりも速くならないよう、大きさが1を
+    // 超える場合は単位ベクトルへ正規化する（スティックの最大偏倚量が半径1の円に
+    // 収まる規約と揃える）。
+    const magnitude = Math.hypot(eastUnit, northUnit);
+    if (magnitude > 1) {
+        eastUnit /= magnitude;
+        northUnit /= magnitude;
+    }
+    // `computeDioramaPanMetersFromStick` の規約（y軸は前方向が負値）に合わせて
+    // 符号反転する。`northUnit`が`0`のとき`-northUnit`が`-0`になるのを避けるため`+0`する。
+    return { x: eastUnit, y: -northUnit + 0 };
+};
+
+/** 向きスナップのステップ角既定値（45° = 8方位）。 */
+export const DEFAULT_HEADING_SNAP_STEP_RAD = Math.PI / 4;
+/** 向きスナップのヒステリシス角既定値（境界付近での揺らぎによる頻繁な切り替わりを防ぐ）。 */
+export const DEFAULT_HEADING_SNAP_HYSTERESIS_RAD = Math.PI / 36; // 5°
+
+const TWO_PI = Math.PI * 2;
+
+/** 任意の角度[rad]を `(-π, π]` へ正規化する。 */
+const normalizeAngleRad = (angleRad: number): number => {
+    let normalized = angleRad % TWO_PI;
+    if (normalized > Math.PI) normalized -= TWO_PI;
+    if (normalized <= -Math.PI) normalized += TWO_PI;
+    return normalized;
+};
+
+/** `a` から `b` への最短の符号付き角度差（`(-π, π]`）。 */
+const angleDeltaRad = (a: number, b: number): number => normalizeAngleRad(b - a);
+
+/**
+ * ヒステリシス付きで向き角を離散方位（既定8方位）へスナップする。
+ *
+ * 頭部トラッキング/デバイス姿勢はユーザーの体の揺れ等で常に微小に変動するため、
+ * 生の向き角をそのままパン方向へ使うと、静止しているつもりでもパン方向が
+ * 小刻みに変わってしまう。本関数は以下の2段階で安定化する。
+ *
+ * 1. 最も近い `stepRad` の倍数（既定45°刻み＝8方位）へ丸める。
+ * 2. 前回のスナップ結果からの角度差が `stepRad/2 + hysteresisRad` 以内であれば、
+ *    前回値を維持する（境界ぎりぎりでの往復による頻繁な切り替わりを防ぐ）。
+ *
+ * @param rawHeadingRad 生の向き角[rad]（{@link computeHeadingRadFromHorizontal}の出力）。
+ * @param previousSnappedHeadingRad 前回のスナップ結果[rad]。初回呼び出し等で
+ *   スナップ結果が無い場合は `undefined` を渡す（この場合ヒステリシス無しで
+ *   最も近い方位へスナップする）。
+ * @returns スナップ後の向き角[rad]（`(-π, π]`に正規化済み）。
+ */
+export const snapHeadingRad = (
+    rawHeadingRad: number,
+    previousSnappedHeadingRad: number | undefined,
+    stepRad: number = DEFAULT_HEADING_SNAP_STEP_RAD,
+    hysteresisRad: number = DEFAULT_HEADING_SNAP_HYSTERESIS_RAD,
+): number => {
+    if (!Number.isFinite(rawHeadingRad) || !(stepRad > 0)) {
+        return previousSnappedHeadingRad !== undefined && Number.isFinite(previousSnappedHeadingRad)
+            ? previousSnappedHeadingRad
+            : 0;
+    }
+    const raw = normalizeAngleRad(rawHeadingRad);
+    const nearestBucketRad = normalizeAngleRad(Math.round(raw / stepRad) * stepRad);
+    if (previousSnappedHeadingRad === undefined || !Number.isFinite(previousSnappedHeadingRad)) {
+        return nearestBucketRad;
+    }
+    const previous = normalizeAngleRad(previousSnappedHeadingRad);
+    const diffFromPreviousRad = Math.abs(angleDeltaRad(previous, raw));
+    const safeHysteresisRad = Number.isFinite(hysteresisRad) ? Math.max(0, hysteresisRad) : 0;
+    if (diffFromPreviousRad <= stepRad / 2 + safeHysteresisRad) {
+        return previous;
+    }
+    return nearestBucketRad;
+};
+
 /** フットプリント半径ズームの秒間倍率既定値（1秒間フルで倒すと半径が概ね1/2倍/2倍になる）。 */
 export const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
 

@@ -14,6 +14,20 @@
  * 排他制御は行わない）。実際の地形反映・レイテンシ対策（完了待ち合流方式）は
  * `DioramaViewController` が担う。
  *
+ * **パン方向はARカメラ（頭部/デバイス）の現在の水平向き基準**:
+ * スティック/タッチジョイスティックの入力を単純に東西・南北へ直接マッピングすると、
+ * ユーザーが物理的に向きを変えた際、画面上の「前」と実際の移動方向（絶対座標の北）
+ * が一致せず操作しづらい（デスクトップキーボード操作（`dioramaKeyboardControls.ts`）
+ * で先に対応済みの問題と同種）。そのため毎フレーム `xr.baseExperience.camera`
+ * （`WebXRCamera`）の水平前方向を取得し、パン入力をその向き基準で東西・南北へ
+ * 回転変換してから `DioramaViewController` へ渡す。
+ *
+ * 頭部トラッキング/デバイス姿勢は体の揺れ等で常に微小に変動し不安定なため、
+ * 生の向き角をそのまま使うとパン方向が静止中も小刻みに変わってしまう。
+ * {@link snapHeadingRad}（`dioramaControllerMapping.ts`）でヒステリシス付き
+ * 8方位スナップへ丸めてから使うことで安定させる（回転操作（右スティックX）・
+ * 箱庭の向き自体には影響しない。あくまでパン方向の基準のみに使う）。
+ *
  * 本モジュールは箱庭の回転（右スティックX）・設置高さ変更（左右トリガー）の
  * 入力も併せて配線する。こちらは `DioramaOrientationController`
  * （`dioramaOrientationController.ts`）が同期的に対象ノードへ反映するため、
@@ -48,6 +62,7 @@ import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExpe
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
 import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 // `xr-dom-overlay` feature をfeaturesManagerへ登録する副作用 import
 // （AR中もコントロールHUDを表示し続けるために使う）。
 import "@babylonjs/core/XR/features/WebXRDOMOverlay";
@@ -55,7 +70,14 @@ import "@babylonjs/core/XR/features/WebXRDOMOverlay";
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
-import type { StickAxes } from "./dioramaControllerMapping";
+import {
+    type StickAxes,
+    computeHeadingRadFromHorizontal,
+    rotateHorizontalUnitVector,
+    computePanAxesFromDirectionalInput,
+    snapHeadingRad,
+} from "./dioramaControllerMapping";
+import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
 /**
@@ -385,15 +407,41 @@ export const setupDioramaArControls = (
     const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
     const unsubscribeExitAr = hud.onExitArPress(exitAr);
 
+    // パン方向の基準にする、直近でスナップ済みの向き角[rad]（冒頭のコメント参照）。
+    // セッション開始時は基準が無いため `undefined`（初回はヒステリシス無しで
+    // 最も近い方位へスナップする）。
+    let previousSnappedHeadingRad: number | undefined;
+
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
         if (!(dtSeconds > 0)) return;
 
+        // ARカメラ（頭部/デバイス）の現在の水平向きを取得し、揺らぎを抑えるため
+        // ヒステリシス付き8方位スナップへ丸める。カメラが真上/真下を向く退化ケースでは
+        // `getHorizontalDirectionUnit` が `{x:0, z:0}` を返すため、その場合は前回の
+        // 向き（無ければシーン既定のforward=北）を維持する。
+        const camera = xr.baseExperience.camera;
+        const rawForwardUnit = getHorizontalDirectionUnit(camera, Vector3.Forward(scene.useRightHandedSystem));
+        const rawHeadingRad =
+            rawForwardUnit.x === 0 && rawForwardUnit.z === 0
+                ? (previousSnappedHeadingRad ?? 0)
+                : computeHeadingRadFromHorizontal(rawForwardUnit.x, rawForwardUnit.z);
+        const snappedHeadingRad = snapHeadingRad(rawHeadingRad, previousSnappedHeadingRad);
+        previousSnappedHeadingRad = snappedHeadingRad;
+        // 生の向き角からスナップ後の向き角への差分だけ、forward/right単位ベクトルを
+        // 回転させる（`rawForwardUnit`が退化ケースの`{0,0}`でも回転結果は`{0,0}`のままで安全）。
+        const headingDeltaRad = snappedHeadingRad - rawHeadingRad;
+        const forwardUnit = rotateHorizontalUnitVector(rawForwardUnit, headingDeltaRad);
+        const rightUnit = rotateHorizontalUnitVector(
+            getHorizontalDirectionUnit(camera, Vector3.Right()),
+            headingDeltaRad,
+        );
+
         const hudAxes = hud.getPanAxes();
-        const panAxes: StickAxes = {
-            x: clamp1(sticks.left.x + hudAxes.x),
-            y: clamp1(sticks.left.y + hudAxes.y),
-        };
+        // Gamepad規約: スティック/ジョイスティックのy軸は前方向（奥へ倒す）が負値。
+        const forwardAxis = clamp1(-(sticks.left.y + hudAxes.y));
+        const rightAxis = clamp1(sticks.left.x + hudAxes.x);
+        const panAxes: StickAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
         const zoomAxisY = clamp1(sticks.right.y + hud.getZoomAxis());
         viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
 
