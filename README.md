@@ -92,6 +92,7 @@ npm start
 | フライトデモ | `/flight` | 飛行機が円軌道で旋回し、Follow カメラで追跡。 |
 | Artillery Game | `/artillery` | ターン制対戦ゲーム（Havok 物理で砲弾を再現）。 |
 | Geospatial Globe | `/geospatial` | グローブ地形コアを直接起動する低レベル診断デモ（開発者向け）。 |
+| 箱庭ジオラマ | `/diorama` | 地形を手元サイズの正方形「箱庭」として表示するWebXR (`immersive-ar`) 対応デモ。XRコントローラー/タッチHUD/キーボードで地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別切替が可能。 |
 
 各デモの詳細仕様・追加方針は [spec/demos.md](spec/demos.md) を参照してください。
 
@@ -186,7 +187,7 @@ npm start
 ### エントリポイント
 
 - デモポータル: `src/demos/portal/index.ts`
-- 各デモエントリ: `src/demos/<デモ名>/index.ts`（portal を除く16デモの一覧は [デモポータル](#デモポータル) 参照）
+- 各デモエントリ: `src/demos/<デモ名>/index.ts`（portal を除く17デモの一覧は [デモポータル](#デモポータル) 参照）
 - シーン境界契約（インターフェース）: `src/scenes/sceneContract.ts`
 - グローブ地形シーン実装: `src/scenes/globe.ts`
 
@@ -195,7 +196,7 @@ npm start
 ```text
 .
 ├─ src/                  # アプリ本体（TypeScript）
-│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、portal を含め全17件）
+│  ├─ demos/             # 各デモエントリ（portal / viewer / timelapse 等、portal を含め全18件）
 │  ├─ lib/               # 公開ライブラリ層（JpmapTerrain）
 │  ├─ terrain/           # 地形・UI 実装
 │  └─ scenes/            # シーン境界契約とグローブ地形シーン実装
