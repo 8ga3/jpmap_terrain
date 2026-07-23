@@ -42,6 +42,7 @@ import {
 import { fetchDioramaElevations } from "./dioramaElevation";
 import { computeDioramaTextureLayout, buildDioramaMosaicTexture } from "./dioramaTexture";
 import { buildDioramaSkirtGeometry } from "./dioramaSkirt";
+import { measureAsync } from "./dioramaPerfLog";
 
 /**
  * 箱庭地形のタイル種別。ラスタタイルの `MapType`（"std"=標準地図/"photo"=写真）に加え、
@@ -305,11 +306,18 @@ const buildMesh = async (
     // スキップする（`textureLayout`のUV計算は他の描画に影響しないため、簡潔さを
     // 優先し引き続き計算する）。
     const textureLayout = computeDioramaTextureLayout(points, textureZoom);
+    // ローカル変数へ束縛し、以下の分岐（クロージャ内）でも型narrowingが効くようにする
+    // （`resolved.tileMode` のままだとプロパティアクセスのためnarrowingされない）。
+    const tileMode = resolved.tileMode;
+    // 実機（Meta Quest 3）でのみ顕在化する再構築遅延の原因切り分けのため、
+    // DEM取得とテクスチャ構築それぞれの所要時間を個別に計測する
+    // （並列実行のため、各ラベルの経過時間は重複し得るが、どちらが支配的かの
+    // 切り分けには十分）。
     const [elevations, texture] = await Promise.all([
-        fetchDioramaElevations(points, demZoom),
-        resolved.tileMode === "wireframe"
+        measureAsync("dem-fetch", () => fetchDioramaElevations(points, demZoom)),
+        tileMode === "wireframe"
             ? Promise.resolve(undefined)
-            : buildDioramaMosaicTexture(scene, textureLayout, resolved.tileMode),
+            : measureAsync("texture-build-total", () => buildDioramaMosaicTexture(scene, textureLayout, tileMode)),
     ]);
 
     // 基準面の標高として、中心に最も近い格子点の標高を使う（行列状グリッドは
@@ -425,7 +433,9 @@ const buildMesh = async (
     // `setEnabled(false)`（生成直後）で無効化しておき、root への parent/scale 適用が
     // 済んでいない未スケールの巨大メッシュがレンダーループへ混入しないようにする。
     try {
-        await Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]);
+        await measureAsync("shader-compile", () =>
+            Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]),
+        );
     } catch (err) {
         // コンパイル待ちの間に失敗した場合、ここまでで生成済みのMesh/Material/Texture
         // を破棄せずに投げると、無効化された状態（setEnabled(false)）のまま
@@ -512,7 +522,11 @@ export const createDioramaTerrain = async (
             // （新規フェッチ・メッシュ生成自体を行わない）。
             if (disposed) return;
             const next = patch(resolved);
-            const rebuilt = await buildMesh(scene, next);
+            // `setView`等による再構築1回分の総所要時間。実機（Meta Quest 3）で
+            // 報告されている「2秒以上」の体感遅延に最も近い実測値。
+            const rebuilt = await measureAsync(`rebuild-total (tileMode=${next.tileMode})`, () =>
+                buildMesh(scene, next),
+            );
             if (disposed) {
                 // buildMesh 実行中（非同期のタイル取得等の最中）に dispose された場合。
                 // 破棄済みの root へ parent 設定すると例外になり得るため、生成物は
