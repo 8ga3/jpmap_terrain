@@ -188,6 +188,7 @@ const start = async (): Promise<void> => {
         mount,
         scene,
         placementRoot,
+        DEFAULT_TABLE_RADIUS_M,
         viewController,
         orientationController,
         tileModeController,

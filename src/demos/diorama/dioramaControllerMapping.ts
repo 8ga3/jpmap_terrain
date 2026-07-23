@@ -239,6 +239,68 @@ export const snapHeadingRad = (
     return nearestBucketRad;
 };
 
+/**
+ * 水平面上の2点間（`from` から `to` への方向）の変位を、単位ベクトルと距離[m]に
+ * 分解する。AR中の「ユーザー（実機カメラ）から箱庭中心への向き」算出に使う
+ * （{@link module:src/demos/diorama/dioramaArControls.ts} 参照）。
+ *
+ * @returns 2点が同一（距離0）、または非有限値を含む場合は `unit: {x:0,z:0}`、
+ *   `distanceM` は有限値なら実際の距離（0）、非有限なら `0` にフォールバックする。
+ */
+export const computeHorizontalDisplacement = (
+    fromX: number,
+    fromZ: number,
+    toX: number,
+    toZ: number,
+): { unit: HorizontalUnitVector; distanceM: number } => {
+    const dx = toX - fromX;
+    const dz = toZ - fromZ;
+    if (![dx, dz].every(Number.isFinite)) return { unit: { x: 0, z: 0 }, distanceM: 0 };
+    const distanceM = Math.hypot(dx, dz);
+    if (!(distanceM > 0)) return { unit: { x: 0, z: 0 }, distanceM: 0 };
+    return { unit: { x: dx / distanceM, z: dz / distanceM }, distanceM };
+};
+
+/**
+ * デッドゾーン境界のヒステリシス幅既定値[m]。デッドゾーン境界付近で
+ * ユーザーの立ち位置が微小に揺らいでも、パン有効/無効が頻繁に切り替わらない
+ * ようにする（{@link snapHeadingRad}のヒステリシスと同じ考え方）。
+ */
+export const DEFAULT_DEAD_ZONE_HYSTERESIS_M = 0.05;
+
+/**
+ * ユーザー（実機カメラ）が箱庭に重なるように立っている（デッドゾーン内）かどうかを、
+ * ヒステリシス付きで判定する。
+ *
+ * @remarks
+ * 箱庭のすぐ近く・真上にユーザーが立つと、「ユーザーから箱庭中心への向き」
+ * （{@link computeHorizontalDisplacement}）が不安定になる（距離が0に近づくほど
+ * わずかな立ち位置のずれで向きが大きく変わる）。この状態でパン方向を計算しても
+ * 実用的な結果にならないため、デッドゾーン内ではパン入力自体を無効化する
+ * （呼び出し元、`dioramaArControls.ts`参照）。
+ *
+ * @param distanceM ユーザーから箱庭中心までの水平距離[m]（{@link computeHorizontalDisplacement}の`distanceM`）。
+ * @param wasInsideDeadZone 前フレームの判定結果。
+ * @param deadZoneRadiusM デッドゾーンの半径[m]（通常は箱庭の卓上表示半径 tableRadiusM）。
+ * @param hysteresisM デッドゾーンを抜ける際に追加で必要な距離[m]
+ *   （既に内側にいる場合のみ適用。境界ちょうどでの頻繁な切り替わりを防ぐ）。
+ * @returns 非有限値の場合は前フレームの判定を維持する。
+ */
+export const isInsideDioramaDeadZone = (
+    distanceM: number,
+    wasInsideDeadZone: boolean,
+    deadZoneRadiusM: number,
+    hysteresisM: number = DEFAULT_DEAD_ZONE_HYSTERESIS_M,
+): boolean => {
+    if (!Number.isFinite(distanceM) || !(deadZoneRadiusM >= 0)) return wasInsideDeadZone;
+    const safeHysteresisM = Number.isFinite(hysteresisM) ? Math.max(0, hysteresisM) : 0;
+    if (wasInsideDeadZone) {
+        return distanceM <= deadZoneRadiusM + safeHysteresisM;
+    }
+    return distanceM <= deadZoneRadiusM;
+};
+
+
 /** フットプリント半径ズームの秒間倍率既定値（1秒間フルで倒すと半径が概ね1/2倍/2倍になる）。 */
 export const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
 

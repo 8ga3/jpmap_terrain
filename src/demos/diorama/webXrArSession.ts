@@ -194,7 +194,11 @@ const placeDioramaRelativeToCamera = (
  * @param dioramaRoot 箱庭配置の適用先ノード（`index.ts` が生成する `placementRoot`。
  *   AR突入時にユーザー正面へ絶対位置で配置される。回転・高さオフセットは
  *   このノードの子である `orientationRoot` に適用されるため、本関数はそれらに
- *   触れない。`dioramaOrientationController.ts` 冒頭のコメント参照）。
+ *   触れない。`dioramaOrientationController.ts` 冒頭のコメント参照）。AR中の
+ *   パン方向算出（`dioramaArControls.ts`）でも、箱庭中心の水平位置として
+ *   `.position` を参照する。
+ * @param tableRadiusM 箱庭の卓上表示半径[m]。AR中のパン方向算出における
+ *   デッドゾーン半径として使う（`dioramaArControls.ts` 冒頭のコメント参照）。
  * @param viewController 地図移動・拡大縮小の共有状態保持者（`dioramaViewController.ts`）。
  *   デスクトップのキーボード操作と共有し、AR突入前後で位置が引き継がれるようにする。
  * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
@@ -210,6 +214,7 @@ export const setupDioramaWebXrArButton = async (
     mount: HTMLElement,
     scene: Scene,
     dioramaRoot: TransformNode,
+    tableRadiusM: number,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
     tileModeController: DioramaTileModeController,
@@ -248,6 +253,7 @@ export const setupDioramaWebXrArButton = async (
             mount,
             scene,
             dioramaRoot,
+            tableRadiusM,
             viewController,
             orientationController,
             tileModeController,
@@ -288,6 +294,7 @@ const enterAr = async (
     mount: HTMLElement,
     scene: Scene,
     dioramaRoot: TransformNode,
+    tableRadiusM: number,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
     tileModeController: DioramaTileModeController,
@@ -350,6 +357,8 @@ const enterAr = async (
         disposeArControls = setupDioramaArControls(
             scene,
             xrExperience,
+            dioramaRoot,
+            tableRadiusM,
             hud,
             viewController,
             orientationController,

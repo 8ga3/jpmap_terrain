@@ -18,6 +18,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
 import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
 import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
@@ -146,25 +147,39 @@ const fireTrigger = (motionController: FakeMotionController, value: number): voi
 };
 
 /**
- * ARカメラ（`WebXRCamera`）の水平forward/right方向を模したフェイク。
- * `headingRad` は `computeHeadingRadFromHorizontal`（`atan2(x,z)`、北=0・東=π/2）
- * と同じ規約で、カメラが向いている水平方向を表す。
+ * ARカメラ（`WebXRCamera`）の位置を模したフェイク。パン方向算出
+ * （`computeHorizontalDisplacement`）は `.position.x`/`.position.z` のみを
+ * 参照するため、それ以外のプロパティは持たない軽量なフェイクで十分。
  */
-const makeFakeCamera = (
-    headingRad: number,
-): { getDirection: (localAxis: { x: number; y: number; z: number }) => { x: number; y: number; z: number } } => {
-    const forward = { x: Math.sin(headingRad), y: 0, z: Math.cos(headingRad) };
-    const right = { x: Math.cos(headingRad), y: 0, z: -Math.sin(headingRad) };
-    return {
-        // `Vector3.Forward()`はz成分が非0、`Vector3.Right()`はx成分が非0という
-        // Babylonの座標軸規約を使って呼び出し元の軸を判別する（`localAxis.y`は常に0で無視）。
-        getDirection: (localAxis) => (localAxis.z !== 0 ? { ...forward } : { ...right }),
-    };
-};
+const makeFakeCamera = (position: { x: number; z: number }): { position: { x: number; y: number; z: number } } => ({
+    position: { x: position.x, y: 0, z: position.z },
+});
+
+/**
+ * AR配置後の箱庭中心ノード（`placementRoot`）を模したフェイク。
+ * `dioramaArControls.ts`は`.position.x`/`.position.z`のみを参照する。
+ */
+const makeDioramaRoot = (position: { x: number; z: number }): TransformNode =>
+    ({ position: { x: position.x, y: 0, z: position.z } }) as unknown as TransformNode;
+
+/** テストで使う既定の卓上表示半径[m]（実アプリの`DEFAULT_TABLE_RADIUS_M`と同じ値）。 */
+const TEST_TABLE_RADIUS_M = 0.35;
+
+/**
+ * デッドゾーン外（既定: カメラ原点、箱庭はカメラから見て北へ`AR_PLACEMENT_DISTANCE_M`
+ * 相当（0.6m、`webXrArSession.ts`のAR配置距離と同じ値）離れた位置）の、
+ * `setupDioramaArControls`呼び出しに必要な `dioramaRoot`/`tableRadiusM` の組を返す。
+ * パン方向の基準・デッドゾーンの判定自体を検証しないテスト（ボタン押下等）では
+ * これで十分。
+ */
+const makeDefaultPlacement = (): { dioramaRoot: TransformNode; tableRadiusM: number } => ({
+    dioramaRoot: makeDioramaRoot({ x: 0, z: 0.6 }),
+    tableRadiusM: TEST_TABLE_RADIUS_M,
+});
 
 const makeXr = (
     controllers: FakeController[],
-    options: { cameraHeadingRad?: number } = {},
+    options: { cameraPosition?: { x: number; z: number } } = {},
 ): {
     xr: WebXRDefaultExperience;
     addedObservable: FakeObservable<FakeController>;
@@ -182,7 +197,7 @@ const makeXr = (
         },
         baseExperience: {
             exitXRAsync,
-            camera: makeFakeCamera(options.cameraHeadingRad ?? 0),
+            camera: makeFakeCamera(options.cameraPosition ?? { x: 0, z: 0 }),
         },
     } as unknown as WebXRDefaultExperience;
     return { xr, addedObservable, removedObservable, exitXRAsync };
@@ -530,18 +545,19 @@ describe("setupDioramaArControls", () => {
         };
     };
 
-    const makeViewController = (): { vc: DioramaViewController } => {
+    const makeViewController = (): { vc: DioramaViewController; feedAxes: ReturnType<typeof vi.fn> } => {
+        const feedAxes = vi.fn();
         const vc = {
             getCenter: vi.fn(),
             getFootprintRadiusM: vi.fn(),
-            feedAxes: vi.fn(),
+            feedAxes,
         } as unknown as DioramaViewController;
-        return { vc };
+        return { vc, feedAxes };
     };
 
-    const makeOrientationController = (): { oc: DioramaOrientationController } => {
+    const makeOrientationController = (rotationRad = 0): { oc: DioramaOrientationController } => {
         const oc = {
-            getRotationRad: vi.fn(),
+            getRotationRad: () => rotationRad,
             getHeightOffsetM: vi.fn(),
             feedAxes: vi.fn(),
         } as unknown as DioramaOrientationController;
@@ -595,8 +611,9 @@ describe("setupDioramaArControls", () => {
         const { oc } = makeOrientationController();
         const { tc, cycle } = makeTileModeController();
         const hud = makeHud();
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
 
         hud.triggerTileModeCyclePress();
         expect(cycle).toHaveBeenCalledTimes(1);
@@ -612,8 +629,9 @@ describe("setupDioramaArControls", () => {
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
 
         hud.triggerExitArPress();
         expect(exitXRAsync).toHaveBeenCalledTimes(1);
@@ -632,8 +650,9 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
         const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
 
         hud.triggerExitArPress();
         await Promise.resolve();
@@ -656,8 +675,9 @@ describe("setupDioramaArControls", () => {
         const { oc } = makeOrientationController();
         const { tc, cycle } = makeTileModeController();
         const hud = makeHud();
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
 
         const aButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -681,8 +701,9 @@ describe("setupDioramaArControls", () => {
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
 
         const bButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -706,8 +727,9 @@ describe("setupDioramaArControls", () => {
         const { oc } = makeOrientationController();
         const { tc, cycle } = makeTileModeController();
         const hud = makeHud();
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
 
         const aButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -728,16 +750,18 @@ describe("setupDioramaArControls", () => {
         expect(hud.dispose).toHaveBeenCalledTimes(1);
     });
 
-    it("ARカメラが東(90°)を向いている場合、スティックを前方向へ倒すとpanAxesは東方向（x=1,y=0）になる", () => {
+    it("ユーザーが箱庭の南側に立っている場合、スティックを前方向へ倒すとpanAxesは北方向になる（箱庭回転なし）", () => {
         const { scene, tick } = createFakeScene();
         const controller = makeController("left");
-        const { xr } = makeXr([controller], { cameraHeadingRad: Math.PI / 2 });
+        // ユーザー（カメラ）は原点、箱庭は北（+z）へ0.6m（AR配置距離相当）離れている。
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const dioramaRoot = makeDioramaRoot({ x: 0, z: 0.6 });
         const { vc } = makeViewController();
-        const { oc } = makeOrientationController();
+        const { oc } = makeOrientationController(0);
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
 
         const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
         controller.onMotionControllerInitObservable.notifyObservers(motionController);
@@ -749,22 +773,24 @@ describe("setupDioramaArControls", () => {
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
         expect(feedAxes).toHaveBeenCalled();
         const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
-        expect(panAxes.x).toBeCloseTo(1);
-        expect(panAxes.y).toBeCloseTo(0);
+        expect(panAxes.x).toBeCloseTo(0);
+        expect(panAxes.y).toBeCloseTo(-1);
 
         dispose();
     });
 
-    it("ARカメラが北(0°、既定)を向いている場合、スティックを前方向へ倒すとpanAxesは北方向（x=0,y=-1）のまま", () => {
+    it("ユーザーが箱庭の西側に立っている場合、スティックを前方向へ倒すとpanAxesは東方向になる（『ユーザーから見て奥』基準）", () => {
         const { scene, tick } = createFakeScene();
         const controller = makeController("left");
-        const { xr } = makeXr([controller]);
+        // ユーザーは原点、箱庭は東（+x）へ0.6m離れている（ユーザーは箱庭の西側に立つ）。
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const dioramaRoot = makeDioramaRoot({ x: 0.6, z: 0 });
         const { vc } = makeViewController();
-        const { oc } = makeOrientationController();
+        const { oc } = makeOrientationController(0);
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
 
         const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
         controller.onMotionControllerInitObservable.notifyObservers(motionController);
@@ -774,44 +800,138 @@ describe("setupDioramaArControls", () => {
 
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
         const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
-        expect(panAxes.x).toBeCloseTo(0);
-        expect(panAxes.y).toBeCloseTo(-1);
+        expect(panAxes.x).toBeCloseTo(1);
+        expect(panAxes.y).toBeCloseTo(0);
 
         dispose();
     });
 
-    it("HUDの仮想ジョイスティック入力もARカメラの向き基準で東西・南北へ変換される", () => {
+    it("箱庭を90°回転させると、同じ立ち位置・同じスティック入力でもpanAxesの方角が変わる（回帰テスト）", () => {
+        // Issue報告: 「ジオラマを回転したあとの方向が反映されない」への対応確認。
+        // ユーザーの立ち位置（箱庭の南側）は1つ目のテストと同じだが、箱庭自体を
+        // 90°回転させた状態では、同じ「前方向へ倒す」操作が異なる方角（西）へ
+        // パンすることを検証する。
         const { scene, tick } = createFakeScene();
         const controller = makeController("left");
-        const { xr } = makeXr([controller], { cameraHeadingRad: Math.PI });
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const dioramaRoot = makeDioramaRoot({ x: 0, z: 0.6 });
         const { vc } = makeViewController();
-        const { oc } = makeOrientationController();
+        const { oc } = makeOrientationController(Math.PI / 2);
         const { tc } = makeTileModeController();
-        // カメラが南(180°)を向いている状態で、HUDの仮想ジョイスティックを前方向へ倒す。
-        const hud = makeHud({ panAxes: { x: 0, y: -1 } });
+        const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+
         tick(16);
 
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
         const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
-        // 南向きで前進 = 南（north成分が負）へ移動するため、y軸(前方向が負値の規約)は正になる。
-        expect(panAxes.x).toBeCloseTo(0);
-        expect(panAxes.y).toBeCloseTo(1);
+        expect(panAxes.x).toBeCloseTo(-1);
+        expect(panAxes.y).toBeCloseTo(0);
 
         dispose();
     });
 
-    it("複数フレームにわたりカメラの向きが小刻みに変動しても、8方位スナップによりpanAxesが安定する", () => {
+    it("HUDの仮想ジョイスティック入力も同じ位置・回転基準で東西・南北へ変換される", () => {
         const { scene, tick } = createFakeScene();
         const controller = makeController("left");
-        const { xr } = makeXr([controller], { cameraHeadingRad: 0.05 });
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const dioramaRoot = makeDioramaRoot({ x: 0.6, z: 0 });
         const { vc } = makeViewController();
-        const { oc } = makeOrientationController();
+        const { oc } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        // ユーザーは箱庭の西側に立ち、HUDの仮想ジョイスティックを前方向へ倒す。
+        const hud = makeHud({ panAxes: { x: 0, y: -1 } });
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        tick(16);
+
+        const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
+        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        expect(panAxes.x).toBeCloseTo(1);
+        expect(panAxes.y).toBeCloseTo(0);
+
+        dispose();
+    });
+
+    it("ユーザーが箱庭に重なるように立っている（デッドゾーン内）場合、スティック入力があってもpanAxesは常に{x:0,y:0}になる", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        // ユーザーと箱庭中心の水平距離0.1mはtableRadiusM(0.35m)未満＝デッドゾーン内。
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const dioramaRoot = makeDioramaRoot({ x: 0, z: 0.1 });
+        const { vc, feedAxes } = makeViewController();
+        const { oc } = makeOrientationController(0);
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: -1 });
+
+        tick(16);
+
+        expect(feedAxes).toHaveBeenCalledWith({ x: 0, y: 0 }, 0, 0.016);
+
+        dispose();
+    });
+
+    it("デッドゾーンにはヒステリシスがあり、境界ちょうど付近では有効/無効が頻繁に切り替わらない", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        // 距離0.1m（デッドゾーン内、tableRadiusM=0.35m）から始める。
+        const dioramaRoot = makeDioramaRoot({ x: 0, z: 0.1 });
+        const { vc, feedAxes } = makeViewController();
+        const { oc } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
+
+        // tableRadiusM(0.35) + 既定ヒステリシス(0.05) = 0.4m以内はまだデッドゾーン内。
+        dioramaRoot.position.z = 0.39;
+        tick(16);
+        expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
+
+        // 0.4mを超えたのでデッドゾーンを抜け、パンが有効になる。
+        dioramaRoot.position.z = 0.45;
+        tick(16);
+        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        expect(panAxes).not.toEqual({ x: 0, y: 0 });
+
+        dispose();
+    });
+
+    it("複数フレームにわたりユーザーの立ち位置が微小に揺らいでも、8方位スナップによりpanAxesが安定する", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("left");
+        // 北からわずか(≈2.9°)ずれた位置（デッドゾーン外）。
+        const headingRad = 0.05;
+        const distanceM = 0.6;
+        const dioramaX = distanceM * Math.sin(headingRad);
+        const dioramaZ = distanceM * Math.cos(headingRad);
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const dioramaRoot = makeDioramaRoot({ x: dioramaX, z: dioramaZ });
+        const { vc } = makeViewController();
+        const { oc } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
 
         const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
         controller.onMotionControllerInitObservable.notifyObservers(motionController);
@@ -834,6 +954,7 @@ describe("setupDioramaArControls", () => {
         dispose();
     });
 });
+
 
 describe("clamp1", () => {
     it("範囲内の値はそのまま返す", () => {
