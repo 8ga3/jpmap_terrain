@@ -313,6 +313,21 @@ const clampAxis = (v: number): number => Math.max(-1, Math.min(1, v));
  * いるにも関わらず入力が止まる不具合があった（実機のマルチタッチ操作で
  * 発生し得る）。ボタンごとに独立した押下状態を保持し合算する方式に変更する
  * ことで、他方のボタンの押下状態を破壊しないようにした。
+ *
+ * **保留パルス（`pendingPulses`）による瞬間クリック対応（Issue #552）**:
+ * `getAxis()` は呼び出し元（`dioramaTouchControls.ts`/`dioramaArControls.ts`）の
+ * `scene.onBeforeRenderObservable`から毎描画フレームに一度だけポーリングされる。
+ * もし pointerdown→pointerup が1描画フレーム（約16.7ms）未満の瞬間的なクリックで
+ * 完了すると、`activeStates`だけを見ていては「押されている瞬間」がどのフレームの
+ * ポーリングにも一度も観測されず、操作量がゼロのまま確定してしまう（ユーザーには
+ * 「シングルクリックが効かない」ように見える不具合）。これを避けるため、
+ * pointerdown等で押下が始まった際に`pendingPulses[i]`も同時に立てておき、
+ * `getAxis()`が呼ばれるたびに「現在押下中(`activeStates`) または 前回の読み取り
+ * 以降に一度でも押されたことがある(`pendingPulses`)」を合算してから、
+ * `pendingPulses`を必ずクリアする。複数フレームにわたる押しっぱなしは
+ * `activeStates`側で継続してカバーされるため、この保留パルスは「1回の
+ * `getAxis()`読み取りにつき最大1回だけ」寄与し、消費後にゴースト入力として
+ * 残り続けることはない。
  */
 const createHoldButtonGroup = (
     position: Partial<CSSStyleDeclaration>,
@@ -330,14 +345,10 @@ const createHoldButtonGroup = (
 
     // ボタンごとの押下状態（インデックス対応）。
     const activeStates: boolean[] = buttons.map(() => false);
-    let axis = 0;
-    const recomputeAxis = (): void => {
-        let sum = 0;
-        buttons.forEach((spec, i) => {
-            if (activeStates[i]) sum += spec.axisValue;
-        });
-        axis = clampAxis(sum);
-    };
+    // ボタンごとの保留パルス（インデックス対応）。前回の`getAxis()`読み取り以降に
+    // 一度でも押下開始(true)があったことを示す。`getAxis()`で読み取られると消費
+    // （false化）される（詳細は上記`@remarks`参照）。
+    const pendingPulses: boolean[] = buttons.map(() => false);
 
     const listeners: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
 
@@ -352,15 +363,27 @@ const createHoldButtonGroup = (
         listeners.push(
             ...bindHoldButton(button, (active) => {
                 activeStates[i] = active;
-                recomputeAxis();
+                if (active) pendingPulses[i] = true;
             }),
         );
         container.appendChild(button);
     });
 
+    const getAxis = (): number => {
+        let sum = 0;
+        buttons.forEach((spec, i) => {
+            if (activeStates[i] || pendingPulses[i]) sum += spec.axisValue;
+        });
+        // 保留パルスは1回の読み取りにつき最大1回だけ寄与させるため、読み取り後は
+        // 必ず消費（クリア）する。押しっぱなし継続中のボタンは`activeStates`側で
+        // 次回以降も引き続き軸値へ反映され続けるため、ここで消しても問題ない。
+        pendingPulses.fill(false);
+        return clampAxis(sum);
+    };
+
     return {
         element: container,
-        getAxis: () => axis,
+        getAxis,
         dispose: () => {
             listeners.forEach(({ el, type, fn }) => el.removeEventListener(type, fn));
         },

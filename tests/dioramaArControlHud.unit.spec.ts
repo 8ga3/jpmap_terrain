@@ -195,6 +195,43 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(0);
     });
 
+    it("極短時間のpointerdown→pointerup（間にgetAxis()呼び出しを挟まない）でも、次回のgetAxis()呼び出しで軸値が最低1回反映される（Issue #552の回帰テスト）", () => {
+        // 実際のブラウザでは、pointerdown→pointerupが1描画フレーム（約16.7ms）未満の
+        // 瞬間的なクリックで完了すると、`scene.onBeforeRenderObservable`からの
+        // 毎フレームポーリング（`getAxis()`呼び出し）がどのタイミングでも「押されている
+        // 瞬間」を観測できず、軸値がゼロのまま確定してしまう不具合があった。
+        // ここではポーリングを一切挟まずにpointerdown/pointerupを連続発火させることで
+        // その状況を再現し、次回の`getAxis()`呼び出しで軸値が反映されることを検証する。
+        const hud = build();
+        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+
+        dispatchPointer(zoomInButton, "pointerdown", { pointerId: 1 });
+        dispatchPointer(zoomInButton, "pointerup", { pointerId: 1 });
+
+        // 押下開始から解放までの間、一度も`getAxis()`を呼んでいない状態でも、
+        // 直後の呼び出しで軸値（ズームイン=-1）が反映されなければならない。
+        expect(hud.getZoomAxis()).toBe(-1);
+        // 一度読み取られた保留パルスは消費され、以後は現在押下中でない限り0のまま。
+        expect(hud.getZoomAxis()).toBe(0);
+    });
+
+    it("極短時間のpointerdown→pointercancelでも回転軸・高さ軸が最低1回反映される（Issue #552の回帰テスト、他のホールドボタングループでも同様に修正されていることの確認）", () => {
+        const hud = build();
+        const buttons = hud.element.querySelectorAll("button");
+        const cwButton = buttons[3] as HTMLButtonElement; // 「⟳」時計回りに回転
+        const upButton = buttons[4] as HTMLButtonElement; // 「▲」高さを上げる
+
+        dispatchPointer(cwButton, "pointerdown", { pointerId: 1 });
+        dispatchPointer(cwButton, "pointercancel", { pointerId: 1 });
+        expect(hud.getRotationAxis()).toBe(1);
+        expect(hud.getRotationAxis()).toBe(0);
+
+        dispatchPointer(upButton, "pointerdown", { pointerId: 1 });
+        dispatchPointer(upButton, "pointerup", { pointerId: 1 });
+        expect(hud.getHeightAxis()).toBe(1);
+        expect(hud.getHeightAxis()).toBe(0);
+    });
+
     it("ズームボタンはキーボード操作（Enter/Space押下中）でも軸値が更新される", () => {
         const hud = build();
         const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
