@@ -93,6 +93,11 @@ export const setupDioramaTouchControls = (
 
     const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
 
+    // ローカル軸ベクトル自体は不変（シーンの座標系設定にのみ依存）なため、
+    // 毎フレーム生成せずセットアップ時に一度だけ生成して使い回す。
+    const localForwardAxis = Vector3.Forward(scene.useRightHandedSystem);
+    const localRightAxis = Vector3.Right();
+
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         // 非表示中はHUDの軸値を無視する（冒頭のコメント参照。押下状態が0に
         // リセットされている保証がないため、読み取り自体を行わない）。
@@ -108,8 +113,8 @@ export const setupDioramaTouchControls = (
         const rightAxis = hudAxes.x;
         let panAxes: StickAxes = { x: 0, y: 0 };
         if (forwardAxis !== 0 || rightAxis !== 0) {
-            const forwardUnit = getHorizontalDirectionUnit(camera, Vector3.Forward(scene.useRightHandedSystem));
-            const rightUnit = getHorizontalDirectionUnit(camera, Vector3.Right());
+            const forwardUnit = getHorizontalDirectionUnit(camera, localForwardAxis);
+            const rightUnit = getHorizontalDirectionUnit(camera, localRightAxis);
             panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
         }
         viewController.feedAxes(panAxes, hud.getZoomAxis(), dtSeconds);
