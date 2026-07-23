@@ -148,9 +148,13 @@ export const rotateHorizontalUnitVector = (vec: HorizontalUnitVector, deltaRad: 
  * にそのまま渡せる `StickAxes`（x=東、y軸は前方向が負値というGamepad規約）へ
  * 変換する。
  *
- * `dioramaKeyboardControls.ts`（`ArcRotateCamera`の向き基準のWASD）と
- * `dioramaArControls.ts`（AR中のXRカメラ向き基準のスティック/タッチ）の
- * 両方から共有される（同じ「向き基準へ入力を投影する」処理の重複を避ける）。
+ * `forwardUnit`/`rightUnit`（現在の「前方向」を表す水平単位ベクトル）の算出方法は
+ * 呼び出し元ごとに異なる（本関数はその結果を入力へ投影するだけで関知しない）。
+ * - `dioramaKeyboardControls.ts`: `ArcRotateCamera`の向き基準（WASD）。
+ * - `dioramaTouchControls.ts`: 同じくカメラの向き基準（常時表示タッチHUD）。
+ * - `dioramaArControls.ts`: AR中は「ユーザー（実機カメラ）位置↔箱庭中心」の
+ *   水平方向を箱庭の回転角で補正した向き基準（カメラの視線方向ではない。
+ *   `computeHorizontalDisplacement`/`rotateHorizontalUnitVector` 参照）。
  *
  * @param forwardAxis 前方向入力（前進が正）。
  * @param rightAxis 右方向入力（右が正）。

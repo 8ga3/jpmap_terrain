@@ -4,10 +4,16 @@
  *
  * @remarks
  * 元は `dioramaKeyboardControls.ts`（`ArcRotateCamera` の向き基準でWASDパンを
- * 実現する）専用のprivate関数だったが、`dioramaArControls.ts`（AR中、XRカメラ
- * `WebXRCamera` の向き基準でスティック/タッチパンを実現する）でも同じ処理が
- * 必要になったため、`Camera` 基底型（`ArcRotateCamera`/`WebXRCamera` いずれも
- * `getDirection` を持つ）を受け取る共有ヘルパーとして切り出した。
+ * 実現する）専用のprivate関数だったが、`dioramaTouchControls.ts`（通常モードの
+ * 常時表示タッチHUD、`ArcRotateCamera` の向き基準でバーチャルジョイスティックの
+ * パンを実現する）でも同じ処理が必要になったため、`Camera` 基底型
+ * （`ArcRotateCamera`/`WebXRCamera` いずれも `getDirection` を持つ）を受け取る
+ * 共有ヘルパーとして切り出した。
+ *
+ * `dioramaArControls.ts`（AR中のコントローラー/GUI操作）は当初カメラの視線方向
+ * 基準だったが、ユーザーが物理的に移動すると基準が不安定になる問題があったため、
+ * 「ユーザー位置↔箱庭中心＋箱庭の回転角」基準へ再設計され、本ヘルパーは使わなく
+ * なった（`computeHorizontalDisplacement`/`rotateHorizontalUnitVector` 参照）。
  */
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
