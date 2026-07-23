@@ -4,10 +4,10 @@
  * Babylon.js の GPU 系（Scene/Mesh/VertexData/TransformNode/StandardMaterial/Color3）と
  * dioramaGrid/dioramaElevation/dioramaTexture/dioramaSkirt をモックし、
  * 実際のWebGL/DOM無しで純粋にロジックのみを検証する:
- * - resolveOptions の入力検証（tableRadiusM/footprintRadiusM/demZoom/textureZoom/
+ * - resolveOptions の入力検証（tableRadiusM/footprintHalfSizeM/demZoom/textureZoom/
  *   heightScaleFactor/baseDepthRatio が不正な場合は RangeError で reject）
- * - setFootprintRadius の入力検証（不正値は同期例外ではなく Promise 拒否になる）
- * - setCenter/setFootprintRadius/setTileMode の並行呼び出しが rebuild キューにより
+ * - setFootprintHalfSize の入力検証（不正値は同期例外ではなく Promise 拒否になる）
+ * - setCenter/setFootprintHalfSize/setTileMode の並行呼び出しが rebuild キューにより
  *   直列化され、後続の rebuild が直前の rebuild 適用後の最新状態を引き継ぐこと
  *   （呼び出し時点ではなく実行時点の状態を基準にすること）
  * - あるrebuildが失敗してもキューは止まらず、後続のrebuildは実行されること
@@ -24,6 +24,7 @@ vi.mock("@babylonjs/core/Meshes/mesh", () => ({
             parent: null as unknown,
             dispose: vi.fn(),
             setEnabled: vi.fn(),
+            convertToFlatShadedMesh: vi.fn(),
         };
     }),
 }));
@@ -34,6 +35,7 @@ vi.mock("@babylonjs/core/Meshes/mesh.vertexData", () => ({
         indices: unknown;
         normals: unknown;
         uvs: unknown;
+        colors: unknown;
         applyToMesh = vi.fn();
         static ComputeNormals: Mock = vi.fn();
     },
@@ -92,20 +94,26 @@ vi.mock("../src/terrain/diorama/dioramaGrid", () => ({
     buildDioramaGridPoints: vi.fn(
         (
             center: { lat: number; lon: number },
-            footprintRadiusM: number,
-        ): { x: number; z: number; lat: number; lon: number; ring: number; segment: number }[] =>
-            Array.from({ length: 5 }, (_, i) => ({
+            footprintHalfSizeM: number,
+        ): { x: number; z: number; lat: number; lon: number; row: number; col: number }[] => {
+            // gridSegments=2相当（3x3=9点）の固定モックデータ。実際のresolved.gridSegmentsに
+            // 依存せず固定サイズを返すため、テスト側の baseOptions.gridSegments を
+            // これと一致させる（buildMesh内の中心点インデックス計算・外周抽出の対象範囲を揃える）。
+            const vertsPerSide = 3;
+            return Array.from({ length: vertsPerSide * vertsPerSide }, (_, i) => ({
                 x: i,
                 z: i,
                 lat: center.lat,
                 lon: center.lon,
-                ring: i === 0 ? 0 : 1,
-                segment: 0,
-                // テストの都合上 footprintRadiusM も参照する（未使用警告回避）。
-                _footprintRadiusM: footprintRadiusM,
-            })),
+                row: Math.floor(i / vertsPerSide),
+                col: i % vertsPerSide,
+                // テストの都合上 footprintHalfSizeM も参照する（未使用警告回避）。
+                _footprintHalfSizeM: footprintHalfSizeM,
+            }));
+        },
     ),
     buildDioramaGridIndices: vi.fn(() => new Uint32Array([0, 1, 2])),
+    extractGridPerimeterIndices: vi.fn(() => [0, 1, 2, 5, 8, 7, 6, 3]),
 }));
 
 let elevationDelayMs = 0;
@@ -140,6 +148,7 @@ vi.mock("../src/terrain/diorama/dioramaSkirt", () => ({
         positions: new Float32Array(9),
         indices: new Uint32Array([0, 1, 2]),
         normals: new Float32Array(9),
+        colors: new Float32Array(12),
     })),
 }));
 
@@ -161,8 +170,11 @@ const mockStandardMaterial = vi.mocked(StandardMaterial);
 
 const baseOptions = {
     center: { lat: 35, lon: 139 },
-    footprintRadiusM: 800,
+    footprintHalfSizeM: 800,
     tableRadiusM: 0.35,
+    // モック済み buildDioramaGridPoints が固定で返す 3x3（gridSegments=2）グリッドと
+    // 一致させる（buildMesh内の中心点インデックス計算・外周抽出の対象範囲を揃えるため）。
+    gridSegments: 2,
 };
 
 // `Scene` はモック済みだが本実装は使わないため、コンストラクタ引数を要求しないダミーで足りる。
@@ -186,9 +198,9 @@ describe("createDioramaTerrain の入力検証", () => {
         ).rejects.toThrow(RangeError);
     });
 
-    it("footprintRadiusM <= 0 はRangeErrorでreject", async () => {
+    it("footprintHalfSizeM <= 0 はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, footprintRadiusM: 0 }),
+            createDioramaTerrain(dummyScene, { ...baseOptions, footprintHalfSizeM: 0 }),
         ).rejects.toThrow(RangeError);
     });
 
@@ -304,7 +316,7 @@ describe("createDioramaTerrain の入力検証", () => {
     });
 });
 
-describe("setFootprintRadius の入力検証", () => {
+describe("setFootprintHalfSize の入力検証", () => {
     it("radiusM <= 0 は同期例外ではなくRangeErrorでreject", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         // 同期的に throw されると Promise を返す関数として呼び出し側が catch し損ねるため、
@@ -312,7 +324,7 @@ describe("setFootprintRadius の入力検証", () => {
         let synchronousThrow = false;
         let result: Promise<void>;
         try {
-            result = terrain.setFootprintRadius(0);
+            result = terrain.setFootprintHalfSize(0);
         } catch {
             synchronousThrow = true;
             result = Promise.resolve();
@@ -324,12 +336,12 @@ describe("setFootprintRadius の入力検証", () => {
 });
 
 describe("setView", () => {
-    it("footprintRadiusM <= 0 は同期例外ではなくRangeErrorでreject", async () => {
+    it("footprintHalfSizeM <= 0 は同期例外ではなくRangeErrorでreject", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         let synchronousThrow = false;
         let result: Promise<void>;
         try {
-            result = terrain.setView({ footprintRadiusM: -1 });
+            result = terrain.setView({ footprintHalfSizeM: -1 });
         } catch {
             synchronousThrow = true;
             result = Promise.resolve();
@@ -339,44 +351,44 @@ describe("setView", () => {
         terrain.dispose();
     });
 
-    it("centerのみ指定した場合、footprintRadiusMは変更せず中心のみ更新する", async () => {
+    it("centerのみ指定した場合、footprintHalfSizeMは変更せず中心のみ更新する", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         mockBuildGridPoints.mockClear();
 
         await terrain.setView({ center: { lat: 40, lon: 141 } });
 
         expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
-        const [center, footprintRadiusM] = mockBuildGridPoints.mock.calls[0];
+        const [center, footprintHalfSizeM] = mockBuildGridPoints.mock.calls[0];
         expect(center).toEqual({ lat: 40, lon: 141 });
-        expect(footprintRadiusM).toBe(baseOptions.footprintRadiusM);
+        expect(footprintHalfSizeM).toBe(baseOptions.footprintHalfSizeM);
 
         terrain.dispose();
     });
 
-    it("footprintRadiusMのみ指定した場合、centerは変更せず半径のみ更新する", async () => {
+    it("footprintHalfSizeMのみ指定した場合、centerは変更せず半径のみ更新する", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         mockBuildGridPoints.mockClear();
 
-        await terrain.setView({ footprintRadiusM: 1500 });
+        await terrain.setView({ footprintHalfSizeM: 1500 });
 
         expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
-        const [center, footprintRadiusM] = mockBuildGridPoints.mock.calls[0];
+        const [center, footprintHalfSizeM] = mockBuildGridPoints.mock.calls[0];
         expect(center).toEqual(baseOptions.center);
-        expect(footprintRadiusM).toBe(1500);
+        expect(footprintHalfSizeM).toBe(1500);
 
         terrain.dispose();
     });
 
-    it("centerとfootprintRadiusMを同時指定した場合、1回のrebuildで両方反映する（setCenter+setFootprintRadiusを個別に呼ぶ場合の2回のrebuildと異なる）", async () => {
+    it("centerとfootprintHalfSizeMを同時指定した場合、1回のrebuildで両方反映する（setCenter+setFootprintHalfSizeを個別に呼ぶ場合の2回のrebuildと異なる）", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         mockBuildGridPoints.mockClear();
 
-        await terrain.setView({ center: { lat: 40, lon: 141 }, footprintRadiusM: 1500 });
+        await terrain.setView({ center: { lat: 40, lon: 141 }, footprintHalfSizeM: 1500 });
 
         expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
-        const [center, footprintRadiusM] = mockBuildGridPoints.mock.calls[0];
+        const [center, footprintHalfSizeM] = mockBuildGridPoints.mock.calls[0];
         expect(center).toEqual({ lat: 40, lon: 141 });
-        expect(footprintRadiusM).toBe(1500);
+        expect(footprintHalfSizeM).toBe(1500);
 
         terrain.dispose();
     });
@@ -388,14 +400,14 @@ describe("setView", () => {
         elevationDelayMs = 30;
         const p1 = terrain.setView({ center: { lat: 36, lon: 140 } });
         elevationDelayMs = 0;
-        const p2 = terrain.setView({ footprintRadiusM: 500 });
+        const p2 = terrain.setView({ footprintHalfSizeM: 500 });
 
         await Promise.all([p1, p2]);
 
         expect(mockBuildGridPoints).toHaveBeenCalledTimes(2);
         const [firstCallArgs, secondCallArgs] = mockBuildGridPoints.mock.calls;
         expect(firstCallArgs[0]).toEqual({ lat: 36, lon: 140 });
-        expect(firstCallArgs[1]).toBe(baseOptions.footprintRadiusM);
+        expect(firstCallArgs[1]).toBe(baseOptions.footprintHalfSizeM);
         expect(secondCallArgs[0]).toEqual({ lat: 36, lon: 140 });
         expect(secondCallArgs[1]).toBe(500);
 
@@ -444,27 +456,27 @@ describe("setTileMode / wireframe表示", () => {
 });
 
 describe("並行呼び出しのrebuildキュー直列化", () => {
-    it("setCenter → setFootprintRadius を並行に呼んでも、後続rebuildは直前の変更を引き継ぐ", async () => {
+    it("setCenter → setFootprintHalfSize を並行に呼んでも、後続rebuildは直前の変更を引き継ぐ", async () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         mockBuildGridPoints.mockClear(); // 初回構築分の呼び出しを除外する
 
-        // setCenter 側のタイル取得を遅延させ、setFootprintRadius が「後から呼ばれたのに
+        // setCenter 側のタイル取得を遅延させ、setFootprintHalfSize が「後から呼ばれたのに
         // 先に完了しようとする」状況を作る。キューによる直列化が無ければ、
-        // setFootprintRadius 側の rebuild が setCenter の変更前の古い状態を基準に
+        // setFootprintHalfSize 側の rebuild が setCenter の変更前の古い状態を基準に
         // 構築されてしまう。
         elevationDelayMs = 30;
         const p1 = terrain.setCenter(36, 140);
         elevationDelayMs = 0;
-        const p2 = terrain.setFootprintRadius(500);
+        const p2 = terrain.setFootprintHalfSize(500);
 
         await Promise.all([p1, p2]);
 
         expect(mockBuildGridPoints).toHaveBeenCalledTimes(2);
         const [firstCallArgs, secondCallArgs] = mockBuildGridPoints.mock.calls;
-        // 1回目（setCenter分）は新しい中心・元のフットプリント半径で呼ばれる。
+        // 1回目（setCenter分）は新しい中心・元のフットプリントの半辺長で呼ばれる。
         expect(firstCallArgs[0]).toEqual({ lat: 36, lon: 140 });
-        expect(firstCallArgs[1]).toBe(baseOptions.footprintRadiusM);
-        // 2回目（setFootprintRadius分）は、1回目で適用済みの新しい中心を引き継いだ
+        expect(firstCallArgs[1]).toBe(baseOptions.footprintHalfSizeM);
+        // 2回目（setFootprintHalfSize分）は、1回目で適用済みの新しい中心を引き継いだ
         // 状態を基準に呼ばれる（呼び出し時点の古い中心ではない）。
         expect(secondCallArgs[0]).toEqual({ lat: 36, lon: 140 });
         expect(secondCallArgs[1]).toBe(500);
@@ -528,37 +540,37 @@ describe("dispose後のrebuildガード", () => {
 });
 
 describe("computeAutoZoomLevel", () => {
-    it("footprintRadiusMが基準値と同じ場合、referenceZoomをそのまま返す", () => {
+    it("footprintHalfSizeMが基準値と同じ場合、referenceZoomをそのまま返す", () => {
         expect(computeAutoZoomLevel(800, 14, 2, 18)).toBe(14);
         expect(computeAutoZoomLevel(800, 16, 2, 18)).toBe(16);
     });
 
-    it("footprintRadiusMが基準値の2倍ならズームは1段階粗くなる", () => {
+    it("footprintHalfSizeMが基準値の2倍ならズームは1段階粗くなる", () => {
         expect(computeAutoZoomLevel(1600, 14, 2, 18)).toBe(13);
     });
 
-    it("footprintRadiusMが基準値の半分ならズームは1段階細かくなる", () => {
+    it("footprintHalfSizeMが基準値の半分ならズームは1段階細かくなる", () => {
         expect(computeAutoZoomLevel(400, 14, 2, 18)).toBe(15);
     });
 
-    it("日本全体が見える広いfootprintRadiusMでは、下限までズームが粗くなる（タイル数が際限なく増えない）", () => {
+    it("日本全体が見える広いfootprintHalfSizeMでは、下限までズームが粗くなる（タイル数が際限なく増えない）", () => {
         // 既定上限 2,000,000m 相当の広範囲。
         const zoom = computeAutoZoomLevel(2_000_000, 14, 2, 18);
         expect(zoom).toBeGreaterThanOrEqual(2);
         expect(zoom).toBeLessThan(14);
     });
 
-    it("極端に小さいfootprintRadiusMでもmaxZoomでクランプされる", () => {
+    it("極端に小さいfootprintHalfSizeMでもmaxZoomでクランプされる", () => {
         expect(computeAutoZoomLevel(1, 16, 2, 18)).toBe(18);
     });
 
-    it("footprintRadiusMが0以下・NaNならreferenceZoom（クランプ後）を安全側のフォールバックとして返す", () => {
+    it("footprintHalfSizeMが0以下・NaNならreferenceZoom（クランプ後）を安全側のフォールバックとして返す", () => {
         expect(computeAutoZoomLevel(0, 14, 2, 18)).toBe(14);
         expect(computeAutoZoomLevel(-100, 14, 2, 18)).toBe(14);
         expect(computeAutoZoomLevel(NaN, 14, 2, 18)).toBe(14);
     });
 
-    it("footprintRadiusMがInfinityなら、巨大な半径として扱いminZoomへフォールバックする", () => {
+    it("footprintHalfSizeMがInfinityなら、巨大な半径として扱いminZoomへフォールバックする", () => {
         // ratio=Infinity→zoom=referenceZoom-Infinity=-Infinity（非有限）となり、
         // 0以下・NaN時と同じ安全側フォールバック分岐を通るが、結果はreferenceZoomではなく
         // minZoom（最も粗いズーム）になる。巨大な半径では粗いズームが適切なため、
@@ -568,20 +580,20 @@ describe("computeAutoZoomLevel", () => {
 });
 
 describe("demZoom/textureZoom自動算出（buildMesh経由）", () => {
-    it("demZoom/textureZoom省略時、footprintRadiusMに応じて自動算出したズームでDEM/テクスチャを取得する", async () => {
-        const terrain = await createDioramaTerrain(dummyScene, { ...baseOptions, footprintRadiusM: 1600 });
+    it("demZoom/textureZoom省略時、footprintHalfSizeMに応じて自動算出したズームでDEM/テクスチャを取得する", async () => {
+        const terrain = await createDioramaTerrain(dummyScene, { ...baseOptions, footprintHalfSizeM: 1600 });
 
-        // footprintRadiusM=1600（基準800の2倍）→ demZoom=13, textureZoom=15（基準より1段階粗い）。
+        // footprintHalfSizeM=1600（基準800の2倍）→ demZoom=13, textureZoom=15（基準より1段階粗い）。
         expect(mockFetchElevations.mock.calls[0][1]).toBe(13);
         expect(mockComputeTextureLayout.mock.calls[0][1]).toBe(15);
 
         terrain.dispose();
     });
 
-    it("demZoom/textureZoomを明示指定した場合、footprintRadiusMによらずその値を使う（自動算出は無効化）", async () => {
+    it("demZoom/textureZoomを明示指定した場合、footprintHalfSizeMによらずその値を使う（自動算出は無効化）", async () => {
         const terrain = await createDioramaTerrain(dummyScene, {
             ...baseOptions,
-            footprintRadiusM: 1_000_000,
+            footprintHalfSizeM: 1_000_000,
             demZoom: 10,
             textureZoom: 12,
         });

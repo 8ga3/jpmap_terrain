@@ -9,12 +9,12 @@
  *
  * `feature/533-webxr-vr-viewer` の `webXrControllerMapping.ts`（immersive-vr PoC）と
  * 同じ設計方針（deadzone処理・現在値に比例したパン速度・乗算方式のズーム）を踏襲するが、
- * 本モジュールは実寸大の惑星ECEF座標系ではなく、箱庭の実世界フットプリント半径
- * （`footprintRadiusM`）を基準にする点が異なる。
+ * 本モジュールは実寸大の惑星ECEF座標系ではなく、箱庭の実世界フットプリントの半辺長
+ * （`footprintHalfSizeM`）を基準にする点が異なる。
  *
  * 操作割り当て（PR #549で確定した一覧、以降のコントローラー操作機能もこれに従う）:
  * - 左スティック / GUI仮想ジョイスティック: 地図中心の東西・南北移動（パン）
- * - 右スティックY（前後） / GUIズームボタン: フットプリント半径のズーム
+ * - 右スティックY（前後） / GUIズームボタン: フットプリントの半辺長のズーム
  *   （前方向・GUIの「+」= ズームイン/縮小、後方向・GUIの「-」= ズームアウト/拡大）
  * - 右スティックX（左右）: 箱庭の回転（本モジュールで実装、{@link computeDioramaRotationRadFromStick}）
  *
@@ -35,7 +35,7 @@
  *   （`dioramaArControls.ts`が`xr.baseExperience.exitXRAsync()`を直接呼ぶ。
  *   AR中でなければ意味を持たない操作のため、常時表示のタッチHUD側では
  *   このボタンをグレーアウトして無効化する。箱庭の表示状態
- *   （center/footprintRadius/回転/高さ）はリセットしない）
+ *   （center/footprintHalfSizeM/回転/高さ）はリセットしない）
  */
 import type { DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
 
@@ -81,7 +81,7 @@ export interface StickAxes {
  *
  * 呼び出し側で各軸のデッドゾーン処理（{@link applyStickDeadzone}を
  * 内部で使う {@link computeDioramaRotationRadFromStick}/
- * {@link computeFootprintRadiusFactorFromStick}）を行う前段として使うこと。
+ * {@link computeFootprintHalfSizeFactorFromStick}）を行う前段として使うこと。
  *
  * @param x スティックのX軸入力（[-1,1] 想定）。
  * @param y スティックのY軸入力（[-1,1] 想定）。
@@ -98,42 +98,42 @@ export const applyDPadGate = (x: number, y: number): StickAxes => {
 /** {@link computeDioramaPanMetersFromStick} のオプション。 */
 export interface PanFromStickOptions {
     deadzone?: number;
-    minFootprintRadiusForSpeedM?: number;
+    minFootprintHalfSizeForSpeedM?: number;
 }
 
-/** パン速度計算でフットプリント半径が極端に小さい場合の下限[m]（操作不能なほど遅くならないようにする）。 */
-export const DEFAULT_MIN_FOOTPRINT_RADIUS_FOR_PAN_SPEED_M = 20;
+/** パン速度計算でフットプリントの半辺長が極端に小さい場合の下限[m]（操作不能なほど遅くならないようにする）。 */
+export const DEFAULT_MIN_FOOTPRINT_HALF_SIZE_FOR_PAN_SPEED_M = 20;
 
-/** 1秒間フルでスティックを倒し続けたときのパン速度（footprintRadiusMに対する倍率/秒）の既定値。 */
+/** 1秒間フルでスティックを倒し続けたときのパン速度（footprintHalfSizeMに対する倍率/秒）の既定値。 */
 export const DEFAULT_PAN_SPEED_PER_SEC = 0.6;
 
 /**
  * スティック入力から、1フレーム分のパン移動量[m]（東西・南北）を算出する。
  *
- * 速度は現在の `footprintRadiusM` に比例させる（ズームアウトして広域表示している時は
+ * 速度は現在の `footprintHalfSizeM` に比例させる（ズームアウトして広域表示している時は
  * 速く、ズームインして詳細表示している時はゆっくり動く。VR PoCの「高度に比例した
  * パン速度」と同じ考え方）。
  *
- * @param footprintRadiusM 現在のフットプリント半径[m]。
- * @param basePanSpeedPerSec footprintRadiusMに対する秒間倍率（フルスティック時、
- *   `footprintRadiusM * basePanSpeedPerSec` が秒速[m/s]になる）。
+ * @param footprintHalfSizeM 現在のフットプリントの半辺長[m]。
+ * @param basePanSpeedPerSec footprintHalfSizeMに対する秒間倍率（フルスティック時、
+ *   `footprintHalfSizeM * basePanSpeedPerSec` が秒速[m/s]になる）。
  * @returns 東西(east)・南北(north)方向の移動量[m]。正のeastは東へ、正のnorthは北へ。
  */
 export const computeDioramaPanMetersFromStick = (
     axes: StickAxes,
     dtSeconds: number,
-    footprintRadiusM: number,
+    footprintHalfSizeM: number,
     basePanSpeedPerSec: number = DEFAULT_PAN_SPEED_PER_SEC,
     options: PanFromStickOptions = {},
 ): { eastM: number; northM: number } => {
     if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return { eastM: 0, northM: 0 };
     const deadzone = options.deadzone ?? DEFAULT_STICK_DEADZONE;
-    const minRadiusM = options.minFootprintRadiusForSpeedM ?? DEFAULT_MIN_FOOTPRINT_RADIUS_FOR_PAN_SPEED_M;
+    const minHalfSizeM = options.minFootprintHalfSizeForSpeedM ?? DEFAULT_MIN_FOOTPRINT_HALF_SIZE_FOR_PAN_SPEED_M;
     const x = applyStickDeadzone(axes.x, deadzone);
     const y = applyStickDeadzone(axes.y, deadzone);
     if (x === 0 && y === 0) return { eastM: 0, northM: 0 };
-    const effectiveRadiusM = Number.isFinite(footprintRadiusM) ? Math.max(footprintRadiusM, minRadiusM) : minRadiusM;
-    const speed = basePanSpeedPerSec * effectiveRadiusM;
+    const effectiveHalfSizeM = Number.isFinite(footprintHalfSizeM) ? Math.max(footprintHalfSizeM, minHalfSizeM) : minHalfSizeM;
+    const speed = basePanSpeedPerSec * effectiveHalfSizeM;
     return {
         eastM: x * speed * dtSeconds,
         // Gamepad規約: y軸は前方向（奥へ倒す）が負値。前進 = 北 とするため符号を反転する。
@@ -355,32 +355,32 @@ export const isInsideDioramaDeadZone = (
 };
 
 
-/** フットプリント半径ズームの秒間倍率既定値（1秒間フルで倒すと半径が概ね1/2倍/2倍になる）。 */
+/** フットプリントの半辺長ズームの秒間倍率既定値（1秒間フルで倒すと半径が概ね1/2倍/2倍になる）。 */
 export const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
 
 /**
- * フットプリント半径の下限・上限既定値[m]。
+ * フットプリントの半辺長の下限・上限既定値[m]。
  *
  * 上限は、日本全体（北海道〜沖縄、概ね南北2500km程度）がズームアウトで見渡せる
  * ことを目安に設定する（2000kmあれば、既定中心（富士山付近）から沖縄・北海道
  * いずれの端までも十分カバーできる）。DEM/テクスチャの取得ズームレベルは
- * 固定ではなく `footprintRadiusM` に応じて自動的に粗くなる
+ * 固定ではなく `footprintHalfSizeM` に応じて自動的に粗くなる
  * （`dioramaTerrain.ts` の `computeAutoZoomLevel` 参照）ため、上限を広げても
  * 取得タイル数が際限なく増えて重くなることはない。
  */
-export const DEFAULT_FOOTPRINT_RADIUS_MIN_M = 100;
-export const DEFAULT_FOOTPRINT_RADIUS_MAX_M = 2_000_000;
+export const DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M = 100;
+export const DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M = 2_000_000;
 
 /**
  * 右スティックY軸（またはGUIズームボタン相当の軸値）から、1フレーム分の
- * フットプリント半径への乗算係数を算出する（乗算方式）。
+ * フットプリントの半辺長への乗算係数を算出する（乗算方式）。
  *
  * 前に倒す（y<0）ほど半径が縮む（ズームイン、より詳細な狭い範囲を表示）。
  *
  * @param zoomRatePerSecond 1秒間フルで倒し続けたときの倍率（>1 を想定）。
- * @returns フットプリント半径に乗算する係数（入力なしや不正な dt なら 1 = 変化なし）。
+ * @returns フットプリントの半辺長に乗算する係数（入力なしや不正な dt なら 1 = 変化なし）。
  */
-export const computeFootprintRadiusFactorFromStick = (
+export const computeFootprintHalfSizeFactorFromStick = (
     axisY: number,
     dtSeconds: number,
     zoomRatePerSecond: number = DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC,
@@ -394,15 +394,15 @@ export const computeFootprintRadiusFactorFromStick = (
 };
 
 /**
- * フットプリント半径を [minM, maxM] へクランプする。
+ * フットプリントの半辺長を [minM, maxM] へクランプする。
  * `NaN` のみ `minM` へフォールバックしてからクランプする（`Math.min`/`Math.max` は
  * `NaN` を伝播させてしまうため）。`Infinity`/`-Infinity` は通常の `Math.min`/`Math.max`
  * でそれぞれ `maxM`/`minM` に正しくクランプされるため特別扱いしない。
  */
-export const clampFootprintRadiusM = (
+export const clampFootprintHalfSizeM = (
     radiusM: number,
-    minM: number = DEFAULT_FOOTPRINT_RADIUS_MIN_M,
-    maxM: number = DEFAULT_FOOTPRINT_RADIUS_MAX_M,
+    minM: number = DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M,
+    maxM: number = DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M,
 ): number => {
     const safe = Number.isNaN(radiusM) ? minM : radiusM;
     return Math.min(maxM, Math.max(minM, safe));
@@ -473,7 +473,7 @@ export const DEFAULT_HEIGHT_OFFSET_MAX_M = 0.3;
 /**
  * 箱庭の高さオフセットを [minM, maxM] へクランプする。
  * `NaN` は 0（オフセット無し）へフォールバックしてからクランプする
- * （`clampFootprintRadiusM` と同じ方針）。
+ * （`clampFootprintHalfSizeM` と同じ方針）。
  */
 export const clampDioramaHeightOffsetM = (
     offsetM: number,

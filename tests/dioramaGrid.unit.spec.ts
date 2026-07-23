@@ -3,16 +3,19 @@
  *
  * - metersPerDegreeAt が既知の近似値（赤道付近・高緯度）と整合する
  * - offsetToLatLon の往復（東西/南北オフセット→緯度経度→距離）が指定半径と一致する
- * - buildDioramaGridPoints の点数・並び順・中心点・各リング半径
- * - buildDioramaGridIndices の三角形数・頂点インデックス範囲
+ * - buildDioramaGridPoints の点数・並び順（row-major）・四隅の座標
+ * - buildDioramaGridIndices の三角形数・頂点インデックス範囲・法線が上向き（+Y）
+ * - extractGridPerimeterIndices の外周点数・巡回順（時計回り）
  */
 import { describe, it, expect } from "vitest";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 
 import {
     metersPerDegreeAt,
     offsetToLatLon,
     buildDioramaGridPoints,
     buildDioramaGridIndices,
+    extractGridPerimeterIndices,
     type DioramaGridOptions,
 } from "../src/terrain/diorama/dioramaGrid";
 
@@ -82,82 +85,89 @@ describe("offsetToLatLon", () => {
 });
 
 describe("buildDioramaGridPoints", () => {
-    const options: DioramaGridOptions = { ringCount: 3, radialSegments: 8 };
+    const options: DioramaGridOptions = { gridSegments: 4 };
 
-    it("点数は 1 + ringCount * radialSegments", () => {
+    it("点数は (gridSegments+1)^2", () => {
         const points = buildDioramaGridPoints(TOKYO, 500, options);
-        expect(points.length).toBe(1 + 3 * 8);
+        expect(points.length).toBe(5 * 5);
     });
 
-    it("先頭は中心点（ring=0, オフセット0）", () => {
+    it("並び順はrow-major（points[row*(gridSegments+1)+col] が該当row/colを持つ）", () => {
         const points = buildDioramaGridPoints(TOKYO, 500, options);
-        expect(points[0]).toMatchObject({ x: 0, z: 0, ring: 0, segment: 0 });
-        expect(points[0].lat).toBeCloseTo(TOKYO.lat, 12);
-        expect(points[0].lon).toBeCloseTo(TOKYO.lon, 12);
-    });
-
-    it("各リングの点は中心から半径 footprintRadiusM*ring/ringCount の距離にある", () => {
-        const footprintRadiusM = 900;
-        const points = buildDioramaGridPoints(TOKYO, footprintRadiusM, options);
-        for (const p of points) {
-            if (p.ring === 0) continue;
-            const expectedRadius = (footprintRadiusM * p.ring) / options.ringCount;
-            const actualRadius = Math.hypot(p.x, p.z);
-            expect(actualRadius).toBeCloseTo(expectedRadius, 6);
+        for (let row = 0; row <= options.gridSegments; row++) {
+            for (let col = 0; col <= options.gridSegments; col++) {
+                const p = points[row * (options.gridSegments + 1) + col];
+                expect(p.row).toBe(row);
+                expect(p.col).toBe(col);
+            }
         }
     });
 
-    it("最外リングの半径は footprintRadiusM と一致する", () => {
-        const footprintRadiusM = 1200;
-        const points = buildDioramaGridPoints(TOKYO, footprintRadiusM, options);
-        const outer = points.filter((p) => p.ring === options.ringCount);
-        expect(outer.length).toBe(options.radialSegments);
-        for (const p of outer) {
-            expect(Math.hypot(p.x, p.z)).toBeCloseTo(footprintRadiusM, 6);
-        }
+    it("北西端(row=0,col=0)はx=-footprintHalfSizeM,z=+footprintHalfSizeM", () => {
+        const footprintHalfSizeM = 900;
+        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const nw = points[0];
+        expect(nw.x).toBeCloseTo(-footprintHalfSizeM, 6);
+        expect(nw.z).toBeCloseTo(footprintHalfSizeM, 6);
     });
 
-    it("角度0（segment=0）は北方向（+z, x=0）", () => {
+    it("北東端(row=0,col=gridSegments)はx=+footprintHalfSizeM,z=+footprintHalfSizeM", () => {
+        const footprintHalfSizeM = 900;
+        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const ne = points[options.gridSegments];
+        expect(ne.x).toBeCloseTo(footprintHalfSizeM, 6);
+        expect(ne.z).toBeCloseTo(footprintHalfSizeM, 6);
+    });
+
+    it("南西端(row=gridSegments,col=0)はx=-footprintHalfSizeM,z=-footprintHalfSizeM", () => {
+        const footprintHalfSizeM = 900;
+        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const sw = points[options.gridSegments * (options.gridSegments + 1)];
+        expect(sw.x).toBeCloseTo(-footprintHalfSizeM, 6);
+        expect(sw.z).toBeCloseTo(-footprintHalfSizeM, 6);
+    });
+
+    it("南東端(row=gridSegments,col=gridSegments)はx=+footprintHalfSizeM,z=-footprintHalfSizeM", () => {
+        const footprintHalfSizeM = 900;
+        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const se = points[points.length - 1];
+        expect(se.x).toBeCloseTo(footprintHalfSizeM, 6);
+        expect(se.z).toBeCloseTo(-footprintHalfSizeM, 6);
+    });
+
+    it("中心(gridSegmentsが偶数のとき厳密に存在)はx=0,z=0で中心の緯度経度と一致する", () => {
         const points = buildDioramaGridPoints(TOKYO, 500, options);
-        const p = points.find((pt) => pt.ring === 1 && pt.segment === 0);
-        expect(p).toBeDefined();
-        expect(p?.x).toBeCloseTo(0, 9);
-        expect(p?.z ?? 0).toBeGreaterThan(0);
+        const half = options.gridSegments / 2;
+        const center = points[half * (options.gridSegments + 1) + half];
+        expect(center.x).toBeCloseTo(0, 9);
+        expect(center.z).toBeCloseTo(0, 9);
+        expect(center.lat).toBeCloseTo(TOKYO.lat, 9);
+        expect(center.lon).toBeCloseTo(TOKYO.lon, 9);
     });
 
     it("極付近を中心にするとRangeError（ゼロ除算を未然に防ぐ）", () => {
         expect(() => buildDioramaGridPoints({ lat: 89, lon: 0 }, 500, options)).toThrow(RangeError);
     });
 
-    it("ringCount < 1 は RangeError", () => {
-        expect(() =>
-            buildDioramaGridPoints(TOKYO, 500, { ringCount: 0, radialSegments: 8 }),
-        ).toThrow(RangeError);
+    it("gridSegments < 1 は RangeError", () => {
+        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: 0 })).toThrow(RangeError);
     });
 
-    it("radialSegments < 3 は RangeError", () => {
-        expect(() =>
-            buildDioramaGridPoints(TOKYO, 500, { ringCount: 3, radialSegments: 2 }),
-        ).toThrow(RangeError);
-    });
-
-    it("footprintRadiusM <= 0 は RangeError", () => {
+    it("footprintHalfSizeM <= 0 は RangeError", () => {
         expect(() => buildDioramaGridPoints(TOKYO, 0, options)).toThrow(RangeError);
         expect(() => buildDioramaGridPoints(TOKYO, -10, options)).toThrow(RangeError);
     });
 });
 
 describe("buildDioramaGridIndices", () => {
-    it("三角形数は radialSegments + (ringCount-1) * radialSegments * 2", () => {
-        const options: DioramaGridOptions = { ringCount: 4, radialSegments: 6 };
+    it("三角形数は gridSegments^2 * 2", () => {
+        const options: DioramaGridOptions = { gridSegments: 4 };
         const indices = buildDioramaGridIndices(options);
-        const expectedTriangles =
-            options.radialSegments + (options.ringCount - 1) * options.radialSegments * 2;
-        expect(indices.length).toBe(expectedTriangles * 3);
+        expect(indices.length).toBe(4 * 4 * 2 * 3);
     });
 
     it("インデックスの最大値は点数-1を超えない", () => {
-        const options: DioramaGridOptions = { ringCount: 3, radialSegments: 8 };
+        const options: DioramaGridOptions = { gridSegments: 4 };
         const points = buildDioramaGridPoints(TOKYO, 500, options);
         const indices = buildDioramaGridIndices(options);
         const maxIndex = Math.max(...indices);
@@ -165,9 +175,59 @@ describe("buildDioramaGridIndices", () => {
         expect(maxIndex).toBe(points.length - 1);
     });
 
-    it("最初の三角形は中心(0)を含む", () => {
-        const options: DioramaGridOptions = { ringCount: 2, radialSegments: 5 };
+    it("平坦なグリッド（全頂点y=0）の法線は+Y方向を向く（Babylon既定の巻き順規約）", () => {
+        const options: DioramaGridOptions = { gridSegments: 4 };
+        const points = buildDioramaGridPoints(TOKYO, 500, options);
+        const positions = new Float32Array(points.length * 3);
+        for (let i = 0; i < points.length; i++) {
+            positions[i * 3] = points[i].x;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = points[i].z;
+        }
         const indices = buildDioramaGridIndices(options);
-        expect(indices[0]).toBe(0);
+        const normals = new Float32Array(positions.length);
+        VertexData.ComputeNormals(positions, indices, normals);
+        for (let i = 1; i < normals.length; i += 3) {
+            expect(normals[i]).toBeCloseTo(1, 3);
+        }
+    });
+});
+
+describe("extractGridPerimeterIndices", () => {
+    it("外周点数は4*gridSegments（四隅を重複させない）", () => {
+        const options: DioramaGridOptions = { gridSegments: 5 };
+        const perimeter = extractGridPerimeterIndices(options);
+        expect(perimeter.length).toBe(4 * options.gridSegments);
+        expect(new Set(perimeter).size).toBe(perimeter.length);
+    });
+
+    it("先頭は北西端(row=0,col=0)、続いて北辺を西→東に辿る", () => {
+        const options: DioramaGridOptions = { gridSegments: 4 };
+        const perimeter = extractGridPerimeterIndices(options);
+        expect(perimeter[0]).toBe(0);
+        expect(perimeter[1]).toBe(1);
+        expect(perimeter[options.gridSegments - 1]).toBe(options.gridSegments - 1);
+    });
+
+    it("北辺の次は東辺（北東端から南東端へ向かう）", () => {
+        const options: DioramaGridOptions = { gridSegments: 4 };
+        const vertsPerSide = options.gridSegments + 1;
+        const perimeter = extractGridPerimeterIndices(options);
+        // 北辺(gridSegments点)の直後が北東端(row=0,col=gridSegments)。
+        expect(perimeter[options.gridSegments]).toBe(options.gridSegments);
+        // 東辺の最後の手前は南隣（row=gridSegments-1,col=gridSegments）。
+        expect(perimeter[options.gridSegments * 2 - 1]).toBe((options.gridSegments - 1) * vertsPerSide + options.gridSegments);
+    });
+
+    it("全ての点が外周（row=0またはrow=gridSegments、col=0またはcol=gridSegments）にある", () => {
+        const options: DioramaGridOptions = { gridSegments: 5 };
+        const vertsPerSide = options.gridSegments + 1;
+        const perimeter = extractGridPerimeterIndices(options);
+        for (const idx of perimeter) {
+            const row = Math.floor(idx / vertsPerSide);
+            const col = idx % vertsPerSide;
+            const onBorder = row === 0 || row === options.gridSegments || col === 0 || col === options.gridSegments;
+            expect(onBorder).toBe(true);
+        }
     });
 });

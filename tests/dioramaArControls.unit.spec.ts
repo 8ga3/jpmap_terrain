@@ -549,7 +549,7 @@ describe("setupDioramaArControls", () => {
         const feedAxes = vi.fn();
         const vc = {
             getCenter: vi.fn(),
-            getFootprintRadiusM: vi.fn(),
+            getFootprintHalfSizeM: vi.fn(),
             feedAxes,
         } as unknown as DioramaViewController;
         return { vc, feedAxes };

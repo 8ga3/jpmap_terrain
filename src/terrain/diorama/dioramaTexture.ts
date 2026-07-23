@@ -55,9 +55,8 @@ export interface DioramaTextureLayout {
  * 格子点群が跨るタイルの矩形バウンディングボックスを求め、モザイクレイアウトと
  * 各点の UV を計算する（フェッチ・描画は行わない純粋関数）。
  *
- * 円形フットプリントのバウンディングボックスに含まれる矩形領域を丸ごとモザイク化する
- * ため、円の外側にあたる四隅のタイルも合成対象に含まれる（単純さを優先した実装。
- * フットプリント半径に対してタイル数が少ない前提のため、無駄なフェッチの影響は小さい）。
+ * 箱庭のフットプリントは正方形のため、バウンディングボックスは常に格子点群の
+ * 外形とほぼ一致する（無駄な合成領域が生じない）。
  */
 /** ズームレベルが0以上の整数であることを検証する（非整数/負数はtoTileXY/totalPixelsForZoomを不正な計算に導くため）。 */
 const assertValidZoom = (zoom: number): void => {
@@ -90,7 +89,7 @@ const assertFinitePoints = (points: readonly DioramaTexturePoint[]): void => {
  * ラップし、minTileX≈0・maxTileX≈2^zoom-1 という「ほぼ全世界幅」のバウンディング
  * ボックスになり得る。箱庭のfootprintは手元サイズ相当（実世界で高々数km）を
  * 想定しており、この規模のタイル数は明らかに異常（反子午線を跨いだ、または
- * footprintRadiusM/zoomの指定が極端）なため、早期にRangeErrorで検出する。
+ * footprintHalfSizeM/zoomの指定が極端）なため、早期にRangeErrorで検出する。
  */
 const MAX_MOSAIC_TILES_PER_AXIS = 64;
 
@@ -122,7 +121,7 @@ export const computeDioramaTextureLayout = (
     if (tilesX > MAX_MOSAIC_TILES_PER_AXIS || tilesY > MAX_MOSAIC_TILES_PER_AXIS) {
         throw new RangeError(
             `mosaic tile span too large (${tilesX}x${tilesY} tiles, max ${MAX_MOSAIC_TILES_PER_AXIS} per axis); ` +
-                "points may span the antimeridian (±180°) or footprintRadiusM/zoom is too large for this zoom level",
+                "points may span the antimeridian (±180°) or footprintHalfSizeM/zoom is too large for this zoom level",
         );
     }
 

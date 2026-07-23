@@ -1,5 +1,5 @@
 /**
- * diorama デモの「現在の実世界中心・フットプリント半径」を単独で保持し、
+ * diorama デモの「現在の実世界中心・フットプリントの半辺長」を単独で保持し、
  * パン/ズーム入力（入力源を問わない共通の軸表現、`StickAxes`/ズーム軸値）を
  * `dioramaTerrain.setView` へ橋渡しする。
  *
@@ -12,7 +12,7 @@
  * 別々の状態を持つと値がずれるため、地図移動・拡大縮小に関わる全ての入力は
  * 必ず本モジュール経由で行うこと。
  *
- * `setCenter`/`setFootprintRadius`（`dioramaTerrain.setView`が内部で使う）は
+ * `setCenter`/`setFootprintHalfSize`（`dioramaTerrain.setView`が内部で使う）は
  * 非同期の地形rebuild（DEM/テクスチャの再取得を伴う）のため毎フレーム呼ぶと
  * ネットワーク往復のレイテンシが積み重なる。前回の`setView`呼び出しが完了する
  * まで次を発行しない「完了待ち合流」方式で、rebuildキューへの際限ない
@@ -23,16 +23,16 @@ import type { DioramaCenter } from "../../terrain/diorama/dioramaGrid";
 import { offsetToLatLon } from "../../terrain/diorama/dioramaGrid";
 import {
     computeDioramaPanMetersFromStick,
-    computeFootprintRadiusFactorFromStick,
-    clampFootprintRadiusM,
+    computeFootprintHalfSizeFactorFromStick,
+    clampFootprintHalfSizeM,
     type StickAxes,
 } from "./dioramaControllerMapping";
 
 export interface DioramaViewController {
     /** 現在の実世界中心（読み取り専用スナップショット）。 */
     getCenter(): DioramaCenter;
-    /** 現在のフットプリント半径[m]（読み取り専用スナップショット）。 */
-    getFootprintRadiusM(): number;
+    /** 現在のフットプリントの半辺長[m]（読み取り専用スナップショット）。 */
+    getFootprintHalfSizeM(): number;
     /**
      * パン軸・ズーム軸（[-1,1]、複数入力源から合算済みの値を想定）を
      * 1フレーム分適用する。呼び出し元が毎フレーム呼ぶこと。
@@ -43,16 +43,16 @@ export interface DioramaViewController {
 /**
  * `DioramaViewController` を生成する。
  * @param initialCenter 初期の実世界中心（デモ既定値）。
- * @param initialFootprintRadiusM 初期のフットプリント半径[m]（デモ既定値）。
+ * @param initialFootprintHalfSizeM 初期のフットプリントの半辺長[m]（デモ既定値）。
  */
 export const createDioramaViewController = (
     dioramaTerrain: DioramaTerrain,
     initialCenter: DioramaCenter,
-    initialFootprintRadiusM: number,
+    initialFootprintHalfSizeM: number,
 ): DioramaViewController => {
     let currentCenter = initialCenter;
-    let currentFootprintRadiusM = clampFootprintRadiusM(initialFootprintRadiusM);
-    let lastAppliedFootprintRadiusM = currentFootprintRadiusM;
+    let currentFootprintHalfSizeM = clampFootprintHalfSizeM(initialFootprintHalfSizeM);
+    let lastAppliedFootprintHalfSizeM = currentFootprintHalfSizeM;
 
     let pendingEastM = 0;
     let pendingNorthM = 0;
@@ -62,12 +62,12 @@ export const createDioramaViewController = (
     const flush = (): void => {
         if (applying) return;
         const hasPan = pendingEastM !== 0 || pendingNorthM !== 0;
-        const hasZoom = currentFootprintRadiusM !== lastAppliedFootprintRadiusM;
+        const hasZoom = currentFootprintHalfSizeM !== lastAppliedFootprintHalfSizeM;
         if (!hasPan && !hasZoom) return;
 
-        const patch: { center?: DioramaCenter; footprintRadiusM?: number } = {};
+        const patch: { center?: DioramaCenter; footprintHalfSizeM?: number } = {};
         // `setView` が失敗した場合に取りこぼさず次回へ再送できるよう、
-        // 楽観的な状態確定（currentCenter/lastAppliedFootprintRadiusM の更新）は
+        // 楽観的な状態確定（currentCenter/lastAppliedFootprintHalfSizeM の更新）は
         // 成功時のみ行う。送信予定分は一旦 pending から差し引いておき、
         // 失敗時のみ復元する（成功時は復元せず currentCenter に取り込む）。
         let sentEastM = 0;
@@ -81,10 +81,10 @@ export const createDioramaViewController = (
             pendingEastM = 0;
             pendingNorthM = 0;
         }
-        let sentFootprintRadiusM: number | undefined;
+        let sentFootprintHalfSizeM: number | undefined;
         if (hasZoom) {
-            sentFootprintRadiusM = currentFootprintRadiusM;
-            patch.footprintRadiusM = sentFootprintRadiusM;
+            sentFootprintHalfSizeM = currentFootprintHalfSizeM;
+            patch.footprintHalfSizeM = sentFootprintHalfSizeM;
         }
 
         applying = true;
@@ -93,11 +93,11 @@ export const createDioramaViewController = (
             .then(
                 () => {
                     if (nextCenter !== undefined) currentCenter = nextCenter;
-                    if (sentFootprintRadiusM !== undefined) lastAppliedFootprintRadiusM = sentFootprintRadiusM;
+                    if (sentFootprintHalfSizeM !== undefined) lastAppliedFootprintHalfSizeM = sentFootprintHalfSizeM;
                 },
                 (err: unknown) => {
                     console.error("[jpmap-terrain diorama demo] setView failed:", err);
-                    // lastAppliedFootprintRadiusM は更新していないため、hasZoom判定により
+                    // lastAppliedFootprintHalfSizeM は更新していないため、hasZoom判定により
                     // 次回のflushで自然に再送される。パン分は差し引いていた値を復元する。
                     pendingEastM += sentEastM;
                     pendingNorthM += sentNorthM;
@@ -110,17 +110,17 @@ export const createDioramaViewController = (
 
     return {
         getCenter: () => currentCenter,
-        getFootprintRadiusM: () => currentFootprintRadiusM,
+        getFootprintHalfSizeM: () => currentFootprintHalfSizeM,
         feedAxes: (panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void => {
             if (!(dtSeconds > 0)) return;
 
-            const { eastM, northM } = computeDioramaPanMetersFromStick(panAxes, dtSeconds, currentFootprintRadiusM);
+            const { eastM, northM } = computeDioramaPanMetersFromStick(panAxes, dtSeconds, currentFootprintHalfSizeM);
             pendingEastM += eastM;
             pendingNorthM += northM;
 
-            const factor = computeFootprintRadiusFactorFromStick(zoomAxisY, dtSeconds);
+            const factor = computeFootprintHalfSizeFactorFromStick(zoomAxisY, dtSeconds);
             if (factor !== 1) {
-                currentFootprintRadiusM = clampFootprintRadiusM(currentFootprintRadiusM * factor);
+                currentFootprintHalfSizeM = clampFootprintHalfSizeM(currentFootprintHalfSizeM * factor);
             }
 
             flush();
