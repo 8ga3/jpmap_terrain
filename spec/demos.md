@@ -454,7 +454,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 
 ### diorama (`/diorama.html`)
 
-地形を手元サイズの正方形「箱庭」として表示する WebXR (`immersive-ar`) 対応デモ。実寸大の geospatial 表現（`GlobeScene`。ECEF楕円体 + floating origin）は z-fighting・far clip 破綻等の課題があったため採用せず、`terrain/diorama/dioramaTerrain` による独立実装（正方形グリッド + 実世界DEM/ラスタタイル取得 + 縮小スケール）にしている。そのため本デモは `JpmapTerrain` に依存しない。
+地形を手元サイズの正方形「箱庭」として表示する WebXR (`immersive-ar`) 対応デモ。実寸大の geospatial 表現（`GlobeScene`。ECEF楕円体 + floating origin）は z-fighting・far clip 破綻等の課題があったため採用せず、`src/terrain/diorama/dioramaTerrain.ts` による独立実装（正方形グリッド + 実世界DEM/ラスタタイル取得 + 縮小スケール）にしている。そのため本デモは `JpmapTerrain` に依存しない。
 
 **仕様:**
 
