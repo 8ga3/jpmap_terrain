@@ -226,10 +226,14 @@ export const buildDioramaMosaicTexture = async (
         Promise.all(
             layout.tiles.map(async (tile) => {
                 const url = textureUrl(mapType, layout.zoom, tile.x, tile.y);
+                // `drawImage` が失敗した場合でも `bitmap.close()` を確実に実行するため、
+                // `bitmap` を try スコープ外の変数で保持し、`finally` でクローズする
+                // （`try`ブロック内で完結させると、`loadTileBitmap`成功後に`drawImage`が
+                // 失敗したケースで`close()`が呼ばれずImageBitmapがリークする）。
+                let bitmap: ImageBitmap | undefined;
                 try {
-                    const bitmap = await loadTileBitmap(url);
+                    bitmap = await loadTileBitmap(url);
                     ctx.drawImage(bitmap, tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
-                    bitmap.close();
                 } catch (err) {
                     console.error(
                         `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}, filling with fallback color:`,
@@ -237,6 +241,8 @@ export const buildDioramaMosaicTexture = async (
                     );
                     ctx.fillStyle = FALLBACK_TILE_COLOR;
                     ctx.fillRect(tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
+                } finally {
+                    bitmap?.close();
                 }
             }),
         ),
