@@ -13,7 +13,14 @@ import { measureAsync } from "../src/terrain/diorama/dioramaPerfLog";
 const originalNodeEnv = process.env.NODE_ENV;
 
 afterEach(() => {
-    process.env.NODE_ENV = originalNodeEnv;
+    // `originalNodeEnv` が undefined（未設定）だった場合、`= undefined` は
+    // 文字列 "undefined" として設定されてしまう（環境変数は常に文字列のため）。
+    // 未設定だった場合は `delete` で復元し、他テストの環境判定を汚染しないようにする。
+    if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+    } else {
+        process.env.NODE_ENV = originalNodeEnv;
+    }
     vi.restoreAllMocks();
 });
 
