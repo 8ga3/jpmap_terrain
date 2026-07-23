@@ -195,7 +195,7 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(0);
     });
 
-    it("極短時間のpointerdown→pointerup（間にgetAxis()呼び出しを挟まない）でも、次回のgetAxis()呼び出しで軸値が最低1回反映される（Issue #552の回帰テスト）", () => {
+    it("極短時間のpointerdown→pointerup（間にgetAxis()呼び出しを挟まない）でも、次回のgetAxis()呼び出しで軸値が最低1回反映される（瞬間クリック対応の回帰テスト）", () => {
         // 実際のブラウザでは、pointerdown→pointerupが1描画フレーム（約16.7ms）未満の
         // 瞬間的なクリックで完了すると、`scene.onBeforeRenderObservable`からの
         // 毎フレームポーリング（`getAxis()`呼び出し）がどのタイミングでも「押されている
@@ -215,7 +215,7 @@ describe("createDioramaArControlHud", () => {
         expect(hud.getZoomAxis()).toBe(0);
     });
 
-    it("極短時間のpointerdown→pointercancelでも回転軸・高さ軸が最低1回反映される（Issue #552の回帰テスト、他のホールドボタングループでも同様に修正されていることの確認）", () => {
+    it("極短時間のpointerdown→pointercancelでも回転軸・高さ軸が最低1回反映される（瞬間クリック対応の回帰テスト、他のホールドボタングループでも同様に修正されていることの確認）", () => {
         const hud = build();
         const buttons = hud.element.querySelectorAll("button");
         const cwButton = buttons[3] as HTMLButtonElement; // 「⟳」時計回りに回転

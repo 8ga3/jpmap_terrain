@@ -9,10 +9,11 @@
  * - WebXR (`immersive-ar`) セッション統合（`webXrArSession.ts`）により、箱庭の周りを
  *   歩いて見られるパススルーAR表示に対応する。
  * - コントローラー操作（地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別切替・
- *   トップ復帰）に対応する。デスクトップはキーボード（`dioramaKeyboardControls.ts`）、
+ *   AR終了）に対応する。デスクトップはキーボード（`dioramaKeyboardControls.ts`）、
  *   AR中はXRコントローラー/タッチGUI（`dioramaArControls.ts`）、AR非対応環境・
  *   AR突入前の通常表示は常時表示のタッチHUD（`dioramaTouchControls.ts`）で
- *   それぞれ操作できる。ライティング操作は後続タスクで行う。
+ *   それぞれ操作できる。太陽位置移動によるライティング操作は、操作が複雑になり
+ *   機能的にも過剰と判断し開発をキャンセルした。
  */
 import { Scene } from "@babylonjs/core/scene";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";

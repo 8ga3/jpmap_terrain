@@ -314,7 +314,7 @@ const clampAxis = (v: number): number => Math.max(-1, Math.min(1, v));
  * 発生し得る）。ボタンごとに独立した押下状態を保持し合算する方式に変更する
  * ことで、他方のボタンの押下状態を破壊しないようにした。
  *
- * **保留パルス（`pendingPulses`）による瞬間クリック対応（Issue #552）**:
+ * **保留パルス（`pendingPulses`）による瞬間クリック対応**:
  * `getAxis()` は呼び出し元（`dioramaTouchControls.ts`/`dioramaArControls.ts`）の
  * `scene.onBeforeRenderObservable`から毎描画フレームに一度だけポーリングされる。
  * もし pointerdown→pointerup が1描画フレーム（約16.7ms）未満の瞬間的なクリックで
