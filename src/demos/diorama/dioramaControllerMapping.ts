@@ -355,7 +355,7 @@ export const isInsideDioramaDeadZone = (
 };
 
 
-/** フットプリントの半辺長ズームの秒間倍率既定値（1秒間フルで倒すと半径が概ね1/2倍/2倍になる）。 */
+/** フットプリントの半辺長ズームの秒間倍率既定値（1秒間フルで倒すと半辺長が概ね1/2倍/2倍になる）。 */
 export const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
 
 /**
@@ -375,7 +375,7 @@ export const DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M = 2_000_000;
  * 右スティックY軸（またはGUIズームボタン相当の軸値）から、1フレーム分の
  * フットプリントの半辺長への乗算係数を算出する（乗算方式）。
  *
- * 前に倒す（y<0）ほど半径が縮む（ズームイン、より詳細な狭い範囲を表示）。
+ * 前に倒す（y<0）ほど半辺長が縮む（ズームイン、より詳細な狭い範囲を表示）。
  *
  * @param zoomRatePerSecond 1秒間フルで倒し続けたときの倍率（>1 を想定）。
  * @returns フットプリントの半辺長に乗算する係数（入力なしや不正な dt なら 1 = 変化なし）。
@@ -400,11 +400,11 @@ export const computeFootprintHalfSizeFactorFromStick = (
  * でそれぞれ `maxM`/`minM` に正しくクランプされるため特別扱いしない。
  */
 export const clampFootprintHalfSizeM = (
-    radiusM: number,
+    halfSizeM: number,
     minM: number = DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M,
     maxM: number = DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M,
 ): number => {
-    const safe = Number.isNaN(radiusM) ? minM : radiusM;
+    const safe = Number.isNaN(halfSizeM) ? minM : halfSizeM;
     return Math.min(maxM, Math.max(minM, safe));
 };
 
