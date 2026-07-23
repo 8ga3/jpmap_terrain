@@ -177,6 +177,7 @@ const start = async (): Promise<void> => {
     mount.appendChild(touchHud.element);
     const touchControls = setupDioramaTouchControls(
         scene,
+        camera,
         touchHud,
         viewController,
         orientationController,
