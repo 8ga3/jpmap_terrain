@@ -555,13 +555,16 @@ describe("setupDioramaArControls", () => {
         return { vc, feedAxes };
     };
 
-    const makeOrientationController = (rotationRad = 0): { oc: DioramaOrientationController } => {
+    const makeOrientationController = (
+        rotationRad = 0,
+    ): { oc: DioramaOrientationController; feedAxes: ReturnType<typeof vi.fn> } => {
+        const feedAxes = vi.fn();
         const oc = {
             getRotationRad: () => rotationRad,
             getHeightOffsetM: vi.fn(),
-            feedAxes: vi.fn(),
+            feedAxes,
         } as unknown as DioramaOrientationController;
-        return { oc };
+        return { oc, feedAxes };
     };
 
     const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
@@ -1002,6 +1005,109 @@ describe("setupDioramaArControls", () => {
         // 修正後は北への固着ではなく、最寄りバケットNE(45°)へ即座にスナップする。
         expect(afterDeadZonePanAxes.x).toBeCloseTo(Math.SQRT1_2);
         expect(afterDeadZonePanAxes.y).toBeCloseTo(-Math.SQRT1_2);
+
+        dispose();
+    });
+
+    it("右スティックを下方向へ倒しつつわずかに左右へドリフトしても、ズームのみ発火し回転は発火しない（回帰テスト）", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        // 下方向(y=-0.9)への入力に、わずかな左右ドリフト(x=0.2)が混ざったケース。
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0.2, y: -0.9 });
+
+        tick(16);
+
+        // ズーム（viewController.feedAxesの第2引数）は発火するが、回転
+        // （orientationController.feedAxesの第1引数）は0のまま（発火しない）。
+        const [, zoomAxisY] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
+            { x: number; y: number },
+            number,
+            number,
+        ];
+        expect(zoomAxisY).not.toBe(0);
+        const [rotationAxisX] = orientationFeedAxes.mock.calls[orientationFeedAxes.mock.calls.length - 1] as [
+            number,
+            number,
+            number,
+        ];
+        expect(rotationAxisX).toBe(0);
+
+        dispose();
+    });
+
+    it("右スティックを左右へ倒しつつわずかに上下へドリフトしても、回転のみ発火しズームは発火しない（回帰テスト）", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        const hud = makeHud();
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+
+        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
+        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        // 右方向(x=0.9)への入力に、わずかな上下ドリフト(y=0.2)が混ざったケース。
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0.9, y: 0.2 });
+
+        tick(16);
+
+        const [, zoomAxisY] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
+            { x: number; y: number },
+            number,
+            number,
+        ];
+        expect(zoomAxisY).toBe(0);
+        const [rotationAxisX] = orientationFeedAxes.mock.calls[orientationFeedAxes.mock.calls.length - 1] as [
+            number,
+            number,
+            number,
+        ];
+        expect(rotationAxisX).not.toBe(0);
+
+        dispose();
+    });
+
+    it("GUIのズーム/回転ボタン（もともと個別で排他的）は十字ボタンゲートの影響を受けない", () => {
+        const { scene, tick } = createFakeScene();
+        const controller = makeController("right");
+        const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
+        const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController(0);
+        const { tc } = makeTileModeController();
+        // 物理スティックの入力は無し。GUIのズームボタンのみ操作する。
+        const hud = makeHud({});
+        hud.getZoomAxis = () => 1;
+
+        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        tick(16);
+
+        const [, zoomAxisY] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
+            { x: number; y: number },
+            number,
+            number,
+        ];
+        expect(zoomAxisY).toBe(1);
+        const [rotationAxisX] = orientationFeedAxes.mock.calls[orientationFeedAxes.mock.calls.length - 1] as [
+            number,
+            number,
+            number,
+        ];
+        expect(rotationAxisX).toBe(0);
 
         dispose();
     });
