@@ -14,19 +14,36 @@
  * 排他制御は行わない）。実際の地形反映・レイテンシ対策（完了待ち合流方式）は
  * `DioramaViewController` が担う。
  *
- * **パン方向はARカメラ（頭部/デバイス）の現在の水平向き基準**:
- * スティック/タッチジョイスティックの入力を単純に東西・南北へ直接マッピングすると、
- * ユーザーが物理的に向きを変えた際、画面上の「前」と実際の移動方向（絶対座標の北）
- * が一致せず操作しづらい（デスクトップキーボード操作（`dioramaKeyboardControls.ts`）
- * で先に対応済みの問題と同種）。そのため毎フレーム `xr.baseExperience.camera`
- * （`WebXRCamera`）の水平前方向を取得し、パン入力をその向き基準で東西・南北へ
- * 回転変換してから `DioramaViewController` へ渡す。
+ * **パン方向は「ユーザー（実機カメラ）の位置と箱庭の位置関係」＋「箱庭自体の回転」基準**:
+ * 頭部/デバイスが向いている方向（視線）を基準にすると、ユーザーが物理的に
+ * 移動した際に基準が不安定になり分かりにくく、また箱庭自体を回転させた場合の
+ * 見た目とも整合しない。そのため、以下の2つから「ユーザーから見て奥（遠ざかる）
+ * 方向」を算出し、パン入力の前後・左右の基準とする。
  *
- * 頭部トラッキング/デバイス姿勢は体の揺れ等で常に微小に変動し不安定なため、
- * 生の向き角をそのまま使うとパン方向が静止中も小刻みに変わってしまう。
- * {@link snapHeadingRad}（`dioramaControllerMapping.ts`）でヒステリシス付き
- * 8方位スナップへ丸めてから使うことで安定させる（回転操作（右スティックX）・
- * 箱庭の向き自体には影響しない。あくまでパン方向の基準のみに使う）。
+ * 1. 実機カメラの現在位置から箱庭中心への水平方向（`computeHorizontalDisplacement`）。
+ *    箱庭の位置（`dioramaRoot.position`）はAR配置後は固定のため、この向きは
+ *    ユーザーが物理的に箱庭の周りを移動した場合にのみ変わる（視線の向きより
+ *    はるかに安定する）。
+ * 2. 箱庭自体の回転角（`orientationController.getRotationRad()`、右スティックXで
+ *    ユーザーが回転させた角度）。箱庭を回転させると、同じ物理的な立ち位置でも
+ *    「ユーザーから見て奥」が指す実世界の方角（緯度経度上の方角）が変わるため、
+ *    上記1の向きから箱庭の回転角を差し引く（打ち消す）ことで、箱庭に組み込まれた
+ *    地理座標系（回転前のローカル座標系＝実世界の東西・南北）における
+ *    「ユーザーから見て奥」の向きを求める。
+ *
+ * **ユーザーが箱庭に重なるように立っている場合はデッドゾーン**: 実機カメラと
+ * 箱庭中心の水平距離が箱庭の卓上表示半径（`tableRadiusM`）以下の場合、上記1の
+ * 向きの算出自体が不安定になる（距離が0に近づくほどわずかな立ち位置のずれで
+ * 向きが大きく変わる）ため、有効な安定化手段が無い。そのため、この範囲内では
+ * バーチャルジョイスティック/スティックのパン入力自体を無効化する
+ * （{@link isInsideDioramaDeadZone}、ヒステリシス付き。回転・高さ変更・ズーム等
+ * 他の操作には影響しない）。
+ *
+ * 実機カメラの位置は体の揺れ等で微小に変動するため、生の向き角をそのまま
+ * 使うとパン方向が静止中も小刻みに変わり得る。{@link snapHeadingRad}
+ * （`dioramaControllerMapping.ts`）でヒステリシス付き8方位スナップへ丸めてから
+ * 使うことで安定させる（回転操作（右スティックX）・箱庭の向き自体には影響しない。
+ * あくまでパン方向の基準のみに使う）。
  *
  * 本モジュールは箱庭の回転（右スティックX）・設置高さ変更（左右トリガー）の
  * 入力も併せて配線する。こちらは `DioramaOrientationController`
@@ -61,8 +78,8 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 // `xr-dom-overlay` feature をfeaturesManagerへ登録する副作用 import
 // （AR中もコントロールHUDを表示し続けるために使う）。
 import "@babylonjs/core/XR/features/WebXRDOMOverlay";
@@ -76,8 +93,9 @@ import {
     rotateHorizontalUnitVector,
     computePanAxesFromDirectionalInput,
     snapHeadingRad,
+    computeHorizontalDisplacement,
+    isInsideDioramaDeadZone,
 } from "./dioramaControllerMapping";
-import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
 /**
@@ -373,16 +391,25 @@ export const trackControllerButtonPresses = (
  * `xrExperience.baseExperience.enterXRAsync(...)` 完了後に呼び、退出/破棄時に
  * 返り値の破棄関数を呼ぶこと。
  *
+ * @param dioramaRoot AR配置後の箱庭中心ノード（`index.ts`が生成する
+ *   `placementRoot`。`webXrArSession.ts`が`enterXRAsync`後にユーザー正面の
+ *   絶対位置へ配置する）。パン方向算出のため、`.position`（水平位置）を
+ *   毎フレーム参照する。
+ * @param tableRadiusM 箱庭の卓上表示半径[m]（デッドゾーン半径として使う。
+ *   冒頭のコメント参照）。
  * @param hud {@link createDioramaArControlHudForSession} で事前に生成したHUD
  *   （`enterXRAsync` より前に呼んでおく必要がある。冒頭のコメント参照）。
  * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者
- *   （右スティックX＝回転、左右トリガー＝高さ変更）。
+ *   （右スティックX＝回転、左右トリガー＝高さ変更）。パン方向算出でも
+ *   箱庭の現在の回転角（`getRotationRad()`）を参照する。
  * @param tileModeController タイル種別の共有状態保持者（A/Xボタン・HUDタイル
  *   切替ボタン＝巡回）。
  */
 export const setupDioramaArControls = (
     scene: Scene,
     xr: WebXRDefaultExperience,
+    dioramaRoot: TransformNode,
+    tableRadiusM: number,
     hud: DioramaArControlHud,
     viewController: DioramaViewController,
     orientationController: DioramaOrientationController,
@@ -411,37 +438,55 @@ export const setupDioramaArControls = (
     // セッション開始時は基準が無いため `undefined`（初回はヒステリシス無しで
     // 最も近い方位へスナップする）。
     let previousSnappedHeadingRad: number | undefined;
+    // デッドゾーン（ユーザーが箱庭に重なるように立っている状態）の判定結果
+    // （ヒステリシス付き、冒頭のコメント参照）。初期状態は「外側」とする
+    // （AR配置直後はユーザーと箱庭の間に間隔があるため。`webXrArSession.ts`の
+    // `AR_PLACEMENT_DISTANCE_M` 参照）。
+    let wasInsideDeadZone = false;
 
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
         if (!(dtSeconds > 0)) return;
 
-        // ARカメラ（頭部/デバイス）の現在の水平向きを取得し、揺らぎを抑えるため
-        // ヒステリシス付き8方位スナップへ丸める。カメラが真上/真下を向く退化ケースでは
-        // `getHorizontalDirectionUnit` が `{x:0, z:0}` を返すため、その場合は前回の
-        // 向き（無ければシーン既定のforward=北）を維持する。
-        const camera = xr.baseExperience.camera;
-        const rawForwardUnit = getHorizontalDirectionUnit(camera, Vector3.Forward(scene.useRightHandedSystem));
-        const rawHeadingRad =
-            rawForwardUnit.x === 0 && rawForwardUnit.z === 0
-                ? (previousSnappedHeadingRad ?? 0)
-                : computeHeadingRadFromHorizontal(rawForwardUnit.x, rawForwardUnit.z);
-        const snappedHeadingRad = snapHeadingRad(rawHeadingRad, previousSnappedHeadingRad);
-        previousSnappedHeadingRad = snappedHeadingRad;
-        // 生の向き角からスナップ後の向き角への差分だけ、forward/right単位ベクトルを
-        // 回転させる（`rawForwardUnit`が退化ケースの`{0,0}`でも回転結果は`{0,0}`のままで安全）。
-        const headingDeltaRad = snappedHeadingRad - rawHeadingRad;
-        const forwardUnit = rotateHorizontalUnitVector(rawForwardUnit, headingDeltaRad);
-        const rightUnit = rotateHorizontalUnitVector(
-            getHorizontalDirectionUnit(camera, Vector3.Right()),
-            headingDeltaRad,
+        // ユーザー（実機カメラ）から箱庭中心への水平方向・距離を算出し、
+        // デッドゾーン（ユーザーが箱庭に重なるように立っている状態）かどうかを
+        // ヒステリシス付きで判定する（冒頭のコメント参照）。
+        const cameraPosition = xr.baseExperience.camera.position;
+        const dioramaPosition = dioramaRoot.position;
+        const { unit: awayFromUserUnit, distanceM } = computeHorizontalDisplacement(
+            cameraPosition.x,
+            cameraPosition.z,
+            dioramaPosition.x,
+            dioramaPosition.z,
         );
+        wasInsideDeadZone = isInsideDioramaDeadZone(distanceM, wasInsideDeadZone, tableRadiusM);
 
-        const hudAxes = hud.getPanAxes();
-        // Gamepad規約: スティック/ジョイスティックのy軸は前方向（奥へ倒す）が負値。
-        const forwardAxis = clamp1(-(sticks.left.y + hudAxes.y));
-        const rightAxis = clamp1(sticks.left.x + hudAxes.x);
-        const panAxes: StickAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
+        let panAxes: StickAxes = { x: 0, y: 0 };
+        if (!wasInsideDeadZone) {
+            // 箱庭自体の回転角を打ち消し、箱庭に組み込まれた地理座標系
+            // （回転前のローカル座標系＝実世界の東西・南北）における
+            // 「ユーザーから見て奥」の向きを求める。
+            const localAwayFromUserUnit = rotateHorizontalUnitVector(
+                awayFromUserUnit,
+                -orientationController.getRotationRad(),
+            );
+            const rawHeadingRad = computeHeadingRadFromHorizontal(localAwayFromUserUnit.x, localAwayFromUserUnit.z);
+            const snappedHeadingRad = snapHeadingRad(rawHeadingRad, previousSnappedHeadingRad);
+            previousSnappedHeadingRad = snappedHeadingRad;
+            // 生の向き角からスナップ後の向き角への差分だけ、奥方向の単位ベクトルを
+            // 回転させる。右方向は奥方向をさらに90°回転（時計回り）させて求める
+            // （`computeHeadingRadFromHorizontal`の規約: 北→東が時計回りのため、
+            // 奥方向を基準に+90°した方向が「右」に一致する）。
+            const headingDeltaRad = snappedHeadingRad - rawHeadingRad;
+            const forwardUnit = rotateHorizontalUnitVector(localAwayFromUserUnit, headingDeltaRad);
+            const rightUnit = rotateHorizontalUnitVector(forwardUnit, Math.PI / 2);
+
+            const hudAxes = hud.getPanAxes();
+            // Gamepad規約: スティック/ジョイスティックのy軸は前方向（奥へ倒す）が負値。
+            const forwardAxis = clamp1(-(sticks.left.y + hudAxes.y));
+            const rightAxis = clamp1(sticks.left.x + hudAxes.x);
+            panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
+        }
         const zoomAxisY = clamp1(sticks.right.y + hud.getZoomAxis());
         viewController.feedAxes(panAxes, zoomAxisY, dtSeconds);
 

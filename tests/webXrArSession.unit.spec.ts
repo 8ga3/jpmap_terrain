@@ -29,11 +29,12 @@ describe("isImmersiveArSupported", () => {
 describe("setupDioramaWebXrArButton", () => {
     it("非対応環境ではボタンを追加せず、no-opのcleanupを返す", async () => {
         const mount = document.createElement("div");
-        // 非対応分岐では scene/dioramaRoot/viewController/orientationController/
-        // tileModeController/touchControls に一切アクセスしないため、型を満たすだけの
-        // ダミー値で十分。
+        // 非対応分岐では scene/dioramaRoot/tableRadiusM/viewController/
+        // orientationController/tileModeController/touchControls に一切アクセス
+        // しないため、型を満たすだけのダミー値で十分。
         const scene = {} as Scene;
         const dioramaRoot = {} as TransformNode;
+        const tableRadiusM = 0.35;
         const viewController = {} as DioramaViewController;
         const orientationController = {} as DioramaOrientationController;
         const tileModeController = {} as DioramaTileModeController;
@@ -43,6 +44,7 @@ describe("setupDioramaWebXrArButton", () => {
             mount,
             scene,
             dioramaRoot,
+            tableRadiusM,
             viewController,
             orientationController,
             tileModeController,
