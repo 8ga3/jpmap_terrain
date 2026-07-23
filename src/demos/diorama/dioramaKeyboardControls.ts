@@ -52,7 +52,8 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
-import type { StickAxes } from "./dioramaControllerMapping";
+import { computePanAxesFromDirectionalInput, type StickAxes } from "./dioramaControllerMapping";
+import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 
 /** 前進（画面奥へ）・後退・左・右（いずれもカメラ視点基準）のキー割り当て。 */
 const PAN_FORWARD_CODES = new Set(["KeyW"]);
@@ -89,22 +90,6 @@ const anyPressed = (pressed: ReadonlySet<string>, codes: ReadonlySet<string>): b
         if (pressed.has(code)) return true;
     }
     return false;
-};
-
-/** 水平方向がほぼ0（カメラが真上/真下を向いている等の退化ケース）とみなす閾値。 */
-const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
-
-/**
- * カメラのローカル軸（`Vector3.Forward()`/`Vector3.Right()`）をワールド空間へ変換し、
- * 水平面（XZ平面、東西・南北に相当）へ投影した単位ベクトルを返す。カメラが
- * 真上/真下を向く退化ケースでは `{x:0, z:0}` を返す（呼び出し側で無視される）。
- */
-const getHorizontalDirectionUnit = (camera: ArcRotateCamera, localAxis: Vector3): { x: number; z: number } => {
-    const dir = camera.getDirection(localAxis);
-    const lenSq = dir.x * dir.x + dir.z * dir.z;
-    if (lenSq < HORIZONTAL_DIRECTION_EPSILON) return { x: 0, z: 0 };
-    const invLen = 1 / Math.sqrt(lenSq);
-    return { x: dir.x * invLen, z: dir.z * invLen };
 };
 
 /**
@@ -178,19 +163,7 @@ export const setupDioramaKeyboardControls = (
             // 「W=画面奥へ進む」という直感的な操作が維持される。
             const forward = getHorizontalDirectionUnit(camera, Vector3.Forward(scene.useRightHandedSystem));
             const right = getHorizontalDirectionUnit(camera, Vector3.Right());
-            let eastUnit = rawForward * forward.x + rawRight * right.x;
-            let northUnit = rawForward * forward.z + rawRight * right.z;
-            // 斜め移動（例: 前進+右同時押し）が軸沿い移動よりも速くならないよう、
-            // 大きさが1を超える場合は単位ベクトルへ正規化する（スティックの
-            // 最大偏倚量が半径1の円に収まる規約と揃える）。
-            const magnitude = Math.hypot(eastUnit, northUnit);
-            if (magnitude > 1) {
-                eastUnit /= magnitude;
-                northUnit /= magnitude;
-            }
-            // `computeDioramaPanMetersFromStick` の規約（x=東、y軸は前方向が負値）に合わせる。
-            // `-0`（northUnit===0のとき-northUnitが-0になる）を避けるため`+0`で正規化する。
-            panAxes = { x: eastUnit, y: -northUnit + 0 };
+            panAxes = computePanAxesFromDirectionalInput(rawForward, rawRight, forward, right);
         }
 
         let zoomAxisY = 0;

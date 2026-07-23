@@ -10,6 +10,10 @@ import {
     computeDioramaRotationRadFromStick,
     computeDioramaHeightMetersFromTriggers,
     clampDioramaHeightOffsetM,
+    computeHeadingRadFromHorizontal,
+    rotateHorizontalUnitVector,
+    computePanAxesFromDirectionalInput,
+    snapHeadingRad,
     DEFAULT_STICK_DEADZONE,
     DEFAULT_FOOTPRINT_RADIUS_MIN_M,
     DEFAULT_FOOTPRINT_RADIUS_MAX_M,
@@ -17,6 +21,8 @@ import {
     DEFAULT_HEIGHT_SPEED_M_PER_SEC,
     DEFAULT_HEIGHT_OFFSET_MIN_M,
     DEFAULT_HEIGHT_OFFSET_MAX_M,
+    DEFAULT_HEADING_SNAP_STEP_RAD,
+    DEFAULT_HEADING_SNAP_HYSTERESIS_RAD,
 } from "../src/demos/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -211,3 +217,99 @@ describe("clampDioramaHeightOffsetM", () => {
         expect(clampDioramaHeightOffsetM(1, -0.5, 0.5)).toBe(0.5);
     });
 });
+
+describe("computeHeadingRadFromHorizontal", () => {
+    it("北(z=1)は0、東(x=1)はπ/2、南(z=-1)はπ、西(x=-1)は-π/2を返す", () => {
+        expect(computeHeadingRadFromHorizontal(0, 1)).toBeCloseTo(0);
+        expect(computeHeadingRadFromHorizontal(1, 0)).toBeCloseTo(Math.PI / 2);
+        expect(computeHeadingRadFromHorizontal(0, -1)).toBeCloseTo(Math.PI);
+        expect(computeHeadingRadFromHorizontal(-1, 0)).toBeCloseTo(-Math.PI / 2);
+    });
+
+    it("零ベクトル・非有限値は0を返す", () => {
+        expect(computeHeadingRadFromHorizontal(0, 0)).toBe(0);
+        expect(computeHeadingRadFromHorizontal(NaN, 1)).toBe(0);
+        expect(computeHeadingRadFromHorizontal(0, Infinity)).toBe(0);
+    });
+});
+
+describe("rotateHorizontalUnitVector", () => {
+    it("北ベクトルをπ/2回転させると東ベクトルになる（向き角の加算と整合）", () => {
+        const rotated = rotateHorizontalUnitVector({ x: 0, z: 1 }, Math.PI / 2);
+        expect(rotated.x).toBeCloseTo(1);
+        expect(rotated.z).toBeCloseTo(0);
+    });
+
+    it("deltaRad=0は入力をそのまま返す", () => {
+        expect(rotateHorizontalUnitVector({ x: 0.6, z: 0.8 }, 0)).toEqual({ x: 0.6, z: 0.8 });
+    });
+
+    it("非有限値のdeltaRadは入力をそのまま返す", () => {
+        expect(rotateHorizontalUnitVector({ x: 0.6, z: 0.8 }, NaN)).toEqual({ x: 0.6, z: 0.8 });
+    });
+});
+
+describe("computePanAxesFromDirectionalInput", () => {
+    it("北向き基準で前進すると北（y=-1）、右移動すると東（x=1）になる", () => {
+        const north = { x: 0, z: 1 };
+        const east = { x: 1, z: 0 };
+        expect(computePanAxesFromDirectionalInput(1, 0, north, east)).toEqual({ x: 0, y: -1 });
+        expect(computePanAxesFromDirectionalInput(0, 1, north, east)).toEqual({ x: 1, y: 0 });
+    });
+
+    it("東向き基準で前進すると東（x=1）へ移動する（頭の向き基準の回転が反映される）", () => {
+        const east = { x: 1, z: 0 };
+        const south = { x: 0, z: -1 };
+        const panAxes = computePanAxesFromDirectionalInput(1, 0, east, south);
+        expect(panAxes.x).toBeCloseTo(1);
+        expect(panAxes.y).toBeCloseTo(0);
+    });
+
+    it("前進+右同時入力は大きさ1へ正規化される（斜め移動が軸沿いより速くならない）", () => {
+        const north = { x: 0, z: 1 };
+        const east = { x: 1, z: 0 };
+        const panAxes = computePanAxesFromDirectionalInput(1, 1, north, east);
+        expect(Math.hypot(panAxes.x, panAxes.y)).toBeCloseTo(1);
+    });
+
+    it("入力が両方0の場合は{x:0,y:0}を返す", () => {
+        expect(computePanAxesFromDirectionalInput(0, 0, { x: 0, z: 1 }, { x: 1, z: 0 })).toEqual({ x: 0, y: 0 });
+    });
+});
+
+describe("snapHeadingRad", () => {
+    it("既定値は45°ステップ・5°ヒステリシス", () => {
+        expect(DEFAULT_HEADING_SNAP_STEP_RAD).toBeCloseTo(Math.PI / 4);
+        expect(DEFAULT_HEADING_SNAP_HYSTERESIS_RAD).toBeCloseTo(Math.PI / 36);
+    });
+
+    it("初回（previousが未指定）はヒステリシス無しで最も近い方位へスナップする", () => {
+        expect(snapHeadingRad(0.3, undefined)).toBeCloseTo(0);
+        expect(snapHeadingRad(0.5, undefined)).toBeCloseTo(Math.PI / 4);
+    });
+
+    it("前回値からの差がstep/2+ヒステリシス以内なら前回値を維持する（境界近傍のちらつき防止）", () => {
+        // step/2 + hysteresis = 22.5° + 5° = 27.5° ≈ 0.4801rad
+        expect(snapHeadingRad(0.47, 0)).toBe(0);
+    });
+
+    it("前回値からの差がstep/2+ヒステリシスを超えたら次の方位へ切り替わる", () => {
+        expect(snapHeadingRad(0.49, 0)).toBeCloseTo(Math.PI / 4);
+    });
+
+    it("±πの境界をまたいでも正しく最短距離で判定する（ラップアラウンド）", () => {
+        // previous=π（180°）、raw=-π+0.05（-180°付近から反対側へわずかに超えた値）は
+        // 実際にはprevious（180°）からわずか0.05radしか離れていない。
+        expect(snapHeadingRad(-Math.PI + 0.05, Math.PI)).toBeCloseTo(Math.PI);
+    });
+
+    it("非有限値のrawHeadingRadは前回値（未指定なら0）を維持する", () => {
+        expect(snapHeadingRad(NaN, 0.5)).toBe(0.5);
+        expect(snapHeadingRad(NaN, undefined)).toBe(0);
+    });
+
+    it("stepRadが0以下の場合は前回値（未指定なら0）を維持する", () => {
+        expect(snapHeadingRad(1, 0.5, 0)).toBe(0.5);
+    });
+});
+
