@@ -206,6 +206,13 @@ const assertNonNegativeInteger = (value: number, name: string): void => {
     }
 };
 
+/** 1以上の整数であることを検証する（gridSegments用。非整数・0以下・NaN・Infinityを拒否）。 */
+const assertPositiveInteger = (value: number, name: string): void => {
+    if (!(Number.isInteger(value) && value >= 1)) {
+        throw new RangeError(`${name} must be an integer >= 1 (got ${value})`);
+    }
+};
+
 const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     // tableRadiusM は root.scaling の分母（applyScale）になるため、構築完了を待たず
     // ここで早期に検証し、不正値（0以下・NaN・Infinity）による無効なスケール算出を防ぐ。
@@ -221,6 +228,13 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     // タイル要求・レイアウト計算に導くため）。
     if (options.demZoom !== undefined) assertNonNegativeInteger(options.demZoom, "demZoom");
     if (options.textureZoom !== undefined) assertNonNegativeInteger(options.textureZoom, "textureZoom");
+    // gridSegmentsは省略可（省略時はDEFAULTS.gridSegmentsを使う）。明示指定された
+    // 場合のみ検証する。非整数/0以下/NaN/Infinityを許すと、buildDioramaGridIndices等
+    // （dioramaGrid.ts）の添字計算 `vertsPerSide = gridSegments + 1` が非整数の
+    // 頂点インデックスを生成し、Uint32Arrayへの変換で切り捨てられて破綻したメッシュに
+    // なるため、ここでも早期に検証する（dioramaGrid.ts側の検証と二重になるが、
+    // 非同期のタイル取得等を開始する前に失敗させるため）。
+    if (options.gridSegments !== undefined) assertPositiveInteger(options.gridSegments, "gridSegments");
     const heightScaleFactor = options.heightScaleFactor ?? DEFAULTS.heightScaleFactor;
     const baseDepthRatio = options.baseDepthRatio ?? DEFAULTS.baseDepthRatio;
     assertPositiveFinite(heightScaleFactor, "heightScaleFactor");

@@ -157,6 +157,19 @@ describe("buildDioramaGridPoints", () => {
         expect(() => buildDioramaGridPoints(TOKYO, 0, options)).toThrow(RangeError);
         expect(() => buildDioramaGridPoints(TOKYO, -10, options)).toThrow(RangeError);
     });
+
+    it("gridSegments が非整数は RangeError", () => {
+        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: 4.5 })).toThrow(RangeError);
+    });
+
+    it("gridSegments が NaN/Infinity は RangeError", () => {
+        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: NaN })).toThrow(RangeError);
+        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: Infinity })).toThrow(RangeError);
+    });
+
+    it("footprintHalfSizeM が Infinity は RangeError", () => {
+        expect(() => buildDioramaGridPoints(TOKYO, Infinity, options)).toThrow(RangeError);
+    });
 });
 
 describe("buildDioramaGridIndices", () => {
@@ -164,6 +177,12 @@ describe("buildDioramaGridIndices", () => {
         const options: DioramaGridOptions = { gridSegments: 4 };
         const indices = buildDioramaGridIndices(options);
         expect(indices.length).toBe(4 * 4 * 2 * 3);
+    });
+
+    it("gridSegments が非整数/NaN/Infinityは RangeError", () => {
+        expect(() => buildDioramaGridIndices({ gridSegments: 4.5 })).toThrow(RangeError);
+        expect(() => buildDioramaGridIndices({ gridSegments: NaN })).toThrow(RangeError);
+        expect(() => buildDioramaGridIndices({ gridSegments: Infinity })).toThrow(RangeError);
     });
 
     it("インデックスの最大値は点数-1を超えない", () => {
@@ -229,5 +248,11 @@ describe("extractGridPerimeterIndices", () => {
             const onBorder = row === 0 || row === options.gridSegments || col === 0 || col === options.gridSegments;
             expect(onBorder).toBe(true);
         }
+    });
+
+    it("gridSegments が非整数/NaN/Infinityは RangeError", () => {
+        expect(() => extractGridPerimeterIndices({ gridSegments: 4.5 })).toThrow(RangeError);
+        expect(() => extractGridPerimeterIndices({ gridSegments: NaN })).toThrow(RangeError);
+        expect(() => extractGridPerimeterIndices({ gridSegments: Infinity })).toThrow(RangeError);
     });
 });
