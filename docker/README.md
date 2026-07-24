@@ -86,16 +86,18 @@ docker run -d --name jpmap-terrain-demo -p 8080:80 --restart unless-stopped jpma
 docker buildx build --platform linux/arm64 -f docker/Dockerfile -t jpmap-terrain-demo:arm64 --load ..
 ```
 
-## WebXR (VR) 実機検証用トンネル
+## WebXR (VR/AR) 実機検証用トンネル
 
-Meta Quest 3 等のブラウザは WebXR (`immersive-vr`) の利用にセキュアコンテキスト
+Meta Quest 3・Androidスマホ（ARCore）等のブラウザは WebXR
+（`immersive-vr`/`immersive-ar` いずれも）の利用にセキュアコンテキスト
 （HTTPS または `localhost`）を要求するため、上記の `compose.yaml`（プレーン HTTP
-配信）だけでは実機ブラウザから viewer デモの VR ボタンが表示されない。
+配信）だけでは実機ブラウザから viewer（VR）・diorama（AR）デモの
+VR/ARボタンが表示されない。
 
 [compose.webxr-tunnel.yaml](compose.webxr-tunnel.yaml) は、Cloudflare の quick
 tunnel（アカウント登録不要。起動のたびに一時的な `https://*.trycloudflare.com`
 URL を発行する）を `demo` サービスと同じ Docker ネットワーク上で起動するための
-オプション構成。実機での VR 動作確認のときだけ、`compose.yaml` と併用する。
+オプション構成。実機での VR/AR 動作確認のときだけ、`compose.yaml` と併用する。
 
 ```shell
 # 1. 先に demo サービスを起動しておく（未起動なら）
@@ -112,9 +114,10 @@ docker compose -f compose.webxr-tunnel.yaml logs \
   | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com'
 ```
 
-ログに表示される `https://<random>.trycloudflare.com/viewer.html` を Meta Quest 3
-等のブラウザで開く。URL は起動のたびに変わる（quick tunnel は固定URLを提供しない、
-Cloudflare の SLA 対象外の機能）。
+ログに表示される `https://<random>.trycloudflare.com/viewer.html`（VR）や
+`https://<random>.trycloudflare.com/diorama.html`（AR）を Meta Quest 3・
+Androidスマホ等のブラウザで開く。URL は起動のたびに変わる（quick tunnel は
+固定URLを提供しない、Cloudflare の SLA 対象外の機能）。
 
 停止:
 

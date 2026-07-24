@@ -319,7 +319,7 @@ describe("createDioramaArControlHud", () => {
         expect(callback).toHaveBeenCalledTimes(2);
     });
 
-    it("トップ復帰ボタンをクリックするとonExitArPressで購読したコールバックが呼ばれる", () => {
+    it("AR終了ボタンをクリックするとonExitArPressで購読したコールバックが呼ばれる", () => {
         const hud = build();
         const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
         const callback = vi.fn();

@@ -10,7 +10,7 @@
  * `webXrArSession.unit.spec.ts` と同じ理由でテスト対象外とし、本ファイルは
  * コントローラーの追加・再初期化・切断に伴う `sticks`/`triggers` の状態遷移
  * ロジックのみを検証する。`setupDioramaArControls` は、HUD/物理ボタンの
- * タイル切替・トップ復帰イベントが `DioramaTileModeController`/
+ * タイル切替・AR終了イベントが `DioramaTileModeController`/
  * `DioramaViewController`/`DioramaOrientationController` へ正しく橋渡しされる
  * ことを検証する（`Scene`は`dioramaTouchControls.unit.spec.ts`と同じ軽量フェイク、
  * `WebXRDefaultExperience`は本ファイル既存の`makeXr`を使う）。
