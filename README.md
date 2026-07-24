@@ -70,7 +70,12 @@ npm install @babylonjs/loaders @babylonjs/materials
 <script type="module">
   import { JpmapDiorama } from "jpmap-terrain";
 
-  const diorama = await JpmapDiorama.create(document.getElementById("diorama"), {
+  const mount = document.getElementById("diorama");
+  if (!mount) {
+    throw new Error('Element with id "diorama" was not found.');
+  }
+
+  const diorama = await JpmapDiorama.create(mount, {
     center: { lat: 35.3436, lon: 138.7203 },
     footprintHalfSizeM: 800,
     tableRadiusM: 0.35,
