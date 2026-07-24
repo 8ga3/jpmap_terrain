@@ -4,10 +4,10 @@
 /**
  * パッケージエントリ (`src/lib.ts`) の re-export 検証。
  *
- * 公開 API として spec/terrain-api.md §3 に記載した識別子が
- * パッケージのトップレベルから参照できることを保証する。
+ * 公開 API として spec/terrain-api.md §3 / spec/diorama-api.md §5 に
+ * 記載した識別子がパッケージのトップレベルから参照できることを保証する。
  *
- * 値 export (`JpmapTerrain`) は実体を import し、
+ * 値 export (`JpmapTerrain` / `JpmapDiorama`) は実体を import し、
  * 型 export は import 句で参照されることを TS コンパイラに任せる
  * （typecheck が通ればこのテストファイルは成立する）。
  */
