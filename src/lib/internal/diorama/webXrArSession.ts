@@ -564,7 +564,11 @@ const enterAr = async (
 
         return xrExperience;
     } catch (err) {
-        console.error("[jpmap-terrain diorama] failed to start WebXR AR session:", err);
+        // ログ出力はここでは行わない。UI経由（ARボタン）の失敗は
+        // `attachDioramaArButton` 側の `.catch` でログ出力し、プログラム的な呼び出し
+        // （`JpmapDiorama.enterAr()` 等）は呼び出し元（ホストアプリ）が必要に応じて
+        // ログする（冒頭のコメント参照）。ここで重ねてログすると、ボタン経由の失敗が
+        // 二重に出力されてしまう。
         // 部分的に確保したリソース（箱庭配置・パススルー背景状態・AR controls・HUD）を
         // 後始末する。`disposeArControls` が設定済み（`setupDioramaArControls` 呼び出し後に
         // 例外が起きたケース）なら、render observer / controller observer の残留を防ぐため
