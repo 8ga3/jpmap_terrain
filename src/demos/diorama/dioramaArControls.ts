@@ -36,12 +36,12 @@
  * 向きの算出自体が不安定になる（距離が0に近づくほどわずかな立ち位置のずれで
  * 向きが大きく変わる）ため、有効な安定化手段が無い。そのため、この範囲内では
  * バーチャルジョイスティック/スティックのパン入力自体を無効化する
- * （{@link isInsideDioramaDeadZone}、ヒステリシス付き。回転・高さ変更・ズーム等
+ * （{@link isInsideDeadZone}、ヒステリシス付き。回転・高さ変更・ズーム等
  * 他の操作には影響しない）。
  *
  * 実機カメラの位置は体の揺れ等で微小に変動するため、生の向き角をそのまま
  * 使うとパン方向が静止中も小刻みに変わり得る。{@link snapHeadingRad}
- * （`dioramaControllerMapping.ts`）でヒステリシス付き8方位スナップへ丸めてから
+ * （`webXrStickInput.ts`）でヒステリシス付き8方位スナップへ丸めてから
  * 使うことで安定させる（回転操作（右スティックX）・箱庭の向き自体には影響しない。
  * あくまでパン方向の基準のみに使う）。
  *
@@ -54,7 +54,7 @@
  * 上下・左右いずれか一方だけを操作するつもりでもわずかに斜めへずれやすく、
  * X/Yを完全に独立して扱うと意図しない同時発火（下へ倒してズームしているつもりが、
  * わずかな左右のずれで回転も発火する等）が起きる。そのため物理スティックの
- * 生入力（`sticks.right`）へは{@link applyDPadGate}（`dioramaControllerMapping.ts`）を
+ * 生入力（`sticks.right`）へは{@link applyDPadGate}（`webXrStickInput.ts`）を
  * 適用し、支配的な軸のみを有効にしてからHUDの軸値と合算する。GUIのズーム/回転
  * ボタンはもともと個別のボタンで排他的なため、本ゲート処理の対象外。
  *
@@ -102,10 +102,10 @@ import {
     computePanAxesFromDirectionalInput,
     snapHeadingRad,
     computeHorizontalDisplacement,
-    isInsideDioramaDeadZone,
+    isInsideDeadZone,
     angleDeltaRad,
     applyDPadGate,
-} from "./dioramaControllerMapping";
+} from "../../lib/webxr/webXrStickInput";
 import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
 
 /**
@@ -469,7 +469,7 @@ export const setupDioramaArControls = (
             dioramaPosition.x,
             dioramaPosition.z,
         );
-        const isNowInsideDeadZone = isInsideDioramaDeadZone(distanceM, wasInsideDeadZone, tableRadiusM);
+        const isNowInsideDeadZone = isInsideDeadZone(distanceM, wasInsideDeadZone, tableRadiusM);
         if (isNowInsideDeadZone && !wasInsideDeadZone) {
             // デッドゾーンへ新規に入った（外側→内側へ遷移した）タイミングで
             // スナップ基準をリセットする。リセットしないと、デッドゾーン内で

@@ -23,7 +23,7 @@
  * 操作割り当ての全体像は {@link module:src/demos/diorama/dioramaControllerMapping.ts}
  * 冒頭コメント参照。
  */
-import type { StickAxes } from "./dioramaControllerMapping";
+import type { StickAxes } from "../../lib/webxr/webXrStickInput";
 
 /** 仮想ジョイスティックの外径・つまみ径[px]。 */
 const JOYSTICK_OUTER_DIAMETER_PX = 96;
@@ -42,13 +42,13 @@ export interface DioramaArControlHud {
     /**
      * 現在の回転軸値（[-1,1]）。「⟳」（時計回り）ボタン押下中は +1、
      * 「⟲」（反時計回り）ボタン押下中は -1、それ以外は 0。
-     * `computeDioramaRotationRadFromStick` の軸規約（正入力=正方向の回転）に合わせる。
+     * `computeRotationRadFromStick` の軸規約（正入力=正方向の回転）に合わせる。
      */
     getRotationAxis(): number;
     /**
      * 現在の高さ変更軸値（[-1,1]）。「▲」（上昇）ボタン押下中は +1、
      * 「▼」（下降）ボタン押下中は -1、それ以外は 0。呼び出し側で
-     * `computeDioramaHeightMetersFromTriggers` の左右トリガー引数
+     * `computeHeightMetersFromTriggers` の左右トリガー引数
      * （`rightTriggerValue = max(0, axis)`、`leftTriggerValue = max(0, -axis)`）へ変換する。
      */
     getHeightAxis(): number;

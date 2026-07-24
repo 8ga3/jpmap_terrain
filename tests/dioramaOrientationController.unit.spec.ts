@@ -13,7 +13,7 @@ import {
     DEFAULT_HEIGHT_SPEED_M_PER_SEC,
     DEFAULT_HEIGHT_OFFSET_MIN_M,
     DEFAULT_HEIGHT_OFFSET_MAX_M,
-} from "../src/demos/diorama/dioramaControllerMapping";
+} from "../src/lib/webxr/webXrStickInput";
 
 const makeEngine = (): NullEngine =>
     new NullEngine({

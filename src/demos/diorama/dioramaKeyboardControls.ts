@@ -4,7 +4,7 @@
  * @remarks
  * AR（`immersive-ar`）に対応した実機（Meta Quest 3等）が無い、またはAR突入前の
  * 動作確認をPCだけで完結させたいという要望から追加した。AR用のコントローラー
- * 操作（`dioramaArControls.ts`）と同じ `dioramaControllerMapping.ts` の純粋関数・
+ * 操作（`dioramaArControls.ts`）と同じ `webXrStickInput.ts` の純粋関数・
  * `DioramaViewController`（地図移動・拡大縮小の共有状態保持者）を経由するため、
  * キーボードでの移動はAR突入後も引き継がれる（逆も同様）。
  *
@@ -52,7 +52,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
-import { computePanAxesFromDirectionalInput, type StickAxes } from "./dioramaControllerMapping";
+import { computePanAxesFromDirectionalInput, type StickAxes } from "../../lib/webxr/webXrStickInput";
 import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 
 /** 前進（画面奥へ）・後退・左・右（いずれもカメラ視点基準）のキー割り当て。 */

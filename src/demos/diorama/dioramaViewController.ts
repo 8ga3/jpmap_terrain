@@ -22,11 +22,11 @@ import type { DioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
 import type { DioramaCenter } from "../../terrain/diorama/dioramaGrid";
 import { offsetToLatLon } from "../../terrain/diorama/dioramaGrid";
 import {
-    computeDioramaPanMetersFromStick,
-    computeFootprintHalfSizeFactorFromStick,
-    clampFootprintHalfSizeM,
+    computePanMetersFromStick,
+    computeZoomFactorFromStick,
+    clampViewScaleM,
     type StickAxes,
-} from "./dioramaControllerMapping";
+} from "../../lib/webxr/webXrStickInput";
 
 export interface DioramaViewController {
     /** 現在の実世界中心（読み取り専用スナップショット）。 */
@@ -51,7 +51,7 @@ export const createDioramaViewController = (
     initialFootprintHalfSizeM: number,
 ): DioramaViewController => {
     let currentCenter = initialCenter;
-    let currentFootprintHalfSizeM = clampFootprintHalfSizeM(initialFootprintHalfSizeM);
+    let currentFootprintHalfSizeM = clampViewScaleM(initialFootprintHalfSizeM);
     let lastAppliedFootprintHalfSizeM = currentFootprintHalfSizeM;
 
     let pendingEastM = 0;
@@ -114,13 +114,13 @@ export const createDioramaViewController = (
         feedAxes: (panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void => {
             if (!(dtSeconds > 0)) return;
 
-            const { eastM, northM } = computeDioramaPanMetersFromStick(panAxes, dtSeconds, currentFootprintHalfSizeM);
+            const { eastM, northM } = computePanMetersFromStick(panAxes, dtSeconds, currentFootprintHalfSizeM);
             pendingEastM += eastM;
             pendingNorthM += northM;
 
-            const factor = computeFootprintHalfSizeFactorFromStick(zoomAxisY, dtSeconds);
+            const factor = computeZoomFactorFromStick(zoomAxisY, dtSeconds);
             if (factor !== 1) {
-                currentFootprintHalfSizeM = clampFootprintHalfSizeM(currentFootprintHalfSizeM * factor);
+                currentFootprintHalfSizeM = clampViewScaleM(currentFootprintHalfSizeM * factor);
             }
 
             flush();

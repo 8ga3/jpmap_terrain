@@ -18,7 +18,7 @@
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import type { HorizontalUnitVector } from "./dioramaControllerMapping";
+import type { HorizontalUnitVector } from "../../lib/webxr/webXrStickInput";
 
 /** 水平方向がほぼ0（カメラが真上/真下を向いている等の退化ケース）とみなす閾値。 */
 const HORIZONTAL_DIRECTION_EPSILON = 1e-6;

@@ -256,7 +256,7 @@ describe("setupDioramaTouchControls", () => {
 
         // {x:1,y:1}は大きさが1を超える対角入力のため、`computePanAxesFromDirectionalInput`
         // により大きさ1へ正規化される（本テストの主眼はfeedAxes呼び出しの有無であり、
-        // 正規化自体は`dioramaControllerMapping.unit.spec.ts`で別途検証済み）。
+        // 正規化自体は`webXrStickInput.unit.spec.ts`で別途検証済み）。
         const [panAxes, zoomAxis, dt] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
             { x: number; y: number },
             number,

@@ -58,7 +58,7 @@ import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
-import { computePanAxesFromDirectionalInput, type StickAxes } from "./dioramaControllerMapping";
+import { computePanAxesFromDirectionalInput, type StickAxes } from "../../lib/webxr/webXrStickInput";
 import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 
 export interface DioramaTouchControls {
@@ -120,7 +120,7 @@ export const setupDioramaTouchControls = (
         viewController.feedAxes(panAxes, hud.getZoomAxis(), dtSeconds);
 
         // 高さボタンは単一の符号付き軸[-1,1]（上昇=正）で表現されるため、
-        // `computeDioramaHeightMetersFromTriggers` の左右トリガー引数へ変換する。
+        // `computeHeightMetersFromTriggers` の左右トリガー引数へ変換する。
         const heightAxis = hud.getHeightAxis();
         const rightTriggerValue = Math.max(0, heightAxis);
         const leftTriggerValue = Math.max(0, -heightAxis);

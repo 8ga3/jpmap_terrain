@@ -33,10 +33,10 @@
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 import {
-    computeDioramaRotationRadFromStick,
-    computeDioramaHeightMetersFromTriggers,
-    clampDioramaHeightOffsetM,
-} from "./dioramaControllerMapping";
+    computeRotationRadFromStick,
+    computeHeightMetersFromTriggers,
+    clampHeightOffsetM,
+} from "../../lib/webxr/webXrStickInput";
 
 export interface DioramaOrientationController {
     /** 現在の回転角[rad]（読み取り専用スナップショット）。 */
@@ -60,7 +60,7 @@ export interface DioramaOrientationController {
  */
 export const createDioramaOrientationController = (orientationRoot: TransformNode): DioramaOrientationController => {
     let rotationRad = orientationRoot.rotation.y;
-    let heightOffsetM = clampDioramaHeightOffsetM(orientationRoot.position.y);
+    let heightOffsetM = clampHeightOffsetM(orientationRoot.position.y);
     orientationRoot.position.y = heightOffsetM;
 
     return {
@@ -74,15 +74,15 @@ export const createDioramaOrientationController = (orientationRoot: TransformNod
         ): void => {
             if (!(dtSeconds > 0)) return;
 
-            const deltaRad = computeDioramaRotationRadFromStick(rotationAxisX, dtSeconds);
+            const deltaRad = computeRotationRadFromStick(rotationAxisX, dtSeconds);
             if (deltaRad !== 0) {
                 rotationRad += deltaRad;
                 orientationRoot.rotation.y = rotationRad;
             }
 
-            const deltaM = computeDioramaHeightMetersFromTriggers(leftTriggerValue, rightTriggerValue, dtSeconds);
+            const deltaM = computeHeightMetersFromTriggers(leftTriggerValue, rightTriggerValue, dtSeconds);
             if (deltaM !== 0) {
-                heightOffsetM = clampDioramaHeightOffsetM(heightOffsetM + deltaM);
+                heightOffsetM = clampHeightOffsetM(heightOffsetM + deltaM);
                 orientationRoot.position.y = heightOffsetM;
             }
         },

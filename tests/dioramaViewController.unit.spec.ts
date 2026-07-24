@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { DioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
 import { createDioramaViewController } from "../src/demos/diorama/dioramaViewController";
-import { DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M } from "../src/demos/diorama/dioramaControllerMapping";
+import { DEFAULT_VIEW_SCALE_MAX_M } from "../src/lib/webxr/webXrStickInput";
 
 const makeTerrain = (): { terrain: DioramaTerrain; setView: ReturnType<typeof vi.fn> } => {
     const setView = vi.fn(() => Promise.resolve());
@@ -112,7 +112,7 @@ describe("createDioramaViewController", () => {
         // 極端に長時間・強いズームアウト入力を与えても上限を超えない。
         vc.feedAxes({ x: 0, y: 0 }, 1, 1000);
         const patch = setView.mock.calls[0][0];
-        expect(patch.footprintHalfSizeM).toBeLessThanOrEqual(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M);
+        expect(patch.footprintHalfSizeM).toBeLessThanOrEqual(DEFAULT_VIEW_SCALE_MAX_M);
     });
 
     it("setViewが失敗した場合、centerとfootprintHalfSizeMは確定させず次回flushで再送する", async () => {

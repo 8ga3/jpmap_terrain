@@ -31,11 +31,11 @@ import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 // `scene.createDefaultXRExperienceAsync` を Scene プロトタイプへ追加する副作用 import。
 import "@babylonjs/core/Helpers/sceneHelpers";
-import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 
+import { isWebXrSessionSupported } from "../../lib/webxr/webXrSessionSupport";
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
@@ -44,44 +44,10 @@ import { createDioramaArControlHudForSession, setupDioramaArControls } from "./d
 import type { DioramaArControlHud } from "./dioramaArControlHud";
 
 
-/** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
- *  環境によっては（実デバイス無し等）Promise がいつまでも解決しないことがあるため、
- *  一定時間で諦めて「非対応」扱いにし、デモの起動をブロックしないようにする。
- */
-const SUPPORT_CHECK_TIMEOUT_MS = 4000;
-
-/** `promise` が `timeoutMs` 以内に解決しなければ `onTimeout` の値へフォールバックする。 */
-const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, onTimeout: T): Promise<T> =>
-    new Promise<T>((resolve) => {
-        const timer = setTimeout(() => resolve(onTimeout), timeoutMs);
-        promise.then(
-            (value) => {
-                clearTimeout(timer);
-                resolve(value);
-            },
-            () => {
-                clearTimeout(timer);
-                resolve(onTimeout);
-            },
-        );
-    });
-
 /** WebXR (`immersive-ar`) にブラウザ/デバイスが対応しているかを判定する。
- *  {@link SUPPORT_CHECK_TIMEOUT_MS} 以内に応答がない場合は非対応として扱う。
+ *  公開APIの {@link isWebXrSessionSupported} を `"immersive-ar"` 固定で呼ぶ薄いラッパー。
  */
-export const isImmersiveArSupported = async (): Promise<boolean> => {
-    try {
-        if (typeof navigator === "undefined" || !("xr" in navigator)) return false;
-        return await withTimeout(
-            WebXRSessionManager.IsSessionSupportedAsync("immersive-ar"),
-            SUPPORT_CHECK_TIMEOUT_MS,
-            false,
-        );
-    } catch (err) {
-        console.warn("[jpmap-terrain diorama demo] WebXR AR support check failed:", err);
-        return false;
-    }
-};
+export const isImmersiveArSupported = async (): Promise<boolean> => isWebXrSessionSupported("immersive-ar");
 
 /**
  * ARボタンのスタイル（VR PoC の `styleVrButton` に準じた外観）を適用する。
