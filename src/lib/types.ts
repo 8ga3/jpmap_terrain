@@ -985,7 +985,7 @@ export const JPMAP_DIORAMA_DEFAULTS = {
 
 /** `JpmapDiorama.onViewChange` のリスナー引数。 */
 export interface JpmapDioramaViewChangeEvent {
-    readonly center: DioramaCenter;
+    readonly center: Readonly<DioramaCenter>;
     readonly footprintHalfSizeM: number;
 }
 
