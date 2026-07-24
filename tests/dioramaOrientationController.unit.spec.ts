@@ -120,4 +120,33 @@ describe("createDioramaOrientationController", () => {
         expect(oc.getHeightOffsetM()).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
         expect(node.position.y).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
     });
+
+    describe("setRotationRad", () => {
+        it("回転角を明示的に設定できる", () => {
+            const { node } = makeNode();
+            const oc = createDioramaOrientationController(node);
+            oc.setRotationRad(1.5);
+            expect(oc.getRotationRad()).toBe(1.5);
+            expect(node.rotation.y).toBe(1.5);
+        });
+    });
+
+    describe("setHeightOffsetM", () => {
+        it("高さオフセットを明示的に設定できる", () => {
+            const { node } = makeNode();
+            const oc = createDioramaOrientationController(node);
+            oc.setHeightOffsetM(0.2);
+            expect(oc.getHeightOffsetM()).toBe(0.2);
+            expect(node.position.y).toBe(0.2);
+        });
+
+        it("既定の下限・上限でクランプされる", () => {
+            const { node } = makeNode();
+            const oc = createDioramaOrientationController(node);
+            oc.setHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MAX_M + 100);
+            expect(oc.getHeightOffsetM()).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
+            oc.setHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MIN_M - 100);
+            expect(oc.getHeightOffsetM()).toBe(DEFAULT_HEIGHT_OFFSET_MIN_M);
+        });
+    });
 });

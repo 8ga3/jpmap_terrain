@@ -901,3 +901,102 @@ export const MODEL_DEFAULTS = {
     enabled: true,
     gravity: true,
 } as const;
+
+// ============================================================================
+// JpmapDiorama（箱庭ジオラマ表示）
+// ============================================================================
+
+/** 箱庭ジオラマ表示の中心（測地座標、度）。 */
+export interface DioramaCenter {
+    lat: number;
+    lon: number;
+}
+
+/**
+ * 箱庭ジオラマのタイル種別。
+ * ラスタタイルの `"std"`（標準地図）/ `"photo"`（写真）に加え、ラスタタイルを
+ * 使わずポリゴン形状のみを表示する `"wireframe"` を持つ。
+ */
+export type DioramaTileMode = "std" | "photo" | "wireframe";
+
+/** WebXR (`immersive-ar`) セッションの状態。 */
+export type DioramaArState = "unsupported" | "inactive" | "active";
+
+/**
+ * `JpmapDiorama.create` 初期化オプション。
+ * `center` 以外は任意指定で、未指定時は {@link JPMAP_DIORAMA_DEFAULTS} が適用される。
+ */
+export interface JpmapDioramaOptions {
+    /** 実世界の中心（測地座標）。 */
+    center: DioramaCenter;
+    /** 実世界フットプリントの半辺長[m]（正方形の中心から辺までの距離）。 */
+    footprintHalfSizeM?: number;
+    /**
+     * 卓上表示半径[m]（手元サイズ）。中心から最も遠い点（正方形の対角線の
+     * 先端＝四隅）までの距離がこの値になるようスケールする。
+     */
+    tableRadiusM?: number;
+    /** タイル種別。既定 `"std"`。 */
+    tileMode?: DioramaTileMode;
+    /**
+     * 描画エンジン。既定 `"webgl2"`（`JpmapTerrain` の既定 `"webgpu"` とは異なる。
+     * WebXR (`immersive-ar`) 実機（Meta Quest Browser 等）との互換性を優先するため）。
+     */
+    engine?: EngineType;
+    /** 正方形グリッドの1辺あたりの分割数。既定 48。頂点数は `(gridSegments+1)^2`。 */
+    gridSegments?: number;
+    /** 標高取得ズーム。省略時は `footprintHalfSizeM` から自動算出する。 */
+    demZoom?: number;
+    /** テクスチャ取得ズーム。省略時は `footprintHalfSizeM` から自動算出する。 */
+    textureZoom?: number;
+    /** 標高の垂直誇張倍率。既定 1。 */
+    heightScaleFactor?: number;
+    /** 側面壁（土台）の深さ ÷ `footprintHalfSizeM`。既定 0.15。 */
+    baseDepthRatio?: number;
+    /**
+     * `true`（既定）: デスクトップキーボード＋常時表示タッチHUDによる内蔵操作
+     * （地図移動・拡大縮小・箱庭回転・高さ変更・タイル種別切替）を有効にする。
+     * `false`: 内蔵UIを一切生成せず、`feedPanZoomAxes`/`feedOrientationAxes`/
+     * `cycleTileMode` 等の低レベルAPIのみで操作する（host独自入力・UI向け）。
+     */
+    enableDefaultControls?: boolean;
+    /**
+     * WebXR ARボタンを表示するか。既定 `true`。
+     * WebXR (`immersive-ar`) 非対応環境では機能検出後に自動的に非表示になる。
+     */
+    showArButton?: boolean;
+}
+
+/**
+ * spec/diorama-api.md §5.2 で定義されるデフォルト初期値（パッケージ内部用）。
+ * 公開 API には含めず、`JpmapDiorama` 内部からのみ参照する。
+ */
+export const JPMAP_DIORAMA_DEFAULTS = {
+    footprintHalfSizeM: 800,
+    tableRadiusM: 0.35,
+    tileMode: "std" as DioramaTileMode,
+    engine: "webgl2" as EngineType,
+    gridSegments: 48,
+    heightScaleFactor: 1,
+    baseDepthRatio: 0.15,
+    enableDefaultControls: true as boolean,
+    showArButton: true as boolean,
+} as const;
+
+/** `JpmapDiorama.onViewChange` のリスナー引数。 */
+export interface JpmapDioramaViewChangeEvent {
+    readonly center: DioramaCenter;
+    readonly footprintHalfSizeM: number;
+}
+
+/**
+ * `JpmapDiorama.onViewChange` リスナー。
+ * 中心・フットプリント半辺長のいずれかが変化した後に呼ばれる。
+ */
+export type JpmapDioramaViewChangeListener = (event: JpmapDioramaViewChangeEvent) => void;
+
+/** `JpmapDiorama.onTileModeChange` リスナー。タイル種別が変化した後に呼ばれる。 */
+export type DioramaTileModeChangeListener = (tileMode: DioramaTileMode) => void;
+
+/** `JpmapDiorama.onArStateChange` リスナー。ARセッション状態が変化した後に呼ばれる。 */
+export type DioramaArStateChangeListener = (state: DioramaArState) => void;

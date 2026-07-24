@@ -662,7 +662,7 @@ describe("setupDioramaArControls", () => {
         await Promise.resolve();
 
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-            "[jpmap-terrain diorama demo] failed to exit WebXR AR session:",
+            "[jpmap-terrain diorama] failed to exit WebXR AR session:",
             rejection,
         );
 
