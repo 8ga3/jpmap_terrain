@@ -108,7 +108,7 @@ describe("createDioramaArSessionController", () => {
         expect(controller.isActive()).toBe(false);
     });
 
-    it("WebXR非対応環境（scene.createDefaultXRExperienceAsyncが無い）でenter()を呼んでも例外を投げず、非アクティブのまま復帰する", async () => {
+    it("WebXR非対応環境（scene.createDefaultXRExperienceAsyncが無い）でenter()を呼ぶとrejectし、非アクティブのまま復帰する", async () => {
         const deps = createControllerDeps();
         const controller = createDioramaArSessionController(
             deps.mount,
@@ -120,7 +120,9 @@ describe("createDioramaArSessionController", () => {
             deps.tileModeController,
             deps.touchControls,
         );
-        await expect(controller.enter()).resolves.toBeUndefined();
+        // spec/diorama-api.md §7: enterAr()/exitAr() の失敗はホスト側でハンドリング
+        // できるよう reject する。
+        await expect(controller.enter()).rejects.toThrow();
         expect(controller.isActive()).toBe(false);
         // enter失敗時もタッチHUDの非表示/再表示が対で呼ばれ、非表示のまま残留しない。
         expect(deps.touchControls.setVisible).toHaveBeenCalledWith(false);
