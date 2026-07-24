@@ -240,12 +240,12 @@ if (await diorama.isArSupported()) {
 ## 6. 互換性・移行
 
 - **破壊的変更なし**（新規追加API）。既存デモURL `/diorama.html` の挙動・見た目は変えていない（各段階で Visual Regression Test・ユーザー目視確認により担保）。
-- 移行は以下のPRに分割して実施し、すべて完了している。
+- 移行は以下のIssueに分割して実施し、すべて完了している。
   1. [#570](https://github.com/8ga3/jpmap_terrain/issues/570) 状態保持者・入力コントロール群の `src/lib/internal/diorama/` への移動（ロジック不変、import path更新のみ）
   2. [#571](https://github.com/8ga3/jpmap_terrain/issues/571) 型定義追加（`src/lib/types.ts`）+ `JpmapDiorama` 実装 + `src/lib.ts` エクスポート追加
   3. [#572](https://github.com/8ga3/jpmap_terrain/issues/572) 既存デモ (`src/demos/diorama/index.ts`) の新API移行
   4. [#573](https://github.com/8ga3/jpmap_terrain/issues/573) ドキュメント更新（本ファイル・`spec/demos.md`・`README.md`）
-- 各PRで `npm run lint` / `npm run typecheck` / `npm run test:unit` / `npm run test:visuals` を通過させている。
+- 各Issueに対応するPRで `npm run lint` / `npm run typecheck` / `npm run test:unit` / `npm run test:visuals` を通過させている。
 - 既存ユニットテスト（`tests/diorama*.unit.spec.ts`）はモジュール移動に伴い import path を更新した。テストケース自体（純粋関数のロジック検証）は変更していないものが大半。`JpmapDiorama` クラス本体の公開APIユニットテストは `tests/jpmapDiorama.unit.spec.ts` に追加している。
 - 3DCG描画・AR実機挙動に関わる変更のため、各段階でユーザーの目視確認（HITL）を必須ゲートとして実施済み。
 
