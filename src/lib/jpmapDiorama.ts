@@ -224,7 +224,7 @@ export class JpmapDiorama {
             if (enableDefaultControls) {
                 const hud = createDioramaArControlHud({ exitArEnabled: false });
                 this.mountElement.appendChild(hud.element);
-                touchControls = setupDioramaTouchControls(
+                const rawTouchControls = setupDioramaTouchControls(
                     scene,
                     camera,
                     hud,
@@ -232,6 +232,22 @@ export class JpmapDiorama {
                     orientationController,
                     tileModeController,
                 );
+                // `setupDioramaTouchControls().dispose()` はレンダーオブザーバ解除・
+                // イベント購読解除のみ行い、HUD自体（DOM要素・内部ウィジェット）は
+                // 破棄しない（既存デモはページ終了までdispose自体を呼ばない前提の
+                // ため）。`JpmapDiorama.dispose()` ではHUDのDOM残留を防ぐ必要があるため、
+                // ここで dispose をラップし、HUDの破棄も合わせて行う。
+                touchControls = {
+                    setVisible: rawTouchControls.setVisible,
+                    dispose: (): void => {
+                        rawTouchControls.dispose();
+                        hud.dispose();
+                    },
+                };
+                // 例外発生時も後始末（HUD破棄含む）が漏れないよう、生成直後に
+                // 即座にフィールドへ反映する（`initAsync` の catch から `dispose()` を
+                // 呼ぶため）。
+                this._touchControls = touchControls;
                 this._disposeKeyboardControls = setupDioramaKeyboardControls(
                     scene,
                     camera,
@@ -241,8 +257,8 @@ export class JpmapDiorama {
                 );
             } else {
                 touchControls = NOOP_TOUCH_CONTROLS;
+                this._touchControls = touchControls;
             }
-            this._touchControls = touchControls;
 
             const arController = createDioramaArSessionController(
                 this.mountElement,

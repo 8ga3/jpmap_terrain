@@ -260,4 +260,30 @@ describe("attachDioramaArButton", () => {
         expect(mount.childElementCount).toBe(0);
         expect(controller.dispose).not.toHaveBeenCalled();
     });
+
+    it("生成時点で既にアクティブなコントローラーを渡された場合、初期表示から反映する", () => {
+        const mount = document.createElement("div");
+        const { controller } = createMockController(true);
+        attachDioramaArButton(mount, controller);
+        const button = mount.querySelector("button") as HTMLButtonElement;
+        expect(button.textContent).toBe("終了");
+    });
+
+    it("アクティブ時にクリックしexit()が失敗しても、例外にせずコンソールへログ出力する", async () => {
+        const mount = document.createElement("div");
+        const { controller } = createMockController(true);
+        controller.exit = vi.fn(() => Promise.reject(new Error("exit failed")));
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        attachDioramaArButton(mount, controller);
+        mount.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "[jpmap-terrain diorama] failed to exit WebXR AR session:",
+            expect.any(Error),
+        );
+        consoleErrorSpy.mockRestore();
+    });
 });

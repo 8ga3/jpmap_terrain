@@ -72,8 +72,13 @@ export const createDioramaViewController = (
 
     let pendingEastM = 0;
     let pendingNorthM = 0;
-    // 前回の `setView` 呼び出し（rebuild）が完了するまで次を発行しない。
-    let applying = false;
+    /**
+     * 進行中の `dioramaTerrain.setView` 呼び出し（rebuild）。`feedAxes`（`flush()`
+     * 経由）と明示的な `setView()` の双方がこれを共有し、いずれか一方が実行中は
+     * 他方が新規リクエストを発行しないようにする（同時実行によるrebuildの競合を防ぐ）。
+     * `null` なら現在実行中のリクエストが無いことを示す。
+     */
+    let inFlight: Promise<void> | null = null;
 
     const changeListeners: Array<(center: DioramaCenter, footprintHalfSizeM: number) => void> = [];
     const notifyChange = (): void => {
@@ -86,8 +91,26 @@ export const createDioramaViewController = (
         }
     };
 
+    /**
+     * `dioramaTerrain.setView(patch)` を発行し、完了まで `inFlight` を占有する。
+     * 呼び出し元（`flush()`/`setView()`）は返り値の Promise へ個別に
+     * 成功/失敗ハンドラを付与できる（`inFlight` 自体は排他制御専用で、
+     * reject をそのまま伝播させても他の `.then()` の実行を妨げない）。
+     */
+    const startSetView = (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
+        const request = dioramaTerrain.setView(patch);
+        inFlight = request.then(
+            () => undefined,
+            () => undefined,
+        );
+        inFlight.finally(() => {
+            inFlight = null;
+        });
+        return request;
+    };
+
     const flush = (): void => {
-        if (applying) return;
+        if (inFlight) return;
         const hasPan = pendingEastM !== 0 || pendingNorthM !== 0;
         const hasZoom = currentFootprintHalfSizeM !== lastAppliedFootprintHalfSizeM;
         if (!hasPan && !hasZoom) return;
@@ -114,26 +137,20 @@ export const createDioramaViewController = (
             patch.footprintHalfSizeM = sentFootprintHalfSizeM;
         }
 
-        applying = true;
-        dioramaTerrain
-            .setView(patch)
-            .then(
-                () => {
-                    if (nextCenter !== undefined) currentCenter = nextCenter;
-                    if (sentFootprintHalfSizeM !== undefined) lastAppliedFootprintHalfSizeM = sentFootprintHalfSizeM;
-                    notifyChange();
-                },
-                (err: unknown) => {
-                    console.error("[jpmap-terrain diorama] setView failed:", err);
-                    // lastAppliedFootprintHalfSizeM は更新していないため、hasZoom判定により
-                    // 次回のflushで自然に再送される。パン分は差し引いていた値を復元する。
-                    pendingEastM += sentEastM;
-                    pendingNorthM += sentNorthM;
-                },
-            )
-            .finally(() => {
-                applying = false;
-            });
+        startSetView(patch).then(
+            () => {
+                if (nextCenter !== undefined) currentCenter = nextCenter;
+                if (sentFootprintHalfSizeM !== undefined) lastAppliedFootprintHalfSizeM = sentFootprintHalfSizeM;
+                notifyChange();
+            },
+            (err: unknown) => {
+                console.error("[jpmap-terrain diorama] setView failed:", err);
+                // lastAppliedFootprintHalfSizeM は更新していないため、hasZoom判定により
+                // 次回のflushで自然に再送される。パン分は差し引いていた値を復元する。
+                pendingEastM += sentEastM;
+                pendingNorthM += sentNorthM;
+            },
+        );
     };
 
     return {
@@ -159,7 +176,12 @@ export const createDioramaViewController = (
             if (patch.footprintHalfSizeM !== undefined) {
                 resolvedPatch.footprintHalfSizeM = clampFootprintHalfSizeM(patch.footprintHalfSizeM);
             }
-            await dioramaTerrain.setView(resolvedPatch);
+            // `flush()` 由来のrebuildが進行中であれば、まずその完了を待ってから
+            // 自分のリクエストを発行する（`inFlight` を共有した直列化。冒頭コメント参照）。
+            while (inFlight) {
+                await inFlight;
+            }
+            await startSetView(resolvedPatch);
             if (resolvedPatch.center !== undefined) currentCenter = resolvedPatch.center;
             if (resolvedPatch.footprintHalfSizeM !== undefined) {
                 currentFootprintHalfSizeM = resolvedPatch.footprintHalfSizeM;

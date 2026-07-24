@@ -349,7 +349,7 @@ export const attachDioramaArButton = (
     styleArButton(button);
     mount.appendChild(button);
 
-    const unsubscribe = controller.onActiveChange((active) => {
+    const applyActiveState = (active: boolean): void => {
         if (active) {
             button.textContent = "終了";
             button.setAttribute("aria-label", "ARを終了");
@@ -357,11 +357,19 @@ export const attachDioramaArButton = (
         } else {
             styleArButton(button);
         }
-    });
+    };
+    // 生成時点で既にAR中のコントローラーを渡された場合（呼び出し元がボタンより先に
+    // `enter()` していた等）に備え、初期表示を `controller.isActive()` の実際の状態に
+    // 合わせる（既定の「AR」表示のまま固定されるのを防ぐ）。
+    applyActiveState(controller.isActive());
+
+    const unsubscribe = controller.onActiveChange(applyActiveState);
 
     button.addEventListener("click", () => {
         if (controller.isActive()) {
-            void controller.exit();
+            controller.exit().catch((err: unknown) => {
+                console.error("[jpmap-terrain diorama] failed to exit WebXR AR session:", err);
+            });
             return;
         }
         controller.enter().catch((err: unknown) => {
