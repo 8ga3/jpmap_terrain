@@ -225,6 +225,14 @@ describe("attachDioramaArButton", () => {
         expect(mount.querySelector("button")).not.toBeNull();
     });
 
+    it("ボタンにtype=\"button\"を明示し、form内での意図しないsubmitを防ぐ", () => {
+        const mount = document.createElement("div");
+        const { controller } = createMockController(false);
+        attachDioramaArButton(mount, controller);
+        const button = mount.querySelector("button");
+        expect(button?.getAttribute("type")).toBe("button");
+    });
+
     it("非アクティブ時にクリックするとenter()を呼ぶ", () => {
         const mount = document.createElement("div");
         const { controller } = createMockController(false);

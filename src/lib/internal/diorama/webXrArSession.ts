@@ -348,6 +348,9 @@ export const attachDioramaArButton = (
     controller: DioramaArSessionController,
 ): (() => void) => {
     const button = document.createElement("button");
+    // フォーム内に配置された場合の既定`type="submit"`扱いを避ける
+    // （`dioramaArControlHud.ts`と同じ理由。誤ったクリックでのフォーム送信を防ぐため明示する）。
+    button.type = "button";
     styleArButton(button);
     mount.appendChild(button);
 

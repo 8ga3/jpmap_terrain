@@ -50,6 +50,30 @@ describe("createDioramaViewController", () => {
         expect(vc.getCenter()).toEqual({ lat: 10, lon: 20 });
     });
 
+    it("getCenter()の戻り値を呼び出し元が書き換えても内部状態は変化しない", () => {
+        const { terrain } = makeTerrain();
+        const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+
+        const snapshot = vc.getCenter();
+        snapshot.lat = 99;
+        snapshot.lon = 99;
+
+        expect(vc.getCenter()).toEqual(INITIAL_CENTER);
+    });
+
+    it("onChangeへ渡されるcenterをリスナー側が書き換えても内部状態は変化しない", async () => {
+        const { terrain } = makeTerrain();
+        const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+        vc.onChange((center) => {
+            center.lat = 99;
+            center.lon = 99;
+        });
+
+        await vc.setView({ footprintHalfSizeM: 500 });
+
+        expect(vc.getCenter()).toEqual(INITIAL_CENTER);
+    });
+
     it("dtSecondsが0以下ならfeedAxesは何もしない", () => {
         const { terrain, setView } = makeTerrain();
         const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
