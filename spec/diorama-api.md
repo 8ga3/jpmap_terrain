@@ -1,6 +1,6 @@
 # ジオラマ表示API仕様書（`JpmapDiorama`）
 
-> **ステータス**: Draft（Architect設計提案。Issue [#569](https://github.com/8ga3/jpmap_terrain/issues/569) 対応）
+> **ステータス**: 確定（Issue [#569](https://github.com/8ga3/jpmap_terrain/issues/569) 対応。[#570](https://github.com/8ga3/jpmap_terrain/issues/570)〜[#573](https://github.com/8ga3/jpmap_terrain/issues/573) で実装・移行・ドキュメント整備が完了）
 
 ---
 
@@ -16,18 +16,18 @@
 2. **内蔵コントロールと低レベルAPIの二層構成**: 既存デモの挙動（キーボード＋タッチHUD常時有効、AR中は専用HUD＋XRコントローラー）は `enableDefaultControls`（既定 `true`）でそのまま踏襲する。一方、host アプリが独自の入力・UIから操作したいケース（例: host側が独自のXR UIを持つ、ゲームパッドを直接扱いたい等）向けに、`feedPanZoomAxes` / `feedOrientationAxes` / `cycleTileMode` という低レベル連続入力APIを常に公開する。
 3. **段階移行・挙動不変**: 既存デモ（`src/demos/diorama/index.ts`）は新APIを呼ぶだけの薄いラッパーに置き換える。外部から見た挙動（見た目・操作感・URL）は変えず、Visual Regression Test（`npm run test:visuals`）とユーザー目視確認（HITL）で担保する。
 
-## 3. 変更概要
+## 3. 変更概要（実施済み）
 
 | 種別 | パス | 内容 |
 |---|---|---|
 | 新規 | `src/lib/jpmapDiorama.ts` | `JpmapDiorama` クラス本体（`JpmapTerrain.create()` と同様、`static async create()` で生成） |
 | 新規 | `src/lib/types.ts`（追記） | Diorama関連の公開型（Options/Event/Listener等）を追加 |
-| 移動 | `src/demos/diorama/dioramaViewController.ts` 他、状態保持者3ファイル | `src/lib/internal/diorama/` 配下へ移動し `JpmapDiorama` から利用（ロジック自体は変更しない） |
-| 縮小 | `src/demos/diorama/index.ts` | 新API呼び出しのみに置き換え（DOM構築・URLパラメータ解決等デモ固有処理のみ残す） |
+| 移動 | `src/demos/diorama/dioramaViewController.ts` 他、状態保持者3ファイル | `src/lib/internal/diorama/` 配下へ移動し `JpmapDiorama` から利用（ロジック自体は変更していない） |
+| 縮小 | `src/demos/diorama/index.ts` | 新API呼び出しのみに置き換え済み（`#root` へのマウント・`?engine=` クエリ解決等デモ固有処理のみが残る） |
 | 変更 | `src/lib.ts` | `JpmapDiorama` と関連型のexportを追加 |
 | 新規 | `spec/diorama-api.md`（本ファイル） | 公開API仕様 |
 
-`src/demos/diorama/dioramaArControlHud.ts` / `dioramaArControls.ts` / `dioramaControllerMapping.ts` / `dioramaKeyboardControls.ts` / `dioramaTouchControls.ts` / `webXrArSession.ts` / `dioramaHorizontalDirection.ts` は、内蔵コントロール実装として同様に `src/lib/internal/diorama/` へ移動する（`enableDefaultControls: true` 時にのみ `JpmapDiorama` 内部から生成される）。
+`src/demos/diorama/dioramaArControlHud.ts` / `dioramaArControls.ts` / `dioramaControllerMapping.ts` / `dioramaKeyboardControls.ts` / `dioramaTouchControls.ts` / `webXrArSession.ts` / `dioramaHorizontalDirection.ts` は、内蔵コントロール実装として同様に `src/lib/internal/diorama/` へ移動済み（`enableDefaultControls: true` 時にのみ `JpmapDiorama` 内部から生成される）。
 
 ## 4. 代替案（最大2）
 
@@ -159,12 +159,18 @@ interface JpmapDiorama {
 }
 ```
 
-#### 5.3.6 破棄
+#### 5.3.6 破棄・リサイズ
 
 ```typescript
 interface JpmapDiorama {
-  /** シーン・イベントリスナー・DOM要素（HUD/ARボタン）を破棄する。 */
+  /** シーン・イベントリスナー・DOM要素（HUD/ARボタン）を破棄する。冪等（2回以上呼んでも安全）。 */
   dispose(): void;
+  /**
+   * リサイズを通知し Engine を再計測する。内部は `ResizeObserver` でマウント要素の
+   * サイズ変化に自動追従するため、通常は手動呼び出し不要（host側で明示的な
+   * 再計測タイミングが必要な場合のみ使用）。
+   */
+  resize(): void;
 }
 ```
 
@@ -233,22 +239,21 @@ if (await diorama.isArSupported()) {
 
 ## 6. 互換性・移行
 
-- **破壊的変更なし**（新規追加API）。既存デモURL `/diorama.html` の挙動・見た目は変えない。
-- 移行は複数PRに分割する:
-  1. 型定義追加（`src/lib/types.ts`）
-  2. 状態保持者の `src/lib/internal/diorama/` への移動（ロジック不変、import path更新のみ）
-  3. `JpmapDiorama` 実装 + `src/lib.ts` エクスポート追加
-  4. 既存デモ (`src/demos/diorama/index.ts`) の新API移行
-  5. ドキュメント更新（本ファイル・`spec/demos.md`・`README.md`）
-- 各PRで `npm run lint` / `npm run typecheck` / `npm run test:unit` / `npm run test:visuals` を通過させる。
-- 既存ユニットテスト（`tests/diorama*.unit.spec.ts`）はモジュール移動に伴い import path を更新する。テストケース自体（純粋関数のロジック検証）は変更不要なものが大半。
-- 3DCG描画・AR実機挙動に関わる変更のため、最終的にユーザーの目視確認（HITL、実機 Meta Quest 3等があれば併用）を必須ゲートとする。
+- **破壊的変更なし**（新規追加API）。既存デモURL `/diorama.html` の挙動・見た目は変えていない（各段階で Visual Regression Test・ユーザー目視確認により担保）。
+- 移行は以下のPRに分割して実施し、すべて完了している。
+  1. [#570](https://github.com/8ga3/jpmap_terrain/issues/570) 状態保持者・入力コントロール群の `src/lib/internal/diorama/` への移動（ロジック不変、import path更新のみ）
+  2. [#571](https://github.com/8ga3/jpmap_terrain/issues/571) 型定義追加（`src/lib/types.ts`）+ `JpmapDiorama` 実装 + `src/lib.ts` エクスポート追加
+  3. [#572](https://github.com/8ga3/jpmap_terrain/issues/572) 既存デモ (`src/demos/diorama/index.ts`) の新API移行
+  4. [#573](https://github.com/8ga3/jpmap_terrain/issues/573) ドキュメント更新（本ファイル・`spec/demos.md`・`README.md`）
+- 各PRで `npm run lint` / `npm run typecheck` / `npm run test:unit` / `npm run test:visuals` を通過させている。
+- 既存ユニットテスト（`tests/diorama*.unit.spec.ts`）はモジュール移動に伴い import path を更新した。テストケース自体（純粋関数のロジック検証）は変更していないものが大半。`JpmapDiorama` クラス本体の公開APIユニットテストは `tests/jpmapDiorama.unit.spec.ts` に追加している。
+- 3DCG描画・AR実機挙動に関わる変更のため、各段階でユーザーの目視確認（HITL）を必須ゲートとして実施済み。
 
 ## 7. 観測性（ログ）
 
 - 既存の `measureAsync`（`dioramaPerfLog.ts`、DEM/テクスチャ取得等の非同期処理時間計測）を `JpmapDiorama` 経由でも継続する。
-- `console.*` 出力は AGENTS.md のログ出力言語ルールに従い英語 + `[jpmap-terrain diorama]` プレフィックスに統一する（デモ内メッセージは現行 `[jpmap-terrain diorama demo]` だが、ライブラリ本体からの出力は `[jpmap-terrain diorama]` とし、デモ固有の残存コードのみ `demo` サフィックスを維持する）。
-- `enterAr()` / `exitAr()` の失敗（`WebXRSessionManager` 例外等）は reject し、host アプリ側でハンドリングできるようにする（既存コードの `console.error` 握りつぶしのみで終わらせない）。
+- `console.*` 出力は AGENTS.md のログ出力言語ルールに従い英語 + `[jpmap-terrain diorama]` プレフィックスに統一している（デモ内メッセージは `[jpmap-terrain diorama demo]`、ライブラリ本体からの出力は `[jpmap-terrain diorama]` とし、デモ固有の残存コードのみ `demo` サフィックスを維持する）。
+- `enterAr()` / `exitAr()` の失敗（`WebXRSessionManager` 例外等）は reject し、host アプリ側でハンドリングできる（既存コードの `console.error` 握りつぶしのみで終わらせない）。
 
 ## 8. 制約事項
 

@@ -61,6 +61,36 @@ npm install @babylonjs/loaders @babylonjs/materials
 
 公開 API の詳細は [`spec/package.md`](spec/package.md) を参照してください。
 
+### JpmapDiorama（箱庭ジオラマ表示）
+
+`JpmapDiorama` は `JpmapTerrain` とは独立した第2の公開APIで、地形を手元サイズの正方形「箱庭」として表示します。標準WebブラウザとWebXR (`immersive-ar`) セッションの双方に対応します。
+
+```html
+<div id="diorama" style="width: 800px; height: 600px;"></div>
+<script type="module">
+  import { JpmapDiorama } from "jpmap-terrain";
+
+  const diorama = await JpmapDiorama.create(document.getElementById("diorama"), {
+    center: { lat: 35.3436, lon: 138.7203 },
+    footprintHalfSizeM: 800,
+    tableRadiusM: 0.35,
+  });
+
+  // タイル種別を写真に切り替える
+  await diorama.setTileMode("photo");
+
+  // AR (immersive-ar) 対応環境ならセッションへ突入
+  if (await diorama.isArSupported()) {
+    await diorama.enterAr();
+  }
+
+  // 破棄
+  diorama.dispose();
+</script>
+```
+
+公開 API の詳細は [`spec/diorama-api.md`](spec/diorama-api.md) を参照してください。
+
 ## クイックスタート（デモ開発）
 
 ```shell
