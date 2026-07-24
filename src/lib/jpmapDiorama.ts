@@ -375,10 +375,14 @@ export class JpmapDiorama {
 
     private _notifyViewChange(center: DioramaCenter, footprintHalfSizeM: number): void {
         if (this._disposed) return;
-        const event = { center, footprintHalfSizeM };
         for (const listener of this._viewListeners.slice()) {
             try {
-                listener(event);
+                // 各リスナー呼び出しごとに独立したスナップショット（`center`含む）を渡す。
+                // 1つの `event`/`center` オブジェクトを全リスナーで共有すると、あるリスナーが
+                // `event.center` を書き換えた場合に後続リスナーが改変後の値を受け取って
+                // しまう（`Readonly<DioramaCenter>` は型レベルの保護のみで、実行時の
+                // ミューテーションは防げないため）。
+                listener({ center: { ...center }, footprintHalfSizeM });
             } catch (err) {
                 console.error("[jpmap-terrain diorama] onViewChange listener threw:", err);
             }

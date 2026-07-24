@@ -129,6 +129,26 @@ describe("createDioramaArSessionController", () => {
         expect(deps.touchControls.setVisible).toHaveBeenCalledWith(true);
     });
 
+    it("enter()失敗時、controller.enter()単独ではコンソールへログ出力しない（UI経由のログとの二重出力を避けるため）", async () => {
+        const deps = createControllerDeps();
+        const controller = createDioramaArSessionController(
+            deps.mount,
+            deps.scene,
+            deps.dioramaRoot,
+            deps.tableRadiusM,
+            deps.viewController,
+            deps.orientationController,
+            deps.tileModeController,
+            deps.touchControls,
+        );
+        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        await expect(controller.enter()).rejects.toThrow();
+
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+        consoleErrorSpy.mockRestore();
+    });
+
     it("非アクティブ状態でexit()を呼ぶとno-opで解決する", async () => {
         const deps = createControllerDeps();
         const controller = createDioramaArSessionController(

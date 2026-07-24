@@ -332,6 +332,28 @@ describe("center / footprintHalfSizeM", () => {
         await diorama.setView({ footprintHalfSizeM: 700 });
         expect(listener).toHaveBeenCalledTimes(1);
     });
+
+    it("複数のonViewChangeリスナーは互いに独立したcenterスナップショットを受け取る（あるリスナーの書き換えが他へ影響しない）", async () => {
+        const diorama = await createInstance();
+        const receivedByFirst: unknown[] = [];
+        const receivedBySecond: unknown[] = [];
+        diorama.onViewChange((event) => {
+            // 受け取ったオブジェクトをその場で書き換える（リスナー間の干渉が
+            // 無いことを検証するため、意図的に破壊的変更を行う）。
+            (event.center as { lat: number }).lat = -1;
+            receivedByFirst.push({ ...event.center });
+        });
+        diorama.onViewChange((event) => {
+            receivedBySecond.push({ ...event.center });
+        });
+
+        await diorama.setView({ footprintHalfSizeM: 600 });
+
+        expect(receivedByFirst[0]).toEqual({ lat: -1, lon: DEFAULT_CENTER.lon });
+        // 1つ目のリスナーが event.center を書き換えても、2つ目のリスナーへは
+        // 影響しない（独立したスナップショットを受け取る）。
+        expect(receivedBySecond[0]).toEqual(DEFAULT_CENTER);
+    });
 });
 
 describe("tileMode", () => {
