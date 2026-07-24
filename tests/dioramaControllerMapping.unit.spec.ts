@@ -29,7 +29,7 @@ import {
     angleDeltaRad,
     normalizeAngleRad,
     applyDPadGate,
-} from "../src/demos/diorama/dioramaControllerMapping";
+} from "../src/lib/internal/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
     it("|value| <= deadzone は 0 を返す", () => {

@@ -18,9 +18,9 @@
  * まで次を発行しない「完了待ち合流」方式で、rebuildキューへの際限ない
  * バックログ蓄積を防ぐ（固定間隔タイマー方式で実機に生じた応答遅延不具合の教訓）。
  */
-import type { DioramaTerrain } from "../../terrain/diorama/dioramaTerrain";
-import type { DioramaCenter } from "../../terrain/diorama/dioramaGrid";
-import { offsetToLatLon } from "../../terrain/diorama/dioramaGrid";
+import type { DioramaTerrain } from "../../../terrain/diorama/dioramaTerrain";
+import type { DioramaCenter } from "../../../terrain/diorama/dioramaGrid";
+import { offsetToLatLon } from "../../../terrain/diorama/dioramaGrid";
 import {
     computeDioramaPanMetersFromStick,
     computeFootprintHalfSizeFactorFromStick,

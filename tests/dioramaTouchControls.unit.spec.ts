@@ -13,11 +13,11 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
-import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
-import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
-import type { DioramaArControlHud } from "../src/demos/diorama/dioramaArControlHud";
-import { setupDioramaTouchControls } from "../src/demos/diorama/dioramaTouchControls";
+import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
+import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
+import type { DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
+import { setupDioramaTouchControls } from "../src/lib/internal/diorama/dioramaTouchControls";
 
 interface FakeScene {
     scene: Scene;

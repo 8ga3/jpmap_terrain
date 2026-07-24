@@ -26,13 +26,13 @@ import { Color4, Color3 } from "@babylonjs/core/Maths/math.color";
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
 import { createDioramaTerrain, type DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
-import { setupDioramaWebXrArButton } from "./webXrArSession";
-import { createDioramaViewController } from "./dioramaViewController";
-import { createDioramaOrientationController } from "./dioramaOrientationController";
-import { createDioramaTileModeController } from "./dioramaTileModeController";
-import { setupDioramaKeyboardControls } from "./dioramaKeyboardControls";
-import { createDioramaArControlHud } from "./dioramaArControlHud";
-import { setupDioramaTouchControls } from "./dioramaTouchControls";
+import { setupDioramaWebXrArButton } from "../../lib/internal/diorama/webXrArSession";
+import { createDioramaViewController } from "../../lib/internal/diorama/dioramaViewController";
+import { createDioramaOrientationController } from "../../lib/internal/diorama/dioramaOrientationController";
+import { createDioramaTileModeController } from "../../lib/internal/diorama/dioramaTileModeController";
+import { setupDioramaKeyboardControls } from "../../lib/internal/diorama/dioramaKeyboardControls";
+import { createDioramaArControlHud } from "../../lib/internal/diorama/dioramaArControlHud";
+import { setupDioramaTouchControls } from "../../lib/internal/diorama/dioramaTouchControls";
 
 const DEMO_MOUNT_ID = "root";
 

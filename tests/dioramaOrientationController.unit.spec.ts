@@ -7,13 +7,13 @@ import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
-import { createDioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
+import { createDioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
 import {
     DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
     DEFAULT_HEIGHT_SPEED_M_PER_SEC,
     DEFAULT_HEIGHT_OFFSET_MIN_M,
     DEFAULT_HEIGHT_OFFSET_MAX_M,
-} from "../src/demos/diorama/dioramaControllerMapping";
+} from "../src/lib/internal/diorama/dioramaControllerMapping";
 
 const makeEngine = (): NullEngine =>
     new NullEngine({

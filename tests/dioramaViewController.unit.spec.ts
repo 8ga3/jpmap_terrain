@@ -7,8 +7,8 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import type { DioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
-import { createDioramaViewController } from "../src/demos/diorama/dioramaViewController";
-import { DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M } from "../src/demos/diorama/dioramaControllerMapping";
+import { createDioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
+import { DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M } from "../src/lib/internal/diorama/dioramaControllerMapping";
 
 const makeTerrain = (): { terrain: DioramaTerrain; setView: ReturnType<typeof vi.fn> } => {
     const setView = vi.fn(() => Promise.resolve());

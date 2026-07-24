@@ -9,7 +9,7 @@
  * （`?.()`）にしてある前提でテストする。
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { createDioramaArControlHud, type DioramaArControlHud } from "../src/demos/diorama/dioramaArControlHud";
+import { createDioramaArControlHud, type DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
 
 const dispatchPointer = (
     target: HTMLElement,
