@@ -348,7 +348,7 @@ const enterAr = async (
         button.setAttribute("title", "ARを終了");
 
         // パススルー表示: フレームバッファの alpha を 0 にし、実世界カメラ映像が
-        // 透けて見えるようにする（{@link module:src/demos/diorama/webXrArSession.ts}
+        // 透けて見えるようにする（{@link module:src/lib/internal/diorama/webXrArSession.ts}
         // 冒頭のコメント参照）。
         scene.clearColor.a = 0;
 

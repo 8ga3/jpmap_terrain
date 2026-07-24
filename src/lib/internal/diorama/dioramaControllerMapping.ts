@@ -39,7 +39,7 @@
  *   このボタンをグレーアウトして無効化する。箱庭の表示状態
  *   （center/footprintHalfSizeM/回転/高さ）はリセットしない）
  */
-import type { DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
+import type { DioramaTileMode } from "../../../terrain/diorama/dioramaTerrain";
 
 /** スティック/ジョイスティック入力のデッドゾーン既定値。 */
 export const DEFAULT_STICK_DEADZONE = 0.15;
@@ -298,7 +298,7 @@ export const snapHeadingRad = (
 /**
  * 水平面上の2点間（`from` から `to` への方向）の変位を、単位ベクトルと距離[m]に
  * 分解する。AR中の「ユーザー（実機カメラ）から箱庭中心への向き」算出に使う
- * （{@link module:src/demos/diorama/dioramaArControls.ts} 参照）。
+ * （{@link module:src/lib/internal/diorama/dioramaArControls.ts} 参照）。
  *
  * @returns 2点が同一（距離0）、または非有限値を含む場合は `unit: {x:0,z:0}`、
  *   `distanceM` は有限値なら実際の距離（0）、非有限なら `0` にフォールバックする。

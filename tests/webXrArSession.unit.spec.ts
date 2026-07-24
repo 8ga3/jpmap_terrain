@@ -13,11 +13,11 @@
 import { describe, it, expect } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
-import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
-import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
-import type { DioramaTouchControls } from "../src/demos/diorama/dioramaTouchControls";
-import { isImmersiveArSupported, setupDioramaWebXrArButton } from "../src/demos/diorama/webXrArSession";
+import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
+import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
+import type { DioramaTouchControls } from "../src/lib/internal/diorama/dioramaTouchControls";
+import { isImmersiveArSupported, setupDioramaWebXrArButton } from "../src/lib/internal/diorama/webXrArSession";
 
 describe("isImmersiveArSupported", () => {
     it("navigator.xr が存在しない環境（jsdom既定）では false を返す", async () => {

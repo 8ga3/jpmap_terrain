@@ -20,7 +20,7 @@
  * DOM/ポインタイベントのみに依存し、Babylon.js/WebXRには依存しないため
  * jsdom上で単体テスト可能。
  *
- * 操作割り当ての全体像は {@link module:src/demos/diorama/dioramaControllerMapping.ts}
+ * 操作割り当ての全体像は {@link module:src/lib/internal/diorama/dioramaControllerMapping.ts}
  * 冒頭コメント参照。
  */
 import type { StickAxes } from "./dioramaControllerMapping";

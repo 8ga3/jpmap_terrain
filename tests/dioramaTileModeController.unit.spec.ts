@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import type { DioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
-import { createDioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
+import { createDioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
 
 const makeTerrain = (): { terrain: DioramaTerrain; setTileMode: ReturnType<typeof vi.fn> } => {
     const setTileMode = vi.fn(() => Promise.resolve());

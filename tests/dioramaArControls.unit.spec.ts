@@ -19,10 +19,10 @@ import { describe, it, expect, vi } from "vitest";
 import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { DioramaViewController } from "../src/demos/diorama/dioramaViewController";
-import type { DioramaOrientationController } from "../src/demos/diorama/dioramaOrientationController";
-import type { DioramaTileModeController } from "../src/demos/diorama/dioramaTileModeController";
-import type { DioramaArControlHud } from "../src/demos/diorama/dioramaArControlHud";
+import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
+import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
+import type { DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
 
 import {
     trackControllerSticks,
@@ -32,7 +32,7 @@ import {
     clamp01,
     type ControllerStickState,
     type ControllerTriggerState,
-} from "../src/demos/diorama/dioramaArControls";
+} from "../src/lib/internal/diorama/dioramaArControls";
 
 /** Babylon.js `Observable` の規約（add()がコールバックを返し、remove(observer)で解除）を模す。 */
 class FakeObservable<T> {

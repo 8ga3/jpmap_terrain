@@ -8,7 +8,7 @@
  *
  * 縮小スケールは公開する `root`（`TransformNode`）に対して適用する想定で、メッシュ
  * 自体は常に実世界メートル単位（中心からの東西・南北オフセット + 標高）で構築する。
- * 回転・高さ変更（コントローラー操作、`src/demos/diorama/dioramaOrientationController.ts`
+ * 回転・高さ変更（コントローラー操作、`src/lib/internal/diorama/dioramaOrientationController.ts`
  * 参照）は `root` 自体ではなく、`root` の親として `index.ts` が生成する専用の
  * `orientationRoot` に対して適用する（AR配置ロジックとの競合を避けるため）。
  * 詳細は `dioramaOrientationController.ts` 冒頭のコメント参照。

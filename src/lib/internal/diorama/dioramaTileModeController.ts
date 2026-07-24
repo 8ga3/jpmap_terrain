@@ -17,7 +17,7 @@
  * 例えば `cycle()` を短時間に連打された場合、途中の状態を経由せず最終的な目標
  * タイル種別のみが適用される（キューに全連打分を積んで順番に適用するのではない）。
  */
-import type { DioramaTerrain, DioramaTileMode } from "../../terrain/diorama/dioramaTerrain";
+import type { DioramaTerrain, DioramaTileMode } from "../../../terrain/diorama/dioramaTerrain";
 import { nextDioramaTileMode } from "./dioramaControllerMapping";
 
 export interface DioramaTileModeController {
