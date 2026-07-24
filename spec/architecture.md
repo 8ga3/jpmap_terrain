@@ -51,7 +51,7 @@ C4Container
 
     Container(demos, "Demo Apps (12 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / polygon / circle /<br/>distance / plan / model / avatar /<br/>avatar-controller / boids / flight / artillery")
 
-    Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "公開 API 層 (src/lib)。<br/>npm パッケージとして配布可能")
+    Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "公開 API 層 (src/lib)。<br/>npm パッケージとして配布可能。<br/>JpmapTerrainクラス + WebXRユーティリティ")
     Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の<br/>内部実装 (src/terrain)")
   }
 
@@ -151,6 +151,30 @@ C4Component
   Rel_D(jpmapTerrain, cameraCollision,"")
   Rel_D(jpmapTerrain, skybox,         "")
   Rel_D(jpmapTerrain, controlPanel,   "")
+```
+
+### L3c – WebXR Utilities
+
+`JpmapTerrain` クラスとは独立した公開APIとして提供する、WebXR (`immersive-ar` / `immersive-vr`)
+対応のコントローラー/タッチ入力ユーティリティを示す。`JpmapTerrain` を経由しないため、上記の
+L3a/L3b とは異なり `jpmapTerrain` コンポーネントを介さず Demo Apps から直接 import される。
+
+```mermaid
+C4Component
+  title jpmap_terrain - Component: WebXR Utilities (L3c)
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+
+  Container_Boundary(demos_b, "Demo Apps (src/demos)") {
+    Component(dioramaDemo, "diorama デモ", "TypeScript", "箱庭ジオラマビューア。<br/>WebXR (immersive-ar) 対応")
+  }
+
+  Container_Boundary(lib_b, "JpmapTerrain Lib (src/lib/webxr)") {
+    Component(webXrSessionSupport, "webXrSessionSupport", "TypeScript", "WebXRセッション対応判定<br/>(isWebXrSessionSupported)")
+    Component(webXrStickInput,     "webXrStickInput",     "TypeScript", "コントローラー入力変換の純粋関数群<br/>(パン・ズーム・回転・高さ変更)")
+  }
+
+  Rel_D(dioramaDemo, webXrSessionSupport, "セッション対応判定")
+  Rel_D(dioramaDemo, webXrStickInput,     "入力変換")
 ```
 
 ---

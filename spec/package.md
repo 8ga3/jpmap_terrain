@@ -1131,6 +1131,83 @@ import type {
 </script>
 ```
 
+### 3.6 WebXR ユーティリティ
+
+`JpmapTerrain` クラスとは独立した named export として、WebXR (`immersive-ar` / `immersive-vr`)
+対応のコントローラー/タッチ入力を扱うためのユーティリティ関数群を提供する。`JpmapTerrain` を
+使わない独自の Babylon.js シーン実装（本リポジトリの `diorama` デモ等）からも利用できる。
+
+- 配置: `src/lib/webxr/webXrSessionSupport.ts` / `src/lib/webxr/webXrStickInput.ts`
+- 全て Babylon.js `Scene`/DOM に依存しない純粋関数（`isWebXrSessionSupported` のみ
+  `@babylonjs/core` の `WebXRSessionManager` に依存。`@babylonjs/core` は既存の
+  `peerDependencies`（§5.1）でカバー済みのため追加の依存関係は発生しない）
+
+#### 3.6.1 セッション対応判定
+
+```typescript
+/** WebXRセッション対応チェックのタイムアウト既定値[ms]。 */
+const DEFAULT_WEBXR_SUPPORT_CHECK_TIMEOUT_MS = 4000;
+
+/**
+ * 指定したWebXRセッションモード（"immersive-ar" | "immersive-vr"）にブラウザ/デバイスが
+ * 対応しているかを判定する。タイムアウト時・エラー時は非対応(false)として扱う。
+ */
+function isWebXrSessionSupported(
+  mode: XRSessionMode,
+  timeoutMs?: number, // 既定値: DEFAULT_WEBXR_SUPPORT_CHECK_TIMEOUT_MS
+): Promise<boolean>;
+```
+
+#### 3.6.2 コントローラー入力変換
+
+スティック/トリガー入力を、地図移動（パン）・拡大縮小（ズーム）・回転・高さ変更の
+移動量へ変換する純粋関数群。
+
+| 関数 | 用途 |
+|---|---|
+| `applyStickDeadzone(value, deadzone)` | スティック入力のデッドゾーン処理 |
+| `applyDPadGate(x, y)` | 2軸入力を十字ボタン相当の排他動作へ整形 |
+| `computePanMetersFromStick(axes, dtSeconds, viewScaleM, ...)` | パン移動量[m]を算出（表示スケールに比例した速度） |
+| `computeZoomFactorFromStick(axisY, dtSeconds, ...)` | ズームの乗算係数を算出 |
+| `clampViewScaleM(scaleM, minM?, maxM?)` | 表示スケールを範囲内へクランプ |
+| `computeRotationRadFromStick(axisX, dtSeconds, ...)` | 回転角[rad]を算出 |
+| `computeHeightMetersFromTriggers(leftTriggerValue, rightTriggerValue, dtSeconds, ...)` | 高さ変更量[m]を算出 |
+| `clampHeightOffsetM(offsetM, minM?, maxM?)` | 高さオフセットを範囲内へクランプ |
+| `computeHeadingRadFromHorizontal(x, z)` / `rotateHorizontalUnitVector(vec, deltaRad)` | 水平単位ベクトルと向き角の相互変換 |
+| `computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit)` | 前後・左右の方向入力をパン軸へ変換 |
+| `snapHeadingRad(rawHeadingRad, previousSnappedHeadingRad, ...)` | ヒステリシス付き8方位スナップ |
+| `computeHorizontalDisplacement(fromX, fromZ, toX, toZ)` | 2点間の単位ベクトル・距離を算出 |
+| `isInsideDeadZone(distanceM, wasInsideDeadZone, deadZoneRadiusM, ...)` | ヒステリシス付きデッドゾーン判定 |
+| `normalizeAngleRad(angleRad)` / `angleDeltaRad(a, b)` | 角度の正規化・最短差分算出 |
+
+型: `StickAxes`（`{ x: number; y: number }`）、`HorizontalUnitVector`（`{ x: number; z: number }`）、
+`PanFromStickOptions`。
+
+#### 3.6.3 利用例
+
+```typescript
+import {
+  isWebXrSessionSupported,
+  applyStickDeadzone,
+  computePanMetersFromStick,
+  computeZoomFactorFromStick,
+  clampViewScaleM,
+} from "jpmap-terrain";
+
+if (await isWebXrSessionSupported("immersive-ar")) {
+  // ARボタンを表示する等
+}
+
+// 毎フレーム、スティック入力から地図移動量を算出する例
+const { eastM, northM } = computePanMetersFromStick(
+  { x: stickX, y: stickY },
+  dtSeconds,
+  currentViewScaleM,
+);
+const zoomFactor = computeZoomFactorFromStick(zoomAxisY, dtSeconds);
+currentViewScaleM = clampViewScaleM(currentViewScaleM * zoomFactor);
+```
+
 ## 4. 後日実装
 
 ### 4.1 追加パラメータ
