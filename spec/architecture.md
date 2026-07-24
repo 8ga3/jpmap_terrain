@@ -33,7 +33,7 @@ C4Context
 
 jpmap_terrain 内部の主要コンテナ（デプロイ・ビルド単位）を示します。
 
-> デモ 13 本は `manualChunks`（Vite）でコードを共有するため、独立コンテナではなく  
+> デモ 17 本は `manualChunks`（Vite）でコードを共有するため、独立コンテナではなく  
 > **Demo Apps グループ** としてまとめます。
 
 ```mermaid
@@ -49,25 +49,28 @@ C4Container
 
     Container(portal, "Demo Portal", "HTML / TS", "デモ一覧ページ (/index.html)。<br/>Babylon.js を読み込まない軽量ページ")
 
-    Container(demos, "Demo Apps (12 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / polygon / circle /<br/>distance / plan / model / avatar /<br/>avatar-controller / boids / flight / artillery")
+    Container(demos, "Demo Apps (17 デモ)", "HTML / TS / Babylon.js", "viewer / timelapse / zoomloop / roiorbit /<br/>polygon / circle / distance / plan / gpx /<br/>model / avatar / avatar-controller / boids /<br/>flight / artillery / geospatial / diorama")
 
-    Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "公開 API 層 (src/lib)。<br/>npm パッケージとして配布可能")
-    Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の<br/>内部実装 (src/terrain)")
+    Container(lib, "JpmapTerrain Lib", "TypeScript / ESM", "地形表示の公開 API 層 (src/lib/jpmapTerrain.ts)。<br/>npm パッケージとして配布可能")
+    Container(libDiorama, "JpmapDiorama Lib", "TypeScript / ESM", "箱庭ジオラマ表示の公開 API 層<br/>(src/lib/jpmapDiorama.ts)。JpmapTerrain とは独立")
+    Container(terrain, "Terrain Core", "TypeScript / Babylon.js", "地形生成・タイル管理・UI 等の<br/>内部実装 (src/terrain。diorama 用の<br/>独立地形生成 src/terrain/diorama を含む)")
   }
 
   Rel_D(user, portal, "", "HTTPS")
   Rel_D(user, demos, "", "HTTPS")
   Rel_D(demos, lib, "", "ESM import")
+  Rel_D(demos, libDiorama, "", "ESM import")
   Rel_D(lib, terrain, "", "ESM import")
+  Rel_D(libDiorama, terrain, "", "ESM import")
   Rel_R(terrain, gsi, "", "Fetch API")
 ```
 
 ---
 
-## L3 – Component（Terrain Core）
+## L3 – Component
 
-Terrain Core（`src/terrain/`）内の主要コンポーネントを示します。
-関心の異なる3つの図に分けて記述します。
+Terrain Core（`src/terrain/`）と、それを利用する公開API層（`JpmapTerrain`/`JpmapDiorama`）内の主要コンポーネントを示します。
+関心の異なる4つの図に分けて記述します（L3a〜L3b-2 は `JpmapTerrain`、L3c は独立した `JpmapDiorama`）。
 
 ### L3a – Tile Pipeline
 
@@ -153,11 +156,50 @@ C4Component
   Rel_D(jpmapTerrain, controlPanel,   "")
 ```
 
+### L3c – Component（Diorama）
+
+`JpmapDiorama`（`JpmapTerrain` とは独立した第2の公開API。詳細は [`spec/diorama-api.md`](diorama-api.md)）が制御する箱庭ジオラマ表示系コンポーネントを示します。
+
+```mermaid
+C4Component
+  title jpmap_terrain - Component: Diorama (L3c)
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+
+  Container_Boundary(lib_diorama_b, "JpmapDiorama Lib (src/lib)") {
+    Component(jpmapDiorama, "JpmapDiorama", "TypeScript class", "公開 API のエントリポイント（JpmapTerrain とは独立）")
+  }
+
+  Container_Boundary(lib_internal_diorama_b, "Diorama Input Controls (src/lib/internal/diorama)") {
+    Component(dioramaViewCtrl,   "DioramaViewController",        "TypeScript", "中心・フットプリント半径の共有状態")
+    Component(dioramaOrientCtrl,"DioramaOrientationController",  "TypeScript", "回転・高さオフセットの共有状態")
+    Component(dioramaTileCtrl,  "DioramaTileModeController",     "TypeScript", "タイル種別の共有状態")
+    Component(dioramaArSession, "DioramaArSessionController",    "TypeScript", "WebXR (immersive-ar) セッション統合・ARボタン制御")
+  }
+
+  Container_Boundary(terrain_diorama_b, "Diorama Terrain (src/terrain/diorama)") {
+    Component(dioramaTerrain,  "DioramaTerrain",  "TypeScript", "正方形グリッド地形の構築エントリポイント")
+    Component(dioramaGrid,     "DioramaGrid",     "TypeScript", "正方形グリッド生成")
+    Component(dioramaElevation,"DioramaElevation","TypeScript", "実世界DEMサンプリング")
+    Component(dioramaTexture,  "DioramaTexture",  "TypeScript", "ラスタタイル取得・テクスチャ合成")
+    Component(dioramaSkirt,    "DioramaSkirt",    "TypeScript", "側面壁（土台）メッシュ生成")
+  }
+
+  Rel_D(jpmapDiorama, dioramaViewCtrl,    "")
+  Rel_D(jpmapDiorama, dioramaOrientCtrl, "")
+  Rel_D(jpmapDiorama, dioramaTileCtrl,   "")
+  Rel_D(jpmapDiorama, dioramaArSession,  "")
+  Rel_D(jpmapDiorama, dioramaTerrain,    "地形構築を指示")
+  Rel_D(dioramaTerrain, dioramaGrid,      "")
+  Rel_D(dioramaTerrain, dioramaElevation, "")
+  Rel_D(dioramaTerrain, dioramaTexture,   "")
+  Rel_D(dioramaTerrain, dioramaSkirt,     "")
+```
+
 ---
 
 ## デモ × コンポーネント 対応表
 
-各デモが主に利用する Terrain Core コンポーネントをまとめます。
+各デモが主に利用する Terrain Core コンポーネントをまとめます。`JpmapTerrain` を介さない `geospatial`（`GlobeScene` を直接起動）・`diorama`（`JpmapDiorama` 経由。L3c参照）は対象外です。
 
 | デモ               | TileManager | ModelManager | PolygonManager | CircleManager | SunPosition | UrlState |
 |:-------------------|:-----------:|:------------:|:--------------:|:-------------:|:-----------:|:--------:|

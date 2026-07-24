@@ -1,7 +1,7 @@
 /**
  * jpmap-terrain 公開型定義
  *
- * spec/package.md §3 (Initial Implementation) に対応する型を提供する。
+ * spec/terrain-api.md §3 (Initial Implementation) に対応する型を提供する。
  */
 
 /** 描画エンジン種別 */
@@ -21,7 +21,7 @@ export type ViewMode = "3d" | "2d";
 
 /**
  * `JpmapTerrain.create` 初期化オプション。
- * すべて任意指定で、未指定時は spec/package.md §3.2 のデフォルト値が適用される。
+ * すべて任意指定で、未指定時は spec/terrain-api.md §3.2 のデフォルト値が適用される。
  */
 export interface JpmapTerrainOptions {
     /** 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバックする */
@@ -108,7 +108,7 @@ export interface FlyToOptions {
 }
 
 /**
- * spec/package.md §3.2 で定義されるデフォルト初期値（パッケージ内部用）。
+ * spec/terrain-api.md §3.2 で定義されるデフォルト初期値（パッケージ内部用）。
  * 公開 API には含めず、`JpmapTerrain` 内部からのみ参照する。
  */
 export const JPMAP_TERRAIN_DEFAULTS = {
@@ -138,12 +138,12 @@ export const SUN_FALLBACK_DATETIME_ISO = "2025-06-21T03:00:00Z";
 
 /**
  * `autoSunPosition === true` のとき、`new Date()` を取り直して太陽位置を再反映する周期 (ms)。
- * spec/package.md §3.3.5 に基づく 60 秒固定。テスト用に export している。
+ * spec/terrain-api.md §3.3.5 に基づく 60 秒固定。テスト用に export している。
  */
 export const SUN_AUTO_UPDATE_INTERVAL_MS = 60_000;
 
 /**
- * カメラ変化通知ペイロード（spec/package.md 追記は別 Issue）。
+ * カメラ変化通知ペイロード（spec/terrain-api.md 追記は別 Issue）。
  * `JpmapTerrain.onCameraChange` のリスナー引数。
  */
 export interface CameraChangeEvent {
@@ -320,7 +320,7 @@ export interface MarkerLineOptions {
      * 線の長さ (m)。default 500。
      * 実装はカメラ距離・仰角に応じた動的高さを優先採用するため、
      * 通常はカメラ距離が解決できないテスト/フォールバック時の参考値となる
-     * （`spec/package.md §3.3.7` 参照）。
+     * （`spec/terrain-api.md §3.3.7` 参照）。
      */
     height?: number;
 }
@@ -392,7 +392,7 @@ export interface PolygonPointOptions {
 }
 
 /**
- * ポリゴン全体のスタイル（spec/package.md §3.3.8.1）。
+ * ポリゴン全体のスタイル（spec/terrain-api.md §3.3.8.1）。
  *
  * - `lineColor` / `lineWidth` / `lineOpacity` / `pointColor` / `pointDiameter` / `pointOpacity` は適用される。
  * - `dropLine*` / `label*` は適用される。
@@ -547,7 +547,7 @@ export interface PolygonHandle {
 }
 
 /**
- * ポリゴンの既定値（spec/package.md §3.3.8.1）。
+ * ポリゴンの既定値（spec/terrain-api.md §3.3.8.1）。
  *
  * `style` は仕様書記載の既定値を採用する。
  * `wallColor` / `wallOpacity` は適用予定（型予約）。

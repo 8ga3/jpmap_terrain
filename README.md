@@ -59,7 +59,7 @@ npm install @babylonjs/loaders @babylonjs/materials
 </script>
 ```
 
-公開 API の詳細は [`spec/package.md`](spec/package.md) を参照してください。
+公開 API の詳細は [`spec/terrain-api.md`](spec/terrain-api.md) を参照してください。
 
 ### JpmapDiorama（箱庭ジオラマ表示）
 

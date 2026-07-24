@@ -113,7 +113,7 @@ export const zoomLevelToRadius = (
 
 /**
  * URL に欠損トークンがあった場合の補完値。
- * spec/package.md §3.2 と同値であり、{@link JPMAP_TERRAIN_DEFAULTS} から派生させて二重定義を避ける。
+ * spec/terrain-api.md §3.2 と同値であり、{@link JPMAP_TERRAIN_DEFAULTS} から派生させて二重定義を避ける。
  */
 export const CAMERA_URL_DEFAULTS = {
     altitude: JPMAP_TERRAIN_DEFAULTS.altitude,

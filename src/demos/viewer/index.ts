@@ -268,7 +268,7 @@ const start = async (): Promise<void> => {
 
     // 開発/テストビルドでのみデバッグ用に内部状態を露出する。
     // （Playwright の `window.scene.isReady()` 等が依存しているため）
-    // `__debugScene` は @internal 扱いの公式デバッグアクセサ（spec/package.md には未記載）。
+    // `__debugScene` は @internal 扱いの公式デバッグアクセサ（spec/terrain-api.md には未記載）。
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
         (window as unknown as { scene: unknown }).scene = viewer.__debugScene;

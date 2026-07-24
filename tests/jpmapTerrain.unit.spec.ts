@@ -1210,7 +1210,7 @@ describe("JpmapTerrain (skeleton)", () => {
     });
 
     describe("create", () => {
-        it("オプション未指定時に spec/package.md §3.2 のデフォルト値が適用される", async () => {
+        it("オプション未指定時に spec/terrain-api.md §3.2 のデフォルト値が適用される", async () => {
             const viewer = await create(createMountElement());
 
             expect(viewer.lat).toBeCloseTo(35.681236);

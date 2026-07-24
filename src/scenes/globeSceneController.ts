@@ -1968,7 +1968,7 @@ export const createGlobeSceneController = (
         // 外部追従カメラ（flight）では、機体 lat/lon を GeospatialCamera.center に据え、
         // radius で従来互換の粗い LOD 制御を維持しつつ、渡された frustumPlanes/cameraPosition を
         // gc.setExternalFrustum で次回 syncTiles に反映する。座標系の契約は
-        // `globeLod.ts` の GlobeLodOptions.frustumPlanes / spec/package.md に従う:
+        // `globeLod.ts` の GlobeLodOptions.frustumPlanes / spec/terrain-api.md に従う:
         //   - frustumPlanes: **camera 相対**（原点 = cameraPosition、回転のみ・並進なし）。
         //     ECEF 絶対座標系で構築した平面を渡すと Float32 桁落ちで誤カリングする（呼び出し側
         //     `flight/index.ts` が実 view 行列の並進行を 0 にして生成する）。

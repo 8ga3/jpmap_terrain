@@ -4,7 +4,7 @@
 /**
  * パッケージエントリ (`src/lib.ts`) の re-export 検証。
  *
- * 公開 API として spec/package.md §3 に記載した識別子が
+ * 公開 API として spec/terrain-api.md §3 に記載した識別子が
  * パッケージのトップレベルから参照できることを保証する。
  *
  * 値 export (`JpmapTerrain`) は実体を import し、
