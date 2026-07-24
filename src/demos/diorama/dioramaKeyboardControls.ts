@@ -145,6 +145,12 @@ export const setupDioramaKeyboardControls = (
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
 
+    // ローカル軸ベクトル自体は不変（シーンの座標系設定にのみ依存）なため、
+    // 毎フレーム生成せずセットアップ時に一度だけ生成して使い回す
+    // （`dioramaTouchControls.ts`と同じ方式）。
+    const localForwardAxis = Vector3.Forward(scene.useRightHandedSystem);
+    const localRightAxis = Vector3.Right();
+
     const renderObserver = scene.onBeforeRenderObservable.add(() => {
         const dtSeconds = scene.getEngine().getDeltaTime() / 1000;
         if (!(dtSeconds > 0)) return;
@@ -161,8 +167,8 @@ export const setupDioramaKeyboardControls = (
             // カメラの現在の水平前方向・右方向へWASD入力を投影し、ワールド座標
             // （東西=x, 南北=z）へ変換する。これにより、カメラを回転させた後も
             // 「W=画面奥へ進む」という直感的な操作が維持される。
-            const forward = getHorizontalDirectionUnit(camera, Vector3.Forward(scene.useRightHandedSystem));
-            const right = getHorizontalDirectionUnit(camera, Vector3.Right());
+            const forward = getHorizontalDirectionUnit(camera, localForwardAxis);
+            const right = getHorizontalDirectionUnit(camera, localRightAxis);
             panAxes = computePanAxesFromDirectionalInput(rawForward, rawRight, forward, right);
         }
 
