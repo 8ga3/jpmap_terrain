@@ -42,7 +42,8 @@ const start = async (): Promise<void> => {
         center: DEFAULT_CENTER,
         footprintHalfSizeM: DEFAULT_FOOTPRINT_HALF_SIZE_M,
         tableRadiusM: DEFAULT_TABLE_RADIUS_M,
-        tileMode: "std",
+        // tileMode は明示せず、JpmapDiorama 既定（"std"）に委ねる（PRレビュー指摘対応。
+        // デモ側で固定すると将来 JPMAP_DIORAMA_DEFAULTS.tileMode 変更時に乖離するため）。
         ...(engine ? { engine } : {}),
     };
     const diorama = await JpmapDiorama.create(mount, options);
