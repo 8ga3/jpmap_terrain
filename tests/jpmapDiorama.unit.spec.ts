@@ -86,16 +86,26 @@ vi.mock("../src/terrain/diorama/dioramaTerrain", () => ({
 
 // 内蔵タッチHUD/キーボード操作は DOM 生成・イベント配線のみのため、生成有無
 // （`enableDefaultControls`）のみ検証できれば十分。呼び出し回数を記録する。
-const createHudMock = vi.fn(() => ({
-    element: document.createElement("div"),
-    getPanAxes: vi.fn(() => ({ x: 0, y: 0 })),
-    getZoomAxis: vi.fn(() => 0),
-    getRotationAxis: vi.fn(() => 0),
-    getHeightAxis: vi.fn(() => 0),
-    onTileModeCyclePress: vi.fn(() => () => {}),
-    onExitArPress: vi.fn(() => () => {}),
-    dispose: vi.fn(),
-}));
+// `dispose` は実装同様に要素をDOMから除去し、`JpmapDiorama.dispose()` が
+// HUDの破棄まで確実に行うことをテストできるようにする。
+const hudDisposeMock = vi.fn();
+const createHudMock = vi.fn(() => {
+    const element = document.createElement("div");
+    element.dataset.testid = "diorama-touch-hud";
+    return {
+        element,
+        getPanAxes: vi.fn(() => ({ x: 0, y: 0 })),
+        getZoomAxis: vi.fn(() => 0),
+        getRotationAxis: vi.fn(() => 0),
+        getHeightAxis: vi.fn(() => 0),
+        onTileModeCyclePress: vi.fn(() => () => {}),
+        onExitArPress: vi.fn(() => () => {}),
+        dispose: vi.fn(() => {
+            hudDisposeMock();
+            element.remove();
+        }),
+    };
+});
 vi.mock("../src/lib/internal/diorama/dioramaArControlHud", () => ({
     createDioramaArControlHud: (...args: unknown[]) => createHudMock(...(args as [])),
 }));
@@ -175,6 +185,7 @@ beforeEach(() => {
     createEngineMock.mockClear();
     createDioramaTerrainMock.mockClear();
     createHudMock.mockClear();
+    hudDisposeMock.mockClear();
     setupTouchControlsMock.mockClear();
     setupKeyboardControlsMock.mockClear();
     createArSessionControllerMock.mockClear();
@@ -409,6 +420,17 @@ describe("dispose", () => {
         expect(arControllers[0].dispose).toHaveBeenCalledTimes(1);
         expect(touchControlsDisposeMock).toHaveBeenCalledTimes(1);
         expect(keyboardControlsDisposeMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("enableDefaultControls有効時、タッチHUDのDOM要素も破棄する（mountに残留しない）", async () => {
+        const mount = document.createElement("div");
+        const diorama = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        expect(mount.querySelector('[data-testid="diorama-touch-hud"]')).not.toBeNull();
+
+        diorama.dispose();
+
+        expect(hudDisposeMock).toHaveBeenCalledTimes(1);
+        expect(mount.querySelector('[data-testid="diorama-touch-hud"]')).toBeNull();
     });
 
     it("複数回呼んでも例外を投げない（冪等性）", async () => {

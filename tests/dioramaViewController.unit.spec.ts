@@ -182,6 +182,60 @@ describe("createDioramaViewController", () => {
             await expect(vc.setView({ footprintHalfSizeM: 500 })).rejects.toThrow("network error");
             expect(vc.getFootprintHalfSizeM()).toBe(INITIAL_FOOTPRINT_HALF_SIZE_M);
         });
+
+        it("feedAxes由来のrebuildが進行中の場合、その完了を待ってから発行する（同時実行しない）", async () => {
+            const { terrain, setView } = makeTerrain();
+            let resolveFlush: (() => void) | undefined;
+            setView.mockImplementationOnce(
+                () =>
+                    new Promise<void>((resolve) => {
+                        resolveFlush = resolve;
+                    }),
+            );
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+
+            // feedAxes経由のflush()を開始させる（1回目のsetViewは未解決のまま）。
+            vc.feedAxes({ x: 1, y: 0 }, 0, 1);
+            expect(setView).toHaveBeenCalledTimes(1);
+
+            // flush()完了前にsetView()を呼んでも、直ちに2回目を発行しない。
+            const setViewPromise = vc.setView({ footprintHalfSizeM: 500 });
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(setView).toHaveBeenCalledTimes(1);
+
+            // flush()側のリクエストが完了すると、待機していたsetView()が発行される。
+            resolveFlush?.();
+            await setViewPromise;
+            expect(setView).toHaveBeenCalledTimes(2);
+            expect(vc.getFootprintHalfSizeM()).toBe(500);
+        });
+
+        it("setView()実行中はfeedAxes由来のflush()も新規リクエストを発行しない", async () => {
+            const { terrain, setView } = makeTerrain();
+            let resolveSetView: (() => void) | undefined;
+            setView.mockImplementationOnce(
+                () =>
+                    new Promise<void>((resolve) => {
+                        resolveSetView = resolve;
+                    }),
+            );
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+
+            const setViewPromise = vc.setView({ footprintHalfSizeM: 500 });
+            expect(setView).toHaveBeenCalledTimes(1);
+
+            // setView()完了前にfeedAxes()を呼んでも、flush()は新規リクエストを発行しない。
+            vc.feedAxes({ x: 1, y: 0 }, 0, 1);
+            expect(setView).toHaveBeenCalledTimes(1);
+
+            resolveSetView?.();
+            await setViewPromise;
+            // flush()は完了後に自動で再発火しない（既存仕様。「前回のsetViewが完了する
+            // まで次のsetViewを発行しない」テストと同じトリガー呼び出しが必要）。
+            vc.feedAxes({ x: 0, y: 0 }, 0, 1);
+            expect(setView).toHaveBeenCalledTimes(2);
+        });
     });
 
     describe("onChange", () => {
