@@ -117,7 +117,7 @@ export class JpmapDiorama {
         if (!mountElement) {
             throw new TypeError("JpmapDiorama.create: mountElement is required");
         }
-        if (!options || options.center === undefined) {
+        if (!options || options.center === undefined || options.center === null) {
             throw new TypeError("JpmapDiorama.create: options.center is required");
         }
         const instance = new JpmapDiorama(mountElement);
@@ -186,7 +186,11 @@ export class JpmapDiorama {
             sunLight.diffuse = new Color3(1, 0.98, 0.92);
 
             const dioramaTerrain = await createDioramaTerrain(scene, {
-                center: options.center,
+                // `createDioramaTerrain`（`dioramaTerrain.ts`）は渡された `center` を
+                // 参照のまま内部状態（`resolved.center`）として保持するため、呼び出し元が
+                // `options.center` オブジェクトを後から書き換えた場合に地形側の状態が
+                // 意図せず変化しないよう、コピーして渡す。
+                center: { ...options.center },
                 footprintHalfSizeM,
                 tableRadiusM,
                 tileMode,

@@ -223,6 +223,13 @@ describe("JpmapDiorama.create", () => {
         ).rejects.toThrow(TypeError);
     });
 
+    it("options.center が null の場合も TypeError を投げる", async () => {
+        const mount = document.createElement("div");
+        await expect(
+            JpmapDiorama.create(mount, { center: null } as unknown as JpmapDioramaOptions),
+        ).rejects.toThrow(TypeError);
+    });
+
     it("mountElement に canvas を追加する", async () => {
         const mount = document.createElement("div");
         const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
@@ -247,6 +254,19 @@ describe("JpmapDiorama.create", () => {
         expect(opts.tableRadiusM).toBe(0.5);
         expect(opts.tileMode).toBe("photo");
         expect(opts.gridSegments).toBe(16);
+    });
+
+    it("options.centerオブジェクトを後から書き換えても、createDioramaTerrainへ渡した内部状態は変化しない", async () => {
+        const mount = document.createElement("div");
+        const mutableCenter = { lat: 10, lon: 20 };
+        const instance = await JpmapDiorama.create(mount, { center: mutableCenter });
+        instances.push(instance);
+
+        mutableCenter.lat = 99;
+        mutableCenter.lon = 99;
+
+        expect(dioramaTerrainCalls[0].center).toEqual({ lat: 10, lon: 20 });
+        expect(instance.center).toEqual({ lat: 10, lon: 20 });
     });
 
     it("enableDefaultControls: true（既定）ではタッチHUD・キーボード操作が生成される", async () => {
