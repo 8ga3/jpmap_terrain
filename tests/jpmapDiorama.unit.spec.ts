@@ -237,6 +237,26 @@ describe("JpmapDiorama.create", () => {
         expect(mount.querySelector("canvas")).not.toBeNull();
     });
 
+    it("mountElementがposition:staticのままの場合、relativeを付与する（ARボタン/HUDの絶対配置基準を安定させるため）", async () => {
+        const mount = document.createElement("div");
+        expect(getComputedStyle(mount).position).toBe("static");
+
+        const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        instances.push(instance);
+
+        expect(mount.style.position).toBe("relative");
+    });
+
+    it("mountElementに既にposition指定がある場合は上書きしない", async () => {
+        const mount = document.createElement("div");
+        mount.style.position = "absolute";
+
+        const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        instances.push(instance);
+
+        expect(mount.style.position).toBe("absolute");
+    });
+
     it("既定値が createDioramaTerrain へ渡される", async () => {
         await createInstance();
         expect(dioramaTerrainCalls).toHaveLength(1);

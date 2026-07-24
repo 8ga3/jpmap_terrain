@@ -138,6 +138,15 @@ export class JpmapDiorama {
         const enableDefaultControls = options.enableDefaultControls ?? JPMAP_DIORAMA_DEFAULTS.enableDefaultControls;
         const showArButton = options.showArButton ?? JPMAP_DIORAMA_DEFAULTS.showArButton;
 
+        // ARボタン・タッチHUD（いずれも `position: absolute` で `mountElement` 配下へ
+        // 追加される）の基準座標を安定させる。`mountElement` が既定の `position: static`
+        // のままだと、絶対配置の子要素はこの要素ではなく直近の position 指定祖先
+        // （無ければビューポート）基準で配置されてしまうため、`static` の場合のみ
+        // `relative` を付与する（ホスト側で既に position を指定済みなら上書きしない）。
+        if (getComputedStyle(this.mountElement).position === "static") {
+            this.mountElement.style.position = "relative";
+        }
+
         const canvas = document.createElement("canvas");
         canvas.style.width = "100%";
         canvas.style.height = "100%";
