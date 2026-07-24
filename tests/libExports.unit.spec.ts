@@ -42,6 +42,7 @@ import type {
     ModelUpdate,
     ModelHandle,
 } from "../src/lib";
+import type { StickAxes, HorizontalUnitVector, PanFromStickOptions } from "../src/lib";
 
 describe("package entry exports", () => {
     it("JpmapTerrain クラスがトップレベルから export されている", () => {
@@ -175,5 +176,39 @@ describe("package entry exports", () => {
         expect(handleShape.id).toBe("m1");
         expect(pkg.MODEL_DEFAULTS).toBeDefined();
         expect(pkg.MODEL_DEFAULTS.gravity).toBe(true);
+    });
+
+    // WebXR汎用ユーティリティ（セッション対応判定・コントローラー入力変換）が
+    // パッケージエントリから import 可能。
+    it("WebXRユーティリティがパッケージエントリから export されている", async () => {
+        expect(typeof pkg.isWebXrSessionSupported).toBe("function");
+        expect(typeof pkg.DEFAULT_WEBXR_SUPPORT_CHECK_TIMEOUT_MS).toBe("number");
+
+        expect(typeof pkg.applyStickDeadzone).toBe("function");
+        expect(typeof pkg.applyDPadGate).toBe("function");
+        expect(typeof pkg.computePanMetersFromStick).toBe("function");
+        expect(typeof pkg.computeZoomFactorFromStick).toBe("function");
+        expect(typeof pkg.clampViewScaleM).toBe("function");
+        expect(typeof pkg.computeRotationRadFromStick).toBe("function");
+        expect(typeof pkg.computeHeightMetersFromTriggers).toBe("function");
+        expect(typeof pkg.clampHeightOffsetM).toBe("function");
+        expect(typeof pkg.computeHeadingRadFromHorizontal).toBe("function");
+        expect(typeof pkg.rotateHorizontalUnitVector).toBe("function");
+        expect(typeof pkg.computePanAxesFromDirectionalInput).toBe("function");
+        expect(typeof pkg.snapHeadingRad).toBe("function");
+        expect(typeof pkg.computeHorizontalDisplacement).toBe("function");
+        expect(typeof pkg.isInsideDeadZone).toBe("function");
+        expect(typeof pkg.normalizeAngleRad).toBe("function");
+        expect(typeof pkg.angleDeltaRad).toBe("function");
+
+        // 型は実行時に存在しないため、ダミー変数で参照を持たせる（typecheck）。
+        const axes: StickAxes = { x: 0, y: 0 };
+        const horizontal: HorizontalUnitVector = { x: 0, z: 1 };
+        const panOptions: PanFromStickOptions = { deadzone: 0.1 };
+        expect(axes.x).toBe(0);
+        expect(horizontal.z).toBe(1);
+        expect(panOptions.deadzone).toBe(0.1);
+
+        await expect(pkg.isWebXrSessionSupported("immersive-ar")).resolves.toBe(false);
     });
 });
