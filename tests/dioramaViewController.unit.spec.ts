@@ -27,6 +27,29 @@ describe("createDioramaViewController", () => {
         expect(vc.getFootprintHalfSizeM()).toBe(INITIAL_FOOTPRINT_HALF_SIZE_M);
     });
 
+    it("コンストラクタに渡したcenterオブジェクトを後から書き換えても内部状態は変化しない", () => {
+        const { terrain } = makeTerrain();
+        const mutableCenter = { lat: 35.0, lon: 139.0 };
+        const vc = createDioramaViewController(terrain, mutableCenter, INITIAL_FOOTPRINT_HALF_SIZE_M);
+
+        mutableCenter.lat = 99;
+        mutableCenter.lon = 99;
+
+        expect(vc.getCenter()).toEqual({ lat: 35.0, lon: 139.0 });
+    });
+
+    it("setView()に渡したcenterオブジェクトを後から書き換えても内部状態は変化しない", async () => {
+        const { terrain } = makeTerrain();
+        const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+        const mutablePatchCenter = { lat: 10, lon: 20 };
+
+        await vc.setView({ center: mutablePatchCenter });
+        mutablePatchCenter.lat = 99;
+        mutablePatchCenter.lon = 99;
+
+        expect(vc.getCenter()).toEqual({ lat: 10, lon: 20 });
+    });
+
     it("dtSecondsが0以下ならfeedAxesは何もしない", () => {
         const { terrain, setView } = makeTerrain();
         const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);

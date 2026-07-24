@@ -66,7 +66,7 @@ export const createDioramaViewController = (
     initialCenter: DioramaCenter,
     initialFootprintHalfSizeM: number,
 ): DioramaViewController => {
-    let currentCenter = initialCenter;
+    let currentCenter = { ...initialCenter };
     let currentFootprintHalfSizeM = clampFootprintHalfSizeM(initialFootprintHalfSizeM);
     let lastAppliedFootprintHalfSizeM = currentFootprintHalfSizeM;
 
@@ -172,7 +172,11 @@ export const createDioramaViewController = (
         },
         setView: async (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
             const resolvedPatch: { center?: DioramaCenter; footprintHalfSizeM?: number } = {};
-            if (patch.center !== undefined) resolvedPatch.center = patch.center;
+            // 呼び出し元が渡した `patch.center` オブジェクトをそのまま内部状態
+            // （`currentCenter`）へ保持すると、呼び出し元が後から同じオブジェクトを
+            // 書き換えた場合に内部状態が意図せず変化してしまう（`getCenter()` の
+            // 「読み取り専用スナップショット」契約とも不整合）。コピーして保持する。
+            if (patch.center !== undefined) resolvedPatch.center = { ...patch.center };
             if (patch.footprintHalfSizeM !== undefined) {
                 resolvedPatch.footprintHalfSizeM = clampFootprintHalfSizeM(patch.footprintHalfSizeM);
             }

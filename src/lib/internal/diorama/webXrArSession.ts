@@ -284,18 +284,20 @@ export const createDioramaArSessionController = (
                 // dispose() が呼ばれた後に enterAr() が解決した場合、生成済みの
                 // セッションを保持せずここで破棄する（呼び出し元は既にコントローラーを
                 // 終了しているため、以後 xr を参照する経路が無くなりリークするのを防ぐ）。
-                // `created` が非nullの場合、enterAr() 内で `touchControls.setVisible(false)`
-                // が実行済みだが、`created.dispose()` は `onStateChangedObservable` による
-                // 退出通知（NOT_IN_XR遷移で発火）を必ずしも経由しないため、ここで明示的に
-                // `setVisible(true)` を呼び、タッチHUDが非表示のまま残留しないようにする
-                // （`setVisible(true)` は冪等なので、既に表示状態でも無条件に呼んで問題ない）。
+                // `created.dispose()` は `onStateChangedObservable` による退出通知
+                // （NOT_IN_XR遷移で発火）を必ずしも経由しないため、ここで明示的に
+                // `setVisible(true)` を呼び、タッチHUDが非表示のまま残留しないように
+                // する（`setVisible(true)` は冪等なので、既に表示状態でも無条件に
+                // 呼んで問題ない）。`enterAr` が失敗した場合はここへ到達せず reject する
+                // （`touchControls.setVisible(true)` は `enterAr` 自身の catch 節が
+                // 呼ぶため、ここでの追加対応は不要）。
                 if (disposed) {
                     touchControls.setVisible(true);
-                    created?.dispose();
+                    created.dispose();
                     return;
                 }
                 xr = created;
-                if (created) notifyActiveChange(true);
+                notifyActiveChange(true);
             })
             .finally(() => {
                 enteringPromise = null;
@@ -450,8 +452,11 @@ export const setupDioramaWebXrArButton = async (
 };
 
 /** ARセッションを開始し、パススルー背景化・箱庭配置のセットアップを行う。
- *  セットアップ中に例外が発生した場合は、生成済みリソース（`xr`・シーン状態）を後始末し、
- *  `null` を返す（呼び出し元はクリック可能な状態を維持する）。
+ *  セットアップ中に例外が発生した場合は、生成済みリソース（`xr`・シーン状態）を後始末した
+ *  うえで例外を再送出し、呼び出し元（{@link createDioramaArSessionController} の `enter()`）の
+ *  Promise を reject させる（spec/diorama-api.md §7: `enterAr()`/`exitAr()` の失敗はホスト側で
+ *  ハンドリングできるよう reject する）。ボタン経由の呼び出しは {@link attachDioramaArButton} 側の
+ *  `.catch` でログ出力する。
  * @param onExit ARセッションが終了した（`NOT_IN_XR` へ遷移した）際に呼ばれるコールバック。
  */
 const enterAr = async (
@@ -464,7 +469,7 @@ const enterAr = async (
     tileModeController: DioramaTileModeController,
     touchControls: DioramaTouchControls,
     onExit: () => void,
-): Promise<WebXRDefaultExperience | null> => {
+): Promise<WebXRDefaultExperience> => {
     let xr: WebXRDefaultExperience | null = null;
     let hud: DioramaArControlHud | null = null;
     // `setupDioramaArControls` の破棄関数。try節内の`const`にすると、それより後の
@@ -570,6 +575,8 @@ const enterAr = async (
         hud?.dispose();
         hud = null;
         xr?.dispose();
-        return null;
+        // 後始末が完了した後、呼び出し元（`enter()`）のPromiseをrejectさせるため
+        // 例外を再送出する（冒頭のコメント参照）。
+        throw err instanceof Error ? err : new Error(String(err));
     }
 };
