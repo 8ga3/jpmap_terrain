@@ -1,7 +1,8 @@
 /**
  * jpmap-terrain 公開型定義
  *
- * spec/terrain-api.md §3 (Initial Implementation) に対応する型を提供する。
+ * spec/terrain-api.md §3 (Initial Implementation) / spec/diorama-api.md §5.4
+ * に対応する型を提供する。
  */
 
 /** 描画エンジン種別 */
