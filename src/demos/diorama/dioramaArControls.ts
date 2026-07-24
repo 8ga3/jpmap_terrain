@@ -397,7 +397,7 @@ export const trackControllerButtonPresses = (
 
 /**
  * AR中のコントローラー/GUI入力による地図移動・拡大縮小・箱庭回転・高さ変更・
- * タイル種別切替・トップ復帰のセットアップを行う。
+ * タイル種別切替・AR終了のセットアップを行う。
  * `xrExperience.baseExperience.enterXRAsync(...)` 完了後に呼び、退出/破棄時に
  * 返り値の破棄関数を呼ぶこと。
  *
