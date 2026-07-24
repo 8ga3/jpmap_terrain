@@ -15,6 +15,20 @@
 - 仕様変更を伴う場合は、関連ドキュメントを更新対象に含める
 - 変更が API / 型 / 挙動に及ぶ場合、PR本文に影響範囲を明記する
 
+## CI による自動検証
+
+`.github/workflows/ci.yml` により、`pull_request` および `main` への push を対象に以下を自動実行する。
+
+1. `npm ci`
+2. `npm run lint`
+3. `npm run typecheck`
+4. `npm run test:unit`
+5. `npm run build`
+
+**背景**: 以前は `.github/workflows/deploy.yml`（タグpush時のみ実行）以外にCIが存在せず、依存関係更新PRがマージされた時点で `package-lock.json` が壊れていても、次にリリースタグを打つまで誰も気づけなかった（詳細は #580 参照）。`ci.yml` により、PRの時点・`main` マージ直後に `npm ci` の整合性を含めて自動検証されるため、**手動での事前確認を毎回覚えておく必要はない**。
+
+- `npm run test:visuals`（Playwright Visual Regression Test）はスナップショットが `-darwin.png` 命名でmacOS専用のため、Linux上のCIには含めていない。引き続き開発者がローカル（macOS）で手動実行する。
+
 ## リリース（Netlifyデプロイ）
 
 Netlifyへのデプロイは `.github/workflows/deploy.yml` により、**タグのpush**をトリガーに実行される（全タグ対象のため `push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。
@@ -22,6 +36,7 @@ Netlifyへのデプロイは `.github/workflows/deploy.yml` により、**タグ
 - **必ず `main` ブランチにマージされたコミットに対してのみタグを付けること。**
   - Gitのタグはブランチと独立した参照であるため、CIのトリガー設定上は `main` 以外のブランチ（feature branch等）のコミットにタグを付けてpushした場合も、そのコミット内容がそのままNetlify本番環境にデプロイされてしまう。
   - このリスクはCI側のガードでは防いでおらず、**運用ルールとして開発者が遵守する**ことで担保する。
+- タグを付ける前に、対象コミットで `ci.yml` が成功していることを確認する（`main` へのマージ時に自動実行されているはずだが、念のため [Actions](https://github.com/8ga3/jpmap_terrain/actions/workflows/ci.yml) タブで確認する）。
 - リリース手順:
   1. 対象の変更が `main` にマージされていることを確認する
   2. `main` を最新化する（`git switch main && git pull`）
