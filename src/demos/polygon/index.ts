@@ -286,7 +286,7 @@ const buildControls = (
                   ];
             viewer.replacePolygonPoints(editTargetId, next);
             // replacePolygonPoints は仕様上 labels を全 undefined にリセットするため
-            // (spec/package.md §3.3.8.2)、ラベルが消えないよう updatePolygonPoint で再付与する。
+            // (spec/terrain-api.md §3.3.8.2)、ラベルが消えないよう updatePolygonPoint で再付与する。
             for (let i = 0; i < next.length; i++) {
                 viewer.updatePolygonPoint(editTargetId, i, {
                     label: `P${i + 1}`,

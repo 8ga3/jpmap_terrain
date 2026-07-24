@@ -119,7 +119,7 @@ const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamer
 
         // 外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま
         // projection と合成すると Float32 演算の桁落ちが起きるため、並進行を 0 にした
-        // 「camera 相対（回転のみ）」の行列で frustum 平面を作る（spec/package.md 3.3.14.2 参照）。
+        // 「camera 相対（回転のみ）」の行列で frustum 平面を作る（spec/terrain-api.md 3.3.14.2 参照）。
         frustumViewOnly.copyFrom(orbitCamera.getViewMatrix());
         frustumViewOnly.setRowFromFloats(3, 0, 0, 0, 1);
         frustumViewOnly.multiplyToRef(orbitCamera.getProjectionMatrix(), frustumTransform);

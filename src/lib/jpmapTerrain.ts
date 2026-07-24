@@ -1,7 +1,7 @@
 /**
  * `JpmapTerrain` クラス本体
  *
- * spec/package.md §3 (Initial Implementation) の API を提供する。
+ * spec/terrain-api.md §3 (Initial Implementation) の API を提供する。
  *
  * - クラス骨格 / 公開型
  * - mountElement への canvas 配置と Scene 初期化
@@ -190,7 +190,7 @@ export class JpmapTerrain {
      * 指定したマウント要素にビューアを生成する。
      *
      * @param mountElement キャンバスと UI を配置する DOM 要素
-     * @param options 初期化オプション（spec/package.md §3.2）
+     * @param options 初期化オプション（spec/terrain-api.md §3.2）
      * @returns 初期化済みの `JpmapTerrain` インスタンス
      */
     public static async create(
@@ -616,7 +616,7 @@ export class JpmapTerrain {
      *   **camera 相対**（原点 = `cameraPosition`、回転のみ・並進なし）で構築すること。
      *   外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま projection と
      *   合成すると、Float32 演算の桁落ちで画面内の地物を視錐台外と誤判定する。必ず view 行列の
-     *   並進行を 0 にしてから合成すること（`spec/package.md` §3.3.14.3 の利用例参照）。
+     *   並進行を 0 にしてから合成すること（`spec/terrain-api.md` §3.3.14.3 の利用例参照）。
      * @param cameraPosition 外部カメラの**真の ECEF 絶対位置**（地心 ~6.4e6m スケール）。
      *   SSE (Screen-Space Error) による LOD 距離計算、および `frustumPlanes` の camera 相対座標を
      *   実座標へ戻す際の原点に使用する。

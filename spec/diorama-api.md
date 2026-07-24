@@ -6,7 +6,7 @@
 
 ## 1. 概要
 
-現在 `src/demos/diorama/` にデモ専用実装として存在する「箱庭ジオラマビューア」を、`JpmapTerrain`（`spec/package.md`）と対をなす**独立した第2の公開API** `JpmapDiorama` としてパッケージ化する。標準WebブラウザとWebXR (`immersive-ar`) セッションの双方で、任意のホストアプリケーションからマウントポイント（DOM要素）を指定して高パフォーマンスに埋め込めるようにする。
+現在 `src/demos/diorama/` にデモ専用実装として存在する「箱庭ジオラマビューア」を、`JpmapTerrain`（`spec/terrain-api.md`）と対をなす**独立した第2の公開API** `JpmapDiorama` としてパッケージ化する。標準WebブラウザとWebXR (`immersive-ar`) セッションの双方で、任意のホストアプリケーションからマウントポイント（DOM要素）を指定して高パフォーマンスに埋め込めるようにする。
 
 `JpmapTerrain` には依存しない（実寸大ECEF楕円体 + floating originを使う`GlobeScene`ではなく、正方形グリッド + 実世界DEM/タイル取得 + 縮小スケールという独立実装のため。理由は `src/terrain/diorama/dioramaTerrain.ts` 冒頭コメント参照）。
 

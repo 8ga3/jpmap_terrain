@@ -17,7 +17,8 @@
 - 開発フロー: `spec/development.md`
 - デモ一覧とポータル仕様: `spec/demos.md`
 - アーキテクチャ（C4 モデル）: `spec/architecture.md`
-- ジオラマ表示API仕様（`JpmapDiorama`、Draft）: `spec/diorama-api.md`
+- 地形表示API仕様（`JpmapTerrain`）: `spec/terrain-api.md`
+- ジオラマ表示API仕様（`JpmapDiorama`）: `spec/diorama-api.md`
 - リポジトリ運用ガイド: `AGENTS.md`
 - プロジェクト概要: `README.md`
 
