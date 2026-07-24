@@ -48,6 +48,18 @@ export interface DioramaOrientationController {
      * 0 または 1）を1フレーム分適用する。呼び出し元が毎フレーム呼ぶこと。
      */
     feedAxes(rotationAxisX: number, leftTriggerValue: number, rightTriggerValue: number, dtSeconds: number): void;
+    /**
+     * 回転角[rad]を明示的に設定する（ホストアプリからの `JpmapDiorama.rotationDeg`
+     * setter用）。`feedAxes` と同じ対象ノードへ同期的に反映するため、以後の
+     * 継続入力（キーボード/タッチ/ARコントローラー）はこの値を起点に動作する。
+     */
+    setRotationRad(value: number): void;
+    /**
+     * 高さオフセット[m]を明示的に設定する（ホストアプリからの
+     * `JpmapDiorama.heightOffsetM` setter用）。`feedAxes` と同じ下限・上限で
+     * クランプする。
+     */
+    setHeightOffsetM(value: number): void;
 }
 
 /**
@@ -85,6 +97,14 @@ export const createDioramaOrientationController = (orientationRoot: TransformNod
                 heightOffsetM = clampDioramaHeightOffsetM(heightOffsetM + deltaM);
                 orientationRoot.position.y = heightOffsetM;
             }
+        },
+        setRotationRad: (value: number): void => {
+            rotationRad = value;
+            orientationRoot.rotation.y = rotationRad;
+        },
+        setHeightOffsetM: (value: number): void => {
+            heightOffsetM = clampDioramaHeightOffsetM(value);
+            orientationRoot.position.y = heightOffsetM;
         },
     };
 };

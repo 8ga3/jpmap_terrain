@@ -1,12 +1,13 @@
 /**
  * jpmap-terrain パッケージエントリ
  *
- * 公開 API は spec/package.md §3 に従う。
- * - クラス本体: `./lib/jpmapTerrain`
+ * 公開 API は spec/package.md §3 / spec/diorama-api.md §5 に従う。
+ * - クラス本体: `./lib/jpmapTerrain` / `./lib/jpmapDiorama`
  * - 公開型: `./lib/types`
  */
 
 export { JpmapTerrain } from "./lib/jpmapTerrain";
+export { JpmapDiorama } from "./lib/jpmapDiorama";
 export type {
     CameraChangeEvent,
     CameraChangeListener,
@@ -46,6 +47,14 @@ export type {
     ModelOptions,
     ModelUpdate,
     ModelHandle,
+    DioramaCenter,
+    DioramaTileMode,
+    DioramaArState,
+    JpmapDioramaOptions,
+    JpmapDioramaViewChangeEvent,
+    JpmapDioramaViewChangeListener,
+    DioramaTileModeChangeListener,
+    DioramaArStateChangeListener,
 } from "./lib/types";
 export {
     CIRCLE_DEFAULTS,

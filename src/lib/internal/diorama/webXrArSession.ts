@@ -78,7 +78,7 @@ export const isImmersiveArSupported = async (): Promise<boolean> => {
             false,
         );
     } catch (err) {
-        console.warn("[jpmap-terrain diorama demo] WebXR AR support check failed:", err);
+        console.warn("[jpmap-terrain diorama] WebXR AR support check failed:", err);
         return false;
     }
 };
@@ -173,12 +173,206 @@ const placeDioramaRelativeToCamera = (
     dioramaRoot.position.y += AR_TABLE_HEIGHT_M - camera.position.y;
     if (process.env.NODE_ENV !== "production") {
         console.debug(
-            "[jpmap-terrain diorama demo] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
+            "[jpmap-terrain diorama] AR placement: cameraPosition=%o forward=%o placedPosition=%o",
             camera.position.asArray(),
             forward.asArray(),
             dioramaRoot.position.asArray(),
         );
     }
+};
+
+/**
+ * ARセッションの活性状態（true=AR中）が変化した際に呼ばれるリスナー。
+ */
+export type DioramaArActiveChangeListener = (active: boolean) => void;
+
+/**
+ * WebXR (`immersive-ar`) セッションのライフサイクル（突入・退出・状態通知）を、
+ * ボタンUIから独立して制御するコントローラー。
+ *
+ * @remarks
+ * ARボタンのクリック（{@link attachDioramaArButton}）・ホストアプリからの
+ * プログラム的な呼び出し（`JpmapDiorama.enterAr()`/`exitAr()`）のいずれからも
+ * 同じインスタンスを共有できるよう、UIに依存しない形で切り出している。
+ * サポート判定（{@link isImmersiveArSupported}）はここでは行わない（呼び出し側が
+ * 事前に確認し、要否を判断する）。
+ */
+export interface DioramaArSessionController {
+    /** 現在ARセッション中か（同期スナップショット）。 */
+    isActive(): boolean;
+    /**
+     * ARセッションへ突入する。既にAR中の場合は no-op。突入処理が進行中の場合は
+     * その完了を共有して待つ（二重に `enterXRAsync` を発行しない）。
+     */
+    enter(): Promise<void>;
+    /** ARセッションから退出する。非AR中は no-op。 */
+    exit(): Promise<void>;
+    /**
+     * 活性状態（{@link isActive}の変化）を購読する。
+     * @returns 購読解除関数。
+     */
+    onActiveChange(listener: DioramaArActiveChangeListener): () => void;
+    /** 破棄する。AR中であればセッションを破棄し、購読中のリスナーを解放する。 */
+    dispose(): void;
+}
+
+/**
+ * {@link DioramaArSessionController} を生成する。
+ *
+ * @param mount AR中のコントローラー/GUI操作用HUD（`dom-overlay` feature）を
+ *   配置するコンテナ要素。
+ * @param scene 対象の `Scene`。
+ * @param dioramaRoot 箱庭配置の適用先ノード（AR突入時にユーザー正面へ絶対位置で
+ *   配置される。回転・高さオフセットはこのノードの子である `orientationRoot` に
+ *   適用されるため、本関数はそれらに触れない）。
+ * @param tableRadiusM 箱庭の卓上表示半径[m]（AR中のパン方向算出のデッドゾーン半径）。
+ * @param viewController 地図移動・拡大縮小の共有状態保持者。
+ * @param orientationController 箱庭の回転・高さオフセットの共有状態保持者。
+ * @param tileModeController タイル種別の共有状態保持者。
+ * @param touchControls AR非対応環境・AR突入前の通常表示向けの常時表示タッチHUD。
+ *   AR中は同種のGUIが二重に重なって表示されないよう、AR突入時に非表示、
+ *   退出時に再表示する。
+ */
+export const createDioramaArSessionController = (
+    mount: HTMLElement,
+    scene: Scene,
+    dioramaRoot: TransformNode,
+    tableRadiusM: number,
+    viewController: DioramaViewController,
+    orientationController: DioramaOrientationController,
+    tileModeController: DioramaTileModeController,
+    touchControls: DioramaTouchControls,
+): DioramaArSessionController => {
+    let xr: WebXRDefaultExperience | null = null;
+    let enteringPromise: Promise<void> | null = null;
+    let disposed = false;
+    const listeners: DioramaArActiveChangeListener[] = [];
+
+    const notifyActiveChange = (active: boolean): void => {
+        for (const listener of listeners.slice()) {
+            try {
+                listener(active);
+            } catch (err) {
+                console.error("[jpmap-terrain diorama] onActiveChange listener threw:", err);
+            }
+        }
+    };
+
+    const isActive = (): boolean => xr !== null && xr.baseExperience.state !== WebXRState.NOT_IN_XR;
+
+    const enter = (): Promise<void> => {
+        if (disposed) return Promise.reject(new Error("DioramaArSessionController is already disposed"));
+        if (isActive()) return Promise.resolve();
+        if (enteringPromise) return enteringPromise;
+        // 前回セッションの `WebXRDefaultExperience`（input/enterExitUI/renderTarget等の
+        // リソースを保持する）は enterAr() のたびに新規生成するため、再入場前に破棄
+        // しておく（破棄しないと入退場を繰り返すたびにリソースがリークする）。
+        xr?.dispose();
+        xr = null;
+        enteringPromise = enterAr(
+            mount,
+            scene,
+            dioramaRoot,
+            tableRadiusM,
+            viewController,
+            orientationController,
+            tileModeController,
+            touchControls,
+            () => notifyActiveChange(false),
+        )
+            .then((created) => {
+                // dispose() が呼ばれた後に enterAr() が解決した場合、生成済みの
+                // セッションを保持せずここで破棄する（呼び出し元は既にコントローラーを
+                // 終了しているため、以後 xr を参照する経路が無くなりリークするのを防ぐ）。
+                // `created` が非nullの場合、enterAr() 内で `touchControls.setVisible(false)`
+                // が実行済みだが、`created.dispose()` は `onStateChangedObservable` による
+                // 退出通知（NOT_IN_XR遷移で発火）を必ずしも経由しないため、ここで明示的に
+                // `setVisible(true)` を呼び、タッチHUDが非表示のまま残留しないようにする
+                // （`setVisible(true)` は冪等なので、既に表示状態でも無条件に呼んで問題ない）。
+                if (disposed) {
+                    touchControls.setVisible(true);
+                    created?.dispose();
+                    return;
+                }
+                xr = created;
+                if (created) notifyActiveChange(true);
+            })
+            .finally(() => {
+                enteringPromise = null;
+            });
+        return enteringPromise;
+    };
+
+    const exit = (): Promise<void> => {
+        if (!isActive()) return Promise.resolve();
+        return xr!.baseExperience.exitXRAsync();
+    };
+
+    return {
+        isActive,
+        enter,
+        exit,
+        onActiveChange: (listener: DioramaArActiveChangeListener): (() => void) => {
+            listeners.push(listener);
+            let removed = false;
+            return (): void => {
+                if (removed) return;
+                removed = true;
+                const idx = listeners.indexOf(listener);
+                if (idx !== -1) listeners.splice(idx, 1);
+            };
+        },
+        dispose: (): void => {
+            if (disposed) return;
+            disposed = true;
+            listeners.length = 0;
+            xr?.dispose();
+            xr = null;
+        },
+    };
+};
+
+/**
+ * {@link DioramaArSessionController} にARボタンのUIを付与する。
+ *
+ * ボタンは常に `mount` へ追加する（サポート判定は呼び出し側の責務。
+ * {@link setupDioramaWebXrArButton} 冒頭のコメント参照）。
+ *
+ * @returns 後始末用の関数（ボタンの除去・購読解除のみ行い、`controller` 自体は
+ *   破棄しない。`controller` の所有者が別途 `dispose()` を呼ぶこと）。
+ */
+export const attachDioramaArButton = (
+    mount: HTMLElement,
+    controller: DioramaArSessionController,
+): (() => void) => {
+    const button = document.createElement("button");
+    styleArButton(button);
+    mount.appendChild(button);
+
+    const unsubscribe = controller.onActiveChange((active) => {
+        if (active) {
+            button.textContent = "終了";
+            button.setAttribute("aria-label", "ARを終了");
+            button.setAttribute("title", "ARを終了");
+        } else {
+            styleArButton(button);
+        }
+    });
+
+    button.addEventListener("click", () => {
+        if (controller.isActive()) {
+            void controller.exit();
+            return;
+        }
+        controller.enter().catch((err: unknown) => {
+            console.error("[jpmap-terrain diorama] failed to start WebXR AR session:", err);
+        });
+    });
+
+    return (): void => {
+        unsubscribe();
+        button.remove();
+    };
 };
 
 /**
@@ -188,6 +382,12 @@ const placeDioramaRelativeToCamera = (
  *
  * WebXR (`immersive-ar`) 非対応環境では機能検出後にボタンを表示しない
  * （VR PoC と同じ合意事項）。
+ *
+ * @remarks
+ * {@link createDioramaArSessionController} と {@link attachDioramaArButton} を
+ * 組み合わせた薄いラッパー。`JpmapDiorama`（`src/lib/jpmapDiorama.ts`）は
+ * プログラムからのAR突入/退出（`enterAr()`/`exitAr()`）も提供する必要があるため
+ * 両関数を個別に呼ぶが、本関数はボタンのみで完結する既存デモ向けの互換API。
  *
  * @param mount ボタンを配置するコンテナ要素（diorama デモの canvas を含む要素）。
  * @param scene 対象の `Scene`。
@@ -223,72 +423,28 @@ export const setupDioramaWebXrArButton = async (
     const supported = await isImmersiveArSupported();
     if (!supported) return () => {};
 
-    const button = document.createElement("button");
-    styleArButton(button);
-    mount.appendChild(button);
+    const controller = createDioramaArSessionController(
+        mount,
+        scene,
+        dioramaRoot,
+        tableRadiusM,
+        viewController,
+        orientationController,
+        tileModeController,
+        touchControls,
+    );
+    const detachButton = attachDioramaArButton(mount, controller);
 
-    let xr: WebXRDefaultExperience | null = null;
-    let entering = false;
-    let disposed = false;
-
-    const cleanup = (): void => {
-        disposed = true;
-        button.remove();
-        xr?.dispose();
+    return (): void => {
+        detachButton();
+        controller.dispose();
     };
-
-    button.addEventListener("click", () => {
-        if (disposed || entering) return;
-        if (xr && xr.baseExperience.state !== WebXRState.NOT_IN_XR) {
-            void xr.baseExperience.exitXRAsync();
-            return;
-        }
-        // 前回セッションの `WebXRDefaultExperience`（input/enterExitUI/renderTarget等の
-        // リソースを保持する）は enterAr() のたびに新規生成するため、再入場前に破棄
-        // しておく（破棄しないと入退場を繰り返すたびにリソースがリークする）。
-        xr?.dispose();
-        xr = null;
-        entering = true;
-        void enterAr(
-            mount,
-            scene,
-            dioramaRoot,
-            tableRadiusM,
-            viewController,
-            orientationController,
-            tileModeController,
-            touchControls,
-            button,
-        )
-            .then((created) => {
-                // cleanup() が呼ばれた後に enterAr() が解決した場合、生成済みの
-                // セッションを保持せずここで破棄する（呼び出し元は既にデモを
-                // 終了しているため、以後 xr を参照する経路が無くなりリークするのを防ぐ）。
-                // `created` が非nullの場合、enterAr() 内で `touchControls.setVisible(false)`
-                // が実行済みだが、`created.dispose()` は `onStateChangedObservable` による
-                // `restoreOnExit`（`enterAr()` 内、NOT_IN_XR遷移で発火）を必ずしも
-                // 経由しないため、ここで明示的に `setVisible(true)` を呼び、タッチHUDが
-                // 非表示のまま残留しないようにする（`setVisible(true)` は冪等なので、
-                // 既に表示状態でも無条件に呼んで問題ない）。
-                if (disposed) {
-                    touchControls.setVisible(true);
-                    created?.dispose();
-                    return;
-                }
-                xr = created;
-            })
-            .finally(() => {
-                entering = false;
-            });
-    });
-
-    return cleanup;
 };
-
 
 /** ARセッションを開始し、パススルー背景化・箱庭配置のセットアップを行う。
  *  セットアップ中に例外が発生した場合は、生成済みリソース（`xr`・シーン状態）を後始末し、
- *  ボタンを通常表示へ戻したうえで `null` を返す（呼び出し元はクリック可能な状態を維持する）。
+ *  `null` を返す（呼び出し元はクリック可能な状態を維持する）。
+ * @param onExit ARセッションが終了した（`NOT_IN_XR` へ遷移した）際に呼ばれるコールバック。
  */
 const enterAr = async (
     mount: HTMLElement,
@@ -299,7 +455,7 @@ const enterAr = async (
     orientationController: DioramaOrientationController,
     tileModeController: DioramaTileModeController,
     touchControls: DioramaTouchControls,
-    button: HTMLButtonElement,
+    onExit: () => void,
 ): Promise<WebXRDefaultExperience | null> => {
     let xr: WebXRDefaultExperience | null = null;
     let hud: DioramaArControlHud | null = null;
@@ -343,10 +499,6 @@ const enterAr = async (
             await xrExperience.baseExperience.enterXRAsync("immersive-ar", "local-floor", xrExperience.renderTarget);
         }
 
-        button.textContent = "終了";
-        button.setAttribute("aria-label", "ARを終了");
-        button.setAttribute("title", "ARを終了");
-
         // パススルー表示: フレームバッファの alpha を 0 にし、実世界カメラ映像が
         // 透けて見えるようにする（{@link module:src/lib/internal/diorama/webXrArSession.ts}
         // 冒頭のコメント参照）。
@@ -385,7 +537,7 @@ const enterAr = async (
             dioramaRoot.position.copyFrom(originalPosition);
             scene.clearColor.a = originalClearAlpha;
             touchControls.setVisible(true);
-            styleArButton(button);
+            onExit();
         };
 
         xrExperience.baseExperience.onStateChangedObservable.add((state) => {
@@ -396,7 +548,7 @@ const enterAr = async (
 
         return xrExperience;
     } catch (err) {
-        console.error("[jpmap-terrain diorama demo] failed to start WebXR AR session:", err);
+        console.error("[jpmap-terrain diorama] failed to start WebXR AR session:", err);
         // 部分的に確保したリソース（箱庭配置・パススルー背景状態・AR controls・HUD）を
         // 後始末する。`disposeArControls` が設定済み（`setupDioramaArControls` 呼び出し後に
         // 例外が起きたケース）なら、render observer / controller observer の残留を防ぐため
@@ -410,7 +562,6 @@ const enterAr = async (
         hud?.dispose();
         hud = null;
         xr?.dispose();
-        styleArButton(button);
         return null;
     }
 };

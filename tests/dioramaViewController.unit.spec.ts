@@ -149,4 +149,77 @@ describe("createDioramaViewController", () => {
         expect(vc.getCenter()).toEqual(firstPatch.center);
         expect(vc.getFootprintHalfSizeM()).toBe(firstPatch.footprintHalfSizeM);
     });
+
+    describe("setView", () => {
+        it("明示的にcenter/footprintHalfSizeMを設定できる", async () => {
+            const { terrain, setView } = makeTerrain();
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+            const nextCenter = { lat: 35.0, lon: 139.0 };
+
+            await vc.setView({ center: nextCenter, footprintHalfSizeM: 500 });
+
+            expect(setView).toHaveBeenCalledWith({ center: nextCenter, footprintHalfSizeM: 500 });
+            expect(vc.getCenter()).toEqual(nextCenter);
+            expect(vc.getFootprintHalfSizeM()).toBe(500);
+        });
+
+        it("footprintHalfSizeMは既定の下限・上限でクランプしてから送信する", async () => {
+            const { terrain, setView } = makeTerrain();
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+
+            await vc.setView({ footprintHalfSizeM: DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M * 10 });
+
+            const patch = setView.mock.calls[0][0];
+            expect(patch.footprintHalfSizeM).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M);
+            expect(vc.getFootprintHalfSizeM()).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M);
+        });
+
+        it("失敗時は状態を確定させず、呼び出し元へエラーをrejectする", async () => {
+            const setView = vi.fn().mockRejectedValueOnce(new Error("network error"));
+            const terrain = { setView } as unknown as DioramaTerrain;
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+
+            await expect(vc.setView({ footprintHalfSizeM: 500 })).rejects.toThrow("network error");
+            expect(vc.getFootprintHalfSizeM()).toBe(INITIAL_FOOTPRINT_HALF_SIZE_M);
+        });
+    });
+
+    describe("onChange", () => {
+        it("feedAxes経由の確定後に呼ばれる", async () => {
+            const { terrain } = makeTerrain();
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+            const listener = vi.fn();
+            vc.onChange(listener);
+
+            vc.feedAxes({ x: 1, y: 0 }, 0, 1);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener).toHaveBeenCalledWith(vc.getCenter(), vc.getFootprintHalfSizeM());
+        });
+
+        it("setView経由の確定後にも呼ばれる", async () => {
+            const { terrain } = makeTerrain();
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+            const listener = vi.fn();
+            vc.onChange(listener);
+
+            await vc.setView({ footprintHalfSizeM: 500 });
+
+            expect(listener).toHaveBeenCalledWith(vc.getCenter(), 500);
+        });
+
+        it("購読解除後は呼ばれない", async () => {
+            const { terrain } = makeTerrain();
+            const vc = createDioramaViewController(terrain, INITIAL_CENTER, INITIAL_FOOTPRINT_HALF_SIZE_M);
+            const listener = vi.fn();
+            const unsubscribe = vc.onChange(listener);
+            unsubscribe();
+
+            await vc.setView({ footprintHalfSizeM: 500 });
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+    });
 });

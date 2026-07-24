@@ -38,6 +38,22 @@ export interface DioramaViewController {
      * 1フレーム分適用する。呼び出し元が毎フレーム呼ぶこと。
      */
     feedAxes(panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void;
+    /**
+     * 中心・フットプリント半辺長を明示的に設定する（ホストアプリからの
+     * `JpmapDiorama.setCenter`/`setFootprintHalfSize`/`setView` 呼び出し用）。
+     * `feedAxes` が基準にする内部状態（`getCenter`/`getFootprintHalfSizeM`）も
+     * 合わせて更新するため、以後の継続入力（キーボード/タッチ/ARコントローラー）は
+     * 新しい値を起点に動作する。失敗時は `dioramaTerrain.setView` の reject を
+     * そのまま呼び出し元へ伝える（`feedAxes` 経由の継続入力と異なり、明示的な
+     * 単発呼び出しのためエラーを握りつぶさない）。
+     */
+    setView(patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void>;
+    /**
+     * 中心・フットプリント半辺長が確定（`feedAxes`・`setView` いずれの経路でも）
+     * した後に呼ばれるリスナーを登録する（`JpmapDiorama.onViewChange` が使う）。
+     * @returns 購読解除関数。
+     */
+    onChange(listener: (center: DioramaCenter, footprintHalfSizeM: number) => void): () => void;
 }
 
 /**
@@ -58,6 +74,17 @@ export const createDioramaViewController = (
     let pendingNorthM = 0;
     // 前回の `setView` 呼び出し（rebuild）が完了するまで次を発行しない。
     let applying = false;
+
+    const changeListeners: Array<(center: DioramaCenter, footprintHalfSizeM: number) => void> = [];
+    const notifyChange = (): void => {
+        for (const listener of changeListeners.slice()) {
+            try {
+                listener(currentCenter, currentFootprintHalfSizeM);
+            } catch (err) {
+                console.error("[jpmap-terrain diorama] onChange listener threw:", err);
+            }
+        }
+    };
 
     const flush = (): void => {
         if (applying) return;
@@ -94,9 +121,10 @@ export const createDioramaViewController = (
                 () => {
                     if (nextCenter !== undefined) currentCenter = nextCenter;
                     if (sentFootprintHalfSizeM !== undefined) lastAppliedFootprintHalfSizeM = sentFootprintHalfSizeM;
+                    notifyChange();
                 },
                 (err: unknown) => {
-                    console.error("[jpmap-terrain diorama demo] setView failed:", err);
+                    console.error("[jpmap-terrain diorama] setView failed:", err);
                     // lastAppliedFootprintHalfSizeM は更新していないため、hasZoom判定により
                     // 次回のflushで自然に再送される。パン分は差し引いていた値を復元する。
                     pendingEastM += sentEastM;
@@ -124,6 +152,30 @@ export const createDioramaViewController = (
             }
 
             flush();
+        },
+        setView: async (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
+            const resolvedPatch: { center?: DioramaCenter; footprintHalfSizeM?: number } = {};
+            if (patch.center !== undefined) resolvedPatch.center = patch.center;
+            if (patch.footprintHalfSizeM !== undefined) {
+                resolvedPatch.footprintHalfSizeM = clampFootprintHalfSizeM(patch.footprintHalfSizeM);
+            }
+            await dioramaTerrain.setView(resolvedPatch);
+            if (resolvedPatch.center !== undefined) currentCenter = resolvedPatch.center;
+            if (resolvedPatch.footprintHalfSizeM !== undefined) {
+                currentFootprintHalfSizeM = resolvedPatch.footprintHalfSizeM;
+                lastAppliedFootprintHalfSizeM = resolvedPatch.footprintHalfSizeM;
+            }
+            notifyChange();
+        },
+        onChange: (listener: (center: DioramaCenter, footprintHalfSizeM: number) => void): (() => void) => {
+            changeListeners.push(listener);
+            let removed = false;
+            return (): void => {
+                if (removed) return;
+                removed = true;
+                const idx = changeListeners.indexOf(listener);
+                if (idx !== -1) changeListeners.splice(idx, 1);
+            };
         },
     };
 };

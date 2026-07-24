@@ -42,6 +42,16 @@ import type {
     ModelUpdate,
     ModelHandle,
 } from "../src/lib";
+import type {
+    DioramaCenter,
+    DioramaTileMode,
+    DioramaArState,
+    JpmapDioramaOptions,
+    JpmapDioramaViewChangeEvent,
+    JpmapDioramaViewChangeListener,
+    DioramaTileModeChangeListener,
+    DioramaArStateChangeListener,
+} from "../src/lib";
 
 describe("package entry exports", () => {
     it("JpmapTerrain クラスがトップレベルから export されている", () => {
@@ -175,5 +185,39 @@ describe("package entry exports", () => {
         expect(handleShape.id).toBe("m1");
         expect(pkg.MODEL_DEFAULTS).toBeDefined();
         expect(pkg.MODEL_DEFAULTS.gravity).toBe(true);
+    });
+
+    it("JpmapDiorama クラスがトップレベルから export されている", () => {
+        expect(typeof pkg.JpmapDiorama).toBe("function");
+        expect(pkg.JpmapDiorama.name).toBe("JpmapDiorama");
+    });
+
+    it("ジオラマ公開型がパッケージエントリから import できる（typecheck）", () => {
+        const center: DioramaCenter = { lat: 35.3436, lon: 138.7203 };
+        const tileMode: DioramaTileMode = "std";
+        const arState: DioramaArState = "inactive";
+        const opts: JpmapDioramaOptions = {
+            center,
+            footprintHalfSizeM: 800,
+            tableRadiusM: 0.35,
+            tileMode,
+        };
+        const viewEvent: JpmapDioramaViewChangeEvent = { center, footprintHalfSizeM: 800 };
+        const onViewChange: JpmapDioramaViewChangeListener = () => {
+            /* no-op */
+        };
+        const onTileModeChange: DioramaTileModeChangeListener = () => {
+            /* no-op */
+        };
+        const onArStateChange: DioramaArStateChangeListener = () => {
+            /* no-op */
+        };
+        onViewChange(viewEvent);
+        onTileModeChange(tileMode);
+        onArStateChange(arState);
+
+        expect(opts.center).toEqual(center);
+        expect(viewEvent.footprintHalfSizeM).toBe(800);
+        expect(arState).toBe("inactive");
     });
 });

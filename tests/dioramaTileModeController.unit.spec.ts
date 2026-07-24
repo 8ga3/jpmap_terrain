@@ -101,4 +101,87 @@ describe("createDioramaTileModeController", () => {
         expect(consoleErrorSpy).toHaveBeenCalled();
         consoleErrorSpy.mockRestore();
     });
+
+    describe("setTileMode", () => {
+        it("指定したタイル種別が適用されるまで待てる", async () => {
+            const { terrain, setTileMode } = makeTerrain();
+            const tc = createDioramaTileModeController(terrain, "std");
+
+            await tc.setTileMode("wireframe");
+
+            expect(setTileMode).toHaveBeenCalledWith("wireframe");
+            expect(tc.getTileMode()).toBe("wireframe");
+        });
+
+        it("失敗時はcycle()と異なり、呼び出し元へエラーがrejectされる（コンソールには出さない）", async () => {
+            const { terrain, setTileMode } = makeTerrain();
+            setTileMode.mockRejectedValueOnce(new Error("network error"));
+            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+            const tc = createDioramaTileModeController(terrain, "std");
+
+            await expect(tc.setTileMode("photo")).rejects.toThrow("network error");
+            expect(tc.getTileMode()).toBe("std");
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+            consoleErrorSpy.mockRestore();
+        });
+
+        it("cycle()の適用中に呼ばれた場合、要求を上書きしつつ最終的な収束を待てる", async () => {
+            const { terrain, setTileMode } = makeTerrain();
+            let resolveFirst: (() => void) | undefined;
+            setTileMode.mockImplementationOnce(
+                () =>
+                    new Promise<void>((resolve) => {
+                        resolveFirst = resolve;
+                    }),
+            );
+            const tc = createDioramaTileModeController(terrain, "std");
+
+            tc.cycle(); // std -> photo（未解決のまま）
+            const setTileModePromise = tc.setTileMode("wireframe");
+
+            resolveFirst?.();
+            await setTileModePromise;
+
+            expect(tc.getTileMode()).toBe("wireframe");
+            expect(setTileMode).toHaveBeenLastCalledWith("wireframe");
+        });
+    });
+
+    describe("onChange", () => {
+        it("cycle()での変化後に呼ばれる", async () => {
+            const { terrain } = makeTerrain();
+            const tc = createDioramaTileModeController(terrain, "std");
+            const listener = vi.fn();
+            tc.onChange(listener);
+
+            tc.cycle();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(listener).toHaveBeenCalledWith("photo");
+        });
+
+        it("setTileMode()での変化後にも呼ばれる", async () => {
+            const { terrain } = makeTerrain();
+            const tc = createDioramaTileModeController(terrain, "std");
+            const listener = vi.fn();
+            tc.onChange(listener);
+
+            await tc.setTileMode("wireframe");
+
+            expect(listener).toHaveBeenCalledWith("wireframe");
+        });
+
+        it("購読解除後は呼ばれない", async () => {
+            const { terrain } = makeTerrain();
+            const tc = createDioramaTileModeController(terrain, "std");
+            const listener = vi.fn();
+            const unsubscribe = tc.onChange(listener);
+            unsubscribe();
+
+            await tc.setTileMode("photo");
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+    });
 });

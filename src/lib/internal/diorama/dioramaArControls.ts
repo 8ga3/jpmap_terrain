@@ -145,7 +145,7 @@ export const createDioramaArControlHudForSession = (
         // `dom-overlay` 非対応ブラウザでも操作自体は継続できるため、警告のみに留める
         // （HUDはDOM上には存在するが、非対応環境では没入セッション中は見えない可能性がある）。
         console.warn(
-            "[jpmap-terrain diorama demo] dom-overlay feature unavailable, AR control HUD may not be visible during the session:",
+            "[jpmap-terrain diorama] dom-overlay feature unavailable, AR control HUD may not be visible during the session:",
             err,
         );
     }
@@ -437,7 +437,7 @@ export const setupDioramaArControls = (
     // 静かに握りつぶされないよう、`catch` で最低限のログ出力を行う。
     const exitAr = (): void => {
         xr.baseExperience.exitXRAsync().catch((err: unknown) => {
-            console.error("[jpmap-terrain diorama demo] failed to exit WebXR AR session:", err);
+            console.error("[jpmap-terrain diorama] failed to exit WebXR AR session:", err);
         });
     };
     const untrackButtons = trackControllerButtonPresses(xr, () => tileModeController.cycle(), exitAr);
