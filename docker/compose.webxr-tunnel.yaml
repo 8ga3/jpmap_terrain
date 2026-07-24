@@ -1,8 +1,9 @@
-# WebXR (VR) 実機検証用の一時トンネル（オプション、compose.yaml とは別ファイル）。
+# WebXR (VR/AR) 実機検証用の一時トンネル（オプション、compose.yaml とは別ファイル）。
 #
-# Meta Quest 3 等のブラウザは WebXR (immersive-vr) の利用にセキュアコンテキスト
+# Meta Quest 3・Androidスマホ（ARCore）等のブラウザは WebXR
+# (immersive-vr/immersive-ar いずれも) の利用にセキュアコンテキスト
 # (HTTPS または localhost) を要求するため、compose.yaml（プレーン HTTP 配信）だけ
-# では実機ブラウザから VR ボタンが表示されない。本ファイルは Cloudflare の
+# では実機ブラウザから VR/AR ボタンが表示されない。本ファイルは Cloudflare の
 # quick tunnel（アカウント登録不要。起動のたびに一時的な https://*.trycloudflare.com
 # URL を発行する）を demo サービスと同じ Docker ネットワーク上で起動し、
 # 実機検証のときだけ併用するためのもの。
@@ -15,7 +16,7 @@
 #   docker compose -f compose.webxr-tunnel.yaml up -d
 #   docker compose -f compose.webxr-tunnel.yaml logs -f
 #     → ログに表示される "https://<random>.trycloudflare.com" を
-#       Meta Quest 3 等のブラウザで開く。
+#       Meta Quest 3・Androidスマホ等のブラウザで開く。
 #     ログが流れて探しづらい場合は、URL部分だけを抽出する:
 #       docker compose -f compose.webxr-tunnel.yaml logs \
 #         | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com'
@@ -27,7 +28,7 @@
 # 停止:
 #   docker compose -f compose.webxr-tunnel.yaml down
 #
-# 恒久運用（常時 VR 検証用の固定 URL が欲しい場合）には不向き。quick tunnel は
+# 恒久運用（常時 VR/AR 検証用の固定 URL が欲しい場合）には不向き。quick tunnel は
 # 起動のたびに URL が変わり、Cloudflare の SLA 対象外の機能のため。恒久的な
 # HTTPS 配信が必要になった場合は Caddy 等の TLS 終端リバースプロキシの追加を
 # 検討すること。
