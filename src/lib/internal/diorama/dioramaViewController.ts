@@ -84,7 +84,11 @@ export const createDioramaViewController = (
     const notifyChange = (): void => {
         for (const listener of changeListeners.slice()) {
             try {
-                listener(currentCenter, currentFootprintHalfSizeM);
+                // `currentCenter` の参照をそのまま渡すと、リスナー側が受け取った
+                // オブジェクトを書き換えた場合に内部状態が外部から破壊されてしまう
+                // （`getCenter()` の「読み取り専用スナップショット」契約とも不整合）。
+                // コピーを渡す。
+                listener({ ...currentCenter }, currentFootprintHalfSizeM);
             } catch (err) {
                 console.error("[jpmap-terrain diorama] onChange listener threw:", err);
             }
@@ -154,7 +158,10 @@ export const createDioramaViewController = (
     };
 
     return {
-        getCenter: () => currentCenter,
+        // `currentCenter` の参照をそのまま返すと、呼び出し元が受け取ったオブジェクトを
+        // 書き換えた場合に内部状態が破壊されてしまう（「読み取り専用スナップショット」
+        // 契約と不整合）ため、コピーを返す。
+        getCenter: () => ({ ...currentCenter }),
         getFootprintHalfSizeM: () => currentFootprintHalfSizeM,
         feedAxes: (panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void => {
             if (!(dtSeconds > 0)) return;
