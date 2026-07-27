@@ -19,6 +19,12 @@
          ズーム等のブラウザ既定ジェスチャを抑止する。 */
       touch-action: none;
       overscroll-behavior: none;
+      /* Meta Quest Browser等、A/Xボタン押下＋コントローラー移動をマウスの
+         「押下＋ドラッグ」として合成する環境では、ページ上のテキストが
+         意図せず選択されてしまう。3DCGビューアであり選択可能なテキストを
+         提供する必要がないため、ページ全体で無効化する。 */
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #root {
