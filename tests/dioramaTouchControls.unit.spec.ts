@@ -339,6 +339,31 @@ describe("setupDioramaTouchControls", () => {
         expect(panAxes.y).toBeCloseTo(0);
     });
 
+    it("箱庭自体が回転している場合、カメラが同じ向きでもジョイスティックのパン方向は箱庭の回転角分だけ補正される（回帰テスト）", () => {
+        // カメラ自体は北向き(heading=0)のまま変えず、箱庭の回転角
+        // （回転ボタンで変更される`orientationController.getRotationRad()`）のみを
+        // 90°(π/2)に設定する。以前はこの値を一切参照していなかったため、箱庭を
+        // 回転させてもジョイスティックは常に世界座標基準（見た目上は箱庭の回転角分
+        // ズレた方向）へ動いてしまっていた。
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes: viewFeedAxes } = makeViewController();
+        const { oc } = makeOrientationController();
+        oc.getRotationRad = vi.fn(() => Math.PI / 2);
+        const { tc } = makeTileModeController();
+        // Gamepad規約: y=-1がジョイスティックを奥（前方向）へ倒した状態。
+        const hud = makeHud({ getPanAxes: () => ({ x: 0, y: -1 }) });
+        const controls = setupDioramaTouchControls(scene, makeCamera(0), hud, vc, oc, tc);
+        cleanups.push(controls.dispose);
+
+        tick(16);
+
+        const [panAxes] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        // 箱庭を90°回転させた分だけ補正され、見た目の「奥」は西(x=-1)へ移動する
+        // （補正が無ければ従来通り{x:0,y:-1}になってしまう）。
+        expect(panAxes.x).toBeCloseTo(-1);
+        expect(panAxes.y).toBeCloseTo(0);
+    });
+
     it("カメラが北(0°、既定)を向いている場合、ジョイスティックの軸値はそのままpanAxesとして渡される", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();

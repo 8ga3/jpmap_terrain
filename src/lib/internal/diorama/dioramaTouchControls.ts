@@ -49,6 +49,17 @@
  * デスクトップ/タッチのカメラ向きはユーザー操作由来で安定しており、AR中の
  * ヘッドセット頭部トラッキングのようなセンサー揺らぎが無いため、
  * `dioramaArControls.ts` のような向きスナップ（ヒステリシス付き8方位丸め）は不要。
+ *
+ * **箱庭自体の回転角も差し引く**: 上記のカメラ向き基準の前方向・右方向は、
+ * シーン座標系（箱庭の表示ノードと同じ空間）でのベクトルであり、箱庭の回転
+ * ボタン（⟲/⟳）で `orientationRoot.rotation.y` を回転させても追従しない。
+ * 一方 `DioramaViewController` が扱う東西・南北は箱庭に組み込まれた地理座標系
+ * （回転前のローカル座標系）基準のまま変わらないため、箱庭を回転させると
+ * 「カメラ視点基準の前方向」と「地理座標系の前方向」がズレ、ジョイスティックの
+ * パン方向が見た目と一致しなくなる不具合があった。そのため
+ * `orientationController.getRotationRad()` を取得し、カメラ向き基準の
+ * 前方向・右方向を `-rotationRad` だけ回転させてから使う（AR中の実装
+ * （`dioramaArControls.ts`の`rotateHorizontalUnitVector`呼び出し）と同じ補正方式）。
  */
 import type { Scene } from "@babylonjs/core/scene";
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
@@ -58,7 +69,7 @@ import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
-import { computePanAxesFromDirectionalInput, type StickAxes } from "./dioramaControllerMapping";
+import { computePanAxesFromDirectionalInput, rotateHorizontalUnitVector, type StickAxes } from "./dioramaControllerMapping";
 import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 
 export interface DioramaTouchControls {
@@ -113,8 +124,15 @@ export const setupDioramaTouchControls = (
         const rightAxis = hudAxes.x;
         let panAxes: StickAxes = { x: 0, y: 0 };
         if (forwardAxis !== 0 || rightAxis !== 0) {
-            const forwardUnit = getHorizontalDirectionUnit(camera, localForwardAxis);
-            const rightUnit = getHorizontalDirectionUnit(camera, localRightAxis);
+            // 箱庭自体の回転角を差し引き、箱庭に組み込まれた地理座標系（回転前の
+            // ローカル座標系＝実世界の東西・南北）における「カメラの現在の
+            // 前方向・右方向」を求める（冒頭のコメント参照）。
+            const rotationRad = orientationController.getRotationRad();
+            const forwardUnit = rotateHorizontalUnitVector(
+                getHorizontalDirectionUnit(camera, localForwardAxis),
+                -rotationRad,
+            );
+            const rightUnit = rotateHorizontalUnitVector(getHorizontalDirectionUnit(camera, localRightAxis), -rotationRad);
             panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
         }
         viewController.feedAxes(panAxes, hud.getZoomAxis(), dtSeconds);
