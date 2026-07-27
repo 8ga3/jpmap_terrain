@@ -40,6 +40,18 @@
  * 基準からワールド座標（東西・南北）へ回転変換してから `DioramaViewController` へ渡す
  * （AR中の実機カメラ配置（`webXrArSession.ts`）と同様、`camera.getDirection` を使う）。
  *
+ * **箱庭自体の回転角も差し引く**: 上記のカメラ向き基準の前方向・右方向は、
+ * シーン座標系（箱庭の表示ノードと同じ空間）でのベクトルであり、箱庭の回転
+ * （Q/Eキー）で `orientationRoot.rotation.y` を回転させても追従しない。一方
+ * `DioramaViewController` が扱う東西・南北は箱庭に組み込まれた地理座標系
+ * （回転前のローカル座標系）基準のまま変わらないため、箱庭を回転させると
+ * 「カメラ視点基準の前方向」と「地理座標系の前方向」がズレ、WASDのパン方向が
+ * 見た目と一致しなくなる不具合があった（`dioramaTouchControls.ts`のバーチャル
+ * ジョイスティックと同種）。そのため
+ * `orientationController.getRotationRad()` を取得し、カメラ向き基準の
+ * 前方向・右方向を `-rotationRad` だけ回転させてから使う（AR中の実装
+ * （`dioramaArControls.ts`の`rotateHorizontalUnitVector`呼び出し）と同じ補正方式）。
+ *
  * 対象キーは既定のブラウザ動作（PageUp/PageDown によるページスクロール等）を
  * 妨げるため `preventDefault()` する。ただし修飾キー（Ctrl/Cmd/Alt）併用時は
  * ブラウザ標準のショートカット（例: Ctrl+R = ページ再読み込み）を奪わないよう、
@@ -52,7 +64,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { DioramaViewController } from "./dioramaViewController";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
-import { computePanAxesFromDirectionalInput, type StickAxes } from "./dioramaControllerMapping";
+import { computePanAxesFromDirectionalInput, rotateHorizontalUnitVector, type StickAxes } from "./dioramaControllerMapping";
 import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 
 /** 前進（画面奥へ）・後退・左・右（いずれもカメラ視点基準）のキー割り当て。 */
@@ -166,9 +178,12 @@ export const setupDioramaKeyboardControls = (
         if (rawForward !== 0 || rawRight !== 0) {
             // カメラの現在の水平前方向・右方向へWASD入力を投影し、ワールド座標
             // （東西=x, 南北=z）へ変換する。これにより、カメラを回転させた後も
-            // 「W=画面奥へ進む」という直感的な操作が維持される。
-            const forward = getHorizontalDirectionUnit(camera, localForwardAxis);
-            const right = getHorizontalDirectionUnit(camera, localRightAxis);
+            // 「W=画面奥へ進む」という直感的な操作が維持される。箱庭自体の回転角
+            // （Q/Eキー）も差し引き、地理座標系基準の前方向・右方向へ補正する
+            // （冒頭のコメント参照）。
+            const rotationRad = orientationController.getRotationRad();
+            const forward = rotateHorizontalUnitVector(getHorizontalDirectionUnit(camera, localForwardAxis), -rotationRad);
+            const right = rotateHorizontalUnitVector(getHorizontalDirectionUnit(camera, localRightAxis), -rotationRad);
             panAxes = computePanAxesFromDirectionalInput(rawForward, rawRight, forward, right);
         }
 

@@ -170,6 +170,29 @@ describe("setupDioramaKeyboardControls", () => {
         expect(axes.y).toBeCloseTo(0, 6);
     });
 
+    it("箱庭自体が回転している場合、カメラが同じ向きでもWキーのパン方向は箱庭の回転角分だけ補正される（回帰テスト）", () => {
+        // カメラ自体は北向き(heading=0)のまま変えず、箱庭の回転角
+        // （回転ボタン/Q・Eキー相当）のみを90°(π/2)に設定する。以前は
+        // `orientationController.getRotationRad()`を一切参照していなかったため、
+        // 箱庭を回転させてもWキーは常に世界座標の北（見た目上は箱庭の回転角分
+        // ズレた方向）へ動いてしまっていた。
+        const { scene, tick } = createFakeScene();
+        const { vc, feedAxes } = makeViewController();
+        const { oc } = makeOrientationController();
+        oc.getRotationRad = vi.fn(() => Math.PI / 2);
+        const { tc } = makeTileModeController();
+        cleanups.push(setupDioramaKeyboardControls(scene, makeCamera(0), vc, oc, tc));
+
+        dispatchKey("keydown", "KeyW");
+        tick(16);
+
+        const [axes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        // 箱庭を90°回転させた分だけ補正され、見た目の「奥」は西(x=-1)へ移動する
+        // （補正が無ければ従来通り{x:0,y:-1}になってしまう）。
+        expect(axes.x).toBeCloseTo(-1, 6);
+        expect(axes.y).toBeCloseTo(0, 6);
+    });
+
     it("keyupで押下状態が解除される", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes } = makeViewController();
