@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: "リポジトリを checkout"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "既存の open issue を確認"
         id: check
