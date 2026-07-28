@@ -105,6 +105,8 @@ npm start
 
 `http://localhost:8080` が自動的に開き、開発サーバーがホットリロード付きで起動します。
 
+> Node のバージョンはリポジトリ直下の `.tool-versions` で固定しています（[asdf](https://asdf-vm.com/) 利用時は自動で切り替わります。初回のみ `asdf install` を実行してください）。`package-lock.json` の生成結果は npm のバージョンに依存するため、依存関係を更新する際は必ずこのバージョンを使用してください（詳細は [`spec/development.md`](spec/development.md) を参照）。
+
 ## デモポータル
 
 `http://localhost:8080/`（`/index.html`）はデモ一覧ポータルになっています。各デモへは以下から個別にもアクセスできます。
