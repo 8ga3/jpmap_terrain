@@ -105,7 +105,10 @@ const createCompass = (): HTMLDivElement => {
         style.textContent = [
             // touch-action: manipulation で iOS Safari のダブルタップズーム等のブラウザ既定
             // ジェスチャを抑止しつつ、タップ（クリック）は従来どおり機能させる。
-            ".cp-compass, .cp-btn { outline: none; touch-action: manipulation; }",
+            // user-select: none は、Meta Quest Browser等のA/Xボタン押下＋ドラッグが
+            // テキスト選択ドラッグとして合成される環境や、PCでのCtrl+A（Cmd+A）で、
+            // ボタン文言が意図せず選択されてしまうのを防ぐ（diorama側の対策と同様）。
+            ".cp-compass, .cp-btn { outline: none; touch-action: manipulation; user-select: none; -webkit-user-select: none; }",
             ".cp-compass:focus, .cp-btn:focus { box-shadow: 0 0 0 2px #90caf9; }",
             ".cp-compass:focus:not(:focus-visible), .cp-btn:focus:not(:focus-visible) { box-shadow: none; }",
         ].join("\n");

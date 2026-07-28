@@ -13,6 +13,12 @@
       height: 100%;
       margin: 0;
       padding: 0;
+      /* Meta Quest Browser等、A/Xボタン押下＋コントローラー移動をマウスの
+         「押下＋ドラッグ」として合成する環境や、Ctrl+A（Cmd+A）で、ページ上の
+         テキストが意図せず選択されてしまう。3DCGビューアであり選択可能な
+         テキストを提供する必要がないため、ページ全体で無効化する。 */
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #root {
@@ -82,6 +88,8 @@
       border: 1px solid rgba(255, 255, 255, 0.25);
       border-radius: 4px;
       cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #polygon-controls button:hover {
