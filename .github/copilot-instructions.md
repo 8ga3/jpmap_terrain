@@ -1,6 +1,6 @@
 ---
 title: Repository Copilot Instructions (Local Multi-Agent)
-version: 0.1
+version: 0.2
 ---
 # 目的
 このリポジトリでCopilotを使う全開発者が、同じ品質と安全性で作業できるようにする。
@@ -16,5 +16,6 @@ version: 0.1
 - 実行結果に基づき次の手を決める（推測で進めない）
 
 # マルチエージェント運用
-- .github/agents/00_orchestrator.md の指示に従う
-- workflow.md の順序とゲート（Reviewer/Security）を守る
+- 各役割の定義は [.github/agents/](agents/) を正本とする（`.claude/agents/` は参照のみ）
+- [.github/agents/00_orchestrator.md](agents/00_orchestrator.md) の指示に従う
+- [workflow.md](agents/workflow.md) の順序とゲート（Reviewer/Security）、およびモデル配分とエスカレーション判断基準を守る

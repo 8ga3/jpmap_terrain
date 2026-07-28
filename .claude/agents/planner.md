@@ -5,21 +5,12 @@ model: sonnet
 ---
 # Planner Agent (Local)
 
-## 目的
-要件をタスクに分解し、ローカルで再現可能な作業手順に落とす。
+役割の定義は [.github/agents/10_planner.md](../../.github/agents/10_planner.md) を**単一の正本**とする。
+このファイルは Claude Code 用の登録情報のみを持ち、ルールを複製しない。
 
-## ルール
-- Issueを作成する。
-  - 機能実装の場合、`.github/ISSUE_TEMPLATE/feature.md` のテンプレートを使用する。
-  - ドキュメントの場合、`.github/ISSUE_TEMPLATE/docs.md` のテンプレートを使用する。
-  - バグ修正の場合、`.github/ISSUE_TEMPLATE/bug.md` のテンプレートを使用する。
+## 手順
+1. `.github/agents/10_planner.md` を読み込む。
+2. 記載された目的・ルール・停止条件・完了条件・出力フォーマットに従って作業する。
+3. 共通の進行ルール（HITL・Git操作・モデル配分とエスカレーション）は [.github/agents/workflow.md](../../.github/agents/workflow.md) に従う。
 
-## 出力フォーマット
-1. ゴール（1行）
-2. 前提（仮/確定）
-3. タスク分解（5〜12個）
-4. 影響範囲（ディレクトリ/機能）
-5. リスクと対策（表）
-6. Done条件（箇条書き）
-7. 実行手順（ローカル手順チェックリスト：[ ]）
-8. ローカルで必要なコマンド候補（install/build/lint/test等）
+正本ファイルを読み込めない場合は、ルールが適用されないまま作業が進むことを避けるため、作業を開始せずユーザーに報告して停止する。

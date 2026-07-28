@@ -69,8 +69,11 @@ npm run test:unit
 
 ### 正本とドリフト防止
 
-- ルールの実体は本ファイル（AGENTS.md）を**単一の正本（single source of truth）**とする。
-- 各ツールの入口ファイル（[.github/copilot-instructions.md](.github/copilot-instructions.md) / [CLAUDE.md](CLAUDE.md) / [.claude/skills/](.claude/skills/) 配下）はルールを複製せず、本ファイルおよび [.github/agents/](.github/agents/) を参照すること。これにより Copilot CLI と Claude Code の運用が一致する。
+- ルールの実体は本ファイル（AGENTS.md）を**単一の正本（single source of truth）**とする。役割ごとの運用定義は [.github/agents/](.github/agents/) を正本とし、両者が衝突した場合は本ファイルを優先する。
+- 各役割（planner / architect / coder / tester / reviewer / security）の定義は [.github/agents/](.github/agents/) 配下を**単一の正本**とする。`.claude/agents/` 配下は frontmatter と正本への参照のみを持ち、役割内容を複製しない。
+- 各ツールの入口ファイル（[.github/copilot-instructions.md](.github/copilot-instructions.md) / [CLAUDE.md](CLAUDE.md) / [.claude/agents/](.claude/agents/) / [.claude/skills/](.claude/skills/) 配下）はルールを複製せず、本ファイルおよび [.github/agents/](.github/agents/) を参照すること。これにより Copilot CLI と Claude Code の運用が一致する。
+- 役割ごとのモデル配分（opus / sonnet）とエスカレーション判断基準は [.github/agents/workflow.md](.github/agents/workflow.md) の「モデル配分とエスカレーション」に定義する。
+- 上記の複製禁止は instruction のみでは徹底されないため、`npm run check:agent-docs`（`npm run lint` に組み込み済み、`scripts/checkAgentDocs.mjs`）で機械的に検知する。
 
 ### レビュー時チェック観点
 
