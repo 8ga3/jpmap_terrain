@@ -19,13 +19,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Node/npm のバージョンをローカル開発環境（asdf）と一致させる。
       # npm のバージョンが異なると package-lock.json の生成結果が変わり、
       # npm ci が「lock file と不整合」で失敗するため .tool-versions で固定する。
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: '.tool-versions'
           cache: 'npm'
