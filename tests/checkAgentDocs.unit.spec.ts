@@ -65,6 +65,15 @@ describe("checkAgentDocs", () => {
             const content = "[a](./a.md) [b](https://example.com) [c](#anchor) [d](../d.md#section)";
             expect(relativeLinks(content)).toEqual(["./a.md", "../d.md"]);
         });
+
+        it("ルート起点の絶対パスは対象外とする", () => {
+            expect(relativeLinks("[a](/etc/passwd) [b](./b.md)")).toEqual(["./b.md"]);
+        });
+
+        it("スキーム付きリンクは対象外とする", () => {
+            const content = "[a](file:///tmp/x.md) [b](mailto:a@example.com) [c](vscode://x) [d](./d.md)";
+            expect(relativeLinks(content)).toEqual(["./d.md"]);
+        });
     });
 
     describe("checkMirror", () => {
@@ -110,6 +119,22 @@ describe("checkAgentDocs", () => {
         it("解決できないリンクは問題を報告する", () => {
             const problems = checkLinks("docs/a.md", "[b](./b.md)", () => false);
             expect(problems).toEqual(["docs/a.md has a broken relative link: ./b.md"]);
+        });
+
+        it("リポジトリルート外へ抜けるリンクは存在確認をせず問題として報告する", () => {
+            let called = false;
+            const problems = checkLinks("docs/a.md", "[b](../../outside.md)", () => {
+                called = true;
+                return true;
+            });
+            expect(problems).toEqual([
+                "docs/a.md has a link escaping the repository root: ../../outside.md",
+            ]);
+            expect(called).toBe(false);
+        });
+
+        it("ルート起点の絶対パスは検査対象外とする", () => {
+            expect(checkLinks("docs/a.md", "[b](/etc/passwd)", () => false)).toEqual([]);
         });
     });
 

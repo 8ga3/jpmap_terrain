@@ -17,7 +17,7 @@
  *  4. エージェント関連ドキュメント内の相対リンク先が実在すること
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { dirname, resolve, join, normalize } from "node:path";
+import { dirname, resolve, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,12 +54,20 @@ export function bodyLines(content) {
     return withoutFrontMatter.split(/\r?\n/).filter((line) => line.trim() !== "");
 }
 
-/** Markdown 中の相対リンク（アンカーのみ・外部URLを除く）を列挙する。 */
+/**
+ * Markdown 中の相対リンクを列挙する。
+ *
+ * アンカーのみのリンク、スキーム付きリンク（`https:` / `mailto:` / `file:` など）、
+ * `/` で始まる絶対パスは対象外にする。これらをリポジトリ相対として解決すると、
+ * リポジトリ外のファイル存在を確認してしまい、検査結果が実行環境に依存するため。
+ */
 export function relativeLinks(content) {
     const links = [];
     for (const match of content.matchAll(/\]\(([^)\s]+)\)/g)) {
         const target = match[1];
-        if (/^(https?:|mailto:|#)/.test(target)) continue;
+        if (target.startsWith("#") || target.startsWith("/")) continue;
+        // スキーム付き（`scheme:`）は外部参照とみなす。Windows のドライブレターは対象外。
+        if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(target)) continue;
         const path = target.split("#")[0];
         if (path === "") continue;
         links.push(path);
@@ -109,11 +117,19 @@ export function checkMirror({ name, canonical, mirrorContent, canonicalContent }
     return problems;
 }
 
-/** 相対リンクの解決先が存在しない場合に問題として返す。 */
+/**
+ * 相対リンクの解決先が存在しない場合に問題として返す。
+ * リポジトリルート外へ抜けるリンクは、存在確認をせず問題として扱う
+ * （実行環境によって結果が変わるうえ、ドキュメント間参照として不適切なため）。
+ */
 export function checkLinks(filePath, content, exists) {
     const problems = [];
     for (const link of relativeLinks(content)) {
         const resolved = normalize(join(dirname(filePath), link));
+        if (resolved === ".." || resolved.startsWith(`..${sep}`)) {
+            problems.push(`${filePath} has a link escaping the repository root: ${link}`);
+            continue;
+        }
         if (!exists(resolved)) {
             problems.push(`${filePath} has a broken relative link: ${link}`);
         }
