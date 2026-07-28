@@ -20,6 +20,15 @@ AIエージェントと開発者が、このリポジトリで迷わず実装・
 
 ## Commands
 
+### 依存関係の更新
+
+`package-lock.json` の生成結果は npm のバージョンに依存する。CI と食い違うと `npm ci` が `Missing: <pkg> from lock file` で失敗するため、依存関係を更新する際は必ずリポジトリ直下の `.tool-versions` で固定した Node / npm を使うこと（手順の詳細は [spec/development.md](spec/development.md) を参照）。
+
+```shell
+node -v && npm -v   # .tool-versions と一致することを確認してから実行する
+npm install
+```
+
 ### lint
 
 ```shell

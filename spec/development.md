@@ -15,6 +15,24 @@
 - 仕様変更を伴う場合は、関連ドキュメントを更新対象に含める
 - 変更が API / 型 / 挙動に及ぶ場合、PR本文に影響範囲を明記する
 
+## Node / npm のバージョン固定
+
+**リポジトリ直下の `.tool-versions` が Node バージョンの唯一の正本**である。
+
+- ローカル: [asdf](https://asdf-vm.com/) がカレントディレクトリの `.tool-versions` を自動的に参照する。初回のみ `asdf install` を実行する。
+- CI: `ci.yml` / `deploy.yml` の `actions/setup-node` が `node-version-file: '.tool-versions'` で同じバージョンを解決する。
+
+**なぜ固定が必要か**: `package-lock.json` の生成結果は **npm のバージョンによって変わる**。npm は optional な依存（`@rolldown/binding-wasm32-wasi` など）の peerDependencies をどこまで lock に記録するかがバージョンごとに異なる。そのため CI と異なる npm で `npm install` すると、CI 側の `npm ci` が `Missing: <pkg> from lock file` で失敗する。
+
+そのため以下を守ること。
+
+- 依存関係を更新して `package-lock.json` を再生成する際は、必ず `.tool-versions` で指定された Node / npm を使うこと。作業前に `node -v` / `npm -v` で確認する。
+- Node のバージョンを更新する場合は `.tool-versions` を変更し、同じコミットで `npm install` を実行して `package-lock.json` を再生成すること。
+- 上記は `scripts/checkToolVersions.mjs` により機械的に検知する（`npm run lint` および `package-lock.json` をステージした際の pre-commit フックから実行される）。
+- `.tool-versions` には **`nodejs` の1行のみを記述し、コメント行を追加しない**こと。`actions/setup-node` は正規表現 `^(?:node(js)?\s+)?v?(?<version>[^\s]+)$` で行を走査するため、空白を含まない単独トークンの行（例: `#memo`）があるとそれをバージョンとして誤解釈する。`nodejs` 以外のツールはローカルの `~/.tool-versions`（グローバル設定）側で管理する。
+
+> 補足: 過去に「CIがx64・開発機がmacOS arm64」というCPUアーキテクチャの差が原因と推測していたが、実際にはアーキテクチャは無関係だった。同一の npm バージョンを使えば、macOS arm64 と Linux x64 で生成される `package-lock.json` はバイト単位で一致する。
+
 ## CI による自動検証
 
 `.github/workflows/ci.yml` により、`pull_request` および `main` への push を対象に以下を自動実行する。
