@@ -1,6 +1,6 @@
 /** 操作UI（方位磁針・ズーム・地図切替） */
 
-export interface ScaleBarElement {
+interface ScaleBarElement {
     container: HTMLDivElement;
     bar: HTMLDivElement;
     label: HTMLSpanElement;

@@ -14,7 +14,7 @@ export interface LodTileEntry {
 }
 
 /** デフォルトの最大タイル数 */
-export const DEFAULT_MAX_TILES = 250;
+const DEFAULT_MAX_TILES = 250;
 /** 日本の標高上限概算（富士山 3776m + マージン） */
 export const DEFAULT_MAX_ELEVATION = 4000;
 /**

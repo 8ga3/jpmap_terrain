@@ -11,6 +11,3 @@ declare module "*.stl";
 
 // Audio
 declare module "*.mp3";
-
-// Physics
-declare module "ammo.js";

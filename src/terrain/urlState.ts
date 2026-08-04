@@ -13,7 +13,7 @@ export interface LatLon {
  * 緯度経度クランプ範囲（全球）。
  * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する。
  */
-export const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
+const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
 
 /** カメラ姿勢を含む URL 状態 */
 export interface CameraUrlState extends LatLon {

@@ -13,7 +13,7 @@ import { sampleElevBilinear } from "./elevSample";
 /** タイル一意キー（globeLod.tileKey と同形式）。 */
 const key = (z: number, x: number, y: number): string => `${z}/${x}/${y}`;
 
-export type EdgeDir = "north" | "south" | "west" | "east";
+type EdgeDir = "north" | "south" | "west" | "east";
 
 /** 細タイルの 1 辺がスナップ対象とする粗タイル。 */
 export interface CoarseEdge {
