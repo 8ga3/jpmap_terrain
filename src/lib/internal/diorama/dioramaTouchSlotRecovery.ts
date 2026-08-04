@@ -47,6 +47,28 @@
  *
  * 空きスロットがある通常時は何もしないため、正常な操作（2本指のピンチ等）へ
  * 影響しない。
+ *
+ * ## 上流（Babylon.js）での修正状況
+ *
+ * 本件を Babylon.js フォーラムへ報告した結果、上流でも修正が取り込まれた
+ * （`github.com/BabylonJS/Babylon.js/pull/18748`。`_pointerMoveEvent` で
+ * `evt.buttons === 0` のときはスロットを確保しない、という本対策と同じ方針）。
+ *
+ * ただし 2026-08-04 時点の最新リリース `@babylonjs/core` 9.19.0 には**まだ
+ * 含まれていない**（マージが 9.19.0 のリリース後だったため）。したがって
+ * 本対策は現時点では引き続き必要である。
+ *
+ * **削除の判断**: 修正を含むバージョンへ更新したら、本モジュールと
+ * `dioramaPressedPointerTracker.ts`、およびそれらのunit testは削除してよい。
+ * 更新後、`node_modules/@babylonjs/core/DeviceInput/webDeviceInputSystem.js`
+ * の `_pointerMoveEvent` に `evt.buttons === 0` の早期returnがあるかで、
+ * 修正が入っているか判別できる。あわせて `package.json` の依存下限を
+ * その版へ引き上げること（下限が古いままだと、修正前の版でも
+ * インストールできてしまい不具合が再発するため）。
+ *
+ * なお、上流修正が入った版と本対策が同時に有効でも問題は起きない。
+ * ホバーがスロットを確保しなくなる＝常に空きがある状態になり、
+ * {@link reclaimTouchSlotsForPointer} は何もせず終了する。
  */
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 
