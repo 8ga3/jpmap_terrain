@@ -18,7 +18,6 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
-import { GLTFLoaderAnimationStartMode } from "@babylonjs/loaders/glTF/glTFFileLoader";
 
 import { importLoaderForUrl } from "../modelManager";
 import { surfaceOrientationToRef } from "./overlayPlacement";
@@ -220,13 +219,24 @@ export const createGlobeModelManager = (
     const loadModel = async (node: GlobeModelNode, url: string): Promise<void> => {
         try {
             await importLoaderForUrl(url);
+            // クエリ文字列・フラグメントを除去してから拡張子を判定する（modelManager.importLoaderForUrl と同方針）。
+            const pathname = url.split("?")[0].split("#")[0];
+            const isGltf = /\.(glb|gltf)$/i.test(pathname);
+            // optional peerDependency（@babylonjs/loaders）を未インストール環境でもバンドラーが
+            // 解決エラーを起こさないよう、named export も動的 import で取得する。glTF/glb 以外では
+            // 不要な import・ローダー登録を避けるため拡張子判定した場合のみ実行する。
+            const pluginOptions = isGltf
+                ? {
+                      gltf: {
+                          animationStartMode: (
+                              await import("@babylonjs/loaders/glTF/glTFFileLoader")
+                          ).GLTFLoaderAnimationStartMode.NONE,
+                      },
+                  }
+                : undefined;
             // animationStartMode: NONE でロードし自動再生を抑止する（planar と同方針）。
             // 再生タイミングは playAnimation() で明示制御する。
-            const result = await ImportMeshAsync(url, scene, {
-                pluginOptions: {
-                    gltf: { animationStartMode: GLTFLoaderAnimationStartMode.NONE },
-                },
-            });
+            const result = await ImportMeshAsync(url, scene, { pluginOptions });
             // glTF 以外（obj/stl）や既定変更に備え、ロード直後にも停止しておく。
             for (const ag of result.animationGroups) {
                 ag.stop();

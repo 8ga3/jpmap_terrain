@@ -1197,8 +1197,7 @@ jpmap_terrain/
   "files": ["dist"],
   "peerDependencies": {
     "@babylonjs/core": "^9.0.0",
-    "@babylonjs/loaders": "^9.0.0",
-    "@babylonjs/materials": "^9.0.0"
+    "@babylonjs/loaders": "^9.0.0"
   }
 }
 ```
