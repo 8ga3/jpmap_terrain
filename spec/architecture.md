@@ -145,7 +145,7 @@ C4Component
     Component(sunPosition,    "SunPosition",    "TypeScript", "太陽位置・陰影計算")
     Component(urlState,       "UrlState",       "TypeScript", "カメラ状態と URL の双方向同期")
     Component(cameraCollision,"CameraCollision","TypeScript", "地形とカメラの衝突処理")
-    Component(skybox,         "Skybox",         "TypeScript", "天球の描画")
+    Component(skybox,         "Skybox",         "TypeScript", "高度連動の宇宙度計算（clearColor の暗化）")
     Component(controlPanel,   "ControlPanel",   "TypeScript", "共通 UI コントロールパネル")
   }
 

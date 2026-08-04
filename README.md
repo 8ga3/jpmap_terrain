@@ -20,7 +20,7 @@
 ```shell
 npm install jpmap-terrain @babylonjs/core
 # 必要に応じて
-npm install @babylonjs/loaders @babylonjs/materials
+npm install @babylonjs/loaders
 ```
 
 ### 利用例

@@ -234,6 +234,30 @@ describe("altitude / 接地", () => {
     });
 });
 
+describe("拡張子別の pluginOptions（GLTFLoaderAnimationStartMode の動的 import）", () => {
+    it("glb/gltf は pluginOptions.gltf.animationStartMode に NONE を渡す", async () => {
+        const { mgr } = makeManager();
+        mgr.add({ url: "x.glb", lat: 35, lon: 139 });
+        await completeLoad();
+        expect(importMeshAsync).toHaveBeenCalledWith(
+            "x.glb",
+            expect.anything(),
+            { pluginOptions: { gltf: { animationStartMode: 0 } } },
+        );
+    });
+
+    it("obj/stl は GLTFLoaderAnimationStartMode を動的 import せず pluginOptions は undefined", async () => {
+        const { mgr } = makeManager();
+        mgr.add({ url: "x.obj", lat: 35, lon: 139 });
+        await completeLoad();
+        expect(importMeshAsync).toHaveBeenCalledWith(
+            "x.obj",
+            expect.anything(),
+            { pluginOptions: undefined },
+        );
+    });
+});
+
 describe("animation", () => {
     it("playAnimation/stopAnimation は保持した AnimationGroup を制御する", async () => {
         const { mgr } = makeManager();
