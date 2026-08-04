@@ -39,7 +39,7 @@ const SKIRT_DEPTH_RATIO = 0.05;
  * （≈250m/頂点＝zoom12 相当）となり富士山山頂部を約 12 頂点で表現できる実測閾値
  * （計測: tests/farViewGeomResolution.unit.spec.ts）。
  */
-export const ADAPTIVE_SEGMENTS_TARGET_M = 250;
+const ADAPTIVE_SEGMENTS_TARGET_M = 250;
 
 /**
  * 距離適応で引き上げるメッシュ分割数の上限（遠方タイルの頂点数暴発を抑制）。

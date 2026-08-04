@@ -184,7 +184,7 @@ const placeDioramaRelativeToCamera = (
 /**
  * ARセッションの活性状態（true=AR中）が変化した際に呼ばれるリスナー。
  */
-export type DioramaArActiveChangeListener = (active: boolean) => void;
+type DioramaArActiveChangeListener = (active: boolean) => void;
 
 /**
  * WebXR (`immersive-ar`) セッションのライフサイクル（突入・退出・状態通知）を、

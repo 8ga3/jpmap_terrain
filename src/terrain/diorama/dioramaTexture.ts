@@ -41,7 +41,7 @@ export interface DioramaTexturePoint {
 }
 
 /** モザイク内の1タイル配置。 */
-export interface DioramaMosaicTile {
+interface DioramaMosaicTile {
     x: number;
     y: number;
     /** モザイク内オフセット（左上、px）。 */
@@ -50,7 +50,7 @@ export interface DioramaMosaicTile {
 }
 
 /** UV座標（Babylon既定の invertY=true 前提: v=1 が北端）。 */
-export interface DioramaUv {
+interface DioramaUv {
     u: number;
     v: number;
 }

@@ -104,10 +104,10 @@ export interface PanFromStickOptions {
 }
 
 /** パン速度計算でフットプリントの半辺長が極端に小さい場合の下限[m]（操作不能なほど遅くならないようにする）。 */
-export const DEFAULT_MIN_FOOTPRINT_HALF_SIZE_FOR_PAN_SPEED_M = 20;
+const DEFAULT_MIN_FOOTPRINT_HALF_SIZE_FOR_PAN_SPEED_M = 20;
 
 /** 1秒間フルでスティックを倒し続けたときのパン速度（footprintHalfSizeMに対する倍率/秒）の既定値。 */
-export const DEFAULT_PAN_SPEED_PER_SEC = 0.6;
+const DEFAULT_PAN_SPEED_PER_SEC = 0.6;
 
 /**
  * スティック入力から、1フレーム分のパン移動量[m]（東西・南北）を算出する。
@@ -358,7 +358,7 @@ export const isInsideDioramaDeadZone = (
 
 
 /** フットプリントの半辺長ズームの秒間倍率既定値（1秒間フルで倒すと半辺長が概ね1/2倍/2倍になる）。 */
-export const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
+const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
 
 /**
  * フットプリントの半辺長の下限・上限既定値[m]。
@@ -491,7 +491,7 @@ export const clampDioramaHeightOffsetM = (
  * `DioramaTileMode`（`dioramaTerrain.ts`、型のみimport）を直接使うことで、
  * 巡回対象の値集合を型定義側と同期させる。
  */
-export const DIORAMA_TILE_MODE_CYCLE_ORDER: readonly DioramaTileMode[] = ["std", "photo", "wireframe"];
+const DIORAMA_TILE_MODE_CYCLE_ORDER: readonly DioramaTileMode[] = ["std", "photo", "wireframe"];
 
 /**
  * 現在のタイル種別から、巡回順序（{@link DIORAMA_TILE_MODE_CYCLE_ORDER}）における

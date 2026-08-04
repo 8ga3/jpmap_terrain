@@ -8,7 +8,6 @@
 
 import type { ParsedGpxPoint, ParsedGpxSegment, ParsedGpxTrack } from "./parseGpx";
 export {
-    haversineDistanceMeters,
     formatHorizontalDistance,
 } from "../shared/geoUtils";
 import { haversineDistanceMeters } from "../shared/geoUtils";
@@ -146,7 +145,7 @@ export interface ElevationProfileSeries {
 }
 
 /** 標高グラフ描画用ポリライン頂点数の上限（1トラックあたり）。 */
-export const MAX_CHART_POINTS_PER_TRACK = 400;
+const MAX_CHART_POINTS_PER_TRACK = 400;
 
 /**
  * トラック群から標高-時間グラフ用のデータを組み立てる。

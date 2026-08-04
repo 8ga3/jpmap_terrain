@@ -5,7 +5,7 @@
  * `window` / `document` / Babylon API などの DOM 依存は持たない。
  */
 
-export const applyElevationToPositions = (
+const applyElevationToPositions = (
     positions: Float32Array,
     elevations: Float32Array,
     altitudeOffset: number,
@@ -32,7 +32,7 @@ export const applyElevationToPositions = (
  *
  * 各頂点について隣接面の重み付き（外積の大きさ = 面積の 2 倍）平均を取り、最後に正規化する。
  */
-export const computeNormalsForIndexedMesh = (
+const computeNormalsForIndexedMesh = (
     positions: Float32Array,
     indices: Int32Array | Uint32Array | Uint16Array | ArrayLike<number>,
     normals: Float32Array,

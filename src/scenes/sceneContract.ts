@@ -2,8 +2,7 @@
  * シーン層と `JpmapTerrain`（パッケージ層）/ overlay 層が共有する境界契約。
  *
  * カメラ・位置操作の {@link DefaultSceneController}、初期化オプション
- * {@link DefaultSceneInitOptions}、および緯度メートル換算定数
- * {@link METERS_PER_DEGREE_LAT} を提供する。
+ * {@link DefaultSceneInitOptions} を提供する。
  * globe 単一バックエンド化に伴い、これらの共有シンボルを描画実装から切り離す。
  */
 import type { FrustumPlane } from "../terrain/visibleTiles";
@@ -18,9 +17,6 @@ import type { MarkerManager } from "../terrain/markerManager";
 import type { PolygonManager } from "../terrain/polygonManager";
 import type { CircleManager } from "../terrain/circleManager";
 import type { ModelManager } from "../terrain/modelManager";
-
-/** 1度の緯度あたりのメートル数（概算） */
-export const METERS_PER_DEGREE_LAT = 111320;
 
 /**
  * 外部からカメラ・位置を操作するためのコントローラ。
