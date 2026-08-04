@@ -62,6 +62,7 @@ const importLoaderForUrl = vi.fn(async () => {});
 vi.mock("../src/terrain/modelManager", () => ({ importLoaderForUrl }));
 
 const { createGlobeModelManager } = await import("../src/terrain/geo/globeModelManager");
+const { GLTFLoaderAnimationStartMode } = await import("@babylonjs/loaders/glTF/glTFFileLoader");
 const { describe, it, expect, beforeEach } = await import("vitest");
 
 const makeManager = () => {
@@ -235,27 +236,37 @@ describe("altitude / 接地", () => {
 });
 
 describe("拡張子別の pluginOptions（GLTFLoaderAnimationStartMode の動的 import）", () => {
-    it("glb/gltf は pluginOptions.gltf.animationStartMode に NONE を渡す", async () => {
-        const { mgr } = makeManager();
-        mgr.add({ url: "x.glb", lat: 35, lon: 139 });
-        await completeLoad();
-        expect(importMeshAsync).toHaveBeenCalledWith(
-            "x.glb",
-            expect.anything(),
-            { pluginOptions: { gltf: { animationStartMode: 0 } } },
-        );
-    });
+    it.each(["x.glb", "x.gltf", "X.GLB", "x.GLTF"])(
+        "%s は pluginOptions.gltf.animationStartMode に NONE を渡す",
+        async (url) => {
+            const { mgr } = makeManager();
+            mgr.add({ url, lat: 35, lon: 139 });
+            await completeLoad();
+            expect(importMeshAsync).toHaveBeenCalledWith(
+                url,
+                expect.anything(),
+                {
+                    pluginOptions: {
+                        gltf: { animationStartMode: GLTFLoaderAnimationStartMode.NONE },
+                    },
+                },
+            );
+        },
+    );
 
-    it("obj/stl は GLTFLoaderAnimationStartMode を動的 import せず pluginOptions は undefined", async () => {
-        const { mgr } = makeManager();
-        mgr.add({ url: "x.obj", lat: 35, lon: 139 });
-        await completeLoad();
-        expect(importMeshAsync).toHaveBeenCalledWith(
-            "x.obj",
-            expect.anything(),
-            { pluginOptions: undefined },
-        );
-    });
+    it.each(["x.obj", "x.stl", "X.OBJ", "x.STL"])(
+        "%s は GLTFLoaderAnimationStartMode を動的 import せず pluginOptions は undefined",
+        async (url) => {
+            const { mgr } = makeManager();
+            mgr.add({ url, lat: 35, lon: 139 });
+            await completeLoad();
+            expect(importMeshAsync).toHaveBeenCalledWith(
+                url,
+                expect.anything(),
+                { pluginOptions: undefined },
+            );
+        },
+    );
 });
 
 describe("animation", () => {
