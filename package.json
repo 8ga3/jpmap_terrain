@@ -1,6 +1,6 @@
 {
   "name": "jpmap-terrain",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Terrain creation from elevation tiles of the Geospatial Information Authority of Japan.",
   "keywords": [
     "Babylon.js",
@@ -43,6 +43,7 @@
     "build:dev": "npm run typecheck && cross-env VITE_SOURCEMAP=true vite build --mode development",
     "build:lib": "tsdown",
     "clean:lib": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepack": "npm run clean:lib && npm run build:lib",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "lint": "npx eslint . --ext .ts,.tsx && npm run check:no-issue-refs && npm run check:tool-versions && npm run check:agent-docs",

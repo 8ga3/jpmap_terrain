@@ -47,19 +47,23 @@
 
 - `npm run test:visuals`（Playwright Visual Regression Test）はスナップショットが `-darwin.png` 命名でmacOS専用のため、Linux上のCIには含めていない。引き続き開発者がローカル（macOS）で手動実行する。
 
-## リリース（Netlifyデプロイ）
+## リリース（Netlifyデプロイ & npm公開）
 
-Netlifyへのデプロイは `.github/workflows/deploy.yml` により、**タグのpush**をトリガーに実行される（全タグ対象のため `push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。
+Netlifyへのデプロイは `.github/workflows/deploy.yml` により、**タグのpush**をトリガーに実行される（全タグ対象のため `push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。npmへの公開は自動化されておらず、タグをpushした後に**手動で** `npm publish` を実行する。
 
 - **必ず `main` ブランチにマージされたコミットに対してのみタグを付けること。**
   - Gitのタグはブランチと独立した参照であるため、CIのトリガー設定上は `main` 以外のブランチ（feature branch等）のコミットにタグを付けてpushした場合も、そのコミット内容がそのままNetlify本番環境にデプロイされてしまう。
   - このリスクはCI側のガードでは防いでおらず、**運用ルールとして開発者が遵守する**ことで担保する。
 - タグを付ける前に、対象コミットで `ci.yml` が成功していることを確認する（`main` へのマージ時に自動実行されているはずだが、念のため [Actions](https://github.com/8ga3/jpmap_terrain/actions/workflows/ci.yml) タブで確認する）。
+- **npm公開はタグが指すコミットから行うこと。** `package.json` の `prepack` スクリプトが `npm pack` / `npm publish` の直前に自動で `clean:lib` → `build:lib` を実行し、デモ用ビルド成果物の混入や成果物欠落を防ぐ。それでも公開前には必ず `npm pack --dry-run` でtarballの中身（`dist/index.mjs` / `dist/index.d.mts` 等のライブラリ成果物 ＋ `README.md` / `LICENSE.md` / `package.json` のみであること）を確認する。
 - リリース手順:
-  1. 対象の変更が `main` にマージされていることを確認する
+  1. 対象の変更（バージョン更新PRを含む）が `main` にマージされていることを確認する
   2. `main` を最新化する（`git switch main && git pull`）
-  3. `main` の最新コミットにタグを付ける（例: `git tag v0.3.0`）
-  4. タグをpushする（`git push origin v0.3.0`）
+  3. `main` の最新コミットにタグを付ける（例: `git tag v0.3.1`）
+  4. タグをpushする（`git push origin v0.3.1`）— Netlifyへのデモデプロイが自動的にトリガーされる
+  5. タグが指すコミットと一致する状態で（`git status` が clean であることを確認したうえで）`npm pack --dry-run` を実行し、tarballの中身を確認する
+  6. 問題なければ `npm publish` を実行し、npm レジストリへ公開する（事前に `npm whoami` でログイン状態を確認しておく）
+  7. `npm view jpmap-terrain version` や `npm install jpmap-terrain` で、公開したバージョンが正しく取得できることを確認する
 
 ## ローカル実行コマンド
 
