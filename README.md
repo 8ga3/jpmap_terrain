@@ -1,5 +1,7 @@
 # jpmap_terrain
 
+[![npm version](https://img.shields.io/npm/v/jpmap-terrain.svg)](https://www.npmjs.com/package/jpmap-terrain)
+
 地理院タイルの標高データをもとに、Babylon.js で 3D 地形表現を構築するためのフロントエンドプロジェクトです。
 
 ## 概要
@@ -10,7 +12,7 @@
 
 ## npm パッケージとしての利用
 
-`jpmap-terrain` は ESM / `.d.ts` 同梱の npm パッケージとして配布されます（`@babylonjs/core` は `peerDependency`）。
+`jpmap-terrain` は ESM / `.d.ts` 同梱の npm パッケージとして配布されています（`@babylonjs/core` は `peerDependency`）。
 任意の DOM 要素にマウントするだけで 3D 地形ビューアを埋め込めます。
 
 ### インストール
