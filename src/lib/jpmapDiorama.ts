@@ -44,7 +44,6 @@ import {
 } from "./internal/diorama/dioramaTileModeController";
 import { setupDioramaKeyboardControls } from "./internal/diorama/dioramaKeyboardControls";
 import { createDioramaArControlHud } from "./internal/diorama/dioramaArControlHud";
-import { setupDioramaTouchSlotRecovery } from "./internal/diorama/dioramaTouchSlotRecovery";
 import { setupDioramaTouchControls, type DioramaTouchControls } from "./internal/diorama/dioramaTouchControls";
 import {
     attachDioramaArButton,
@@ -87,12 +86,6 @@ export class JpmapDiorama {
 
     private _touchControls: DioramaTouchControls | null = null;
     private _disposeKeyboardControls: (() => void) | null = null;
-    /**
-     * Babylonのタッチ入力スロット枯渇により`pointerdown`が破棄され、カメラ
-     * 操作が効かなくなる不具合の自動回復（常時有効。
-     * `dioramaTouchSlotRecovery.ts` 参照）。
-     */
-    private _disposeTouchSlotRecovery: (() => void) | null = null;
     private _detachArButton: (() => void) | null = null;
     private _unsubscribeArActiveChange: (() => void) | null = null;
     private _unsubscribeViewChange: (() => void) | null = null;
@@ -195,10 +188,6 @@ export class JpmapDiorama {
             camera.panningSensibility = 0;
             camera.attachControl(canvas, false);
             this._camera = camera;
-            // Babylonのタッチ入力スロットがホバー由来のポインタで枯渇し、
-            // `pointerdown`が破棄されてカメラ操作が効かなくなる不具合の
-            // 自動回復（常時有効。`dioramaTouchSlotRecovery.ts` 参照）。
-            this._disposeTouchSlotRecovery = setupDioramaTouchSlotRecovery(engine);
 
             new HemisphericLight("jpmap-diorama-ambient-light", new Vector3(0, 1, 0), scene).intensity = 0.6;
             const sunLight = new DirectionalLight("jpmap-diorama-sun-light", new Vector3(-0.4, -1, -0.3), scene);
@@ -595,8 +584,6 @@ export class JpmapDiorama {
 
         this._disposeKeyboardControls?.();
         this._disposeKeyboardControls = null;
-        this._disposeTouchSlotRecovery?.();
-        this._disposeTouchSlotRecovery = null;
         try {
             this._touchControls?.dispose();
         } catch (err) {
