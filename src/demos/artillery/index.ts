@@ -36,7 +36,11 @@ import {
 } from "./projectilePool";
 import { powderToSpeed } from "./ballistics";
 import { initPhysics } from "./physics";
-import { createTerrainCollider, type TerrainCollider } from "./terrainCollider";
+import {
+    createTerrainCollider,
+    isColliderTerrainMeshName,
+    type TerrainCollider,
+} from "./terrainCollider";
 import { createInitCancellation } from "./initCancellation";
 import {
     createInitialState,
@@ -420,8 +424,10 @@ const start = async (): Promise<void> => {
         terrainRay.origin.copyFrom(scratchRayOrigin);
         terrainRay.direction.copyFrom(stage.downWorld);
         terrainRay.length = 20000;
-        // 地形メッシュのみを対象にする。globe は `tile-*` / `base-tile-*`
-        // （globeTileManager の命名）。
+        // 地形メッシュのみを対象にする。globe の LOD タイルは `tile-*`
+        // （globeTileManager の命名）。常時表示の粗いベースレイヤ `base-tile-*` は
+        // 標高を持たない海面平坦メッシュ（zoom=2）であり地形ではないため除外する
+        // （`isColliderTerrainMeshName` 参照）。
         //
         // 高速経路: buildCollider 中はプレイエリア近傍タイルだけに絞った候補配列
         // (terrainPickCandidates) に対して ray.intersectsMesh で最近接ヒットを取る。
@@ -497,7 +503,7 @@ const start = async (): Promise<void> => {
 
     /** 地形タイルメッシュ判定（globe の命名規約）。 */
     const isTerrainMesh = (mesh: { name: string }): boolean =>
-        mesh.name.startsWith("tile-") || mesh.name.startsWith("base-tile-");
+        isColliderTerrainMeshName(mesh.name);
 
     /** 大砲の姿勢をセットする (Y軸=方位, Z軸=仰角) */
     const setCannonOrientation = (

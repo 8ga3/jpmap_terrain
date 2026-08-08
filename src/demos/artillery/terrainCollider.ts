@@ -47,6 +47,132 @@ export const DEFAULT_COLLIDER_OPTIONS: TerrainColliderOptions = {
     friction: 0.6,
 };
 
+/**
+ * コライダーのサンプリング（レイキャストフォールバック）対象とする地形メッシュ名か判定する。
+ *
+ * globe の LOD 地形タイルは `tile-*`、planar の地形タイルは `tile-ground-*` で、いずれも
+ * 実標高のジオメトリを持つ。一方 `base-tile-*` は globeTileManager が常時表示する粗い
+ * ベースレイヤ（zoom=2 / 標高を持たない海面平坦メッシュ）であり、地形ではない。
+ *
+ * これを対象に含めると、プレイエリア外縁のように細かい地形タイルが未ロードの座標で
+ * レイがベースレイヤにヒットし、実地形と無関係な Y（実測で -202m。周囲は 700m 超）を
+ * **非 null** で返す。呼び出し側はサンプリング成功として扱うため誤りに気付けず、
+ * 可視地形とズレた位置で砲弾が跳ねる。そのため名前で明示的に除外する。
+ */
+export const isColliderTerrainMeshName = (name: string): boolean =>
+    name.startsWith("tile-") && !name.startsWith("base-tile-");
+
+/**
+ * サンプリングできなかった頂点（`NaN`）を、有効な近傍頂点の平均で波状（BFS）に埋める。
+ *
+ * 走査順の直前値で埋めると、穴が列方向に広がった場合に隣接頂点間で大きな段差
+ * （実測で最大 1,197m / 30m 間隔）が生じ、砲弾が不自然に跳ねる。近傍平均で埋めることで
+ * 穴の周囲となだらかに接続する。
+ *
+ * @param heights row-major の高さ配列（長さ `width * height`）。`NaN` が穴。
+ * @returns 埋め残した頂点数（有効値が 1 つも無い場合は全頂点数）。
+ */
+export const fillMissingHeights = (
+    heights: Float32Array,
+    width: number,
+    height: number,
+): number => {
+    const size = width * height;
+    let remaining = 0;
+    for (let i = 0; i < size; i++) if (Number.isNaN(heights[i])) remaining++;
+    // 穴が無い / 全面が穴（有効値ゼロでシードが作れない）ならこれ以上できることはない。
+    if (remaining === 0 || remaining === size) return remaining;
+
+    // 各頂点が「どの波でキューへ入ったか」。波番号で管理することで、波ごとに
+    // 訪問済みフラグを再確保せず重複エンキューを防ぐ（重複を許すとキューが
+    // 頂点数の 8 倍ずつ膨らみ続ける）。
+    const queuedWave = new Int32Array(size).fill(-1);
+    let wave = 0;
+    let frontier: number[] = [];
+    for (let i = 0; i < size; i++) {
+        if (!Number.isNaN(heights[i])) continue;
+        const x = i % width;
+        const y = (i - x) / width;
+        if (!hasValidNeighbor(heights, width, height, x, y)) continue;
+        frontier.push(i);
+        queuedWave[i] = wave;
+    }
+
+    // 同一波内の埋め結果が同波の他頂点へ伝播しないよう、値を算出してから一括で書き戻す。
+    while (frontier.length > 0) {
+        const values = new Float64Array(frontier.length);
+        let filledCount = 0;
+        for (let k = 0; k < frontier.length; k++) {
+            const idx = frontier[k];
+            const x = idx % width;
+            const y = (idx - x) / width;
+            let sum = 0;
+            let n = 0;
+            for (const [dx, dy] of NEIGHBOR_OFFSETS) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                const v = heights[ny * width + nx];
+                if (Number.isNaN(v)) continue;
+                sum += v;
+                n++;
+            }
+            values[k] = n > 0 ? sum / n : NaN;
+            if (n > 0) filledCount++;
+        }
+        if (filledCount === 0) break; // これ以上埋められない
+
+        for (let k = 0; k < frontier.length; k++) {
+            if (Number.isNaN(values[k])) continue;
+            heights[frontier[k]] = values[k];
+            remaining--;
+        }
+        if (remaining === 0) break;
+
+        wave++;
+        const next: number[] = [];
+        for (let k = 0; k < frontier.length; k++) {
+            const idx = frontier[k];
+            const x = idx % width;
+            const y = (idx - x) / width;
+            for (const [dx, dy] of NEIGHBOR_OFFSETS) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                const nIdx = ny * width + nx;
+                if (!Number.isNaN(heights[nIdx])) continue;
+                if (queuedWave[nIdx] === wave) continue;
+                queuedWave[nIdx] = wave;
+                next.push(nIdx);
+            }
+        }
+        frontier = next;
+    }
+    return remaining;
+};
+
+const NEIGHBOR_OFFSETS: readonly (readonly [number, number])[] = [
+    [-1, -1], [0, -1], [1, -1],
+    [-1, 0], [1, 0],
+    [-1, 1], [0, 1], [1, 1],
+];
+
+const hasValidNeighbor = (
+    heights: Float32Array,
+    width: number,
+    height: number,
+    x: number,
+    y: number,
+): boolean => {
+    for (const [dx, dy] of NEIGHBOR_OFFSETS) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        if (!Number.isNaN(heights[ny * width + nx])) return true;
+    }
+    return false;
+};
+
 export interface TerrainCollider {
     /**
      * 地形をサンプリングし直してコリジョンメッシュ＆物理ボディを再構築する。
@@ -103,7 +229,11 @@ export const createTerrainCollider = (
 
         let hitCount = 0;
         const vertexCount = positions.length / 3;
-        let lastValidY = 0;
+        // 1 パス目: サンプリング結果を格納する（取得できなかった頂点は NaN で穴として残す）。
+        // 走査順の直前値で即座に埋めると穴の縁で大きな段差が生じるため、2 パス目の
+        // 近傍平均補間（`fillMissingHeights`）に委ねる。
+        const gridSize = subdivisions + 1;
+        const heights = new Float32Array(vertexCount);
 
         // サンプリング（レイキャスト）はメインスレッドを長時間占有しうるため、フレーム時間
         // 予算ごとに setTimeout(0) で制御を返し、ブラウザの遷移・入力処理を妨げない。
@@ -113,12 +243,10 @@ export const createTerrainCollider = (
             const z = positions[i + 2];
             const y = sampleY(x, z);
             if (y !== null) {
-                positions[i + 1] = y;
-                lastValidY = y;
+                heights[i / 3] = y;
                 hitCount++;
             } else {
-                // 未ロード等で取得失敗 → 直近の有効値で穴埋め（穴あきメッシュを避ける）
-                positions[i + 1] = lastValidY;
+                heights[i / 3] = NaN;
             }
             if (performance.now() - chunkStart >= frameBudgetMs) {
                 if (shouldAbort?.()) return null;
@@ -126,6 +254,13 @@ export const createTerrainCollider = (
                 if (shouldAbort?.()) return null;
                 chunkStart = performance.now();
             }
+        }
+
+        // 2 パス目: 穴を近傍平均で埋める。有効値が 1 つも無い場合は埋められないため 0 に倒す。
+        fillMissingHeights(heights, gridSize, gridSize);
+        for (let v = 0; v < vertexCount; v++) {
+            const y = heights[v];
+            positions[v * 3 + 1] = Number.isNaN(y) ? 0 : y;
         }
 
         mesh.updateVerticesData(VertexBuffer.PositionKind, positions);
