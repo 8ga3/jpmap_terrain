@@ -4,6 +4,8 @@ on:
   push:
     tags:
       # npm公開はNetlifyデプロイより影響が大きいため、`vX.Y.Z` 形式のタグのみに限定する。
+      # このglobは `v1.2.3-alpha` 等にもマッチし得るため、厳密な形式チェックは
+      # 後述の validate-tag job で正規表現により行う。
       - 'v*.*.*'
 
 permissions:
@@ -14,7 +16,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-tag:
+    # `on.push.tags` の glob (`v*.*.*`) は `v1.2.3-alpha` や `v1.2.3.4` 等の
+    # 意図しないタグにもマッチし得るため、`vX.Y.Z` 形式であることを正規表現で厳密に検証する。
+    # Environment承認ゲート（後続の publish job）より前に検証することで、
+    # 無効なタグの場合はレビュアーの承認を待たずに早期失敗させる。
+    # タグ削除時もpushイベントが発火するため、削除イベントでは検証をスキップする
+    if: github.event.deleted == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate tag format
+        run: |
+          if [[ ! "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${{ github.ref_name }}' does not match the required vX.Y.Z format."
+            exit 1
+          fi
+
   publish:
+    needs: validate-tag
     # タグ削除時もpushイベントが発火するため、削除イベントではpublishをスキップする
     if: github.event.deleted == false
     runs-on: ubuntu-latest
