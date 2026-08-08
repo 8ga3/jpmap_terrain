@@ -39,6 +39,10 @@ import { initPhysics } from "./physics";
 import {
     createTerrainCollider,
     isColliderTerrainMeshName,
+    shouldRetryColliderBuild,
+    COLLIDER_RETRY_DELAY_MS,
+    MAX_COLLIDER_BUILD_ATTEMPTS,
+    MIN_COLLIDER_SAMPLE_RATE,
     type TerrainCollider,
 } from "./terrainCollider";
 import { createInitCancellation } from "./initCancellation";
@@ -553,18 +557,18 @@ const start = async (): Promise<void> => {
         (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true;
 
     /**
-     * 地形コリジョンメッシュを現在の地形からサンプリングして構築する。
+     * 地形コリジョンメッシュを現在の地形からサンプリングして 1 回だけ構築する。
      * サンプリングは重いためフレーム分割で実行し、離脱（戻る操作）時は中断する。
-     * @returns 構築完了したら true。中断された場合は false。
+     * @returns サンプリング成功率 (0–1)。離脱により中断した場合は null。
      */
-    const buildCollider = async (): Promise<boolean> => {
+    const buildColliderOnce = async (): Promise<number | null> => {
         // 既に離脱が確定していれば、重い前処理（候補収集 = scene.meshes 全走査）に
         // 入る前に早期 return して戻る操作の即応性を保つ。
-        if (cancel.isAborted()) return false;
+        if (cancel.isAborted()) return null;
         // レイキャスト対象をプレイエリア近傍タイルに絞り、ピックコストを削減する。
         terrainPickCandidates = collectTerrainPickCandidates();
         try {
-            const rate = await collider.rebuild(
+            return await collider.rebuild(
                 (x, z) => {
                     // 案A: まず標高ダイレクト参照（レイキャスト不要・高速）。
                     const direct = sampleTerrainYDirect(x, z);
@@ -575,16 +579,51 @@ const start = async (): Promise<void> => {
                 },
                 { shouldAbort: () => cancel.isAborted() },
             );
-            if (rate === null) return false; // 離脱により中断
-            if (isDebug()) {
-                console.debug(
-                    `[artillery] terrain collider build: sampling success rate ${(rate * 100).toFixed(0)}%`,
-                );
-            }
-            return true;
         } finally {
             terrainPickCandidates = null;
         }
+    };
+
+    /**
+     * 地形コリジョンメッシュを構築する。
+     *
+     * サンプリング成功率が閾値を下回った場合は、地形ストリーミングの進行を待って
+     * 上限回数まで再構築する。成功率が低いまま構築完了として扱うと、標高を引けない
+     * 頂点だらけのコライダー（最悪は海抜 0m の平面）で砲弾が跳ねてしまうため。
+     *
+     * 上限に達しても閾値を満たせない場合は、warn ログを残したうえで best-effort として
+     * 構築完了扱いにする（操作不能で詰むより、精度が落ちてもプレイ継続を優先する）。
+     * @returns 構築完了したら true。中断された場合は false。
+     */
+    const buildCollider = async (): Promise<boolean> => {
+        for (let attempt = 1; attempt <= MAX_COLLIDER_BUILD_ATTEMPTS; attempt++) {
+            const rate = await buildColliderOnce();
+            if (rate === null) return false; // 離脱により中断
+            if (isDebug()) {
+                console.debug(
+                    `[artillery] terrain collider build: sampling success rate ${(rate * 100).toFixed(0)}% (attempt ${attempt}/${MAX_COLLIDER_BUILD_ATTEMPTS})`,
+                );
+            }
+            if (rate >= MIN_COLLIDER_SAMPLE_RATE) return true;
+
+            if (!shouldRetryColliderBuild(rate, attempt)) {
+                console.warn(
+                    `[artillery] terrain collider sampling rate too low: ${(rate * 100).toFixed(0)}% after ${attempt} attempts; continuing best-effort`,
+                );
+                return true;
+            }
+            console.warn(
+                `[artillery] terrain collider sampling rate too low: ${(rate * 100).toFixed(0)}%; retrying (attempt ${attempt}/${MAX_COLLIDER_BUILD_ATTEMPTS})`,
+            );
+            // 地形ストリーミングの進行を待ってから再試行する。待機中の離脱は待機明けと
+            // 次ループ冒頭（buildColliderOnce の早期 return）で検知される。
+            await new Promise<void>((resolve) =>
+                setTimeout(resolve, COLLIDER_RETRY_DELAY_MS),
+            );
+            if (cancel.isAborted()) return false;
+        }
+        // 最終試行では必ずループ内で return するため到達しないが、型の網羅性のために残す。
+        return true;
     };
 
     /**
@@ -606,7 +645,13 @@ const start = async (): Promise<void> => {
         }
     };
 
-    /** 地形ロード完了 (idle) を待ってから fn を実行する。タイムアウト時はベストエフォートで続行する */
+    /**
+     * 地形ロード完了 (idle) を待ってから fn を実行する。
+     *
+     * タイムアウト時はベストエフォートで続行する。地形が未ロードのまま構築が走っても、
+     * コライダー構築側がサンプリング成功率を見て再試行する（`buildCollider`）ため、
+     * ここでタイムアウトを延ばして初期表示を遅らせるより、先に進めてリカバリを委ねる。
+     */
     const waitTerrainIdleThen = (fn: () => void): void => {
         const POLL_INTERVAL_MS = 300;
         const TIMEOUT_MS = 30_000;

@@ -48,6 +48,34 @@ export const DEFAULT_COLLIDER_OPTIONS: TerrainColliderOptions = {
 };
 
 /**
+ * コライダー構築を成功とみなすサンプリング成功率の下限。
+ *
+ * 地形ロードが完了していれば成功率は 100% になる。プレイエリア外縁のタイルが
+ * 未ロードの場合に数%欠けることがあるため、わずかな欠損は近傍平均補間で許容しつつ、
+ * 大量に欠けた（= 地形が十分ロードされていない）状態は失敗として再試行させる。
+ */
+export const MIN_COLLIDER_SAMPLE_RATE = 0.95;
+
+/** コライダー構築の最大試行回数（初回 + 再試行）。 */
+export const MAX_COLLIDER_BUILD_ATTEMPTS = 3;
+
+/** 再試行までの待機時間 [ms]。地形ストリーミングの進行を待つために空ける。 */
+export const COLLIDER_RETRY_DELAY_MS = 2_000;
+
+/**
+ * サンプリング成功率と試行回数から、コライダーを再構築すべきか判定する。
+ *
+ * @param rate サンプリング成功率 (0–1)。
+ * @param attempt 実施済みの試行回数（1 始まり）。
+ * @param maxAttempts 最大試行回数。
+ */
+export const shouldRetryColliderBuild = (
+    rate: number,
+    attempt: number,
+    maxAttempts: number = MAX_COLLIDER_BUILD_ATTEMPTS,
+): boolean => rate < MIN_COLLIDER_SAMPLE_RATE && attempt < maxAttempts;
+
+/**
  * コライダーのサンプリング（レイキャストフォールバック）対象とする地形メッシュ名か判定する。
  *
  * globe の LOD 地形タイルは `tile-*`、planar の地形タイルは `tile-ground-*` で、いずれも
@@ -186,6 +214,10 @@ export interface TerrainCollider {
      * フレーム時間予算ごとに処理を分割し、各区切りで `setTimeout(0)` により制御を返す。
      * 区切りごとに `shouldAbort` を確認し、中断要求があれば即座に処理を打ち切る。
      *
+     * 全頂点でサンプリングに失敗した場合（成功率 0）は、頂点もボディも更新せずに `0` を返す。
+     * 有効値がひとつも無い状態で書き戻すと、グリッド全体が海抜 0m の平面になり、可視地形と
+     * 無関係な位置で砲弾が跳ねるため（呼び出し側は成功率で失敗を検知して再試行する）。
+     *
      * @param sampleY ワールド (x, z) の地表 Y を返す。取得不可なら null。
      * @param opts.shouldAbort true を返すと構築を中断する（離脱検知時など）。
      * @param opts.frameBudgetMs 1 区切りあたりの処理時間予算 [ms]（既定 8）。
@@ -260,7 +292,13 @@ export const createTerrainCollider = (
             }
         }
 
-        // 2 パス目: 穴を近傍平均で埋める。有効値が 1 つも無い場合は埋められないため 0 に倒す。
+        // 有効値が 1 つも無い場合、補間のシードが無く全頂点が海抜 0m に倒れてしまう。
+        // 誤った平面コライダーを作るより、既存のジオメトリ・ボディを維持したまま
+        // 成功率 0 を返して呼び出し側の再試行に委ねる。
+        if (hitCount === 0) return 0;
+
+        // 2 パス目: 穴を近傍平均で埋める。ここに来た時点で有効値が 1 つ以上あるため、
+        // 通常は全て埋まる。埋め残し（孤立した穴）が出た場合のみ 0 に倒す。
         fillMissingHeights(heights, gridSize, gridSize);
         for (let v = 0; v < vertexCount; v++) {
             const y = heights[v];
