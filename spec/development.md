@@ -51,18 +51,18 @@
 
 タグpushをトリガーに、以下2つのワークフローが**独立して**実行される。
 
-- `.github/workflows/deploy.yml`: Netlifyへのデモデプロイ。**全タグ**が対象（`push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。認証情報はNetlifyの長期トークン（`secrets.NETLIFY_AUTH_TOKEN`）。
-- `.github/workflows/publish.yml`: npmレジストリへの公開。**`vX.Y.Z` 形式のタグのみ**が対象（`push.tags: ['v*.*.*']`）。npm公開はNetlifyデプロイより影響が大きい（一度公開すると原則取り消せない）ため、対象タグを限定している。認証は npmの [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)（OIDC）方式を採用しており、長期トークンをGitHub Secretsに保持しない。
+- `.github/workflows/deploy.yml`: Netlify本番環境（デモサイト）へのデプロイ。**全タグ**が対象（`push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。認証情報はNetlifyの長期トークン（`secrets.NETLIFY_AUTH_TOKEN`）。
+- `.github/workflows/publish.yml`: npmレジストリへの公開。**`vX.Y.Z` 形式のタグのみ**が対象（`push.tags: ['v*.*.*']`）。npm公開はNetlifyデプロイより影響が大きい（一度公開すると原則取り消せない）ため、対象タグを限定している。ただし `v*.*.*` はglobのため `v1.2.3-alpha` 等の意図しないタグにもマッチし得る。そのため `publish.yml` 内の `validate-tag` job で `^v[0-9]+\.[0-9]+\.[0-9]+$` の正規表現による厳密な検証を行い、一致しない場合は（Environment承認を待たずに）早期に失敗させる。認証は npmの [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)（OIDC）方式を採用しており、長期トークンをGitHub Secretsに保持しない。
 
 両ワークフローは同じタグpushイベントで並行してトリガーされ、互いに依存関係はない（一方が失敗してももう一方には影響しない）。
 
 npm公開（`publish.yml`）は `npm-publish` という GitHub Environment に紐付けており、以下の保護ルールを設定している。
 
 - **Required reviewers**: ジョブが実際に `npm publish` を実行する前に、手動承認が必要（誤って想定外のタグをpushした場合の防御）。
-- **Deployment branch policy**: `v*.*.*` 形式のタグからのみ実行を許可（ワークフロー側の `on.push.tags` と二重に制限）。
+- **Deployment branch policy**: `v*.*.*` 形式のタグからのみ実行を許可（ワークフロー側の `on.push.tags` および `validate-tag` job の正規表現検証と、三重に制限）。
 
 - **必ず `main` ブランチにマージされたコミットに対してのみタグを付けること。**
-  - Gitのタグはブランチと独立した参照であるため、CIのトリガー設定上は `main` 以外のブランチ（feature branch等）のコミットにタグを付けてpushした場合も、そのコミット内容がそのままNetlify本番環境へのデプロイおよびnpm公開の対象になってしまう。
+  - Gitのタグはブランチと独立した参照であるため、CIのトリガー設定上は `main` 以外のブランチ（feature branch等）のコミットにタグを付けてpushした場合も、そのコミット内容がそのままNetlify本番環境（デモサイト）へのデプロイおよびnpm公開の対象になってしまう。
   - このリスクはCI側のガードでは完全に防げず（`npm-publish` Environmentの手動承認が最後の防波堤にはなる）、**運用ルールとして開発者が遵守する**ことで担保する。
 - タグを付ける前に、対象コミットで `ci.yml` が成功していることを確認する（`main` へのマージ時に自動実行されているはずだが、念のため [Actions](https://github.com/8ga3/jpmap_terrain/actions/workflows/ci.yml) タブで確認する）。
 - `package.json` の `prepack` スクリプトが `npm publish` の直前に自動で `clean:lib` → `build:lib` を実行するため、CI上でも同様にライブラリ成果物のみが公開される。
