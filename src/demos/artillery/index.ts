@@ -501,7 +501,12 @@ const start = async (): Promise<void> => {
         return out;
     };
 
-    /** 地形タイルメッシュ判定（globe の命名規約）。 */
+    /**
+     * サンプリング対象の地形タイルメッシュ判定。
+     * globe の LOD タイル（`tile-*`）と planar の地形タイル（`tile-ground-*`）を対象とし、
+     * 標高を持たない常時表示のベースレイヤ（`base-tile-*`）は除外する。
+     * 判定と除外理由は `isColliderTerrainMeshName` を参照。
+     */
     const isTerrainMesh = (mesh: { name: string }): boolean =>
         isColliderTerrainMeshName(mesh.name);
 
