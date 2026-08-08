@@ -1,0 +1,48 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      # npm公開はNetlifyデプロイより影響が大きいため、`vX.Y.Z` 形式のタグのみに限定する。
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # タグ削除時もpushイベントが発火するため、削除イベントではpublishをスキップする
+    if: github.event.deleted == false
+    runs-on: ubuntu-latest
+    # npm-publish Environment に Required reviewers を設定しており、
+    # 実際にnpm publishが実行される前に手動承認が必要になる（誤タグpush時の防御）。
+    environment: npm-publish
+
+    permissions:
+      contents: read
+      # npm Trusted Publishing（OIDC）用のIDトークンを発行するために必要。
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Node/npm のバージョンをローカル開発環境（asdf）および ci.yml / deploy.yml と一致させる。
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.tool-versions'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # prepack スクリプト（clean:lib → build:lib）が npm publish 実行時に自動で走る。
+      # Trusted Publishing（OIDC）により長期トークンを保持せずに認証する。
+      - name: Publish to npm
+        run: npm publish

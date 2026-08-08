@@ -49,23 +49,37 @@
 
 ## リリース（Netlifyデプロイ & npm公開）
 
-Netlifyへのデプロイは `.github/workflows/deploy.yml` により、**タグのpush**をトリガーに実行される（全タグ対象のため `push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。npmへの公開は自動化されておらず、タグをpushした後に**手動で** `npm publish` を実行する。
+タグpushをトリガーに、以下2つのワークフローが**独立して**実行される。
+
+- `.github/workflows/deploy.yml`: Netlifyへのデモデプロイ。**全タグ**が対象（`push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。認証情報はNetlifyの長期トークン（`secrets.NETLIFY_AUTH_TOKEN`）。
+- `.github/workflows/publish.yml`: npmレジストリへの公開。**`vX.Y.Z` 形式のタグのみ**が対象（`push.tags: ['v*.*.*']`）。npm公開はNetlifyデプロイより影響が大きい（一度公開すると原則取り消せない）ため、対象タグを限定している。認証は npmの [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)（OIDC）方式を採用しており、長期トークンをGitHub Secretsに保持しない。
+
+両ワークフローは同じタグpushイベントで並行してトリガーされ、互いに依存関係はない（一方が失敗してももう一方には影響しない）。
+
+npm公開（`publish.yml`）は `npm-publish` という GitHub Environment に紐付けており、以下の保護ルールを設定している。
+
+- **Required reviewers**: ジョブが実際に `npm publish` を実行する前に、手動承認が必要（誤って想定外のタグをpushした場合の防御）。
+- **Deployment branch policy**: `v*.*.*` 形式のタグからのみ実行を許可（ワークフロー側の `on.push.tags` と二重に制限）。
 
 - **必ず `main` ブランチにマージされたコミットに対してのみタグを付けること。**
-  - Gitのタグはブランチと独立した参照であるため、CIのトリガー設定上は `main` 以外のブランチ（feature branch等）のコミットにタグを付けてpushした場合も、そのコミット内容がそのままNetlify本番環境にデプロイされてしまう。
-  - このリスクはCI側のガードでは防いでおらず、**運用ルールとして開発者が遵守する**ことで担保する。
+  - Gitのタグはブランチと独立した参照であるため、CIのトリガー設定上は `main` 以外のブランチ（feature branch等）のコミットにタグを付けてpushした場合も、そのコミット内容がそのままNetlify本番環境へのデプロイおよびnpm公開の対象になってしまう。
+  - このリスクはCI側のガードでは完全に防げず（`npm-publish` Environmentの手動承認が最後の防波堤にはなる）、**運用ルールとして開発者が遵守する**ことで担保する。
 - タグを付ける前に、対象コミットで `ci.yml` が成功していることを確認する（`main` へのマージ時に自動実行されているはずだが、念のため [Actions](https://github.com/8ga3/jpmap_terrain/actions/workflows/ci.yml) タブで確認する）。
-- **npm公開はタグが指すコミットから行うこと（`git switch --detach vX.Y.Z` でチェックアウトする）。** `package.json` の `prepack` スクリプトが `npm pack` / `npm publish` の直前に自動で `clean:lib` → `build:lib` を実行し、デモ用ビルド成果物の混入や成果物欠落を防ぐ。それでも公開前には必ず `npm pack --dry-run` でtarballの中身（`dist/index.mjs` / `dist/index.d.mts` 等のライブラリ成果物 ＋ `README.md` / `LICENSE.md` / `package.json` のみであること）を確認する。
+- `package.json` の `prepack` スクリプトが `npm publish` の直前に自動で `clean:lib` → `build:lib` を実行するため、CI上でも同様にライブラリ成果物のみが公開される。
 - リリース手順（`vX.Y.Z` は対象バージョンに置き換える。例: `v0.3.1`）:
   1. 対象の変更（バージョン更新PRを含む）が `main` にマージされていることを確認する
   2. `main` を最新化する（`git switch main && git pull`）
   3. `main` の最新コミットにタグを付ける（`git tag vX.Y.Z`）
-  4. タグをpushする（`git push origin vX.Y.Z`）— Netlifyへのデモデプロイが自動的にトリガーされる
-  5. タグの内容を直接チェックアウトする（`git switch --detach vX.Y.Z`。`git checkout vX.Y.Z` は同名ブランチが存在すると branch checkout になり得るため、確実に detached HEAD にする `git switch --detach` を使う。タグとコミットの一致を確実にするため意図的にこの状態で作業する）
-  6. `git status` が clean であることを確認したうえで `npm pack --dry-run` を実行し、tarballの中身を確認する
-  7. 問題なければ `npm publish` を実行し、npm レジストリへ公開する（事前に `npm whoami` でログイン状態を確認しておく）
-  8. `npm view jpmap-terrain version` や `npm install jpmap-terrain` で、公開したバージョンが正しく取得できることを確認する
-  9. `git switch main` で `main` ブランチに戻る（detached HEAD状態を解除する）
+  4. タグをpushする（`git push origin vX.Y.Z`）— Netlifyへのデモデプロイ（`deploy.yml`）とnpm公開ワークフロー（`publish.yml`）が自動的にトリガーされる
+  5. [Actions](https://github.com/8ga3/jpmap_terrain/actions/workflows/publish.yml) タブで `publish.yml` の実行を確認し、`npm-publish` Environmentの承認待ち状態になったら内容を確認のうえ承認する
+  6. `npm view jpmap-terrain version` や `npm install jpmap-terrain` で、公開したバージョンが正しく取得できることを確認する
+
+自動化前に手動で公開作業を行う必要がある場合（例: ワークフロー自体に不具合があり緊急対応が必要な場合）は、以下の手順で行う。
+
+- **npm公開はタグが指すコミットから行うこと（`git switch --detach vX.Y.Z` でチェックアウトする）。** `git checkout vX.Y.Z` は同名ブランチが存在すると branch checkout になり得るため、確実に detached HEAD にする `git switch --detach` を使う。タグとコミットの一致を確実にするため意図的にこの状態で作業する。
+- `git status` が clean であることを確認したうえで `npm pack --dry-run` を実行し、tarballの中身（`dist/index.mjs` / `dist/index.d.mts` 等のライブラリ成果物 ＋ `README.md` / `LICENSE.md` / `package.json` のみであること）を確認する。
+- 問題なければ `npm publish` を実行する（事前に `npm whoami` でログイン状態を確認しておく）。
+- 作業後は `git switch main` で `main` ブランチに戻る（detached HEAD状態を解除する）。
 
 ## ローカル実行コマンド
 
