@@ -57,10 +57,14 @@ export const DEFAULT_COLLIDER_OPTIONS: TerrainColliderOptions = {
  * これを対象に含めると、プレイエリア外縁のように細かい地形タイルが未ロードの座標で
  * レイがベースレイヤにヒットし、実地形と無関係な Y（実測で -202m。周囲は 700m 超）を
  * **非 null** で返す。呼び出し側はサンプリング成功として扱うため誤りに気付けず、
- * 可視地形とズレた位置で砲弾が跳ねる。そのため名前で明示的に除外する。
+ * 可視地形とズレた位置で砲弾が跳ねる。
+ *
+ * `base-tile-` は `tile-` で始まらないため、`tile-` 前方一致だけでベースレイヤは
+ * 除外される（`base-tile-*` を明示的に弾く条件は不要）。この前提が崩れる命名変更を
+ * 入れると不具合が再発するため、本判定と `globeTileManager` の命名は対で保つこと。
  */
 export const isColliderTerrainMeshName = (name: string): boolean =>
-    name.startsWith("tile-") && !name.startsWith("base-tile-");
+    name.startsWith("tile-");
 
 /**
  * サンプリングできなかった頂点（`NaN`）を、有効な近傍頂点の平均で波状（BFS）に埋める。

@@ -25,7 +25,10 @@ describe("isColliderTerrainMeshName", () => {
     });
 
     it("rejects the always-on coarse base layer", () => {
+        // `base-tile-` は `tile-` で始まらないため前方一致だけで除外される。
+        // 命名変更でこの前提が崩れると #612 が再発するため、明示的に固定する。
         expect(isColliderTerrainMeshName("base-tile-2/3/1")).toBe(false);
+        expect("base-tile-2/3/1".startsWith("tile-")).toBe(false);
     });
 
     it("rejects non-terrain meshes", () => {
