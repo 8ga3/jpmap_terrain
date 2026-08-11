@@ -1,6 +1,6 @@
 {
   "name": "jpmap-terrain",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Terrain creation from elevation tiles of the Geospatial Information Authority of Japan.",
   "keywords": [
     "Babylon.js",
