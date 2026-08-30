@@ -62,7 +62,8 @@ const input = Object.fromEntries(
 const ASSET_INLINE_LIMIT = 8192;
 
 /**
- * `npm run start:https` 実行時のみ true になる（`package.json` 参照）。
+ * 環境変数 `VITE_HTTPS` が `"true"` のときのみ true になる
+ * （`package.json` の `start:https` スクリプトがこの環境変数を設定する）。
  * Meta Quest Browser 等の実機で WebXR AR モードに入るには secure context（https）が
  * 必須のため、LAN内の別端末から dev server へ https でアクセスできるようにする。
  * 自己署名証明書（`@vitejs/plugin-basic-ssl`）を使うため dev 専用とし、
