@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig } from "vite";
 import { demoRewritePlugin } from "./vite.rewrites";
 
@@ -60,6 +61,15 @@ const input = Object.fromEntries(
 /** アセットを data URI 化する inline 閾値（8192B）。 */
 const ASSET_INLINE_LIMIT = 8192;
 
+/**
+ * `npm run start:https` 実行時のみ true になる（`package.json` 参照）。
+ * Meta Quest Browser 等の実機で WebXR AR モードに入るには secure context（https）が
+ * 必須のため、LAN内の別端末から dev server へ https でアクセスできるようにする。
+ * 自己署名証明書（`@vitejs/plugin-basic-ssl`）を使うため dev 専用とし、
+ * 通常の `npm start`（http）には影響させない。
+ */
+const IS_HTTPS_DEV = process.env.VITE_HTTPS === "true";
+
 export default defineConfig({
     base: "/",
     // デモポータルのフッターにビルド時のバージョンを埋め込むためのグローバル定数。
@@ -77,7 +87,7 @@ export default defineConfig({
             "/src": resolve(__dirname, "src"),
         },
     },
-    plugins: [demoRewritePlugin()],
+    plugins: [demoRewritePlugin(), ...(IS_HTTPS_DEV ? [basicSsl()] : [])],
     // 全デモ HTML を依存スキャン対象にして起動時にまとめて事前バンドルする。
     // これを設定しないと、デモを開くたびに未スキャンの Babylon 依存が
     // 再最適化され（504 Outdated Optimize Dep）、ページが再読込されて
