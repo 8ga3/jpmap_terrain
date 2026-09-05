@@ -47,7 +47,7 @@
     "prepack": "npm run clean:lib && npm run build:lib",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "lint": "npx biome check . && npm run check:no-issue-refs && npm run check:tool-versions && npm run check:agent-docs",
+    "lint": "biome check . && npm run check:no-issue-refs && npm run check:tool-versions && npm run check:agent-docs",
     "check:no-issue-refs": "node scripts/checkNoIssueRefs.mjs",
     "check:agent-docs": "node scripts/checkAgentDocs.mjs",
     "check:tool-versions": "node scripts/checkToolVersions.mjs",
