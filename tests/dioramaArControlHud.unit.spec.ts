@@ -8,8 +8,11 @@
  * `setPointerCapture` は jsdom 未実装のため、実装側でオプショナル呼び出し
  * （`?.()`）にしてある前提でテストする。
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { createDioramaArControlHud, type DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+    createDioramaArControlHud,
+    type DioramaArControlHud,
+} from "../src/lib/internal/diorama/dioramaArControlHud";
 
 const dispatchPointer = (
     target: HTMLElement,
@@ -51,11 +54,15 @@ describe("createDioramaArControlHud", () => {
         expect(buttons[3]?.getAttribute("aria-label")).toBe("時計回りに回転");
         expect(buttons[4]?.getAttribute("aria-label")).toBe("高さを上げる");
         expect(buttons[5]?.getAttribute("aria-label")).toBe("高さを下げる");
-        expect(buttons[6]?.getAttribute("aria-label")).toBe("地図の種類を切り替え（標準地図・写真・ワイヤーフレーム）");
-        expect(buttons[7]?.getAttribute("aria-label")).toBe("ARを終了して通常表示に戻る");
+        expect(buttons[6]?.getAttribute("aria-label")).toBe(
+            "地図の種類を切り替え（標準地図・写真・ワイヤーフレーム）",
+        );
+        expect(buttons[7]?.getAttribute("aria-label")).toBe(
+            "ARを終了して通常表示に戻る",
+        );
     });
 
-    it("全ボタンにtype=\"button\"が明示されている（フォーム内配置時の誤ったsubmit扱いを防ぐ回帰テスト）", () => {
+    it('全ボタンにtype="button"が明示されている（フォーム内配置時の誤ったsubmit扱いを防ぐ回帰テスト）', () => {
         const hud = build();
         const buttons = hud.element.querySelectorAll("button");
         expect(buttons.length).toBeGreaterThan(0);
@@ -100,16 +107,26 @@ describe("createDioramaArControlHud", () => {
         const hud = build();
         const joystick = hud.element.children[0] as HTMLElement;
 
-        dispatchPointer(joystick, "pointerdown", { pointerId: 1, clientX: 20, clientY: 0 });
+        dispatchPointer(joystick, "pointerdown", {
+            pointerId: 1,
+            clientX: 20,
+            clientY: 0,
+        });
         const firstAxes = hud.getPanAxes();
-        dispatchPointer(joystick, "pointermove", { pointerId: 2, clientX: -20, clientY: 0 });
+        dispatchPointer(joystick, "pointermove", {
+            pointerId: 2,
+            clientX: -20,
+            clientY: 0,
+        });
         // pointerId=2 は無視されるため軸は変わらない。
         expect(hud.getPanAxes()).toEqual(firstAxes);
     });
 
     it("ズームボタン「+」押下でズーム軸が-1、離すと0に戻る", () => {
         const hud = build();
-        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        const zoomInButton = hud.element.querySelectorAll(
+            "button",
+        )[0] as HTMLButtonElement;
 
         dispatchPointer(zoomInButton, "pointerdown", {});
         expect(hud.getZoomAxis()).toBe(-1);
@@ -119,7 +136,9 @@ describe("createDioramaArControlHud", () => {
 
     it("ズームボタン「-」押下でズーム軸が+1、離すと0に戻る", () => {
         const hud = build();
-        const zoomOutButton = hud.element.querySelectorAll("button")[1] as HTMLButtonElement;
+        const zoomOutButton = hud.element.querySelectorAll(
+            "button",
+        )[1] as HTMLButtonElement;
 
         dispatchPointer(zoomOutButton, "pointerdown", {});
         expect(hud.getZoomAxis()).toBe(1);
@@ -129,7 +148,9 @@ describe("createDioramaArControlHud", () => {
 
     it("ズームボタン押下時にsetPointerCaptureで固定し、ボタン外で離れてもpointerupを受け取れる", () => {
         const hud = build();
-        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        const zoomInButton = hud.element.querySelectorAll(
+            "button",
+        )[0] as HTMLButtonElement;
         // jsdomは`setPointerCapture`未実装のため、呼び出しを検証できるようスタブする
         // （キャプチャの実効果自体はブラウザに委ねる。ここでは正しいpointerIdで
         // 呼ばれることのみ検証する）。
@@ -149,7 +170,9 @@ describe("createDioramaArControlHud", () => {
 
     it("最初に押下したpointerId以外のpointerup/pointercancelは無視される（複数指操作時の誤解除防止）", () => {
         const hud = build();
-        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        const zoomInButton = hud.element.querySelectorAll(
+            "button",
+        )[0] as HTMLButtonElement;
 
         // pointerId=1で押下開始。
         dispatchPointer(zoomInButton, "pointerdown", { pointerId: 1 });
@@ -174,24 +197,33 @@ describe("createDioramaArControlHud", () => {
         // 不具合があった。ボタンごとに独立した押下状態を保持し合算する方式へ
         // 変更したことで、この不具合が解消されていることを確認する。
         const hud = build();
-        const [zoomInButton, zoomOutButton] = hud.element.querySelectorAll("button");
+        const [zoomInButton, zoomOutButton] =
+            hud.element.querySelectorAll("button");
 
         // 指1で「+」（zoomIn, axisValue=-1）を押しっぱなしにする。
-        dispatchPointer(zoomInButton as HTMLButtonElement, "pointerdown", { pointerId: 1 });
+        dispatchPointer(zoomInButton as HTMLButtonElement, "pointerdown", {
+            pointerId: 1,
+        });
         expect(hud.getZoomAxis()).toBe(-1);
 
         // 別指2で「-」（zoomOut, axisValue=+1）も押す（同時押下）。
         // 両方押下中は合算されて相殺され0になる。
-        dispatchPointer(zoomOutButton as HTMLButtonElement, "pointerdown", { pointerId: 2 });
+        dispatchPointer(zoomOutButton as HTMLButtonElement, "pointerdown", {
+            pointerId: 2,
+        });
         expect(hud.getZoomAxis()).toBe(0);
 
         // 「-」だけ離す。「+」は指1で押下し続けているため、軸値は-1に戻るべき
         // （0のまま固定されてはならない）。
-        dispatchPointer(zoomOutButton as HTMLButtonElement, "pointerup", { pointerId: 2 });
+        dispatchPointer(zoomOutButton as HTMLButtonElement, "pointerup", {
+            pointerId: 2,
+        });
         expect(hud.getZoomAxis()).toBe(-1);
 
         // 最後に「+」も離せば0に戻る。
-        dispatchPointer(zoomInButton as HTMLButtonElement, "pointerup", { pointerId: 1 });
+        dispatchPointer(zoomInButton as HTMLButtonElement, "pointerup", {
+            pointerId: 1,
+        });
         expect(hud.getZoomAxis()).toBe(0);
     });
 
@@ -203,7 +235,9 @@ describe("createDioramaArControlHud", () => {
         // ここではポーリングを一切挟まずにpointerdown/pointerupを連続発火させることで
         // その状況を再現し、次回の`getAxis()`呼び出しで軸値が反映されることを検証する。
         const hud = build();
-        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        const zoomInButton = hud.element.querySelectorAll(
+            "button",
+        )[0] as HTMLButtonElement;
 
         dispatchPointer(zoomInButton, "pointerdown", { pointerId: 1 });
         dispatchPointer(zoomInButton, "pointerup", { pointerId: 1 });
@@ -234,40 +268,68 @@ describe("createDioramaArControlHud", () => {
 
     it("ズームボタンはキーボード操作（Enter/Space押下中）でも軸値が更新される", () => {
         const hud = build();
-        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        const zoomInButton = hud.element.querySelectorAll(
+            "button",
+        )[0] as HTMLButtonElement;
 
-        zoomInButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        zoomInButton.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(-1);
-        zoomInButton.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+        zoomInButton.dispatchEvent(
+            new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(0);
 
-        zoomInButton.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+        zoomInButton.dispatchEvent(
+            new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(-1);
-        zoomInButton.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
+        zoomInButton.dispatchEvent(
+            new KeyboardEvent("keyup", { key: " ", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(0);
     });
 
     it("ズームボタンはキーリピート(keydownのrepeat)では再入せず、Enter/Space以外のキーは無視する", () => {
         const hud = build();
-        const zoomOutButton = hud.element.querySelectorAll("button")[1] as HTMLButtonElement;
+        const zoomOutButton = hud.element.querySelectorAll(
+            "button",
+        )[1] as HTMLButtonElement;
 
-        zoomOutButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        zoomOutButton.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Tab", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(0);
 
-        zoomOutButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        zoomOutButton.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(1);
         // ブラウザがEnter長押しで発火するリピートkeydownは無視する（実害はないが再入を避ける）。
-        zoomOutButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
+        zoomOutButton.dispatchEvent(
+            new KeyboardEvent("keydown", {
+                key: "Enter",
+                bubbles: true,
+                repeat: true,
+            }),
+        );
         expect(hud.getZoomAxis()).toBe(1);
-        zoomOutButton.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+        zoomOutButton.dispatchEvent(
+            new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(0);
     });
 
     it("ズームボタンはフォーカスを失うと（keyupを取りこぼしても）軸値が0へ戻る", () => {
         const hud = build();
-        const zoomInButton = hud.element.querySelectorAll("button")[0] as HTMLButtonElement;
+        const zoomInButton = hud.element.querySelectorAll(
+            "button",
+        )[0] as HTMLButtonElement;
 
-        zoomInButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        zoomInButton.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
         expect(hud.getZoomAxis()).toBe(-1);
         zoomInButton.dispatchEvent(new FocusEvent("blur"));
         expect(hud.getZoomAxis()).toBe(0);
@@ -309,7 +371,9 @@ describe("createDioramaArControlHud", () => {
 
     it("タイル切替ボタンをクリックするとonTileModeCyclePressで購読したコールバックが呼ばれる", () => {
         const hud = build();
-        const tileModeButton = hud.element.querySelectorAll("button")[6] as HTMLButtonElement;
+        const tileModeButton = hud.element.querySelectorAll(
+            "button",
+        )[6] as HTMLButtonElement;
         const callback = vi.fn();
 
         hud.onTileModeCyclePress(callback);
@@ -321,7 +385,9 @@ describe("createDioramaArControlHud", () => {
 
     it("AR終了ボタンをクリックするとonExitArPressで購読したコールバックが呼ばれる", () => {
         const hud = build();
-        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const exitArButton = hud.element.querySelectorAll(
+            "button",
+        )[7] as HTMLButtonElement;
         const callback = vi.fn();
 
         hud.onExitArPress(callback);
@@ -331,7 +397,9 @@ describe("createDioramaArControlHud", () => {
 
     it("onTileModeCyclePress/onExitArPressの購読解除関数を呼ぶと、以後クリックしてもコールバックは呼ばれない", () => {
         const hud = build();
-        const tileModeButton = hud.element.querySelectorAll("button")[6] as HTMLButtonElement;
+        const tileModeButton = hud.element.querySelectorAll(
+            "button",
+        )[6] as HTMLButtonElement;
         const callback = vi.fn();
 
         const unsubscribe = hud.onTileModeCyclePress(callback);
@@ -342,7 +410,9 @@ describe("createDioramaArControlHud", () => {
 
     it("exitArEnabled:falseで生成した場合、AR終了ボタンはdisabledになり半透明表示になる", () => {
         const hud = build(false);
-        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const exitArButton = hud.element.querySelectorAll(
+            "button",
+        )[7] as HTMLButtonElement;
 
         expect(exitArButton.disabled).toBe(true);
         expect(exitArButton.style.opacity).toBe("0.35");
@@ -350,7 +420,9 @@ describe("createDioramaArControlHud", () => {
 
     it("exitArEnabled:falseの場合、AR終了ボタンをクリックしてもonExitArPressのコールバックは呼ばれない", () => {
         const hud = build(false);
-        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const exitArButton = hud.element.querySelectorAll(
+            "button",
+        )[7] as HTMLButtonElement;
         const callback = vi.fn();
 
         hud.onExitArPress(callback);
@@ -361,7 +433,9 @@ describe("createDioramaArControlHud", () => {
 
     it("exitArEnabled:trueの場合、AR終了ボタンはdisabledにならない", () => {
         const hud = build(true);
-        const exitArButton = hud.element.querySelectorAll("button")[7] as HTMLButtonElement;
+        const exitArButton = hud.element.querySelectorAll(
+            "button",
+        )[7] as HTMLButtonElement;
 
         expect(exitArButton.disabled).toBe(false);
     });

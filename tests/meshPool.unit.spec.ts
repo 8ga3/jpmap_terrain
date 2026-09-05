@@ -3,7 +3,7 @@
  * Babylon.js の Scene/Mesh をモックして、acquire/release のロジックを検証する。
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const createMockMesh = () => ({
     material: null as unknown,

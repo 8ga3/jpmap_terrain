@@ -17,7 +17,10 @@
  * 例えば `cycle()` を短時間に連打された場合、途中の状態を経由せず最終的な目標
  * タイル種別のみが適用される（キューに全連打分を積んで順番に適用するのではない）。
  */
-import type { DioramaTerrain, DioramaTileMode } from "../../../terrain/diorama/dioramaTerrain";
+import type {
+    DioramaTerrain,
+    DioramaTileMode,
+} from "../../../terrain/diorama/dioramaTerrain";
 import { nextDioramaTileMode } from "./dioramaControllerMapping";
 
 export interface DioramaTileModeController {
@@ -67,7 +70,10 @@ export const createDioramaTileModeController = (
             try {
                 listener(currentTileMode);
             } catch (err) {
-                console.error("[jpmap-terrain diorama] onChange listener threw:", err);
+                console.error(
+                    "[jpmap-terrain diorama] onChange listener threw:",
+                    err,
+                );
             }
         }
     };
@@ -102,7 +108,8 @@ export const createDioramaTileModeController = (
             // `inFlight` が解決した時点で `runApply` の `finally` は実行済みのため、
             // 再度 `inFlight` を読み直せば、連打で上書きされた最新の要求（またはさらに
             // その先）まで正しく合流できる。
-            const waitForConvergence = (): Promise<void> => inFlight ?? Promise.resolve();
+            const waitForConvergence = (): Promise<void> =>
+                inFlight ?? Promise.resolve();
             return inFlight.then(waitForConvergence, waitForConvergence);
         }
         inFlight = runApply(target);
@@ -117,11 +124,17 @@ export const createDioramaTileModeController = (
             // 「これから適用される値」を基準にする）。
             const base = pendingTileMode ?? inFlightTileMode ?? currentTileMode;
             apply(nextDioramaTileMode(base)).catch((err: unknown) => {
-                console.error("[jpmap-terrain diorama] setTileMode failed:", err);
+                console.error(
+                    "[jpmap-terrain diorama] setTileMode failed:",
+                    err,
+                );
             });
         },
-        setTileMode: (tileMode: DioramaTileMode): Promise<void> => apply(tileMode),
-        onChange: (listener: (tileMode: DioramaTileMode) => void): (() => void) => {
+        setTileMode: (tileMode: DioramaTileMode): Promise<void> =>
+            apply(tileMode),
+        onChange: (
+            listener: (tileMode: DioramaTileMode) => void,
+        ): (() => void) => {
             changeListeners.push(listener);
             let removed = false;
             return (): void => {

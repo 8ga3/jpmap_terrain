@@ -71,7 +71,7 @@ export const metersPerDegreeAt = (
     const lat = latDeg * DEG2RAD;
     const sinLat = Math.sin(lat);
     const denom = 1 - e2 * sinLat * sinLat;
-    const meridionalRadius = (a * (1 - e2)) / Math.pow(denom, 1.5);
+    const meridionalRadius = (a * (1 - e2)) / denom ** 1.5;
     const primeVerticalRadius = a / Math.sqrt(denom);
     return {
         lat: meridionalRadius * DEG2RAD,
@@ -104,7 +104,9 @@ export const offsetToLatLon = (
  */
 const assertValidGridSegments = (gridSegments: number): void => {
     if (!(Number.isInteger(gridSegments) && gridSegments >= 1)) {
-        throw new RangeError(`gridSegments must be an integer >= 1 (got ${gridSegments})`);
+        throw new RangeError(
+            `gridSegments must be an integer >= 1 (got ${gridSegments})`,
+        );
     }
 };
 
@@ -122,7 +124,9 @@ export const buildDioramaGridPoints = (
     const { gridSegments } = options;
     assertValidGridSegments(gridSegments);
     if (!(Number.isFinite(footprintHalfSizeM) && footprintHalfSizeM > 0)) {
-        throw new RangeError(`footprintHalfSizeM must be a positive finite number (got ${footprintHalfSizeM})`);
+        throw new RangeError(
+            `footprintHalfSizeM must be a positive finite number (got ${footprintHalfSizeM})`,
+        );
     }
 
     const points: DioramaGridPoint[] = [];
@@ -150,7 +154,8 @@ export const buildDioramaGridIndices = (
     const { gridSegments } = options;
     assertValidGridSegments(gridSegments);
     const vertsPerSide = gridSegments + 1;
-    const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
+    const gridIndex = (row: number, col: number): number =>
+        row * vertsPerSide + col;
 
     const indices: number[] = [];
     for (let row = 0; row < gridSegments; row++) {
@@ -180,17 +185,22 @@ export const extractGridPerimeterIndices = (
     const { gridSegments } = options;
     assertValidGridSegments(gridSegments);
     const vertsPerSide = gridSegments + 1;
-    const gridIndex = (row: number, col: number): number => row * vertsPerSide + col;
+    const gridIndex = (row: number, col: number): number =>
+        row * vertsPerSide + col;
 
     const perimeter: number[] = [];
     // 北辺: row=0, col=0..gridSegments-1（西→東）。
-    for (let col = 0; col < gridSegments; col++) perimeter.push(gridIndex(0, col));
+    for (let col = 0; col < gridSegments; col++)
+        perimeter.push(gridIndex(0, col));
     // 東辺: col=gridSegments, row=0..gridSegments-1（北→南）。
-    for (let row = 0; row < gridSegments; row++) perimeter.push(gridIndex(row, gridSegments));
+    for (let row = 0; row < gridSegments; row++)
+        perimeter.push(gridIndex(row, gridSegments));
     // 南辺: row=gridSegments, col=gridSegments..1（東→西）。
-    for (let col = gridSegments; col > 0; col--) perimeter.push(gridIndex(gridSegments, col));
+    for (let col = gridSegments; col > 0; col--)
+        perimeter.push(gridIndex(gridSegments, col));
     // 西辺: col=0, row=gridSegments..1（南→北）。
-    for (let row = gridSegments; row > 0; row--) perimeter.push(gridIndex(row, 0));
+    for (let row = gridSegments; row > 0; row--)
+        perimeter.push(gridIndex(row, 0));
 
     return perimeter;
 };

@@ -1,20 +1,20 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-    TILE_SIZE,
-    JAPAN_BOUNDS,
     clamp,
-    toTileXY,
+    decodeGsiElevation,
+    fillInvalidPixels,
+    isAllNaN,
+    JAPAN_BOUNDS,
+    loadElevationTile,
+    NO_DATA_SENTINEL,
+    photoTextureUrl,
+    stdTextureUrl,
+    TILE_SIZE,
+    TileFetchError,
+    textureUrl,
     tileCenterLatLon,
     tileEdgeMeters,
-    decodeGsiElevation,
-    isAllNaN,
-    fillInvalidPixels,
-    stdTextureUrl,
-    photoTextureUrl,
-    textureUrl,
-    NO_DATA_SENTINEL,
-    loadElevationTile,
-    TileFetchError,
+    toTileXY,
 } from "../src/terrain/gsiTile";
 
 describe("TILE_SIZE", () => {
@@ -157,7 +157,9 @@ describe("decodeGsiElevation", () => {
 
     it("2^23 未満の raw 値は正の標高を返す", () => {
         // raw = 2^23 - 1 = 8388607 → 83886.07
-        const r = 127, g = 255, b = 255;
+        const r = 127,
+            g = 255,
+            b = 255;
         expect(decodeGsiElevation(r, g, b)).toBeCloseTo(83886.07, 2);
     });
 
@@ -209,13 +211,13 @@ describe("isAllNaN", () => {
 describe("stdTextureUrl", () => {
     it("地理院標準地図タイルURLを返す", () => {
         expect(stdTextureUrl(14, 14547, 6452)).toBe(
-            "https://cyberjapandata.gsi.go.jp/xyz/std/14/14547/6452.png"
+            "https://cyberjapandata.gsi.go.jp/xyz/std/14/14547/6452.png",
         );
     });
 
     it("zoom=0 でもURLを生成できる", () => {
         expect(stdTextureUrl(0, 0, 0)).toBe(
-            "https://cyberjapandata.gsi.go.jp/xyz/std/0/0/0.png"
+            "https://cyberjapandata.gsi.go.jp/xyz/std/0/0/0.png",
         );
     });
 });
@@ -223,13 +225,13 @@ describe("stdTextureUrl", () => {
 describe("photoTextureUrl", () => {
     it("地理院写真地図タイルURLを返す", () => {
         expect(photoTextureUrl(14, 14547, 6452)).toBe(
-            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg"
+            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg",
         );
     });
 
     it("zoom=0 でもURLを生成できる", () => {
         expect(photoTextureUrl(0, 0, 0)).toBe(
-            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/0/0/0.jpg"
+            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/0/0/0.jpg",
         );
     });
 });
@@ -237,13 +239,13 @@ describe("photoTextureUrl", () => {
 describe("textureUrl", () => {
     it("std タイプで標準地図URLを返す", () => {
         expect(textureUrl("std", 14, 14547, 6452)).toBe(
-            "https://cyberjapandata.gsi.go.jp/xyz/std/14/14547/6452.png"
+            "https://cyberjapandata.gsi.go.jp/xyz/std/14/14547/6452.png",
         );
     });
 
     it("photo タイプで写真地図URLを返す", () => {
         expect(textureUrl("photo", 14, 14547, 6452)).toBe(
-            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg"
+            "https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/14/14547/6452.jpg",
         );
     });
 });
@@ -257,11 +259,7 @@ describe("fillInvalidPixels", () => {
 
     it("周囲の有効値から NaN を補間する", () => {
         // 3x3: 中央だけ NaN
-        const data = new Float32Array([
-            10, 10, 10,
-            10, NaN, 10,
-            10, 10, 10,
-        ]);
+        const data = new Float32Array([10, 10, 10, 10, NaN, 10, 10, 10, 10]);
         fillInvalidPixels(data, 3, 3);
         expect(data[4]).toBe(10);
     });
@@ -275,7 +273,8 @@ describe("fillInvalidPixels", () => {
 
     it("大きな NaN 領域を完全に埋める（旧16パスでは届かない距離）", () => {
         // 32x32 で右下角 (31,31) のみ有効値 → 左上 (0,0) まで距離31以上
-        const W = 32, H = 32;
+        const W = 32,
+            H = 32;
         const data = new Float32Array(W * H);
         data.fill(NaN);
         data[(H - 1) * W + (W - 1)] = 100;
@@ -292,7 +291,8 @@ describe("fillInvalidPixels", () => {
 
     it("角にだけ有効値がある場合でも全 NaN を埋める", () => {
         // 20x20 で (0,0) のみ有効値
-        const W = 20, H = 20;
+        const W = 20,
+            H = 20;
         const data = new Float32Array(W * H);
         data.fill(NaN);
         data[0] = 50;
@@ -307,15 +307,16 @@ describe("fillInvalidPixels", () => {
 
     it("エッジから内側に値が伝搬する（湖沼パターン）", () => {
         // 8x8: 外周のみ有効値、内部は NaN
-        const W = 8, H = 8;
+        const W = 8,
+            H = 8;
         const data = new Float32Array(W * H);
         data.fill(NaN);
         for (let x = 0; x < W; x++) {
-            data[x] = 200;               // 上辺
+            data[x] = 200; // 上辺
             data[(H - 1) * W + x] = 200; // 下辺
         }
         for (let y = 0; y < H; y++) {
-            data[y * W] = 200;           // 左辺
+            data[y * W] = 200; // 左辺
             data[y * W + (W - 1)] = 200; // 右辺
         }
 
@@ -332,9 +333,15 @@ describe("fillInvalidPixels", () => {
 
     it("有効値と NaN が混在する場合、有効値は変更されない", () => {
         const data = new Float32Array([
-            5, NaN, NaN,
-            NaN, NaN, NaN,
-            NaN, NaN, 15,
+            5,
+            NaN,
+            NaN,
+            NaN,
+            NaN,
+            NaN,
+            NaN,
+            NaN,
+            15,
         ]);
         fillInvalidPixels(data, 3, 3);
         expect(data[0]).toBe(5);
@@ -347,7 +354,8 @@ describe("fillInvalidPixels", () => {
 
     it("非正方形（width ≠ height）でも全 NaN を埋める", () => {
         // 4x8: 左端列のみ有効値
-        const W = 4, H = 8;
+        const W = 4,
+            H = 8;
         const data = new Float32Array(W * H);
         data.fill(NaN);
         for (let y = 0; y < H; y++) data[y * W] = 30;
@@ -412,7 +420,11 @@ const setupLoadImageMocks = (imageData: ImageData) => {
         createElement: vi.fn(() => mockCanvas),
     };
     (globalThis as Record<string, unknown>).createImageBitmap = vi.fn(() =>
-        Promise.resolve({ width: imageData.width, height: imageData.height, close: vi.fn() })
+        Promise.resolve({
+            width: imageData.width,
+            height: imageData.height,
+            close: vi.fn(),
+        }),
     );
 };
 
@@ -442,18 +454,24 @@ const setupLoadImageSequenceMocks = (sequence: readonly ImageData[]) => {
     };
     (globalThis as Record<string, unknown>).createImageBitmap = vi.fn(() => {
         const data = cur();
-        return Promise.resolve({ width: data.width, height: data.height, close: vi.fn() });
+        return Promise.resolve({
+            width: data.width,
+            height: data.height,
+            close: vi.fn(),
+        });
     });
 };
 
 describe("loadElevationTile", () => {
     const originalFetch = globalThis.fetch;
-    const originalCreateImageBitmap = (globalThis as Record<string, unknown>).createImageBitmap;
+    const originalCreateImageBitmap = (globalThis as Record<string, unknown>)
+        .createImageBitmap;
     const originalDocument = (globalThis as Record<string, unknown>).document;
 
     afterEach(() => {
         globalThis.fetch = originalFetch;
-        (globalThis as Record<string, unknown>).createImageBitmap = originalCreateImageBitmap;
+        (globalThis as Record<string, unknown>).createImageBitmap =
+            originalCreateImageBitmap;
         (globalThis as Record<string, unknown>).document = originalDocument;
         vi.restoreAllMocks();
     });
@@ -463,8 +481,16 @@ describe("loadElevationTile", () => {
         const validImageData = makeImageDataResult(0, 100, 0);
         setupLoadImageMocks(validImageData);
 
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
-            Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >(() =>
+            Promise.resolve({
+                ok: true,
+                blob: () => Promise.resolve(new Blob()),
+            } as Response),
         );
         globalThis.fetch = fetchMock;
 
@@ -488,11 +514,20 @@ describe("loadElevationTile", () => {
         setupLoadImageSequenceMocks([demHoles, demFull]);
 
         let callCount = 0;
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >(() => {
             callCount++;
             // dem5b (2 回目) のみ 404、それ以外は成功
-            if (callCount === 2) return Promise.resolve({ ok: false, status: 404 } as Response);
-            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+            if (callCount === 2)
+                return Promise.resolve({ ok: false, status: 404 } as Response);
+            return Promise.resolve({
+                ok: true,
+                blob: () => Promise.resolve(new Blob()),
+            } as Response);
         });
         globalThis.fetch = fetchMock;
 
@@ -506,7 +541,8 @@ describe("loadElevationTile", () => {
 
         // 穴が dem の有効値で全て埋まる
         expect(elev.length).toBe(4);
-        for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
+        for (let i = 0; i < elev.length; i++)
+            expect(elev[i]).toBeCloseTo(256.0);
     });
 
     it("全面 no-data（同一ズームに実標高なし）は粗ズーム dem_png で穴埋めする", async () => {
@@ -517,13 +553,21 @@ describe("loadElevationTile", () => {
         const coarseFull = makeImageGrid(2, 0); // 粗ズーム dem_png: 全有効(256.0)
         setupLoadImageSequenceMocks([allNoData, coarseFull]);
 
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >((input) => {
             // dem5b(z15) は 404。dem5a(z15) と 粗ズーム dem_png(z14) は成功。dem_png(z15) は呼ばれない。
             const url = String(input);
             if (url.includes("dem5b_png")) {
                 return Promise.resolve({ ok: false, status: 404 } as Response);
             }
-            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+            return Promise.resolve({
+                ok: true,
+                blob: () => Promise.resolve(new Blob()),
+            } as Response);
         });
         globalThis.fetch = fetchMock;
 
@@ -538,7 +582,8 @@ describe("loadElevationTile", () => {
 
         // 全面 no-data が粗ズーム dem_png の実標高で埋まる
         expect(elev.length).toBe(4);
-        for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
+        for (let i = 0; i < elev.length; i++)
+            expect(elev[i]).toBeCloseTo(256.0);
     });
 
     it("微小欠測（閾値以下）は同一ズーム合成せず NaN を残す（fillInvalidPixels に委ねる）", async () => {
@@ -547,8 +592,16 @@ describe("loadElevationTile", () => {
         const minorHoles = makeImageGrid(4, 1);
         setupLoadImageMocks(minorHoles);
 
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() =>
-            Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response)
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >(() =>
+            Promise.resolve({
+                ok: true,
+                blob: () => Promise.resolve(new Blob()),
+            } as Response),
         );
         globalThis.fetch = fetchMock;
 
@@ -570,13 +623,21 @@ describe("loadElevationTile", () => {
         const coarseFull = makeImageGrid(4, 0); // 粗ズーム dem_png: 全有効(256.0)
         setupLoadImageSequenceMocks([partialHoles, coarseFull]);
 
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >((input) => {
             const url = String(input);
             // dem5b（同一ズーム z15）は 404。粗ズーム dem_png(z14) は成功。dem_png(z15) は呼ばれない。
             if (url.includes("dem5b_png")) {
                 return Promise.resolve({ ok: false, status: 404 } as Response);
             }
-            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+            return Promise.resolve({
+                ok: true,
+                blob: () => Promise.resolve(new Blob()),
+            } as Response);
         });
         globalThis.fetch = fetchMock;
 
@@ -588,7 +649,8 @@ describe("loadElevationTile", () => {
         expect(fetchMock.mock.calls[1][0]).toContain("dem5b_png/15/");
         expect(fetchMock.mock.calls[2][0]).toContain("dem_png/14/50/100.png");
         // 25% の欠測が粗ズーム dem_png の実標高で埋まる
-        for (let i = 0; i < elev.length; i++) expect(elev[i]).toBeCloseTo(256.0);
+        for (let i = 0; i < elev.length; i++)
+            expect(elev[i]).toBeCloseTo(256.0);
     });
 
     it("全面 no-data で粗ズームも未配信なら NaN のまま（後段の湖面処理に委ねる）", async () => {
@@ -598,11 +660,19 @@ describe("loadElevationTile", () => {
         const allNoData = makeImageGrid(2, 4);
         setupLoadImageMocks(allNoData);
 
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >((input) => {
             const url = String(input);
             // dem5a(z15) のみ 200。それ以外（dem5b/粗ズーム dem_png）は全て 404。
             if (url.includes("dem5a_png")) {
-                return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+                return Promise.resolve({
+                    ok: true,
+                    blob: () => Promise.resolve(new Blob()),
+                } as Response);
             }
             return Promise.resolve({ ok: false, status: 404 } as Response);
         });
@@ -612,7 +682,8 @@ describe("loadElevationTile", () => {
 
         // dem5a(200) + dem5b(404) + 粗ズーム dem_png z14..z10(5 段) = 7 取得（dem_png z15 はスキップ）
         expect(fetchMock).toHaveBeenCalledTimes(7);
-        for (let i = 0; i < elev.length; i++) expect(Number.isNaN(elev[i])).toBe(true);
+        for (let i = 0; i < elev.length; i++)
+            expect(Number.isNaN(elev[i])).toBe(true);
     });
 
     it("粗ズーム補填中の一時障害（非404）は握りつぶさず伝播する", async () => {
@@ -621,10 +692,18 @@ describe("loadElevationTile", () => {
         const allNoData = makeImageGrid(2, 4);
         setupLoadImageMocks(allNoData);
 
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >((input) => {
             const url = String(input);
             if (url.includes("dem5a_png")) {
-                return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+                return Promise.resolve({
+                    ok: true,
+                    blob: () => Promise.resolve(new Blob()),
+                } as Response);
             }
             if (url.includes("dem5b_png")) {
                 return Promise.resolve({ ok: false, status: 404 } as Response);
@@ -634,7 +713,9 @@ describe("loadElevationTile", () => {
         });
         globalThis.fetch = fetchMock;
 
-        await expect(loadElevationTile(15, 100, 200)).rejects.toThrow(/network down/);
+        await expect(loadElevationTile(15, 100, 200)).rejects.toThrow(
+            /network down/,
+        );
         // dem5a(200) + dem5b(404) + 粗ズーム dem_png(z14, 一時障害で打ち切り) = 3 取得
         expect(fetchMock).toHaveBeenCalledTimes(3);
     });
@@ -645,14 +726,22 @@ describe("loadElevationTile", () => {
         setupLoadImageMocks(validImageData);
 
         let callCount = 0;
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>(() => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >(() => {
             callCount++;
             if (callCount === 1) {
                 // dem5a: HTTP 失敗
                 return Promise.resolve({ ok: false, status: 404 } as Response);
             }
             // dem5b: HTTP 成功
-            return Promise.resolve({ ok: true, blob: () => Promise.resolve(new Blob()) } as Response);
+            return Promise.resolve({
+                ok: true,
+                blob: () => Promise.resolve(new Blob()),
+            } as Response);
         });
         globalThis.fetch = fetchMock;
 
@@ -670,13 +759,13 @@ describe("loadElevationTile", () => {
 
     it("全レイヤー HTTP 失敗時はエラーを投げる", async () => {
         const fetchMock = vi.fn(() =>
-            Promise.resolve({ ok: false, status: 404 } as Response)
+            Promise.resolve({ ok: false, status: 404 } as Response),
         );
         globalThis.fetch = fetchMock;
 
         // z14 では dem_png も同一ズームで試行されるため 3 レイヤー全て 404 → throw。
         await expect(loadElevationTile(14, 100, 200)).rejects.toThrow(
-            /No elevation tile available/
+            /No elevation tile available/,
         );
 
         // 3 レイヤー全て試行
@@ -685,7 +774,7 @@ describe("loadElevationTile", () => {
 
     it("全レイヤー 404（決定的未配信）なら TileFetchError.status=404 を投げる", async () => {
         const fetchMock = vi.fn(() =>
-            Promise.resolve({ ok: false, status: 404 } as Response)
+            Promise.resolve({ ok: false, status: 404 } as Response),
         );
         globalThis.fetch = fetchMock;
 
@@ -697,10 +786,16 @@ describe("loadElevationTile", () => {
     });
 
     it("一時的な取得失敗が混じる場合は TileFetchError.status=undefined を投げる", async () => {
-        const fetchMock = vi.fn<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>((input) => {
+        const fetchMock = vi.fn<
+            (
+                input: string | URL | Request,
+                init?: RequestInit,
+            ) => Promise<Response>
+        >((input) => {
             const url = String(input);
             // dem5a はネットワーク障害（reject）、それ以外は 404。一時障害が混じるため決定的 404 ではない。
-            if (url.includes("dem5a_png")) return Promise.reject(new Error("network down"));
+            if (url.includes("dem5a_png"))
+                return Promise.reject(new Error("network down"));
             return Promise.resolve({ ok: false, status: 404 } as Response);
         });
         globalThis.fetch = fetchMock;

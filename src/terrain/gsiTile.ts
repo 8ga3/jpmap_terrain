@@ -13,7 +13,12 @@ export const TILE_MAX_ZOOM = 18;
  */
 export const WORLD_TEXTURE_MAX_ZOOM = 8;
 
-export const JAPAN_BOUNDS = { minLat: 20, maxLat: 46, minLon: 122, maxLon: 154 } as const;
+export const JAPAN_BOUNDS = {
+    minLat: 20,
+    maxLat: 46,
+    minLon: 122,
+    maxLon: 154,
+} as const;
 
 const DEM_LAYERS = ["dem5a_png", "dem5b_png", "dem_png"] as const;
 
@@ -46,7 +51,7 @@ const COMPOSITE_HOLE_RATIO = 0.1;
 export class TileFetchError extends Error {
     constructor(
         message: string,
-        readonly status?: number
+        readonly status?: number,
     ) {
         super(message);
         this.name = "TileFetchError";
@@ -60,7 +65,7 @@ export const clamp = (value: number, min: number, max: number): number =>
 export const toTileXY = (
     lat: number,
     lon: number,
-    zoom: number
+    zoom: number,
 ): { x: number; y: number } => {
     const latClamped = clamp(lat, -85.05112878, 85.05112878);
     const lonNormalized = ((((lon + 180) % 360) + 360) % 360) - 180;
@@ -71,10 +76,10 @@ export const toTileXY = (
         Math.floor(
             ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) /
                 2) *
-                n
+                n,
         ),
         0,
-        n - 1
+        n - 1,
     );
     return { x, y };
 };
@@ -83,7 +88,7 @@ export const toTileXY = (
 export const tileCenterLatLon = (
     x: number,
     y: number,
-    zoom: number
+    zoom: number,
 ): { lat: number; lon: number } => {
     const n = 2 ** zoom;
     const lon = ((x + 0.5) / n) * 360 - 180;
@@ -131,11 +136,7 @@ export const isAllNaN = (data: Float32Array): boolean => {
 };
 
 /** 地理院標高タイルのRGBデコード（無効値は NaN） */
-export const decodeGsiElevation = (
-    r: number,
-    g: number,
-    b: number
-): number => {
+export const decodeGsiElevation = (r: number, g: number, b: number): number => {
     if (r === 128 && g === 0 && b === 0) return NaN;
     const raw = r * 65536 + g * 256 + b;
     return raw < 2 ** 23 ? raw * 0.01 : (raw - 2 ** 24) * 0.01;
@@ -156,7 +157,7 @@ const fillHolesFromCoarseDem = (
     zoom: number,
     x: number,
     y: number,
-    cz: number
+    cz: number,
 ): number => {
     const d = zoom - cz;
     const scale = 1 << d;
@@ -171,20 +172,24 @@ const fillHolesFromCoarseDem = (
     for (let oy = 0; oy < height; oy++) {
         const sy = Math.min(
             ph - 1,
-            Math.round(originY + (height > 1 ? oy / (height - 1) : 0) * (subH - 1))
+            Math.round(
+                originY + (height > 1 ? oy / (height - 1) : 0) * (subH - 1),
+            ),
         );
         for (let ox = 0; ox < width; ox++) {
             const idx = oy * width + ox;
             if (!Number.isNaN(merged[idx])) continue;
             const sx = Math.min(
                 pw - 1,
-                Math.round(originX + (width > 1 ? ox / (width - 1) : 0) * (subW - 1))
+                Math.round(
+                    originX + (width > 1 ? ox / (width - 1) : 0) * (subW - 1),
+                ),
             );
             const p = (sy * pw + sx) * 4;
             const v = decodeGsiElevation(
                 parent.data[p],
                 parent.data[p + 1],
-                parent.data[p + 2]
+                parent.data[p + 2],
             );
             if (!Number.isNaN(v)) merged[idx] = v;
             else remaining++;
@@ -197,13 +202,18 @@ const fillHolesFromCoarseDem = (
 export const fillInvalidPixels = (
     elev: Float32Array,
     width: number,
-    height: number
+    height: number,
 ): void => {
     const size = width * height;
     const offsets: readonly [number, number][] = [
-        [-1, -1], [0, -1], [1, -1],
-        [-1,  0],          [1,  0],
-        [-1,  1], [0,  1], [1,  1],
+        [-1, -1],
+        [0, -1],
+        [1, -1],
+        [-1, 0],
+        [1, 0],
+        [-1, 1],
+        [0, 1],
+        [1, 1],
     ];
 
     // BFS: 有効ピクセルに隣接する無効ピクセルをキューに入れ、波状に埋める。
@@ -252,7 +262,8 @@ export const fillInvalidPixels = (
                 for (const [dx, dy] of offsets) {
                     const nx = x + dx;
                     const ny = y + dy;
-                    if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                    if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+                        continue;
                     const ni = ny * width + nx;
                     if (isInvalidElev(elev[ni])) {
                         next.push(ni);
@@ -277,8 +288,11 @@ const FETCH_TIMEOUT_MS = 15000;
 
 /** ImageData を fetch して返す（Canvas経由） */
 const loadImageData = async (url: string): Promise<ImageData> => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-    if (!res.ok) throw new TileFetchError(`Tile fetch failed: ${url}`, res.status);
+    const res = await fetch(url, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok)
+        throw new TileFetchError(`Tile fetch failed: ${url}`, res.status);
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
     const cvs = document.createElement("canvas");
@@ -320,7 +334,7 @@ const loadImageData = async (url: string): Promise<ImageData> => {
 export const loadElevationTile = async (
     zoom: number,
     x: number,
-    y: number
+    y: number,
 ): Promise<Float32Array> => {
     let merged: Float32Array | null = null;
     let width = 0;
@@ -348,7 +362,8 @@ export const loadElevationTile = async (
             // 取得失敗（404＝当該領域外のほか、タイムアウト/ネットワーク等の一時障害も含む）→ 次レイヤーへ。
             // 404 以外の一時障害が混じった場合は allDeterministic404 を倒し、最終 throw を非 404 扱いにする。
             lastErr = e;
-            if (!(e instanceof TileFetchError) || e.status !== 404) allDeterministic404 = false;
+            if (!(e instanceof TileFetchError) || e.status !== 404)
+                allDeterministic404 = false;
             continue;
         }
 
@@ -362,7 +377,7 @@ export const loadElevationTile = async (
                 const v = decodeGsiElevation(
                     img.data[i],
                     img.data[i + 1],
-                    img.data[i + 2]
+                    img.data[i + 2],
                 );
                 merged[i / 4] = v;
                 if (Number.isNaN(v)) holes++;
@@ -375,7 +390,7 @@ export const loadElevationTile = async (
                 const v = decodeGsiElevation(
                     img.data[i],
                     img.data[i + 1],
-                    img.data[i + 2]
+                    img.data[i + 2],
                 );
                 if (!Number.isNaN(v)) {
                     merged[idx] = v;
@@ -388,7 +403,7 @@ export const loadElevationTile = async (
     if (!merged) {
         throw new TileFetchError(
             `No elevation tile available for z${zoom}/${x}/${y}: ${String(lastErr)}`,
-            allDeterministic404 ? 404 : undefined
+            allDeterministic404 ? 404 : undefined,
         );
     }
 
@@ -404,7 +419,11 @@ export const loadElevationTile = async (
         const floorCz = Math.max(0, startCz - (COARSE_FILL_DEPTH - 1));
         // 残り穴が閾値以下になったら打ち切る。微小な欠測（≤ COMPOSITE_HOLE_RATIO）まで粗ズームを
         // 遡って取得するのは無駄なフェッチになるため、後段の `fillInvalidPixels` の局所補間に委ねる。
-        for (let cz = startCz; cz >= floorCz && holes > total * COMPOSITE_HOLE_RATIO; cz--) {
+        for (
+            let cz = startCz;
+            cz >= floorCz && holes > total * COMPOSITE_HOLE_RATIO;
+            cz--
+        ) {
             const d = zoom - cz;
             const url = `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${cz}/${x >> d}/${y >> d}.png`;
             try {
@@ -417,7 +436,7 @@ export const loadElevationTile = async (
                     zoom,
                     x,
                     y,
-                    cz
+                    cz,
                 );
             } catch (e) {
                 // 404（未配信）のみ次の粗ズームへ。一時障害（タイムアウト/ネットワーク/5xx 等）は
@@ -436,25 +455,20 @@ export const loadElevationTile = async (
 export type MapType = "std" | "photo";
 
 /** 標準地図テクスチャURL */
-export const stdTextureUrl = (
-    zoom: number,
-    x: number,
-    y: number
-): string => `https://cyberjapandata.gsi.go.jp/xyz/std/${zoom}/${x}/${y}.png`;
+export const stdTextureUrl = (zoom: number, x: number, y: number): string =>
+    `https://cyberjapandata.gsi.go.jp/xyz/std/${zoom}/${x}/${y}.png`;
 
 /** 写真地図テクスチャURL */
-export const photoTextureUrl = (
-    zoom: number,
-    x: number,
-    y: number
-): string => `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${zoom}/${x}/${y}.jpg`;
+export const photoTextureUrl = (zoom: number, x: number, y: number): string =>
+    `https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${zoom}/${x}/${y}.jpg`;
 
 /** 地図タイプに応じたテクスチャURLを返す */
 export const textureUrl = (
     mapType: MapType,
     zoom: number,
     x: number,
-    y: number
-): string => mapType === "photo"
-    ? photoTextureUrl(zoom, x, y)
-    : stdTextureUrl(zoom, x, y);
+    y: number,
+): string =>
+    mapType === "photo"
+        ? photoTextureUrl(zoom, x, y)
+        : stdTextureUrl(zoom, x, y);

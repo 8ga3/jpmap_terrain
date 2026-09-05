@@ -167,7 +167,9 @@ export const parsePlan = (json: unknown): ParsedPlan => {
         throw new Error("Invalid plan file: missing mission section");
     }
     if (!Array.isArray(plan.mission.items)) {
-        throw new Error("Invalid plan file: mission.items is missing or not an array");
+        throw new Error(
+            "Invalid plan file: mission.items is missing or not an array",
+        );
     }
 
     // ホームポジション

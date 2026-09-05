@@ -7,17 +7,17 @@
  * - parsePlan: QGC plan JSON のパースとフィルタリング
  * - formatWaypointLabel / formatWaypointEdgeLabel / formatRallyPointLabel
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { parsePlan, WAYPOINT_COMMANDS } from "../src/demos/plan/parsePlan";
 import {
-    formatWaypointLabel,
-    formatWaypointEdgeLabel,
-    formatRallyPointLabel,
-    formatHomePositionLabel,
-    haversineDistanceMeters,
-    formatHorizontalDistance,
     formatAltitudeDelta,
+    formatHomePositionLabel,
+    formatHorizontalDistance,
+    formatRallyPointLabel,
+    formatWaypointEdgeLabel,
+    formatWaypointLabel,
+    haversineDistanceMeters,
 } from "../src/demos/plan/utils";
 
 // ---- parsePlan ----
@@ -48,8 +48,12 @@ describe("parsePlan", () => {
         expect(() => parsePlan(null)).toThrow("not an object");
         expect(() => parsePlan("string")).toThrow("not an object");
         expect(() => parsePlan({})).toThrow("missing mission");
-        expect(() => parsePlan({ mission: {} })).toThrow("mission.items is missing or not an array");
-        expect(() => parsePlan({ mission: { items: "not-array" } })).toThrow("mission.items is missing or not an array");
+        expect(() => parsePlan({ mission: {} })).toThrow(
+            "mission.items is missing or not an array",
+        );
+        expect(() => parsePlan({ mission: { items: "not-array" } })).toThrow(
+            "mission.items is missing or not an array",
+        );
     });
 
     it("NAV_WAYPOINT(16), NAV_TAKEOFF(22), NAV_LAND(21) をウェイポイントとして抽出する", () => {
@@ -58,11 +62,31 @@ describe("parsePlan", () => {
             mission: {
                 plannedHomePosition: [35.0, 139.0, 100],
                 items: [
-                    { command: 22, frame: 3, params: [0, 0, 0, 0, 35.1, 139.1, 50], coordinate: [35.1, 139.1, 50] },
-                    { command: 16, frame: 3, params: [0, 0, 0, 0, 35.2, 139.2, 80], coordinate: [35.2, 139.2, 80] },
+                    {
+                        command: 22,
+                        frame: 3,
+                        params: [0, 0, 0, 0, 35.1, 139.1, 50],
+                        coordinate: [35.1, 139.1, 50],
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, 0, 35.2, 139.2, 80],
+                        coordinate: [35.2, 139.2, 80],
+                    },
                     { command: 178, frame: 3, params: [0, 0, 0, 0, 0, 0, 0] }, // DO_CHANGE_SPEED - スキップ
-                    { command: 16, frame: 3, params: [0, 0, 0, 0, 35.3, 139.3, 100], coordinate: [35.3, 139.3, 100] },
-                    { command: 21, frame: 3, params: [0, 0, 0, 0, 35.4, 139.4, 0], coordinate: [35.4, 139.4, 0] },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, 0, 35.3, 139.3, 100],
+                        coordinate: [35.3, 139.3, 100],
+                    },
+                    {
+                        command: 21,
+                        frame: 3,
+                        params: [0, 0, 0, 0, 35.4, 139.4, 0],
+                        coordinate: [35.4, 139.4, 0],
+                    },
                 ],
             },
         };
@@ -84,7 +108,11 @@ describe("parsePlan", () => {
             mission: {
                 plannedHomePosition: [35.0, 139.0, 0],
                 items: [
-                    { command: 16, frame: 3, params: [0, 0, 0, 0, 35.5, 139.5, 60] },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, 0, 35.5, 139.5, 60],
+                    },
                 ],
             },
         };
@@ -103,7 +131,12 @@ describe("parsePlan", () => {
                 polygons: [
                     {
                         inclusion: true,
-                        polygon: [[35.0, 139.0], [35.1, 139.0], [35.1, 139.1], [35.0, 139.1]],
+                        polygon: [
+                            [35.0, 139.0],
+                            [35.1, 139.0],
+                            [35.1, 139.1],
+                            [35.0, 139.1],
+                        ],
                     },
                 ],
                 circles: [],
@@ -122,14 +155,20 @@ describe("parsePlan", () => {
             geoFence: {
                 polygons: [],
                 circles: [
-                    { inclusion: false, circle: { center: [35.5, 139.5], radius: 500 } },
+                    {
+                        inclusion: false,
+                        circle: { center: [35.5, 139.5], radius: 500 },
+                    },
                 ],
             },
         };
         const result = parsePlan(plan);
         expect(result.geoFenceCircles).toHaveLength(1);
         expect(result.geoFenceCircles[0].inclusion).toBe(false);
-        expect(result.geoFenceCircles[0].center).toEqual({ lat: 35.5, lon: 139.5 });
+        expect(result.geoFenceCircles[0].center).toEqual({
+            lat: 35.5,
+            lon: 139.5,
+        });
         expect(result.geoFenceCircles[0].radius).toBe(500);
     });
 
@@ -157,7 +196,12 @@ describe("parsePlan", () => {
             fileHeader: { version: 1 },
             mission: {
                 items: [
-                    { command: 16, frame: 3, params: [0, 0, 0, 0, 35.0, 139.0, 100], coordinate: [35.0, 139.0, 100] },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, 0, 35.0, 139.0, 100],
+                        coordinate: [35.0, 139.0, 100],
+                    },
                 ],
             },
         };
@@ -173,9 +217,17 @@ describe("parsePlan", () => {
                 plannedHomePosition: [35.0, 139.0, 100],
                 items: [
                     // NAV_TAKEOFF at lat=0,lon=0 → ホームポジション座標に置換
-                    { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50] },
+                    {
+                        command: 22,
+                        frame: 3,
+                        params: [0, 0, 0, null, 0, 0, 50],
+                    },
                     // 通常ウェイポイント
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.5, 139.5, 80] },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, null, 35.5, 139.5, 80],
+                    },
                 ],
             },
         };
@@ -198,9 +250,17 @@ describe("parsePlan", () => {
             mission: {
                 items: [
                     // NAV_TAKEOFF at lat=0,lon=0 → homePosition なしのためスキップ
-                    { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50] },
+                    {
+                        command: 22,
+                        frame: 3,
+                        params: [0, 0, 0, null, 0, 0, 50],
+                    },
                     // 通常ウェイポイント
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.5, 139.5, 80] },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, null, 35.5, 139.5, 80],
+                    },
                 ],
             },
         };
@@ -242,7 +302,10 @@ describe("parsePlan", () => {
             geoFence: {
                 circles: [
                     {
-                        circle: { center: [35.79185330892785, 139.04875075067923], radius: 148.6696453391971 },
+                        circle: {
+                            center: [35.79185330892785, 139.04875075067923],
+                            radius: 148.6696453391971,
+                        },
                         inclusion: true,
                         version: 1,
                     },
@@ -273,15 +336,101 @@ describe("parsePlan", () => {
                 hoverSpeed: 5,
                 items: [
                     // NAV_TAKEOFF at lat=0,lon=0 → ホーム座標に置換
-                    { command: 22, frame: 3, params: [0, 0, 0, null, 0, 0, 50], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78655862746033, 139.04593844937483, 75], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78479187671575, 139.043807961761, 90], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78177242, 139.03606576, 60], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.780898754866946, 139.03043500185498, 50], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.77935164, 139.02038159, 35], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.77948819, 139.01944443, 32], autoContinue: true, type: "SimpleItem" },
-                    { command: 16, frame: 3, params: [0, 0, 0, null, 35.78012772190709, 139.01597313549905, 20], autoContinue: true, type: "SimpleItem" },
-                    { command: 21, frame: 3, params: [0, 0, 0, null, 35.7801385, 139.01591839, 0], autoContinue: true, type: "SimpleItem" },
+                    {
+                        command: 22,
+                        frame: 3,
+                        params: [0, 0, 0, null, 0, 0, 50],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [
+                            0,
+                            0,
+                            0,
+                            null,
+                            35.78655862746033,
+                            139.04593844937483,
+                            75,
+                        ],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [
+                            0,
+                            0,
+                            0,
+                            null,
+                            35.78479187671575,
+                            139.043807961761,
+                            90,
+                        ],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, null, 35.78177242, 139.03606576, 60],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [
+                            0,
+                            0,
+                            0,
+                            null,
+                            35.780898754866946,
+                            139.03043500185498,
+                            50,
+                        ],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, null, 35.77935164, 139.02038159, 35],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [0, 0, 0, null, 35.77948819, 139.01944443, 32],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 16,
+                        frame: 3,
+                        params: [
+                            0,
+                            0,
+                            0,
+                            null,
+                            35.78012772190709,
+                            139.01597313549905,
+                            20,
+                        ],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
+                    {
+                        command: 21,
+                        frame: 3,
+                        params: [0, 0, 0, null, 35.7801385, 139.01591839, 0],
+                        autoContinue: true,
+                        type: "SimpleItem",
+                    },
                 ],
                 plannedHomePosition: [35.79210805, 139.04890088, 522],
                 vehicleType: 2,
@@ -300,7 +449,11 @@ describe("parsePlan", () => {
         const result = parsePlan(okutamaPlan);
 
         // ホームポジション
-        expect(result.homePosition).toEqual({ lat: 35.79210805, lon: 139.04890088, altitude: 522 });
+        expect(result.homePosition).toEqual({
+            lat: 35.79210805,
+            lon: 139.04890088,
+            altitude: 522,
+        });
 
         // NAV_TAKEOFF(lat=0,lon=0) がホーム座標に置換され、合計 9 点（NAV_TAKEOFF x1 + NAV_WAYPOINT x7 + NAV_LAND x1）
         expect(result.waypoints).toHaveLength(9);
@@ -352,15 +505,33 @@ describe("WAYPOINT_COMMANDS", () => {
 
 describe("formatWaypointLabel", () => {
     it("番号と高度を表示する", () => {
-        const wp = { number: 3, lat: 35.0, lon: 139.0, altitude: 150.7, command: 16 };
+        const wp = {
+            number: 3,
+            lat: 35.0,
+            lon: 139.0,
+            altitude: 150.7,
+            command: 16,
+        };
         expect(formatWaypointLabel(wp)).toBe("#3\n151 m");
     });
 });
 
 describe("formatWaypointEdgeLabel", () => {
     it("水平距離と高度差を表示する", () => {
-        const a = { number: 1, lat: 35.0, lon: 139.0, altitude: 100, command: 16 };
-        const b = { number: 2, lat: 35.0, lon: 139.01, altitude: 150, command: 16 };
+        const a = {
+            number: 1,
+            lat: 35.0,
+            lon: 139.0,
+            altitude: 100,
+            command: 16,
+        };
+        const b = {
+            number: 2,
+            lat: 35.0,
+            lon: 139.01,
+            altitude: 150,
+            command: 16,
+        };
         const label = formatWaypointEdgeLabel(a, b);
         expect(label).toContain("m");
         expect(label).toContain("+50 m");

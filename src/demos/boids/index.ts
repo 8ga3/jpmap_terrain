@@ -8,6 +8,8 @@
  * - Polygon API (`addPolygon`, `closed: true`) でリージョン境界を描画
  * - 地形追従 (`altitudeMode: "terrain"`, `gravity: true`)
  */
+
+import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";
 import {
@@ -15,20 +17,19 @@ import {
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
 import {
-    type BoidState,
     BOIDS_DEFAULTS,
-    updateFlock,
+    type BoidState,
     boidHeading,
+    updateFlock,
 } from "./boids";
 import {
     DEFAULT_REGION,
-    regionCorners,
-    regionBounds,
     localToGeo,
     randomPositionInRegion,
     randomVelocity,
+    regionBounds,
+    regionCorners,
 } from "./region";
-import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 
 const DEMO_MOUNT_ID = "root";
 const REGION_POLYGON_ID = "boids-region";
@@ -125,7 +126,10 @@ const start = async (): Promise<void> => {
         flock = [];
         for (let i = 0; i < count; i++) {
             const pos = randomPositionInRegion(region);
-            const vel = randomVelocity(params.minSpeed + Math.random() * (params.maxSpeed - params.minSpeed));
+            const vel = randomVelocity(
+                params.minSpeed +
+                    Math.random() * (params.maxSpeed - params.minSpeed),
+            );
             flock.push({ x: pos.x, y: pos.y, vx: vel.vx, vy: vel.vy });
 
             const geo = localToGeo(pos.x, pos.y, region);
@@ -154,7 +158,8 @@ const start = async (): Promise<void> => {
             for (let i = oldCount; i < newCount; i++) {
                 const pos = randomPositionInRegion(region);
                 const vel = randomVelocity(
-                    params.minSpeed + Math.random() * (params.maxSpeed - params.minSpeed),
+                    params.minSpeed +
+                        Math.random() * (params.maxSpeed - params.minSpeed),
                 );
                 flock.push({ x: pos.x, y: pos.y, vx: vel.vx, vy: vel.vy });
 
@@ -187,17 +192,28 @@ const start = async (): Promise<void> => {
     initFlock(boidCount);
 
     // --- UI 要素の取得 ---
-    const regionCenterDisplay = document.getElementById("region-center") as HTMLSpanElement | null;
-    const boidCountValue = document.getElementById("boid-count-value") as HTMLSpanElement | null;
-    const boidCountSlider = document.getElementById("boid-count-slider") as HTMLInputElement | null;
-    const togglePauseBtn = document.getElementById("toggle-pause") as HTMLButtonElement | null;
-    const restartBtn = document.getElementById("restart-btn") as HTMLButtonElement | null;
-    const flyToBtn = document.getElementById("fly-to-region") as HTMLButtonElement | null;
+    const regionCenterDisplay = document.getElementById(
+        "region-center",
+    ) as HTMLSpanElement | null;
+    const boidCountValue = document.getElementById(
+        "boid-count-value",
+    ) as HTMLSpanElement | null;
+    const boidCountSlider = document.getElementById(
+        "boid-count-slider",
+    ) as HTMLInputElement | null;
+    const togglePauseBtn = document.getElementById(
+        "toggle-pause",
+    ) as HTMLButtonElement | null;
+    const restartBtn = document.getElementById(
+        "restart-btn",
+    ) as HTMLButtonElement | null;
+    const flyToBtn = document.getElementById(
+        "fly-to-region",
+    ) as HTMLButtonElement | null;
 
     const updateDisplay = (): void => {
         if (regionCenterDisplay) {
-            regionCenterDisplay.textContent =
-                `${region.centerLat.toFixed(4)}, ${region.centerLon.toFixed(4)}`;
+            regionCenterDisplay.textContent = `${region.centerLat.toFixed(4)}, ${region.centerLon.toFixed(4)}`;
         }
         if (boidCountValue) boidCountValue.textContent = `${boidCount}`;
     };
@@ -210,7 +226,11 @@ const start = async (): Promise<void> => {
         boidCountSlider.value = String(boidCount);
         boidCountSlider.addEventListener("input", () => {
             const newCount = Number(boidCountSlider.value);
-            if (newCount !== boidCount && newCount >= 1 && newCount <= MAX_BOID_COUNT) {
+            if (
+                newCount !== boidCount &&
+                newCount >= 1 &&
+                newCount <= MAX_BOID_COUNT
+            ) {
                 boidCount = newCount;
                 resizeFlock(boidCount);
                 updateDisplay();

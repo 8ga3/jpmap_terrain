@@ -1,34 +1,34 @@
 /**
  * `dioramaControllerMapping.ts` のunit test。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-    applyStickDeadzone,
-    computeDioramaPanMetersFromStick,
-    computeFootprintHalfSizeFactorFromStick,
-    clampFootprintHalfSizeM,
-    computeDioramaRotationRadFromStick,
-    computeDioramaHeightMetersFromTriggers,
-    clampDioramaHeightOffsetM,
-    computeHeadingRadFromHorizontal,
-    rotateHorizontalUnitVector,
-    computePanAxesFromDirectionalInput,
-    snapHeadingRad,
-    DEFAULT_STICK_DEADZONE,
-    DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M,
-    DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M,
-    DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
-    DEFAULT_HEIGHT_SPEED_M_PER_SEC,
-    DEFAULT_HEIGHT_OFFSET_MIN_M,
-    DEFAULT_HEIGHT_OFFSET_MAX_M,
-    DEFAULT_HEADING_SNAP_STEP_RAD,
-    DEFAULT_HEADING_SNAP_HYSTERESIS_RAD,
-    computeHorizontalDisplacement,
-    isInsideDioramaDeadZone,
-    DEFAULT_DEAD_ZONE_HYSTERESIS_M,
     angleDeltaRad,
-    normalizeAngleRad,
     applyDPadGate,
+    applyStickDeadzone,
+    clampDioramaHeightOffsetM,
+    clampFootprintHalfSizeM,
+    computeDioramaHeightMetersFromTriggers,
+    computeDioramaPanMetersFromStick,
+    computeDioramaRotationRadFromStick,
+    computeFootprintHalfSizeFactorFromStick,
+    computeHeadingRadFromHorizontal,
+    computeHorizontalDisplacement,
+    computePanAxesFromDirectionalInput,
+    DEFAULT_DEAD_ZONE_HYSTERESIS_M,
+    DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M,
+    DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M,
+    DEFAULT_HEADING_SNAP_HYSTERESIS_RAD,
+    DEFAULT_HEADING_SNAP_STEP_RAD,
+    DEFAULT_HEIGHT_OFFSET_MAX_M,
+    DEFAULT_HEIGHT_OFFSET_MIN_M,
+    DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+    DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+    DEFAULT_STICK_DEADZONE,
+    isInsideDioramaDeadZone,
+    normalizeAngleRad,
+    rotateHorizontalUnitVector,
+    snapHeadingRad,
 } from "../src/lib/internal/diorama/dioramaControllerMapping";
 
 describe("applyStickDeadzone", () => {
@@ -93,19 +93,33 @@ describe("applyDPadGate", () => {
 
 describe("computeDioramaPanMetersFromStick", () => {
     it("入力が全てdeadzone以下なら移動量0", () => {
-        const result = computeDioramaPanMetersFromStick({ x: 0.05, y: 0.05 }, 1, 800, 0.6);
+        const result = computeDioramaPanMetersFromStick(
+            { x: 0.05, y: 0.05 },
+            1,
+            800,
+            0.6,
+        );
         expect(result.eastM).toBe(0);
         expect(result.northM).toBe(0);
     });
 
     it("dtSecondsが0以下なら移動量0", () => {
-        expect(computeDioramaPanMetersFromStick({ x: 1, y: 1 }, 0, 800, 0.6)).toEqual({ eastM: 0, northM: 0 });
-        expect(computeDioramaPanMetersFromStick({ x: 1, y: 1 }, -1, 800, 0.6)).toEqual({ eastM: 0, northM: 0 });
+        expect(
+            computeDioramaPanMetersFromStick({ x: 1, y: 1 }, 0, 800, 0.6),
+        ).toEqual({ eastM: 0, northM: 0 });
+        expect(
+            computeDioramaPanMetersFromStick({ x: 1, y: 1 }, -1, 800, 0.6),
+        ).toEqual({ eastM: 0, northM: 0 });
     });
 
     it("footprintHalfSizeMに比例した速度でx=東、-y=北方向へ移動する", () => {
         // deadzone適用後 x=1, y=1 → speed = 0.6 * 800 = 480 m/s
-        const result = computeDioramaPanMetersFromStick({ x: 1, y: 1 }, 1, 800, 0.6);
+        const result = computeDioramaPanMetersFromStick(
+            { x: 1, y: 1 },
+            1,
+            800,
+            0.6,
+        );
         expect(result.eastM).toBeCloseTo(480, 6);
         // y軸は前方向が負値の規約のため、+y入力は南（northMは負）になる。
         expect(result.northM).toBeCloseTo(-480, 6);
@@ -150,14 +164,24 @@ describe("clampFootprintHalfSizeM", () => {
     });
 
     it("下限未満は下限へ、上限超過は上限へクランプする", () => {
-        expect(clampFootprintHalfSizeM(DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M - 50)).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M);
-        expect(clampFootprintHalfSizeM(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M + 1000)).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M);
+        expect(
+            clampFootprintHalfSizeM(DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M - 50),
+        ).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M);
+        expect(
+            clampFootprintHalfSizeM(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M + 1000),
+        ).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M);
     });
 
     it("NaN/Infinityは下限側へ丸める", () => {
-        expect(clampFootprintHalfSizeM(NaN)).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M);
-        expect(clampFootprintHalfSizeM(Infinity)).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M);
-        expect(clampFootprintHalfSizeM(-Infinity)).toBe(DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M);
+        expect(clampFootprintHalfSizeM(NaN)).toBe(
+            DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M,
+        );
+        expect(clampFootprintHalfSizeM(Infinity)).toBe(
+            DEFAULT_FOOTPRINT_HALF_SIZE_MAX_M,
+        );
+        expect(clampFootprintHalfSizeM(-Infinity)).toBe(
+            DEFAULT_FOOTPRINT_HALF_SIZE_MIN_M,
+        );
     });
 
     it("カスタムのmin/maxを指定できる", () => {
@@ -189,12 +213,20 @@ describe("computeDioramaRotationRadFromStick", () => {
     });
 
     it("フルスティック入力で speed*dt の回転角を返す", () => {
-        const result = computeDioramaRotationRadFromStick(1, 1, DEFAULT_ROTATION_SPEED_RAD_PER_SEC);
+        const result = computeDioramaRotationRadFromStick(
+            1,
+            1,
+            DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+        );
         expect(result).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
     });
 
     it("負の入力で負の回転角を返す", () => {
-        const result = computeDioramaRotationRadFromStick(-1, 1, DEFAULT_ROTATION_SPEED_RAD_PER_SEC);
+        const result = computeDioramaRotationRadFromStick(
+            -1,
+            1,
+            DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+        );
         expect(result).toBeCloseTo(-DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
     });
 });
@@ -214,26 +246,52 @@ describe("computeDioramaHeightMetersFromTriggers", () => {
     });
 
     it("右トリガーのみフル押下で上昇（正の変更量）", () => {
-        const result = computeDioramaHeightMetersFromTriggers(0, 1, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC);
+        const result = computeDioramaHeightMetersFromTriggers(
+            0,
+            1,
+            1,
+            DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+        );
         expect(result).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
     });
 
     it("左トリガーのみフル押下で下降（負の変更量）", () => {
-        const result = computeDioramaHeightMetersFromTriggers(1, 0, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC);
+        const result = computeDioramaHeightMetersFromTriggers(
+            1,
+            0,
+            1,
+            DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+        );
         expect(result).toBeCloseTo(-DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
     });
 
     it("両方フル押下は相殺されて0", () => {
-        expect(computeDioramaHeightMetersFromTriggers(1, 1, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC)).toBe(0);
+        expect(
+            computeDioramaHeightMetersFromTriggers(
+                1,
+                1,
+                1,
+                DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+            ),
+        ).toBe(0);
     });
 
     it("範囲外・非有限のトリガー値は0/1へクランプしてから計算する", () => {
-        const result = computeDioramaHeightMetersFromTriggers(-1, 1.5, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC);
-        expect(result).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
-        expect(computeDioramaHeightMetersFromTriggers(NaN, 1, 1, DEFAULT_HEIGHT_SPEED_M_PER_SEC)).toBeCloseTo(
+        const result = computeDioramaHeightMetersFromTriggers(
+            -1,
+            1.5,
+            1,
             DEFAULT_HEIGHT_SPEED_M_PER_SEC,
-            10,
         );
+        expect(result).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+        expect(
+            computeDioramaHeightMetersFromTriggers(
+                NaN,
+                1,
+                1,
+                DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+            ),
+        ).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
     });
 });
 
@@ -243,8 +301,12 @@ describe("clampDioramaHeightOffsetM", () => {
     });
 
     it("下限未満は下限へ、上限超過は上限へクランプする", () => {
-        expect(clampDioramaHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MIN_M - 1)).toBe(DEFAULT_HEIGHT_OFFSET_MIN_M);
-        expect(clampDioramaHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MAX_M + 1)).toBe(DEFAULT_HEIGHT_OFFSET_MAX_M);
+        expect(clampDioramaHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MIN_M - 1)).toBe(
+            DEFAULT_HEIGHT_OFFSET_MIN_M,
+        );
+        expect(clampDioramaHeightOffsetM(DEFAULT_HEIGHT_OFFSET_MAX_M + 1)).toBe(
+            DEFAULT_HEIGHT_OFFSET_MAX_M,
+        );
     });
 
     it("NaNは0（オフセット無し）側へフォールバックしてからクランプする", () => {
@@ -262,7 +324,9 @@ describe("computeHeadingRadFromHorizontal", () => {
         expect(computeHeadingRadFromHorizontal(0, 1)).toBeCloseTo(0);
         expect(computeHeadingRadFromHorizontal(1, 0)).toBeCloseTo(Math.PI / 2);
         expect(computeHeadingRadFromHorizontal(0, -1)).toBeCloseTo(Math.PI);
-        expect(computeHeadingRadFromHorizontal(-1, 0)).toBeCloseTo(-Math.PI / 2);
+        expect(computeHeadingRadFromHorizontal(-1, 0)).toBeCloseTo(
+            -Math.PI / 2,
+        );
     });
 
     it("零ベクトル・非有限値は0を返す", () => {
@@ -280,11 +344,17 @@ describe("rotateHorizontalUnitVector", () => {
     });
 
     it("deltaRad=0は入力をそのまま返す", () => {
-        expect(rotateHorizontalUnitVector({ x: 0.6, z: 0.8 }, 0)).toEqual({ x: 0.6, z: 0.8 });
+        expect(rotateHorizontalUnitVector({ x: 0.6, z: 0.8 }, 0)).toEqual({
+            x: 0.6,
+            z: 0.8,
+        });
     });
 
     it("非有限値のdeltaRadは入力をそのまま返す", () => {
-        expect(rotateHorizontalUnitVector({ x: 0.6, z: 0.8 }, NaN)).toEqual({ x: 0.6, z: 0.8 });
+        expect(rotateHorizontalUnitVector({ x: 0.6, z: 0.8 }, NaN)).toEqual({
+            x: 0.6,
+            z: 0.8,
+        });
     });
 });
 
@@ -292,8 +362,14 @@ describe("computePanAxesFromDirectionalInput", () => {
     it("北向き基準で前進すると北（y=-1）、右移動すると東（x=1）になる", () => {
         const north = { x: 0, z: 1 };
         const east = { x: 1, z: 0 };
-        expect(computePanAxesFromDirectionalInput(1, 0, north, east)).toEqual({ x: 0, y: -1 });
-        expect(computePanAxesFromDirectionalInput(0, 1, north, east)).toEqual({ x: 1, y: 0 });
+        expect(computePanAxesFromDirectionalInput(1, 0, north, east)).toEqual({
+            x: 0,
+            y: -1,
+        });
+        expect(computePanAxesFromDirectionalInput(0, 1, north, east)).toEqual({
+            x: 1,
+            y: 0,
+        });
     });
 
     it("東向き基準で前進すると東（x=1）へ移動する（頭の向き基準の回転が反映される）", () => {
@@ -312,7 +388,14 @@ describe("computePanAxesFromDirectionalInput", () => {
     });
 
     it("入力が両方0の場合は{x:0,y:0}を返す", () => {
-        expect(computePanAxesFromDirectionalInput(0, 0, { x: 0, z: 1 }, { x: 1, z: 0 })).toEqual({ x: 0, y: 0 });
+        expect(
+            computePanAxesFromDirectionalInput(
+                0,
+                0,
+                { x: 0, z: 1 },
+                { x: 1, z: 0 },
+            ),
+        ).toEqual({ x: 0, y: 0 });
     });
 });
 
@@ -402,12 +485,21 @@ describe("computeHorizontalDisplacement", () => {
     });
 
     it("fromとtoが同一（距離0）の場合は{x:0,z:0}・距離0を返す", () => {
-        expect(computeHorizontalDisplacement(1, 1, 1, 1)).toEqual({ unit: { x: 0, z: 0 }, distanceM: 0 });
+        expect(computeHorizontalDisplacement(1, 1, 1, 1)).toEqual({
+            unit: { x: 0, z: 0 },
+            distanceM: 0,
+        });
     });
 
     it("非有限値を含む場合は{x:0,z:0}・距離0を返す", () => {
-        expect(computeHorizontalDisplacement(NaN, 0, 0, 0)).toEqual({ unit: { x: 0, z: 0 }, distanceM: 0 });
-        expect(computeHorizontalDisplacement(0, 0, Infinity, 0)).toEqual({ unit: { x: 0, z: 0 }, distanceM: 0 });
+        expect(computeHorizontalDisplacement(NaN, 0, 0, 0)).toEqual({
+            unit: { x: 0, z: 0 },
+            distanceM: 0,
+        });
+        expect(computeHorizontalDisplacement(0, 0, Infinity, 0)).toEqual({
+            unit: { x: 0, z: 0 },
+            distanceM: 0,
+        });
     });
 });
 
@@ -443,4 +535,3 @@ describe("isInsideDioramaDeadZone", () => {
         expect(isInsideDioramaDeadZone(0.1, true, -1)).toBe(true);
     });
 });
-

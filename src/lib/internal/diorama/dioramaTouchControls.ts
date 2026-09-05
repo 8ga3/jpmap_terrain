@@ -61,16 +61,20 @@
  * 前方向・右方向を `-rotationRad` だけ回転させてから使う（AR中の実装
  * （`dioramaArControls.ts`の`rotateHorizontalUnitVector`呼び出し）と同じ補正方式）。
  */
-import type { Scene } from "@babylonjs/core/scene";
+
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-
-import type { DioramaViewController } from "./dioramaViewController";
+import type { Scene } from "@babylonjs/core/scene";
+import type { DioramaArControlHud } from "./dioramaArControlHud";
+import {
+    computePanAxesFromDirectionalInput,
+    rotateHorizontalUnitVector,
+    type StickAxes,
+} from "./dioramaControllerMapping";
+import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
-import type { DioramaArControlHud } from "./dioramaArControlHud";
-import { computePanAxesFromDirectionalInput, rotateHorizontalUnitVector, type StickAxes } from "./dioramaControllerMapping";
-import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
+import type { DioramaViewController } from "./dioramaViewController";
 
 export interface DioramaTouchControls {
     /**
@@ -102,7 +106,9 @@ export const setupDioramaTouchControls = (
 ): DioramaTouchControls => {
     let visible = true;
 
-    const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
+    const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() =>
+        tileModeController.cycle(),
+    );
 
     // ローカル軸ベクトル自体は不変（シーンの座標系設定にのみ依存）なため、
     // 毎フレーム生成せずセットアップ時に一度だけ生成して使い回す。
@@ -132,8 +138,16 @@ export const setupDioramaTouchControls = (
                 getHorizontalDirectionUnit(camera, localForwardAxis),
                 -rotationRad,
             );
-            const rightUnit = rotateHorizontalUnitVector(getHorizontalDirectionUnit(camera, localRightAxis), -rotationRad);
-            panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
+            const rightUnit = rotateHorizontalUnitVector(
+                getHorizontalDirectionUnit(camera, localRightAxis),
+                -rotationRad,
+            );
+            panAxes = computePanAxesFromDirectionalInput(
+                forwardAxis,
+                rightAxis,
+                forwardUnit,
+                rightUnit,
+            );
         }
         viewController.feedAxes(panAxes, hud.getZoomAxis(), dtSeconds);
 
@@ -142,7 +156,12 @@ export const setupDioramaTouchControls = (
         const heightAxis = hud.getHeightAxis();
         const rightTriggerValue = Math.max(0, heightAxis);
         const leftTriggerValue = Math.max(0, -heightAxis);
-        orientationController.feedAxes(hud.getRotationAxis(), leftTriggerValue, rightTriggerValue, dtSeconds);
+        orientationController.feedAxes(
+            hud.getRotationAxis(),
+            leftTriggerValue,
+            rightTriggerValue,
+            dtSeconds,
+        );
     });
 
     return {

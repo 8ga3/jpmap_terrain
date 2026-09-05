@@ -6,11 +6,7 @@
  * `globeSceneController` のアダプタ（`createGlobeMarkerManagerAdapter` 等）がこの契約を実装する。
  */
 
-import type {
-    MarkerHandle,
-    MarkerOptions,
-    MarkerUpdate,
-} from "../lib/types";
+import type { MarkerHandle, MarkerOptions, MarkerUpdate } from "../lib/types";
 
 export interface MarkerManager {
     add(id: string, options: MarkerOptions): MarkerHandle;

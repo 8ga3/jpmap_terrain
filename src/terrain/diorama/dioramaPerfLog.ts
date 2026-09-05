@@ -22,7 +22,10 @@ const PERF_LOG_PREFIX = "[diorama-perf]";
  * @param label 計測対象を識別するラベル（例: "tiles-fetch-compose"）。
  * @param fn    計測対象の非同期処理。
  */
-export const measureAsync = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+export const measureAsync = async <T>(
+    label: string,
+    fn: () => Promise<T>,
+): Promise<T> => {
     if (process.env.NODE_ENV === "production") {
         return fn();
     }

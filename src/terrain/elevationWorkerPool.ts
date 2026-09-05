@@ -34,7 +34,9 @@ export const createElevationWorkerPool = (
     // Worker が使えない（テスト / SSR）場合は sync 実装を返す
     if (!isWorkerAvailable()) {
         return {
-            run(req: ElevationComputeRequest): Promise<ElevationComputeResponse> {
+            run(
+                req: ElevationComputeRequest,
+            ): Promise<ElevationComputeResponse> {
                 return Promise.resolve(computeElevationAndNormalsSync(req));
             },
             dispose(): void {
@@ -68,7 +70,9 @@ export const createElevationWorkerPool = (
             w.onerror = (ev: ErrorEvent) => {
                 // workerのエラー時は、未解決タスクをまとめて reject。
                 for (const [, task] of pending) {
-                    task.reject(ev.error ?? new Error("elevation worker error"));
+                    task.reject(
+                        ev.error ?? new Error("elevation worker error"),
+                    );
                 }
                 pending.clear();
             };
@@ -90,7 +94,9 @@ export const createElevationWorkerPool = (
     // Worker 生成に全失敗した場合は sync fallback
     if (workers.length === 0) {
         return {
-            run(req: ElevationComputeRequest): Promise<ElevationComputeResponse> {
+            run(
+                req: ElevationComputeRequest,
+            ): Promise<ElevationComputeResponse> {
                 return Promise.resolve(computeElevationAndNormalsSync(req));
             },
             dispose(): void {

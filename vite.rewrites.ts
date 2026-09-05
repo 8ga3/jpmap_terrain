@@ -1,5 +1,5 @@
-import type { Connect, Plugin } from "vite";
 import type { ServerResponse } from "node:http";
+import type { Connect, Plugin } from "vite";
 
 /**
  * SPA fallback ルーティング定義。
@@ -63,12 +63,12 @@ export const STATIC_REDIRECTS_FILENAME = "_redirects";
 export const buildStaticRedirectsFile = (
     demoNames: readonly string[] = DEMO_NAMES,
 ): string =>
-    demoNames
+    `${demoNames
         .flatMap((name) => [
             `/${name} /${name}.html 200`,
             `/${name}/* /${name}.html 200`,
         ])
-        .join("\n") + "\n";
+        .join("\n")}\n`;
 
 /** リクエスト URL をデモ識別子付きパスから該当 HTML パスへ書き換える共通ハンドラ。 */
 function rewriteMiddleware(

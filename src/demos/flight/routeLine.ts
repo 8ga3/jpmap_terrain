@@ -11,17 +11,16 @@
  * - Babylon.js CreateRibbon + StandardMaterial + 頂点カラーで実装
  */
 
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
-
-import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
-import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
+import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
+import { circularOrbitHeading, circularOrbitPosition } from "../avatar/orbit";
 
 // ─── 調整可能な定数 ─────────────────────────────────────
 /** 飛行機中心から先頭までの距離 (m) */
@@ -80,7 +79,7 @@ const smoothstep = (edge0: number, edge1: number, x: number): number => {
  * 両端を smoothstep でフェードアウトする。
  */
 const computeGradientColor = (t: number, timeSec: number): Color4 => {
-    const phase = ((t * 2.0 + timeSec * 0.4) % 1.0 + 1.0) % 1.0;
+    const phase = (((t * 2.0 + timeSec * 0.4) % 1.0) + 1.0) % 1.0;
     const c1 = { r: 0.0, g: 0.8, b: 1.0 };
     const c2 = { r: 1.0, g: 0.2, b: 0.6 };
     const c3 = { r: 1.0, g: 0.9, b: 0.1 };
@@ -164,7 +163,12 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         const endArcLen = ROUTE_START_OFFSET_M + ROUTE_LENGTH_M;
 
         // 飛行機の現在 lat/lon
-        const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
+        const planePos = circularOrbitPosition(
+            centerLat,
+            centerLon,
+            radiusM,
+            angleDeg,
+        );
 
         // リボンは機体直近（近接）のため、頂点を真の ECEF（~6.4e6）で焼くと
         // float32 精度（~0.5m）のジッターが目立つ。そこで機体直下を **アンカー（真の
@@ -185,7 +189,12 @@ export const createRouteLine = (scene: Scene): RouteLine => {
             const futureAngle = angleDeg + deltaAngleDeg;
 
             // 未来の位置を lat/lon で計算
-            const futurePos = circularOrbitPosition(centerLat, centerLon, radiusM, futureAngle);
+            const futurePos = circularOrbitPosition(
+                centerLat,
+                centerLon,
+                radiusM,
+                futureAngle,
+            );
 
             // 未来点での接線方向（進行方向に垂直にリボン幅を出す）
             const futureHeading = circularOrbitHeading(futureAngle);
@@ -222,8 +231,8 @@ export const createRouteLine = (scene: Scene): RouteLine => {
 
             // 頂点カラーを colorBuffer に直接書き込み (path0[i], path1[i] それぞれ)
             const col = computeGradientColor(t, timeSec);
-            const idx0 = i * 4;                      // path0 側
-            const idx1 = (SAMPLE_COUNT + i) * 4;     // path1 側
+            const idx0 = i * 4; // path0 側
+            const idx1 = (SAMPLE_COUNT + i) * 4; // path1 側
             colorBuffer[idx0] = col.r;
             colorBuffer[idx0 + 1] = col.g;
             colorBuffer[idx0 + 2] = col.b;
@@ -235,10 +244,11 @@ export const createRouteLine = (scene: Scene): RouteLine => {
         }
 
         // Ribbon を更新 (instance 指定時は同じ Mesh が返る)
-        CreateRibbon(
-            "flightRouteRibbon",
-            { pathArray, updatable: true, instance: ribbon },
-        );
+        CreateRibbon("flightRouteRibbon", {
+            pathArray,
+            updatable: true,
+            instance: ribbon,
+        });
 
         // 頂点カラーバッファを更新
         if (!colorBufferInitialized) {

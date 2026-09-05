@@ -5,9 +5,9 @@
  * CRUD / enable / update / dispose 後ガード / validateIconUrl 投げ直し /
  * 非 hex 線色フォールバックを検証する（Vector3 / Quaternion / Color3 / overlayPlacement は実物）。
  */
-import { vi } from "vitest";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { vi } from "vitest";
 
 /** スタブ mesh（position / scaling は実 Vector3 で copyFrom/addInPlace/set を効かせる）。 */
 interface StubMesh {
@@ -70,12 +70,19 @@ vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
 
 const validateIconUrl = vi.fn((url: string) => {
     if (/^javascript:/i.test(url.trim())) {
-        throw new Error("addMarker: icon.url has disallowed scheme: javascript:");
+        throw new Error(
+            "addMarker: icon.url has disallowed scheme: javascript:",
+        );
     }
 });
 
 const createdIconTexts: {
-    mesh: { enabled: boolean; isPickable: boolean; position: Vector3; scaling: Vector3 };
+    mesh: {
+        enabled: boolean;
+        isPickable: boolean;
+        position: Vector3;
+        scaling: Vector3;
+    };
     disposed: boolean;
 }[] = [];
 vi.mock("../src/terrain/marker", () => ({
@@ -83,8 +90,14 @@ vi.mock("../src/terrain/marker", () => ({
     validateIconUrl,
     resolveIcon: (icon?: { url: string }) =>
         icon ? { url: icon.url, width: 24, height: 24 } : null,
-    resolveText: (text?: { value: string }) => (text ? { value: text.value } : null),
-    createIconTextMesh: (_scene: unknown, _id: string, icon: unknown, text: unknown) => {
+    resolveText: (text?: { value: string }) =>
+        text ? { value: text.value } : null,
+    createIconTextMesh: (
+        _scene: unknown,
+        _id: string,
+        icon: unknown,
+        text: unknown,
+    ) => {
         if (!icon && !text) return null;
         const it = {
             mesh: {
@@ -118,7 +131,9 @@ const { describe, it, expect, beforeEach } = await import("vitest");
 
 const makeManager = () => {
     // 2 引数型の変数として宣言し（toHaveBeenCalledWith(lat,lon) のため）、本体は引数未使用の mock。
-    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => 1000);
+    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(
+        () => 1000,
+    );
     const mgr = createGlobeMarkerManager({ scene: {} as never, terrainElevAt });
     return { mgr, terrainElevAt };
 };
@@ -142,7 +157,9 @@ describe("CRUD", () => {
         const { mgr } = makeManager();
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
         // update を呼ぶ前でも placeNode により地表へ配置済み（チラつき防止）。
-        expect(createdCylinders[0].position.length()).toBeGreaterThan(6_000_000);
+        expect(createdCylinders[0].position.length()).toBeGreaterThan(
+            6_000_000,
+        );
     });
 
     it("ポールは isPickable=false / renderingGroupId=0（地形と同グループ）", () => {
@@ -172,7 +189,9 @@ describe("CRUD", () => {
         const { mgr } = makeManager();
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         expect(() => mgr.remove("nope")).not.toThrow();
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('id "nope" not found'),
+        );
         warn.mockRestore();
     });
 
@@ -209,10 +228,12 @@ describe("update", () => {
     it("terrainElevAt が null のときは直前標高を保持する（楕円体へ落とさない）", () => {
         // 標高 5000m → 途中で null（前景タイル未ロード相当）に変化させる。
         let elevReturn: number | null = 5000;
-        const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(
-            () => elevReturn,
-        );
-        const mgr = createGlobeMarkerManager({ scene: {} as never, terrainElevAt });
+        const terrainElevAt: (lat: number, lon: number) => number | null =
+            vi.fn(() => elevReturn);
+        const mgr = createGlobeMarkerManager({
+            scene: {} as never,
+            terrainElevAt,
+        });
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } }); // lastElev=5000
         const cam = new Vector3(7_000_000, 0, 0);
         mgr.update(cam); // elev=5000
@@ -220,9 +241,13 @@ describe("update", () => {
         elevReturn = null;
         mgr.update(cam); // null → 直前 5000 を維持
         // 位置がほぼ同じ（楕円体面へ落ちて大きく変わらない）。
-        expect(Vector3.Distance(createdCylinders[0].position, after5000)).toBeLessThan(1);
+        expect(
+            Vector3.Distance(createdCylinders[0].position, after5000),
+        ).toBeLessThan(1);
         // 5000m 接地は楕円体面(elev=0)より地心距離が大きいことの傍証として十分大きい。
-        expect(createdCylinders[0].position.length()).toBeGreaterThan(6_300_000);
+        expect(createdCylinders[0].position.length()).toBeGreaterThan(
+            6_300_000,
+        );
     });
 });
 
@@ -284,9 +309,9 @@ describe("dispose 後ガード", () => {
     it("dispose 後の add は throw する", () => {
         const { mgr } = makeManager();
         mgr.dispose();
-        expect(() => mgr.add({ lat: 35, lon: 139, text: { value: "A" } })).toThrow(
-            /after dispose/,
-        );
+        expect(() =>
+            mgr.add({ lat: 35, lon: 139, text: { value: "A" } }),
+        ).toThrow(/after dispose/);
     });
 
     it("二重 dispose は安全（throw しない）", () => {
@@ -307,7 +332,9 @@ describe("dispose 後ガード", () => {
         const { mgr } = makeManager();
         mgr.add({ lat: 35, lon: 139, text: { value: "A" } });
         mgr.dispose();
-        expect(() => mgr.update(new Vector3(7_000_000, 0, 0))).toThrow(/after dispose/);
+        expect(() => mgr.update(new Vector3(7_000_000, 0, 0))).toThrow(
+            /after dispose/,
+        );
     });
 });
 
@@ -315,7 +342,11 @@ describe("icon URL 検証の投げ直し", () => {
     it("危険スキームは GlobeMarkerManager.add 由来 + id を含めて投げ直す", () => {
         const { mgr } = makeManager();
         expect(() =>
-            mgr.add({ lat: 35, lon: 139, icon: { url: "javascript:alert(1)" } }),
+            mgr.add({
+                lat: 35,
+                lon: 139,
+                icon: { url: "javascript:alert(1)" },
+            }),
         ).toThrow(/GlobeMarkerManager\.add \(globe-marker-\d+\):/);
         expect(validateIconUrl).toHaveBeenCalled();
     });
@@ -325,7 +356,12 @@ describe("線色フォールバック", () => {
     it("非 hex の CSS color でも例外にならない（既定色フォールバック）", () => {
         const { mgr } = makeManager();
         expect(() =>
-            mgr.add({ lat: 35, lon: 139, text: { value: "A" }, line: { color: "red" } }),
+            mgr.add({
+                lat: 35,
+                lon: 139,
+                text: { value: "A" },
+                line: { color: "red" },
+            }),
         ).not.toThrow();
     });
 });

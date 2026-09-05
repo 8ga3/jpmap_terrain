@@ -197,7 +197,11 @@ export interface TerrainClickEvent {
     /** クリック地点の標高 (m, 海抜) */
     readonly altitude: number;
     /** Babylon.js ワールド座標 */
-    readonly world: { readonly x: number; readonly y: number; readonly z: number };
+    readonly world: {
+        readonly x: number;
+        readonly y: number;
+        readonly z: number;
+    };
     /** 元の `PointerEvent`（修飾キー判定等のため） */
     readonly pointerEvent: PointerEvent;
 }
@@ -597,10 +601,12 @@ export const resolvePolygonStyle = (
     pointOpacity: style?.pointOpacity ?? POLYGON_DEFAULTS.style.pointOpacity,
     dropLineColor: style?.dropLineColor ?? POLYGON_DEFAULTS.style.dropLineColor,
     dropLineWidth: style?.dropLineWidth ?? POLYGON_DEFAULTS.style.dropLineWidth,
-    dropLineOpacity: style?.dropLineOpacity ?? POLYGON_DEFAULTS.style.dropLineOpacity,
+    dropLineOpacity:
+        style?.dropLineOpacity ?? POLYGON_DEFAULTS.style.dropLineOpacity,
     labelColor: style?.labelColor ?? POLYGON_DEFAULTS.style.labelColor,
     labelBackgroundColor:
-        style?.labelBackgroundColor ?? POLYGON_DEFAULTS.style.labelBackgroundColor,
+        style?.labelBackgroundColor ??
+        POLYGON_DEFAULTS.style.labelBackgroundColor,
     labelFontSize: style?.labelFontSize ?? POLYGON_DEFAULTS.style.labelFontSize,
     wallColor: style?.wallColor ?? POLYGON_DEFAULTS.style.wallColor,
     wallOpacity: style?.wallOpacity ?? POLYGON_DEFAULTS.style.wallOpacity,
@@ -994,7 +1000,9 @@ export interface JpmapDioramaViewChangeEvent {
  * `JpmapDiorama.onViewChange` リスナー。
  * 中心・フットプリント半辺長のいずれかが変化した後に呼ばれる。
  */
-export type JpmapDioramaViewChangeListener = (event: JpmapDioramaViewChangeEvent) => void;
+export type JpmapDioramaViewChangeListener = (
+    event: JpmapDioramaViewChangeEvent,
+) => void;
 
 /** `JpmapDiorama.onTileModeChange` リスナー。タイル種別が変化した後に呼ばれる。 */
 export type DioramaTileModeChangeListener = (tileMode: DioramaTileMode) => void;

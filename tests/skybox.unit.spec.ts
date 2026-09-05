@@ -3,8 +3,12 @@
  * 高度連動の宇宙度計算（`computeSpaceFactor`）を検証する。
  */
 
-import { describe, it, expect } from "vitest";
-import { computeSpaceFactor, SPACE_FADE_START_M, SPACE_FADE_END_M } from "../src/terrain/skybox";
+import { describe, expect, it } from "vitest";
+import {
+    computeSpaceFactor,
+    SPACE_FADE_END_M,
+    SPACE_FADE_START_M,
+} from "../src/terrain/skybox";
 
 describe("computeSpaceFactor", () => {
     it("開始高度以下では 0（青空）", () => {

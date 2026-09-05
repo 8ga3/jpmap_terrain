@@ -1,6 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { toTileKey, tileOffsetToWorld, worldToTileOffset, convertTileZoom, isChildOf, computeSubTileOffset } from "../src/terrain/tileTypes";
+import { describe, expect, it } from "vitest";
 import type { TileCoord } from "../src/terrain/tileTypes";
+import {
+    computeSubTileOffset,
+    convertTileZoom,
+    isChildOf,
+    tileOffsetToWorld,
+    toTileKey,
+    worldToTileOffset,
+} from "../src/terrain/tileTypes";
 
 describe("toTileKey", () => {
     it("TileCoord を 'z/x/y' 形式の文字列に変換する", () => {
@@ -58,7 +65,12 @@ describe("worldToTileOffset", () => {
 
     it("tileOffsetToWorld の逆変換が一致する", () => {
         const tileSize = 234.5;
-        for (const [origDx, origDy] of [[1, 2], [-3, 4], [0, -1], [5, 5]]) {
+        for (const [origDx, origDy] of [
+            [1, 2],
+            [-3, 4],
+            [0, -1],
+            [5, 5],
+        ]) {
             const { wx, wz } = tileOffsetToWorld(origDx, origDy, tileSize);
             const { dx, dy } = worldToTileOffset(wx, wz, tileSize);
             expect(dx).toBe(origDx);

@@ -8,9 +8,10 @@
  * zoomLevel 整合・3D⇄2D 往復での lat/lon/azimuth 保存・onViewModeChange の発火条件・
  * タイルマネージャ共有（同一インスタンス維持）を検証する。3DCG の見た目は別ゲート（HITL）。
  */
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
+
 import { Camera } from "@babylonjs/core/Cameras/camera";
+import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GlobeScene, type GlobeSceneController } from "../src/scenes/globe";
 import { ecefToGeodetic, geodeticToEcef } from "../src/terrain/geo/ecef";
@@ -42,7 +43,11 @@ const build = (
 ): Built => {
     const engine = makeEngine();
     const canvas = document.createElement("canvas");
-    const gc = new GlobeScene().createSceneWithController(engine, canvas, options);
+    const gc = new GlobeScene().createSceneWithController(
+        engine,
+        canvas,
+        options,
+    );
     // teardown は idempotent。手動呼び出しと afterEach の二重実行でも一度だけ dispose する。
     let torn = false;
     const teardown = (): void => {
@@ -69,7 +74,11 @@ describe("globe 視点モード 2D/3D", () => {
     });
 
     it("setViewMode('2d') で ORTHOGRAPHIC + pitch=0 + ortho フラスタムになる", () => {
-        const { gc, teardown } = build({ lat: 35.36, lon: 138.73, radius: 60000 });
+        const { gc, teardown } = build({
+            lat: 35.36,
+            lon: 138.73,
+            radius: 60000,
+        });
         gc.setViewMode("2d");
         expect(gc.getViewMode()).toBe("2d");
         expect(gc.camera.mode).toBe(Camera.ORTHOGRAPHIC_CAMERA);
@@ -86,7 +95,11 @@ describe("globe 視点モード 2D/3D", () => {
     });
 
     it("getZoomLevel は 2D 時のみ radiusToZoomLevel と整合する", () => {
-        const { gc, teardown } = build({ lat: 35.36, lon: 138.73, radius: 60000 });
+        const { gc, teardown } = build({
+            lat: 35.36,
+            lon: 138.73,
+            radius: 60000,
+        });
         // 3D 時は undefined。
         expect(gc.getZoomLevel()).toBeUndefined();
         gc.setViewMode("2d");
@@ -198,7 +211,11 @@ describe("globe 視点モード 2D/3D", () => {
     });
 
     it("setViewMode('2d') 直後（描画フレーム前）にオーバーレイを再アンカーして接地する", () => {
-        const { gc, teardown } = build({ lat: 35.36, lon: 138.73, radius: 60000 });
+        const { gc, teardown } = build({
+            lat: 35.36,
+            lon: 138.73,
+            radius: 60000,
+        });
         const pts = [
             { lat: 35.36, lon: 138.73 },
             { lat: 35.37, lon: 138.74 },
@@ -225,7 +242,11 @@ describe("globe 視点モード 2D/3D", () => {
         for (let i = 0; i < n; i++) {
             const p = pts[picks[i].index];
             const e = geodeticToEcef(p.lat, p.lon, 0);
-            const d = Math.hypot(picks[i].x - e.x, picks[i].y - e.y, picks[i].z - e.z);
+            const d = Math.hypot(
+                picks[i].x - e.x,
+                picks[i].y - e.y,
+                picks[i].z - e.z,
+            );
             // 接地済みなら elev=0 の楕円体表面とほぼ一致（未接地なら高度 1000m ぶんずれる）。
             expect(d).toBeLessThan(1);
         }

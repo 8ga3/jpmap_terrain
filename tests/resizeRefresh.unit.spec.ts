@@ -5,7 +5,15 @@
  * - dispose / scene.dispose で Observer 解除と保留タイマーのクリアが行われる
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    type Mock,
+    vi,
+} from "vitest";
 
 import {
     attachResizeRefresh,

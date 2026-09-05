@@ -17,40 +17,41 @@
  * - 地形追従（`altitudeMode: "terrain"`, `gravity: true`）
  *   自動スクロール追従はカメラ中心（viewer.lat/lon）駆動で行う
  */
+
+import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad";
+import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
+import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
-import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad";
-import { createDomJoystick } from "./domJoystick";
-import {
-    combineInputs,
-    keyboardVector,
-    moveVectorMagnitude,
-    movementHeading,
-    rotateByAzimuth,
-    stepPosition,
-    type MoveVector,
-} from "./movement";
 import {
     computeAutoScroll,
     DEFAULT_DEADZONE_RATIO,
     DEFAULT_SCROLL_LERP,
 } from "./autoScroll";
 import { computeCameraControl } from "./cameraControl";
+import { createDomJoystick } from "./domJoystick";
 import {
     DEFAULT_GRAVITY,
     DEFAULT_JUMP_HEIGHT,
     isJumping,
     JUMP_IDLE,
+    type JumpState,
     startJump,
     tickJump,
-    type JumpState,
 } from "./jump";
-import humanWalkGlbUrl from "../../../assets/human_walk.glb";
+import {
+    combineInputs,
+    keyboardVector,
+    type MoveVector,
+    movementHeading,
+    moveVectorMagnitude,
+    rotateByAzimuth,
+    stepPosition,
+} from "./movement";
 
 const METERS_PER_DEGREE_LAT = 111320;
 
@@ -190,7 +191,9 @@ const start = async (): Promise<void> => {
     // --- 入力: Virtual Joystick（左下に常時表示） ---
     // Babylon.js の VirtualJoystick は canvas が画面全体を覆ってしまうため、
     // 操作領域を左下の円形 DOM 要素に限定した独自実装を使う。
-    const overlay = document.getElementById("avatar-overlay") as HTMLElement | null;
+    const overlay = document.getElementById(
+        "avatar-overlay",
+    ) as HTMLElement | null;
     const joystick = createDomJoystick({
         parent: overlay ?? document.body,
         containerSize: 120,
@@ -286,16 +289,19 @@ const start = async (): Promise<void> => {
         if (jumpHeightDisplay) jumpHeightDisplay.textContent = `${jumpHeight}`;
         jumpHeightSlider.addEventListener("input", () => {
             jumpHeight = Number(jumpHeightSlider.value);
-            if (jumpHeightDisplay) jumpHeightDisplay.textContent = `${jumpHeight}`;
+            if (jumpHeightDisplay)
+                jumpHeightDisplay.textContent = `${jumpHeight}`;
         });
     }
 
     if (jumpGravitySlider) {
         jumpGravitySlider.value = String(jumpGravity);
-        if (jumpGravityDisplay) jumpGravityDisplay.textContent = `${jumpGravity.toFixed(1)}`;
+        if (jumpGravityDisplay)
+            jumpGravityDisplay.textContent = `${jumpGravity.toFixed(1)}`;
         jumpGravitySlider.addEventListener("input", () => {
             jumpGravity = Number(jumpGravitySlider.value);
-            if (jumpGravityDisplay) jumpGravityDisplay.textContent = `${jumpGravity.toFixed(1)}`;
+            if (jumpGravityDisplay)
+                jumpGravityDisplay.textContent = `${jumpGravity.toFixed(1)}`;
         });
     }
 
@@ -304,7 +310,9 @@ const start = async (): Promise<void> => {
     const canvas = mount.querySelector("canvas");
     if (controlsPanel && canvas) {
         canvas.tabIndex = 0;
-        const refocus = (): void => { canvas.focus(); };
+        const refocus = (): void => {
+            canvas.focus();
+        };
         controlsPanel.addEventListener("pointerup", refocus);
         controlsPanel.addEventListener("change", refocus);
     }
@@ -388,10 +396,18 @@ const start = async (): Promise<void> => {
         if (isJumping(jumpState)) {
             jumpState = tickJump(jumpState, jumpGravity, dtSec);
             // ジャンプ中はロックされた方向で水平移動
-            const jumpDir = jumpState.active ? jumpState.lockedDirection : JUMP_IDLE.lockedDirection;
+            const jumpDir = jumpState.active
+                ? jumpState.lockedDirection
+                : JUMP_IDLE.lockedDirection;
             const jumpMag = moveVectorMagnitude(jumpDir);
             if (jumpMag > MOVING_THRESHOLD) {
-                const next = stepPosition(avatarLat, avatarLon, jumpDir, speedMps, dtSec);
+                const next = stepPosition(
+                    avatarLat,
+                    avatarLon,
+                    jumpDir,
+                    speedMps,
+                    dtSec,
+                );
                 avatarLat = next.lat;
                 avatarLon = next.lon;
                 const heading = movementHeading(jumpDir);
@@ -411,7 +427,13 @@ const start = async (): Promise<void> => {
             const isMoving = mag > MOVING_THRESHOLD;
 
             if (isMoving) {
-                const next = stepPosition(avatarLat, avatarLon, input, speedMps, dtSec);
+                const next = stepPosition(
+                    avatarLat,
+                    avatarLon,
+                    input,
+                    speedMps,
+                    dtSec,
+                );
                 avatarLat = next.lat;
                 avatarLon = next.lon;
                 const heading = movementHeading(input);

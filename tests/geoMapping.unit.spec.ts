@@ -7,13 +7,13 @@
  * - 既存 gsiTile.tileCenterLatLon との整合（タイル中心ピクセル → 同じ緯度経度）
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-    totalPixelsForZoom,
-    pixelToLatLon,
     latLonToPixel,
     MERCATOR_MAX_LAT,
+    pixelToLatLon,
+    totalPixelsForZoom,
 } from "../src/terrain/geo/mapping";
 import { TILE_SIZE, tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
 

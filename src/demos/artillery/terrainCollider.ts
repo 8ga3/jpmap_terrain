@@ -9,11 +9,12 @@
  * 砲弾はこの不可視コリジョンメッシュに衝突し、Havok が衝突法線込みで
  * 正しくバウンドを計算する（斜面でも自然な反射）。
  */
-import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
+
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate";
-import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
+import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate";
 import type { Scene } from "@babylonjs/core/scene";
 
 export interface TerrainColliderOptions {
@@ -184,9 +185,14 @@ export const fillMissingHeights = (
 };
 
 const NEIGHBOR_OFFSETS: readonly (readonly [number, number])[] = [
-    [-1, -1], [0, -1], [1, -1],
-    [-1, 0], [1, 0],
-    [-1, 1], [0, 1], [1, 1],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
 ];
 
 const hasValidNeighbor = (

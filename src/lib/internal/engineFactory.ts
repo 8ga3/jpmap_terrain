@@ -9,7 +9,7 @@
  * - vitest 環境では `@babylonjs/core/Engines/*` をモックして本ファイル全体を差し替える前提。
  */
 
-import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 

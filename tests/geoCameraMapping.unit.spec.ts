@@ -8,25 +8,29 @@
  * - clampRadiusForGroundClearance: 潜り込み補正・既クリアランス・水平視の発散回避
  */
 
-import { describe, it, expect, vi } from "vitest";
-
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
-import { DEG2RAD, geodeticToEcef, ecefToGeodetic, type Geodetic } from "../src/terrain/geo/ecef";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { describe, expect, it, vi } from "vitest";
 import {
-    uiToYawPitch,
-    yawPitchToUi,
-    geographicTangentBasisToRef,
     cameraTangentBasisToRef,
+    clampRadiusForGroundClearance,
+    geographicTangentBasisToRef,
     panCenterOnSphereToRef,
     polePanSpeedMultiplier,
-    clampRadiusForGroundClearance,
-    stepGroundClearanceRadius,
     rayEllipsoidNearHitToRef,
-    resolveTerrainClickElevationToRef,
     resolveRecalcCenterSource,
+    resolveTerrainClickElevationToRef,
+    stepGroundClearanceRadius,
+    uiToYawPitch,
+    yawPitchToUi,
 } from "../src/terrain/geo/cameraMapping";
+import {
+    DEG2RAD,
+    ecefToGeodetic,
+    type Geodetic,
+    geodeticToEcef,
+} from "../src/terrain/geo/ecef";
 
 describe("uiToYawPitch / yawPitchToUi", () => {
     it("azimuth/tilt[deg] → yaw/pitch[rad]", () => {
@@ -94,7 +98,10 @@ describe("cameraTangentBasisToRef", () => {
         const center = geodeticToEcef(35, 139, 0);
         const up = center.clone().normalize();
         // 真下より傾けた視線（up に直交しない適当な lookAt）。
-        const lookAt = up.scale(-1).add(new Vector3(0.3, 0, 0)).normalize();
+        const lookAt = up
+            .scale(-1)
+            .add(new Vector3(0.3, 0, 0))
+            .normalize();
         const right = new Vector3();
         const fwd = new Vector3();
         expect(cameraTangentBasisToRef(center, lookAt, right, fwd)).toBe(true);
@@ -145,7 +152,9 @@ describe("panCenterOnSphereToRef", () => {
 describe("clampRadiusForGroundClearance", () => {
     it("クリアランスを満たしていれば radius 不変", () => {
         // camAlt=5000, terrain=1000, clearance=300 → 余裕あり
-        expect(clampRadiusForGroundClearance(60000, 5000, 1000, 300, 0.8)).toBe(60000);
+        expect(clampRadiusForGroundClearance(60000, 5000, 1000, 300, 0.8)).toBe(
+            60000,
+        );
     });
 
     it("潜り込み（camAlt < terrain+clearance）は radius を増やす", () => {
@@ -160,8 +169,12 @@ describe("clampRadiusForGroundClearance", () => {
 
     it("dAltPerRadius が非有限（NaN/Infinity）でも radius を破壊しない", () => {
         // NaN は < 1e-3 判定を素通りするため明示ガードが必要（camera.radius=NaN 防止）。
-        expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, NaN)).toBe(1000);
-        expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, Infinity)).toBe(1000);
+        expect(clampRadiusForGroundClearance(1000, 0, 1000, 300, NaN)).toBe(
+            1000,
+        );
+        expect(
+            clampRadiusForGroundClearance(1000, 0, 1000, 300, Infinity),
+        ).toBe(1000);
     });
 });
 
@@ -173,7 +186,16 @@ describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ�
 
     it("クリアランスに余裕があれば radius/boost は変化しない", () => {
         // camAlt=5000 >> terrain(1000)+MIN。boost=0。
-        const s = stepGroundClearanceRadius(60000, 0, 5000, 1000, MIN, D, PUSH, RELAX);
+        const s = stepGroundClearanceRadius(
+            60000,
+            0,
+            5000,
+            1000,
+            MIN,
+            D,
+            PUSH,
+            RELAX,
+        );
         expect(s.radius).toBeCloseTo(60000, 6);
         expect(s.boost).toBeCloseTo(0, 6);
     });
@@ -181,7 +203,16 @@ describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ�
     it("潜り込み時は 1 フレームで一気に必要 radius へ跳ねず、押し出しは PUSH 補間で緩やか", () => {
         // naturalRadius=1000, camAlt=1100, terrain=1000, MIN=300 → deficit=200,
         // required=1000+200/0.5=1400, targetBoost=400。1フレーム目 boost=400*PUSH=120。
-        const s = stepGroundClearanceRadius(1000, 0, 1100, 1000, 300, D, PUSH, RELAX);
+        const s = stepGroundClearanceRadius(
+            1000,
+            0,
+            1100,
+            1000,
+            300,
+            D,
+            PUSH,
+            RELAX,
+        );
         expect(s.boost).toBeCloseTo(120, 6);
         expect(s.radius).toBeCloseTo(1120, 6);
         // 直接代入（1400）より小さい＝一段でジャンプしない。
@@ -196,7 +227,16 @@ describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ�
         const baseAlt = 1100;
         for (let i = 0; i < 60; i++) {
             const camAlt = baseAlt + (radius - baseRadius) * D;
-            const s = stepGroundClearanceRadius(radius, boost, camAlt, 1000, 300, D, PUSH, RELAX);
+            const s = stepGroundClearanceRadius(
+                radius,
+                boost,
+                camAlt,
+                1000,
+                300,
+                D,
+                PUSH,
+                RELAX,
+            );
             radius = s.radius;
             boost = s.boost;
         }
@@ -210,7 +250,16 @@ describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ�
         // deficit = 1000+300-1100 = 200 > 0 だが clampRadiusForGroundClearance は
         // dAltPerRadius<1e-3 ガードで naturalRadius 据え置き → 押し出せない。
         // このフレームは relax で追加分を戻さず現状維持すべき。
-        const s = stepGroundClearanceRadius(1400, 400, 1100, 1000, 300, 0, PUSH, RELAX);
+        const s = stepGroundClearanceRadius(
+            1400,
+            400,
+            1100,
+            1000,
+            300,
+            0,
+            PUSH,
+            RELAX,
+        );
         expect(s.radius).toBe(1400);
         expect(s.boost).toBe(400);
     });
@@ -222,7 +271,16 @@ describe("stepGroundClearanceRadius (地形衝突 radius 補正のスムーズ�
         let boost = 400;
         // RELAX=0.1 の指数減衰で 0 へ漸近する。十分なフレーム数で素の値へ戻ることを確認。
         for (let i = 0; i < 200; i++) {
-            const s = stepGroundClearanceRadius(radius, boost, 5000, 0, MIN, D, PUSH, RELAX);
+            const s = stepGroundClearanceRadius(
+                radius,
+                boost,
+                5000,
+                0,
+                MIN,
+                D,
+                PUSH,
+                RELAX,
+            );
             radius = s.radius;
             boost = s.boost;
         }
@@ -288,8 +346,12 @@ describe("rayEllipsoidNearHitToRef", () => {
         const scaledDir = unitDir.scale(7.5); // 長さ 7.5 倍
         const refUnit = new Vector3();
         const refScaled = new Vector3();
-        expect(rayEllipsoidNearHitToRef(origin, unitDir, R, R, R, refUnit)).toBe(true);
-        expect(rayEllipsoidNearHitToRef(origin, scaledDir, R, R, R, refScaled)).toBe(true);
+        expect(
+            rayEllipsoidNearHitToRef(origin, unitDir, R, R, R, refUnit),
+        ).toBe(true);
+        expect(
+            rayEllipsoidNearHitToRef(origin, scaledDir, R, R, R, refScaled),
+        ).toBe(true);
         expect(Vector3.Distance(refUnit, refScaled)).toBeLessThan(1e-6);
     });
 
@@ -307,7 +369,9 @@ describe("rayEllipsoidNearHitToRef", () => {
         ];
         for (const [rx, ry, rz] of cases) {
             ref.copyFromFloats(123, 123, 123); // 事前値（書き換わらないこと）
-            expect(rayEllipsoidNearHitToRef(origin, dir, rx, ry, rz, ref)).toBe(false);
+            expect(rayEllipsoidNearHitToRef(origin, dir, rx, ry, rz, ref)).toBe(
+                false,
+            );
             expect(ref.x).toBe(123); // ref は変更されない
             expect(Number.isNaN(ref.x)).toBe(false);
         }
@@ -324,7 +388,9 @@ describe("rayEllipsoidNearHitToRef", () => {
         ];
         for (const [origin, dir] of badInputs) {
             ref.copyFromFloats(123, 123, 123);
-            expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(false);
+            expect(rayEllipsoidNearHitToRef(origin, dir, R, R, R, ref)).toBe(
+                false,
+            );
             expect(ref.x).toBe(123);
             expect(Number.isNaN(ref.x)).toBe(false);
         }
@@ -344,7 +410,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            origin, dirDown, R, R, () => 500, 5000, 20, 20, 20, 16, outHit, geo,
+            origin,
+            dirDown,
+            R,
+            R,
+            () => 500,
+            5000,
+            20,
+            20,
+            20,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         expect(geo.altMeters).toBeCloseTo(500, 1);
@@ -356,12 +433,21 @@ describe("resolveTerrainClickElevationToRef", () => {
         const geo = emptyGeo();
         let calls = 0;
         const hit = resolveTerrainClickElevationToRef(
-            origin, dirDown, R, R,
+            origin,
+            dirDown,
+            R,
+            R,
             () => {
                 calls++;
                 return null;
             },
-            5000, 20, 20, 20, 16, outHit, geo,
+            5000,
+            20,
+            20,
+            20,
+            16,
+            outHit,
+            geo,
         );
         expect(calls).toBeGreaterThan(0);
         expect(hit).toBe(true);
@@ -380,7 +466,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            insideOrigin, dir, R, R, terrainElevAt, 5000, 20, 20, 20, 16, outHit, geo,
+            insideOrigin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            20,
+            20,
+            20,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         // 海面交点（半径R、標高0）にフォールバックするはず。外殻（標高5000）の遠方点に
@@ -395,7 +492,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3(123, 456, 789);
         const geo: Geodetic = { latDeg: 111, lonDeg: 222, altMeters: 333 };
         const hit = resolveTerrainClickElevationToRef(
-            spaceOrigin, spaceDir, R, R, () => 0, 5000, 20, 20, 20, 16, outHit, geo,
+            spaceOrigin,
+            spaceDir,
+            R,
+            R,
+            () => 0,
+            5000,
+            20,
+            20,
+            20,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(false);
         expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
@@ -414,7 +522,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            origin, dir, R, R, terrainElevAt, 5000, 20, 20, 20, 16, outHit, geo,
+            origin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            20,
+            20,
+            20,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         const distinctLat = new Set(seenLat.map((l) => l.toFixed(8)));
@@ -429,7 +548,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            lowOrigin, dirDown, R, R, () => 50, 5000, 20, 20, 20, 16, outHit, geo,
+            lowOrigin,
+            dirDown,
+            R,
+            R,
+            () => 50,
+            5000,
+            20,
+            20,
+            20,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         expect(geo.altMeters).toBeCloseTo(50, 1);
@@ -445,7 +575,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            origin, dir, R, R, terrainElevAt, 5000, 20, 200, 200, 16, outHit, geo,
+            origin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            20,
+            200,
+            200,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         // 山の手前斜面で止まるはず（山を貫通して奥の平地[緯度0.04以降]まで進んでいない）。
@@ -463,7 +604,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            origin, dir, R, R, terrainElevAt, 5000, 20, 20, 2000, 16, outHit, geo,
+            origin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            20,
+            20,
+            2000,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         expect(geo.latDeg).toBeLessThan(0.021);
@@ -483,7 +635,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            origin, dir, R, R, terrainElevAt, 5000, 1_000_000, 1, 1, 16, outHit, geo,
+            origin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            1_000_000,
+            1,
+            1,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         // 尾根を検出できず、平地（標高0付近）に着地してしまう。
@@ -513,7 +676,11 @@ describe("resolveTerrainClickElevationToRef", () => {
         const camAlt = 500;
         const camOrigin = new Vector3(A + camAlt, 0, 0);
         const downAngle = 0.02; // ローカル水平（+Z接線）からの下向き角[rad]
-        const dir = new Vector3(-Math.sin(downAngle), 0, -Math.cos(downAngle)).normalize();
+        const dir = new Vector3(
+            -Math.sin(downAngle),
+            0,
+            -Math.cos(downAngle),
+        ).normalize();
 
         // このテストの探索区間（約28km）は idealSteps が全域細分の上限を超えるため、
         // 実装側の one-shot 警告（narrow terrain may be missed）が発火する。想定内の警告
@@ -525,7 +692,18 @@ describe("resolveTerrainClickElevationToRef", () => {
             const flatHit = new Vector3();
             const flatGeo = emptyGeo();
             const gotFlat = resolveTerrainClickElevationToRef(
-                camOrigin, dir, A, B, () => 0, 5000, 5, 20, 300, 16, flatHit, flatGeo,
+                camOrigin,
+                dir,
+                A,
+                B,
+                () => 0,
+                5000,
+                5,
+                20,
+                300,
+                16,
+                flatHit,
+                flatGeo,
             );
             expect(gotFlat).toBe(true);
             const tFar = flatHit.subtract(camOrigin).length(); // ≈ 28121m
@@ -548,12 +726,25 @@ describe("resolveTerrainClickElevationToRef", () => {
             expect(Math.abs(latSampleB - gapLat)).toBeGreaterThan(halfBandDeg); // 奥サンプルは帯外
             const ridgeElevM = 300;
             const terrainElevAt = (latDeg: number): number =>
-                latDeg > gapLat - halfBandDeg && latDeg < gapLat + halfBandDeg ? ridgeElevM : 0;
+                latDeg > gapLat - halfBandDeg && latDeg < gapLat + halfBandDeg
+                    ? ridgeElevM
+                    : 0;
 
             const outHit = new Vector3();
             const geo = emptyGeo();
             const hit = resolveTerrainClickElevationToRef(
-                camOrigin, dir, A, B, terrainElevAt, 5000, 5, 20, 300, 16, outHit, geo,
+                camOrigin,
+                dir,
+                A,
+                B,
+                terrainElevAt,
+                5000,
+                5,
+                20,
+                300,
+                16,
+                outHit,
+                geo,
             );
             expect(hit).toBe(true);
             // 尾根を貫通せず尾根近傍で止まること。標高は尾根相当（高さ300m付近まで持ち上がる）で、
@@ -580,7 +771,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const flatHit = new Vector3();
         const flatGeo = emptyGeo();
         const gotFlat = resolveTerrainClickElevationToRef(
-            origin, dir, R, R, () => 0, 5000, 200, 200, 200, 16, flatHit, flatGeo,
+            origin,
+            dir,
+            R,
+            R,
+            () => 0,
+            5000,
+            200,
+            200,
+            200,
+            16,
+            flatHit,
+            flatGeo,
         );
         expect(gotFlat).toBe(true);
         const tFar = flatHit.subtract(origin).length();
@@ -597,12 +799,24 @@ describe("resolveTerrainClickElevationToRef", () => {
             ecefToGeodetic(dir.clone().scale(t).add(origin)).latDeg;
         const midLat = (geodeticLatAt(secondLastT) + geodeticLatAt(tFar)) / 2;
         const coastElevM = 10;
-        const terrainElevAt = (latDeg: number): number => (latDeg >= midLat ? coastElevM : 0);
+        const terrainElevAt = (latDeg: number): number =>
+            latDeg >= midLat ? coastElevM : 0;
 
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            origin, dir, R, R, terrainElevAt, 5000, 200, 200, 200, 16, outHit, geo,
+            origin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            200,
+            200,
+            200,
+            16,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         // 標高0交点（地表より低い位置）ではなく、実際の地形標高付近で止まっていること。
@@ -626,7 +840,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3();
         const geo = emptyGeo();
         const hit = resolveTerrainClickElevationToRef(
-            highOrigin, dir, R, R, terrainElevAt, 5000, 500, 50, 2000, 20, outHit, geo,
+            highOrigin,
+            dir,
+            R,
+            R,
+            terrainElevAt,
+            5000,
+            500,
+            50,
+            2000,
+            20,
+            outHit,
+            geo,
         );
         expect(hit).toBe(true);
         expect(geo.altMeters).toBeGreaterThan(1000); // 山の斜面上（平地=0mではない）
@@ -644,7 +869,18 @@ describe("resolveTerrainClickElevationToRef", () => {
         const outHit = new Vector3(123, 456, 789);
         const geo: Geodetic = { latDeg: 111, lonDeg: 222, altMeters: 333 };
         const hit = resolveTerrainClickElevationToRef(
-            highOrigin, dir, R, R, () => 0, 5000, 500, 50, 2000, 20, outHit, geo,
+            highOrigin,
+            dir,
+            R,
+            R,
+            () => 0,
+            5000,
+            500,
+            50,
+            2000,
+            20,
+            outHit,
+            geo,
         );
         expect(hit).toBe(false);
         expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
@@ -653,7 +889,9 @@ describe("resolveTerrainClickElevationToRef", () => {
 
     it("探索パラメータが非有限・範囲外なら false を返し outHit/geo を変更しない（NaN 混入で steps が壊れる防止）", () => {
         // [maxTerrainElevM, stepDistanceM, minCoarseSteps, maxCoarseSteps, refineIterations]
-        const invalidParamSets: Array<[number, number, number, number, number]> = [
+        const invalidParamSets: Array<
+            [number, number, number, number, number]
+        > = [
             [NaN, 20, 20, 20, 16],
             [-100, 20, 20, 20, 16], // maxTerrainElevM < 0
             [5000, NaN, 20, 20, 16],
@@ -669,11 +907,28 @@ describe("resolveTerrainClickElevationToRef", () => {
             [5000, 20, 20, 20, -1],
             [5000, 20, 20, 20, 1.5], // refineIterations が非整数
         ];
-        for (const [maxElev, stepDist, minSteps, maxSteps, refine] of invalidParamSets) {
+        for (const [
+            maxElev,
+            stepDist,
+            minSteps,
+            maxSteps,
+            refine,
+        ] of invalidParamSets) {
             const outHit = new Vector3(123, 456, 789);
             const geo: Geodetic = { latDeg: 111, lonDeg: 222, altMeters: 333 };
             const hit = resolveTerrainClickElevationToRef(
-                origin, dirDown, R, R, () => 500, maxElev, stepDist, minSteps, maxSteps, refine, outHit, geo,
+                origin,
+                dirDown,
+                R,
+                R,
+                () => 500,
+                maxElev,
+                stepDist,
+                minSteps,
+                maxSteps,
+                refine,
+                outHit,
+                geo,
             );
             expect(hit).toBe(false);
             expect(outHit.equals(new Vector3(123, 456, 789))).toBe(true);
@@ -693,11 +948,19 @@ describe("polePanSpeedMultiplier", () => {
     it("高高度では極へ近づくほど 1 未満へ減速する", () => {
         const eq = polePanSpeedMultiplier(new Vector3(R, 0, 0), R);
         const mid = polePanSpeedMultiplier(
-            new Vector3(R * Math.cos(Math.PI / 4), 0, R * Math.sin(Math.PI / 4)),
+            new Vector3(
+                R * Math.cos(Math.PI / 4),
+                0,
+                R * Math.sin(Math.PI / 4),
+            ),
             R,
         );
         const high = polePanSpeedMultiplier(
-            new Vector3(R * Math.cos((80 * Math.PI) / 180), 0, R * Math.sin((80 * Math.PI) / 180)),
+            new Vector3(
+                R * Math.cos((80 * Math.PI) / 180),
+                0,
+                R * Math.sin((80 * Math.PI) / 180),
+            ),
             R,
         );
         expect(eq).toBeGreaterThan(mid);
@@ -758,7 +1021,9 @@ describe("resolveRecalcCenterSource", () => {
         expect(resolveRecalcCenterSource(true, false, 0, 100)).toBe("current");
         expect(resolveRecalcCenterSource(true, true, 0, 100)).toBe("current");
         // 保持が古くても成功フレームは current 優先。
-        expect(resolveRecalcCenterSource(true, true, 9999, 100)).toBe("current");
+        expect(resolveRecalcCenterSource(true, true, 9999, 100)).toBe(
+            "current",
+        );
     });
 
     it("検出失敗でも保持点が新しければ held を使い、補正の停止（＝一括スナップ）を避ける", () => {
@@ -778,7 +1043,9 @@ describe("resolveRecalcCenterSource", () => {
 
     it("経過時間・上限が非有限/負なら held を採らず skip（NaN の rest 混入で誤って再利用しない）", () => {
         expect(resolveRecalcCenterSource(false, true, NaN, 100)).toBe("skip");
-        expect(resolveRecalcCenterSource(false, true, Infinity, 100)).toBe("skip");
+        expect(resolveRecalcCenterSource(false, true, Infinity, 100)).toBe(
+            "skip",
+        );
         expect(resolveRecalcCenterSource(false, true, -1, 100)).toBe("skip");
         expect(resolveRecalcCenterSource(false, true, 50, NaN)).toBe("skip");
         expect(resolveRecalcCenterSource(false, true, 50, -1)).toBe("skip");

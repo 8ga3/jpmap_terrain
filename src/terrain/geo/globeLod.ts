@@ -15,10 +15,21 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { TILE_SIZE, tileCenterLatLon, tileEdgeMeters, toTileXY, JAPAN_BOUNDS, WORLD_TEXTURE_MAX_ZOOM } from "../gsiTile";
+import {
+    JAPAN_BOUNDS,
+    TILE_SIZE,
+    tileCenterLatLon,
+    tileEdgeMeters,
+    toTileXY,
+    WORLD_TEXTURE_MAX_ZOOM,
+} from "../gsiTile";
+import {
+    DEFAULT_MAX_ELEVATION,
+    type FrustumPlane,
+    isAABBInFrustumRelativeToCamera,
+} from "../visibleTiles";
 import { ecefToGeodetic, geodeticToEcefToRef } from "./ecef";
 import { latLonToPixel, totalPixelsForZoom } from "./mapping";
-import { isAABBInFrustumRelativeToCamera, DEFAULT_MAX_ELEVATION, type FrustumPlane } from "../visibleTiles";
 
 /** LOD 選択されたタイル。 */
 export interface GlobeTile {
@@ -320,7 +331,9 @@ export const viewForwardFromFrustumPlanes = (
     return viewForwardFromFrustumPlanesToRef(planes, out) ? out : null;
 };
 
-export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => {
+export const selectGlobeRootTiles = (
+    opts: GlobeRootSeedOptions,
+): RootSeed[] => {
     const {
         cameraEcef,
         centerLat,
@@ -338,7 +351,10 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     const margin = Math.max(0, rootSearchRadius);
     const budget = Math.max(1, maxRootTiles);
     // emit zoom の最粗下限。minZoom 以下に丸める（minZoom は最細＝近景 root 基準）。
-    const floorZoom = Math.min(minZoom, Math.max(0, opts.rootZoomFloor ?? minZoom));
+    const floorZoom = Math.min(
+        minZoom,
+        Math.max(0, opts.rootZoomFloor ?? minZoom),
+    );
 
     // カメラ直下点（nadir, 前景）と注視点（center）の minZoom タイル座標（帯の基準格子）。
     // **分数（fractional）タイル座標**で持つ。整数タイル（toTileXY）だと、低高度・斜め見で
@@ -368,7 +384,7 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     // またいだとき t0.x≒2048/t1.x≒0 のように巨大な dx になり帯の方向・長さが壊れるため、
     // 最短符号付き差分（[-n/2, n/2)）に正規化する。y（メルカトル緯度）は巡回しない。
     const n = 2 ** minZoom;
-    let dx = ((((t1.x - t0.x) % n) + n) % n);
+    let dx = (((t1.x - t0.x) % n) + n) % n;
     if (dx > n / 2) dx -= n;
     const dy = t1.y - t0.y;
     const dirLen = Math.hypot(dx, dy);
@@ -393,11 +409,17 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
         const vf = opts.viewForward;
         const vfLenSq = vf.lengthSquared();
         if (Number.isFinite(vfLenSq) && vfLenSq > 1e-12) {
-            const aheadEcef = cameraEcef.add(vf.scale(VIEW_FORWARD_PROBE_M / Math.sqrt(vfLenSq)));
+            const aheadEcef = cameraEcef.add(
+                vf.scale(VIEW_FORWARD_PROBE_M / Math.sqrt(vfLenSq)),
+            );
             const aheadGeo = ecefToGeodetic(aheadEcef);
-            const aheadPix = latLonToPixel(aheadGeo.latDeg, aheadGeo.lonDeg, totalMin);
+            const aheadPix = latLonToPixel(
+                aheadGeo.latDeg,
+                aheadGeo.lonDeg,
+                totalMin,
+            );
             const aheadTile = fracTile(aheadPix.px, aheadPix.py);
-            let vdx = ((((aheadTile.x - t0.x) % n) + n) % n);
+            let vdx = (((aheadTile.x - t0.x) % n) + n) % n;
             if (vdx > n / 2) vdx -= n;
             const vdy = aheadTile.y - t0.y;
             const vDirLen = Math.hypot(vdx, vdy);
@@ -556,7 +578,11 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
     const camLen = Math.max(1, cameraEcef.length());
     const cosPsi = Math.min(
         1,
-        Math.max(-1, Vector3.Dot(cameraEcef, centerEcef) / (camLen * centerEcef.length())),
+        Math.max(
+            -1,
+            Vector3.Dot(cameraEcef, centerEcef) /
+                (camLen * centerEcef.length()),
+        ),
     );
     const dirLenMeters = R * Math.acos(cosPsi);
     const lookDir = centerEcef.subtract(cameraEcef); // camera→center
@@ -572,13 +598,21 @@ export const selectGlobeRootTiles = (opts: GlobeRootSeedOptions): RootSeed[] => 
             ? Math.acos(
                   Math.min(
                       1,
-                      Math.max(-1, -Vector3.Dot(vf, cameraEcef) / (Math.sqrt(vfLenSq) * camLen)),
+                      Math.max(
+                          -1,
+                          -Vector3.Dot(vf, cameraEcef) /
+                              (Math.sqrt(vfLenSq) * camLen),
+                      ),
                   ),
               )
             : Math.acos(
                   Math.min(
                       1,
-                      Math.max(-1, -Vector3.Dot(lookDir, cameraEcef) / (lookDir.length() * camLen)),
+                      Math.max(
+                          -1,
+                          -Vector3.Dot(lookDir, cameraEcef) /
+                              (lookDir.length() * camLen),
+                      ),
                   ),
               );
 
@@ -651,7 +685,8 @@ const tileLatLonBounds = (
     const latNorth =
         (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
     const latSouth =
-        (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180) / Math.PI;
+        (Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180) /
+        Math.PI;
     return { lonWest, lonEast, latNorth, latSouth };
 };
 
@@ -663,7 +698,11 @@ const tileLatLonBounds = (
  * 域外タイルの細分化上限をクランプする。
  */
 const tileIntersectsJapan = (zoom: number, x: number, y: number): boolean => {
-    const { lonWest, lonEast, latNorth, latSouth } = tileLatLonBounds(zoom, x, y);
+    const { lonWest, lonEast, latNorth, latSouth } = tileLatLonBounds(
+        zoom,
+        x,
+        y,
+    );
     return (
         lonEast >= JAPAN_BOUNDS.minLon &&
         lonWest <= JAPAN_BOUNDS.maxLon &&
@@ -685,8 +724,19 @@ export const tileEcefAabb = (
     x: number,
     y: number,
     scratch: Vector3,
-): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } => {
-    const { lonWest, lonEast, latNorth, latSouth } = tileLatLonBounds(zoom, x, y);
+): {
+    minX: number;
+    minY: number;
+    minZ: number;
+    maxX: number;
+    maxY: number;
+    maxZ: number;
+} => {
+    const { lonWest, lonEast, latNorth, latSouth } = tileLatLonBounds(
+        zoom,
+        x,
+        y,
+    );
     let minX = Infinity;
     let minY = Infinity;
     let minZ = Infinity;
@@ -766,11 +816,16 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
     // 高高度では traverse の細分化上限も HIGH_ALT_MAX_ZOOM に抑える（root だけでなく quadtree 分割も
     // 頭打ちにしないと、近 nadir で root(z8) が z9 へ再分割されて「200km 以上は z8 以下」を満たさない）。
     const effectiveMaxZoom =
-        camAlt >= HIGH_ALT_ZOOM_CAP_M ? Math.min(maxZoom, HIGH_ALT_MAX_ZOOM) : maxZoom;
+        camAlt >= HIGH_ALT_ZOOM_CAP_M
+            ? Math.min(maxZoom, HIGH_ALT_MAX_ZOOM)
+            : maxZoom;
     // 可視地平線の中心角（acos(R/r), r=カメラ地心距離）。地平線カリングの「タイルサイズ考慮」救済に
     // 使う（高高度の全球被覆で粗タイルの可視縁を取りこぼさないため）。
     const capAngle = Math.acos(
-        Math.max(-1, Math.min(1, EARTH_MEAN_RADIUS_M / Math.max(1, cameraEcef.length()))),
+        Math.max(
+            -1,
+            Math.min(1, EARTH_MEAN_RADIUS_M / Math.max(1, cameraEcef.length())),
+        ),
     );
 
     const accepted: GlobeTile[] = [];
@@ -793,7 +848,12 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
      * より高精細なタイル）には免除を継承しない＝画面外への過剰な精細化（視錐台カリングが解消した
      * 本来の無駄）は引き続き frustum で防ぐ。
      */
-    const traverse = (zoom: number, x: number, y: number, exempt = false): void => {
+    const traverse = (
+        zoom: number,
+        x: number,
+        y: number,
+        exempt = false,
+    ): void => {
         if (visited >= maxVisited) return;
         visited++;
 
@@ -806,7 +866,13 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
         const k = tileKey(zoom, x, y);
         if (acceptedKeys.has(k)) return;
 
-        const { lat } = tileCenterEcefToRef(zoom, x, y, referenceAltitude, tileEcef);
+        const { lat } = tileCenterEcefToRef(
+            zoom,
+            x,
+            y,
+            referenceAltitude,
+            tileEcef,
+        );
 
         // 地平線カリング: タイルの地心法線（= normalize(tileEcef)）とカメラ方向の内積。
         // 裏側（地球の向こう側）のタイルを除外する。camDir は正規化済みなので
@@ -822,7 +888,9 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             // (2π/2^zoom) の 0.75 倍と十分大きめに見積もり、可視縁を確実に含める（裏側は依然カリング。
             // 余分な裏寄りタイルは描画時に背面/深度で隠れ無害）。低高度では cap が小さく、かつ
             // 帯 root が地平線裏を種付けしないため、この救済は実質高高度のみで効く。
-            const centerAngle = Math.acos(Math.max(-1, Math.min(1, horizonDot)));
+            const centerAngle = Math.acos(
+                Math.max(-1, Math.min(1, horizonDot)),
+            );
             const nodeAngRadius = ((2 * Math.PI) / (1 << zoom)) * 0.75;
             if (centerAngle - nodeAngRadius > capAngle) return;
         }
@@ -855,7 +923,13 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             !(zoom === minZoom && pinnedRootKeys.has(k))
         ) {
             const aabb = tileEcefAabb(zoom, x, y, aabbScratch);
-            if (!isAABBInFrustumRelativeToCamera(aabb, cameraEcef, frustumPlanes)) {
+            if (
+                !isAABBInFrustumRelativeToCamera(
+                    aabb,
+                    cameraEcef,
+                    frustumPlanes,
+                )
+            ) {
                 return;
             }
         }
@@ -967,7 +1041,8 @@ export const selectGlobeTiles = (opts: GlobeLodOptions): GlobeTile[] => {
             ? accepted.filter((t) => {
                   for (let z = t.zoom - 1; z >= floorZoom; z--) {
                       const dz = t.zoom - z;
-                      if (acceptedKeys.has(tileKey(z, t.x >> dz, t.y >> dz))) return false;
+                      if (acceptedKeys.has(tileKey(z, t.x >> dz, t.y >> dz)))
+                          return false;
                   }
                   return true;
               })
@@ -1029,7 +1104,8 @@ const coarsenToBudget = (
             let complete = true;
             for (let sy = 0; sy < 2 && complete; sy++) {
                 for (let sx = 0; sx < 2 && complete; sx++) {
-                    if (!byKey.has(tileKey(t.zoom, px * 2 + sx, py * 2 + sy))) complete = false;
+                    if (!byKey.has(tileKey(t.zoom, px * 2 + sx, py * 2 + sy)))
+                        complete = false;
                 }
             }
             if (!complete) continue;
@@ -1043,11 +1119,19 @@ const coarsenToBudget = (
         if (bestZoom < 0) break; // 統合可能な完全兄弟集合なし（縮退）。
         for (let sy = 0; sy < 2; sy++) {
             for (let sx = 0; sx < 2; sx++) {
-                byKey.delete(tileKey(bestZoom, bestPx * 2 + sx, bestPy * 2 + sy));
+                byKey.delete(
+                    tileKey(bestZoom, bestPx * 2 + sx, bestPy * 2 + sy),
+                );
             }
         }
         const pz = bestZoom - 1;
-        const { lat } = tileCenterEcefToRef(pz, bestPx, bestPy, referenceAltitude, scratch);
+        const { lat } = tileCenterEcefToRef(
+            pz,
+            bestPx,
+            bestPy,
+            referenceAltitude,
+            scratch,
+        );
         byKey.set(tileKey(pz, bestPx, bestPy), {
             zoom: pz,
             x: bestPx,

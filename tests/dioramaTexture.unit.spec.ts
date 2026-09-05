@@ -4,7 +4,7 @@
  * fetch/canvas を伴う `buildDioramaMosaicTexture` はブラウザ実行が前提のため、
  * ここではタイル数・モザイクサイズ・UV計算のレイアウトロジックのみを検証する。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { computeDioramaTextureLayout } from "../src/terrain/diorama/dioramaTexture";
 import { TILE_SIZE, toTileXY } from "../src/terrain/gsiTile";
@@ -76,20 +76,29 @@ describe("computeDioramaTextureLayout", () => {
     });
 
     it("zoomが非整数はRangeError", () => {
-        expect(() => computeDioramaTextureLayout([TOKYO], 16.5)).toThrow(RangeError);
+        expect(() => computeDioramaTextureLayout([TOKYO], 16.5)).toThrow(
+            RangeError,
+        );
     });
 
     it("zoomが負数はRangeError", () => {
-        expect(() => computeDioramaTextureLayout([TOKYO], -1)).toThrow(RangeError);
+        expect(() => computeDioramaTextureLayout([TOKYO], -1)).toThrow(
+            RangeError,
+        );
     });
 
     it("latがNaNの点を含む場合はRangeError", () => {
-        expect(() => computeDioramaTextureLayout([{ lat: NaN, lon: 0 }], ZOOM)).toThrow(RangeError);
+        expect(() =>
+            computeDioramaTextureLayout([{ lat: NaN, lon: 0 }], ZOOM),
+        ).toThrow(RangeError);
     });
 
     it("lonがInfinityの点を含む場合はRangeError", () => {
         expect(() =>
-            computeDioramaTextureLayout([TOKYO, { lat: 35, lon: Infinity }], ZOOM),
+            computeDioramaTextureLayout(
+                [TOKYO, { lat: 35, lon: Infinity }],
+                ZOOM,
+            ),
         ).toThrow(RangeError);
     });
 
@@ -100,7 +109,9 @@ describe("computeDioramaTextureLayout", () => {
             { lat: 35, lon: 179.99 },
             { lat: 35, lon: -179.99 },
         ];
-        expect(() => computeDioramaTextureLayout(points, ZOOM)).toThrow(RangeError);
+        expect(() => computeDioramaTextureLayout(points, ZOOM)).toThrow(
+            RangeError,
+        );
     });
 
     it("反子午線を跨がなくても、タイル数上限を超える広域の点群はRangeError", () => {
@@ -108,6 +119,8 @@ describe("computeDioramaTextureLayout", () => {
             { lat: 35, lon: 130 },
             { lat: 35, lon: 145 },
         ];
-        expect(() => computeDioramaTextureLayout(points, 14)).toThrow(RangeError);
+        expect(() => computeDioramaTextureLayout(points, 14)).toThrow(
+            RangeError,
+        );
     });
 });

@@ -10,7 +10,7 @@
  * - `shouldRetryColliderBuild` / `rebuild`: サンプリング成功率が低いときに失敗として扱い、
  *   全滅時は頂点を書き戻さないこと（海抜 0m の平面コライダーを作らない）。
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 /** モックメッシュの状態（テストから頂点バッファと更新回数を検証する）。 */
 const meshState: { positions: Float32Array; updateCalls: number } = {
@@ -48,12 +48,12 @@ vi.mock("@babylonjs/core/Physics/v2/IPhysicsEnginePlugin", () => ({
 }));
 
 import {
-    isColliderTerrainMeshName,
-    fillMissingHeights,
     createTerrainCollider,
-    shouldRetryColliderBuild,
-    MIN_COLLIDER_SAMPLE_RATE,
+    fillMissingHeights,
+    isColliderTerrainMeshName,
     MAX_COLLIDER_BUILD_ATTEMPTS,
+    MIN_COLLIDER_SAMPLE_RATE,
+    shouldRetryColliderBuild,
 } from "../src/demos/artillery/terrainCollider";
 
 describe("isColliderTerrainMeshName", () => {
@@ -62,7 +62,9 @@ describe("isColliderTerrainMeshName", () => {
     });
 
     it("accepts planar terrain tiles", () => {
-        expect(isColliderTerrainMeshName("tile-ground-14/14552/6478")).toBe(true);
+        expect(isColliderTerrainMeshName("tile-ground-14/14552/6478")).toBe(
+            true,
+        );
     });
 
     it("rejects the always-on coarse base layer", () => {
@@ -94,7 +96,17 @@ describe("fillMissingHeights", () => {
 
     it("fills a single hole with the average of its valid neighbors", () => {
         // 中央のみ穴。周囲 8 頂点はすべて 100 → 中央も 100 になる。
-        const h = Float32Array.from([100, 100, 100, 100, NaN, 100, 100, 100, 100]);
+        const h = Float32Array.from([
+            100,
+            100,
+            100,
+            100,
+            NaN,
+            100,
+            100,
+            100,
+            100,
+        ]);
         expect(fillMissingHeights(h, 3, 3)).toBe(0);
         expect(h[4]).toBeCloseTo(100, 6);
     });
@@ -139,17 +151,25 @@ describe("fillMissingHeights", () => {
 describe("shouldRetryColliderBuild", () => {
     it("requests a retry when the sampling rate is below the threshold", () => {
         expect(shouldRetryColliderBuild(0, 1)).toBe(true);
-        expect(shouldRetryColliderBuild(MIN_COLLIDER_SAMPLE_RATE - 0.01, 1)).toBe(true);
+        expect(
+            shouldRetryColliderBuild(MIN_COLLIDER_SAMPLE_RATE - 0.01, 1),
+        ).toBe(true);
     });
 
     it("does not retry when the sampling rate meets the threshold", () => {
-        expect(shouldRetryColliderBuild(MIN_COLLIDER_SAMPLE_RATE, 1)).toBe(false);
+        expect(shouldRetryColliderBuild(MIN_COLLIDER_SAMPLE_RATE, 1)).toBe(
+            false,
+        );
         expect(shouldRetryColliderBuild(1, 1)).toBe(false);
     });
 
     it("stops retrying once the attempt limit is reached", () => {
-        expect(shouldRetryColliderBuild(0, MAX_COLLIDER_BUILD_ATTEMPTS)).toBe(false);
-        expect(shouldRetryColliderBuild(0, MAX_COLLIDER_BUILD_ATTEMPTS - 1)).toBe(true);
+        expect(shouldRetryColliderBuild(0, MAX_COLLIDER_BUILD_ATTEMPTS)).toBe(
+            false,
+        );
+        expect(
+            shouldRetryColliderBuild(0, MAX_COLLIDER_BUILD_ATTEMPTS - 1),
+        ).toBe(true);
         expect(shouldRetryColliderBuild(0, 1, 1)).toBe(false);
     });
 });
@@ -166,10 +186,18 @@ describe("createTerrainCollider().rebuild", () => {
 
     const createCollider = () => {
         meshState.positions = new Float32Array([
-            -50, INITIAL_Y, -50,
-            50, INITIAL_Y, -50,
-            -50, INITIAL_Y, 50,
-            50, INITIAL_Y, 50,
+            -50,
+            INITIAL_Y,
+            -50,
+            50,
+            INITIAL_Y,
+            -50,
+            -50,
+            INITIAL_Y,
+            50,
+            50,
+            INITIAL_Y,
+            50,
         ]);
         meshState.updateCalls = 0;
         aggregateCalls.length = 0;
@@ -184,12 +212,9 @@ describe("createTerrainCollider().rebuild", () => {
         // 全滅時に書き戻すと全頂点が海抜 0m の平面になり、可視地形と無関係な高さで
         // 砲弾が跳ねる。書き戻しを抑止していることを固定する。
         expect(meshState.updateCalls).toBe(0);
-        expect(Array.from(meshState.positions).filter((_, i) => i % 3 === 1)).toEqual([
-            INITIAL_Y,
-            INITIAL_Y,
-            INITIAL_Y,
-            INITIAL_Y,
-        ]);
+        expect(
+            Array.from(meshState.positions).filter((_, i) => i % 3 === 1),
+        ).toEqual([INITIAL_Y, INITIAL_Y, INITIAL_Y, INITIAL_Y]);
         expect(aggregateCalls.length).toBe(0);
     });
 
@@ -199,19 +224,23 @@ describe("createTerrainCollider().rebuild", () => {
 
         expect(rate).toBe(1);
         expect(meshState.updateCalls).toBe(1);
-        expect(Array.from(meshState.positions).filter((_, i) => i % 3 === 1)).toEqual([
-            123, 123, 123, 123,
-        ]);
+        expect(
+            Array.from(meshState.positions).filter((_, i) => i % 3 === 1),
+        ).toEqual([123, 123, 123, 123]);
         expect(aggregateCalls.length).toBe(1);
     });
 
     it("returns a partial rate and fills holes from valid neighbors", async () => {
         const collider = createCollider();
-        const rate = await collider.rebuild((x, z) => (x < 0 && z < 0 ? 200 : null));
+        const rate = await collider.rebuild((x, z) =>
+            x < 0 && z < 0 ? 200 : null,
+        );
 
         expect(rate).toBe(0.25);
         expect(meshState.updateCalls).toBe(1);
-        const ys = Array.from(meshState.positions).filter((_, i) => i % 3 === 1);
+        const ys = Array.from(meshState.positions).filter(
+            (_, i) => i % 3 === 1,
+        );
         expect(ys).toEqual([200, 200, 200, 200]);
     });
 });

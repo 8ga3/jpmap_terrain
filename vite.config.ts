@@ -159,7 +159,8 @@ export default defineConfig({
                     if (/\/ShadersWGSL\//.test(id)) return "webgpu-shaders";
                     if (/\/Shaders\//.test(id)) return "webgl-shaders";
                     if (/\/WebGPU\//.test(id)) return "webgpu-extensions";
-                    if (/\/node_modules\/@babylonjs\//.test(id)) return "babylonBundle";
+                    if (/\/node_modules\/@babylonjs\//.test(id))
+                        return "babylonBundle";
                     return undefined;
                 },
             },

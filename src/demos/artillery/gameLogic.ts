@@ -22,8 +22,7 @@ export interface GameState {
     blueCannon: CannonState;
 }
 
-export const opponent = (team: Team): Team =>
-    team === "red" ? "blue" : "red";
+export const opponent = (team: Team): Team => (team === "red" ? "blue" : "red");
 
 export const nextTurn = (state: GameState): GameState => ({
     ...state,

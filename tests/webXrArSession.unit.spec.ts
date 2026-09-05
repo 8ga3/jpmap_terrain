@@ -10,20 +10,21 @@
  * 含む）は、実機・ブラウザでの手動確認と `feature/533-webxr-vr-viewer` PoC
  * (`webXrVrSession.ts`) の前例に倣い、本ファイルでは対象外とする。
  */
-import { describe, it, expect, vi } from "vitest";
-import type { Scene } from "@babylonjs/core/scene";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { Scene } from "@babylonjs/core/scene";
+import { describe, expect, it, vi } from "vitest";
 import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
 import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
 import type { DioramaTouchControls } from "../src/lib/internal/diorama/dioramaTouchControls";
+import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
 import {
+    attachDioramaArButton,
+    createDioramaArSessionController,
+    type DioramaArSessionController,
     isImmersiveArSupported,
     setupDioramaWebXrArButton,
-    createDioramaArSessionController,
-    attachDioramaArButton,
-    type DioramaArSessionController,
 } from "../src/lib/internal/diorama/webXrArSession";
 
 describe("isImmersiveArSupported", () => {
@@ -71,7 +72,9 @@ const createControllerDeps = () => {
     // ダミー値が必要（`scene.createDefaultXRExperienceAsync` 等のXR依存
     // メソッドは未定義のままにし、try節内で意図的に例外を起こしてcatch経路を検証する）。
     const scene = { clearColor: { a: 1 } } as unknown as Scene;
-    const dioramaRoot = { position: new Vector3(0, 0, 0) } as unknown as TransformNode;
+    const dioramaRoot = {
+        position: new Vector3(0, 0, 0),
+    } as unknown as TransformNode;
     const tableRadiusM = 0.35;
     const viewController = {} as DioramaViewController;
     const orientationController = {} as DioramaOrientationController;
@@ -141,7 +144,9 @@ describe("createDioramaArSessionController", () => {
             deps.tileModeController,
             deps.touchControls,
         );
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
 
         await expect(controller.enter()).rejects.toThrow();
 
@@ -218,7 +223,10 @@ describe("attachDioramaArButton", () => {
     /** `onActiveChange` に登録されたリスナーを外部から発火できるモックコントローラー。 */
     const createMockController = (
         initialActive: boolean,
-    ): { controller: DioramaArSessionController; fireActiveChange: (active: boolean) => void } => {
+    ): {
+        controller: DioramaArSessionController;
+        fireActiveChange: (active: boolean) => void;
+    } => {
         let activeChangeListener: ((active: boolean) => void) | null = null;
         const controller: DioramaArSessionController = {
             isActive: vi.fn(() => initialActive),
@@ -234,7 +242,8 @@ describe("attachDioramaArButton", () => {
         };
         return {
             controller,
-            fireActiveChange: (active: boolean): void => activeChangeListener?.(active),
+            fireActiveChange: (active: boolean): void =>
+                activeChangeListener?.(active),
         };
     };
 
@@ -245,7 +254,7 @@ describe("attachDioramaArButton", () => {
         expect(mount.querySelector("button")).not.toBeNull();
     });
 
-    it("ボタンにtype=\"button\"を明示し、form内での意図しないsubmitを防ぐ", () => {
+    it('ボタンにtype="button"を明示し、form内での意図しないsubmitを防ぐ', () => {
         const mount = document.createElement("div");
         const { controller } = createMockController(false);
         attachDioramaArButton(mount, controller);
@@ -257,7 +266,9 @@ describe("attachDioramaArButton", () => {
         const mount = document.createElement("div");
         const { controller } = createMockController(false);
         attachDioramaArButton(mount, controller);
-        mount.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        mount
+            .querySelector("button")
+            ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         expect(controller.enter).toHaveBeenCalledOnce();
         expect(controller.exit).not.toHaveBeenCalled();
     });
@@ -266,7 +277,9 @@ describe("attachDioramaArButton", () => {
         const mount = document.createElement("div");
         const { controller } = createMockController(true);
         attachDioramaArButton(mount, controller);
-        mount.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        mount
+            .querySelector("button")
+            ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         expect(controller.exit).toHaveBeenCalledOnce();
         expect(controller.enter).not.toHaveBeenCalled();
     });
@@ -303,10 +316,14 @@ describe("attachDioramaArButton", () => {
         const mount = document.createElement("div");
         const { controller } = createMockController(true);
         controller.exit = vi.fn(() => Promise.reject(new Error("exit failed")));
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
 
         attachDioramaArButton(mount, controller);
-        mount.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        mount
+            .querySelector("button")
+            ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         await Promise.resolve();
         await Promise.resolve();
 

@@ -47,13 +47,14 @@ export function attachResizeRefresh(
     refresh: () => void | Promise<void>,
     options?: AttachResizeRefreshOptions,
 ): AttachResizeRefreshHandle {
-    const debounceMs = options?.debounceMs ?? DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS;
+    const debounceMs =
+        options?.debounceMs ?? DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
 
-    const observer: Observer<AbstractEngine> | null = engine.onResizeObservable.add(
-        () => {
+    const observer: Observer<AbstractEngine> | null =
+        engine.onResizeObservable.add(() => {
             if (disposed) return;
             if (timer !== null) {
                 clearTimeout(timer);
@@ -63,8 +64,7 @@ export function attachResizeRefresh(
                 if (disposed) return;
                 void refresh();
             }, debounceMs);
-        },
-    );
+        });
 
     const dispose = (): void => {
         if (disposed) return;

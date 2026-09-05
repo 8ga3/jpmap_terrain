@@ -7,19 +7,17 @@
  * - 高度方向（Up）が ECEF 法線（geodeticToEcef の差分）と一致することを確認
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Matrix } from "@babylonjs/core/Maths/math.vector";
 import { PerformanceConfigurator } from "@babylonjs/core/Engines/performanceConfigurator";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import {
     buildEnuFrame,
+    buildEnuWorldMatrix,
+    ecefToEnuToRef,
     enuToEcefToRef,
     enuVectorToEcefToRef,
-    ecefToEnuToRef,
-    buildEnuWorldMatrix,
 } from "../src/terrain/geo/enu";
 
 const TOKYO = { lat: 35.681236, lon: 139.767125, alt: 40 };
@@ -108,7 +106,11 @@ describe("ref / vector ラッパ", () => {
     it("enuVectorToEcefToRef は enuToEcefToRef と同値", () => {
         const f = buildEnuFrame(TOKYO.lat, TOKYO.lon, TOKYO.alt);
         const a = enuToEcefToRef(f, 12, -34, 56, new Vector3());
-        const b = enuVectorToEcefToRef(f, new Vector3(12, -34, 56), new Vector3());
+        const b = enuVectorToEcefToRef(
+            f,
+            new Vector3(12, -34, 56),
+            new Vector3(),
+        );
         expect(b.x).toBeCloseTo(a.x, 9);
         expect(b.y).toBeCloseTo(a.y, 9);
         expect(b.z).toBeCloseTo(a.z, 9);
@@ -147,15 +149,18 @@ describe("buildEnuWorldMatrix", () => {
     it("ローカル軸 X/Y/Z を east/up/north 方向へ写像", () => {
         const f = buildEnuFrame(TOKYO.lat, TOKYO.lon, TOKYO.alt);
         const m = buildEnuWorldMatrix(f);
-        const wx = Vector3.TransformCoordinates(new Vector3(1, 0, 0), m).subtract(
-            f.originEcef,
-        );
-        const wy = Vector3.TransformCoordinates(new Vector3(0, 1, 0), m).subtract(
-            f.originEcef,
-        );
-        const wz = Vector3.TransformCoordinates(new Vector3(0, 0, 1), m).subtract(
-            f.originEcef,
-        );
+        const wx = Vector3.TransformCoordinates(
+            new Vector3(1, 0, 0),
+            m,
+        ).subtract(f.originEcef);
+        const wy = Vector3.TransformCoordinates(
+            new Vector3(0, 1, 0),
+            m,
+        ).subtract(f.originEcef);
+        const wz = Vector3.TransformCoordinates(
+            new Vector3(0, 0, 1),
+            m,
+        ).subtract(f.originEcef);
         for (const [got, exp] of [
             [wx, f.east],
             [wy, f.up],
@@ -172,7 +177,13 @@ describe("buildEnuWorldMatrix", () => {
         const m = buildEnuWorldMatrix(f);
         const local = new Vector3(1500, -120, 800);
         const viaMatrix = Vector3.TransformCoordinates(local, m);
-        const viaFn = enuToEcefToRef(f, local.x, local.y, local.z, new Vector3());
+        const viaFn = enuToEcefToRef(
+            f,
+            local.x,
+            local.y,
+            local.z,
+            new Vector3(),
+        );
         expect(viaMatrix.x).toBeCloseTo(viaFn.x, 4);
         expect(viaMatrix.y).toBeCloseTo(viaFn.y, 4);
         expect(viaMatrix.z).toBeCloseTo(viaFn.z, 4);

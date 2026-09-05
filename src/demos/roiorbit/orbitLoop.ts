@@ -49,7 +49,9 @@ const normalizeDeg = (deg: number): number => ((deg % 360) + 360) % 360;
 
 /** 1周にかかる時間 [ms]。角速度が0以下（異常値）の場合は Infinity（周回しない）。 */
 const cyclePeriodMs = (config: RoiOrbitConfig): number =>
-    config.angularSpeedDegPerSec > 0 ? (360 / config.angularSpeedDegPerSec) * 1000 : Infinity;
+    config.angularSpeedDegPerSec > 0
+        ? (360 / config.angularSpeedDegPerSec) * 1000
+        : Infinity;
 
 /**
  * 経過時間 `deltaMs` を進めて周回ステートマシンの状態を更新する。
@@ -77,7 +79,10 @@ export const advanceRoiOrbit = (
  * 現在の周回ステートマシンの状態から、円周上の外向き方位角 [deg]（0-360, 0=北, +=東回り）を
  * 算出する。角速度が0以下（異常値）の場合は角度0（周回開始位置）に固定する。
  */
-export const angleForRoiOrbit = (state: RoiOrbitState, config: RoiOrbitConfig): number =>
+export const angleForRoiOrbit = (
+    state: RoiOrbitState,
+    config: RoiOrbitConfig,
+): number =>
     config.angularSpeedDegPerSec > 0
         ? normalizeDeg((state.elapsedMs / 1000) * config.angularSpeedDegPerSec)
         : 0;
@@ -102,5 +107,7 @@ export const cameraPositionForRoiOrbit = (
  * （= 中心から見た外向き方位 `angleDeg` の逆方向）。
  * カメラ自体の向きは `FreeCamera.setTarget` に一任するため、レンダリングには使わない。
  */
-export const headingForRoiOrbit = (state: RoiOrbitState, config: RoiOrbitConfig): number =>
-    normalizeDeg(angleForRoiOrbit(state, config) + 180);
+export const headingForRoiOrbit = (
+    state: RoiOrbitState,
+    config: RoiOrbitConfig,
+): number => normalizeDeg(angleForRoiOrbit(state, config) + 180);

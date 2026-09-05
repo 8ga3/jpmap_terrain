@@ -10,12 +10,15 @@
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
-import { lockCameraInput, lockControlPanelExceptPhoto } from "../shared/lockControls";
+import {
+    lockCameraInput,
+    lockControlPanelExceptPhoto,
+} from "../shared/lockControls";
 import {
     advanceZoomLoop,
-    cameraFrameForState,
     type CameraEndpoint,
     type CameraFrame,
+    cameraFrameForState,
     type ZoomLoopConfig,
     type ZoomLoopState,
 } from "./cameraPath";

@@ -27,7 +27,10 @@ const HORIZONTAL_DIRECTION_EPSILON = 1e-6;
  * カメラのローカル軸をワールド空間へ変換し、水平面へ投影した単位ベクトルを返す。
  * カメラが真上/真下を向く退化ケースでは `{x:0, z:0}` を返す（呼び出し側で無視される）。
  */
-export const getHorizontalDirectionUnit = (camera: Camera, localAxis: Vector3): HorizontalUnitVector => {
+export const getHorizontalDirectionUnit = (
+    camera: Camera,
+    localAxis: Vector3,
+): HorizontalUnitVector => {
     const dir = camera.getDirection(localAxis);
     const lenSq = dir.x * dir.x + dir.z * dir.z;
     if (lenSq < HORIZONTAL_DIRECTION_EPSILON) return { x: 0, z: 0 };

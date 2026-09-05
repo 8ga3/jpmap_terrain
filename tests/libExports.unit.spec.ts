@@ -12,46 +12,41 @@
  * （typecheck が通ればこのテストファイルは成立する）。
  */
 
-import { describe, it, expect } from "vitest";
-
-import * as pkg from "../src/lib";
+import { describe, expect, it } from "vitest";
 import type {
+    AltitudeMode,
     CameraChangeEvent,
     CameraChangeListener,
-    EngineType,
-    FlyToOptions,
-    JpmapTerrainOptions,
-    MapType,
-    AltitudeMode,
-    PolygonPointOptions,
-    PolygonStyleOptions,
-    PolygonOptions,
-    PolygonUpdate,
-    PolygonHandle,
-} from "../src/lib";
-import type {
-    TerrainClickEvent,
-    TerrainClickListener,
-    PolygonPointPointerEvent,
-    PolygonPointDragEvent,
-    PolygonPointHoverListener,
-    PolygonPointClickListener,
-    PolygonPointDragListener,
-    ModelVector3,
-    ModelOptions,
-    ModelUpdate,
-    ModelHandle,
-} from "../src/lib";
-import type {
+    DioramaArState,
+    DioramaArStateChangeListener,
     DioramaCenter,
     DioramaTileMode,
-    DioramaArState,
+    DioramaTileModeChangeListener,
+    EngineType,
+    FlyToOptions,
     JpmapDioramaOptions,
     JpmapDioramaViewChangeEvent,
     JpmapDioramaViewChangeListener,
-    DioramaTileModeChangeListener,
-    DioramaArStateChangeListener,
+    JpmapTerrainOptions,
+    MapType,
+    ModelHandle,
+    ModelOptions,
+    ModelUpdate,
+    ModelVector3,
+    PolygonHandle,
+    PolygonOptions,
+    PolygonPointClickListener,
+    PolygonPointDragEvent,
+    PolygonPointDragListener,
+    PolygonPointHoverListener,
+    PolygonPointOptions,
+    PolygonPointPointerEvent,
+    PolygonStyleOptions,
+    PolygonUpdate,
+    TerrainClickEvent,
+    TerrainClickListener,
 } from "../src/lib";
+import * as pkg from "../src/lib";
 
 describe("package entry exports", () => {
     it("JpmapTerrain クラスがトップレベルから export されている", () => {
@@ -125,7 +120,10 @@ describe("package entry exports", () => {
             lon: 0,
             altitude: 0,
             world: { x: 0, y: 0, z: 0 },
-            pointerEvent: { shiftKey: false, ctrlKey: false } as unknown as PointerEvent,
+            pointerEvent: {
+                shiftKey: false,
+                ctrlKey: false,
+            } as unknown as PointerEvent,
         };
         const clickListener: TerrainClickListener = () => {
             /* no-op */
@@ -202,7 +200,10 @@ describe("package entry exports", () => {
             tableRadiusM: 0.35,
             tileMode,
         };
-        const viewEvent: JpmapDioramaViewChangeEvent = { center, footprintHalfSizeM: 800 };
+        const viewEvent: JpmapDioramaViewChangeEvent = {
+            center,
+            footprintHalfSizeM: 800,
+        };
         const onViewChange: JpmapDioramaViewChangeListener = () => {
             /* no-op */
         };

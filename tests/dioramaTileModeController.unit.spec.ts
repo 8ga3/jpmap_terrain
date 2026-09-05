@@ -5,11 +5,14 @@
  * `DioramaTerrain`（`setTileMode`のみ使用）をモックし、Babylon/DOMに依存せず
  * 純粋にロジックを検証する（`dioramaViewController.unit.spec.ts` と同じ方針）。
  */
-import { describe, it, expect, vi } from "vitest";
-import type { DioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
+import { describe, expect, it, vi } from "vitest";
 import { createDioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
+import type { DioramaTerrain } from "../src/terrain/diorama/dioramaTerrain";
 
-const makeTerrain = (): { terrain: DioramaTerrain; setTileMode: ReturnType<typeof vi.fn> } => {
+const makeTerrain = (): {
+    terrain: DioramaTerrain;
+    setTileMode: ReturnType<typeof vi.fn>;
+} => {
     const setTileMode = vi.fn(() => Promise.resolve());
     const terrain = { setTileMode } as unknown as DioramaTerrain;
     return { terrain, setTileMode };
@@ -89,7 +92,9 @@ describe("createDioramaTileModeController", () => {
     it("setTileModeが失敗してもcurrentTileModeは更新されないが、エラーはコンソールに出力され例外は投げない", async () => {
         const { terrain, setTileMode } = makeTerrain();
         setTileMode.mockRejectedValueOnce(new Error("network error"));
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
         const tc = createDioramaTileModeController(terrain, "std");
 
         tc.cycle();
@@ -116,10 +121,14 @@ describe("createDioramaTileModeController", () => {
         it("失敗時はcycle()と異なり、呼び出し元へエラーがrejectされる（コンソールには出さない）", async () => {
             const { terrain, setTileMode } = makeTerrain();
             setTileMode.mockRejectedValueOnce(new Error("network error"));
-            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+            const consoleErrorSpy = vi
+                .spyOn(console, "error")
+                .mockImplementation(() => {});
             const tc = createDioramaTileModeController(terrain, "std");
 
-            await expect(tc.setTileMode("photo")).rejects.toThrow("network error");
+            await expect(tc.setTileMode("photo")).rejects.toThrow(
+                "network error",
+            );
             expect(tc.getTileMode()).toBe("std");
             expect(consoleErrorSpy).not.toHaveBeenCalled();
             consoleErrorSpy.mockRestore();

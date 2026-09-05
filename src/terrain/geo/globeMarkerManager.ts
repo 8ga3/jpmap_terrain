@@ -8,30 +8,31 @@
  *
  * 平面版 `markerManager` には手を加えない（再利用するのは座標系非依存の描画部のみ）。
  */
-import type { Scene } from "@babylonjs/core/scene";
-import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import type { Scene } from "@babylonjs/core/scene";
 
 import type {
     MarkerIconOptions,
-    MarkerTextOptions,
     MarkerLineOptions,
+    MarkerTextOptions,
 } from "../../lib/types";
 import {
     createIconTextMesh,
+    type IconTextMeshes,
+    RENDERING_GROUP_ID,
     resolveIcon,
     resolveText,
     validateIconUrl,
-    RENDERING_GROUP_ID,
-    type IconTextMeshes,
 } from "../marker";
 import {
-    groundPlacementToRef,
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
+    groundPlacementToRef,
     OVERLAY_REF_DISTANCE_M,
 } from "./overlayPlacement";
 
@@ -155,7 +156,9 @@ export const createGlobeMarkerManager = (
         groundPlacementToRef(node.lat, node.lon, elev, pos, up);
         // 距離は 1 回だけ算出し、スケールと線高さで再利用（sqrt の二重計算を避ける）。
         // camEcef なし（初期配置）は基準距離で仮置き。
-        const dist = camEcef ? Vector3.Distance(camEcef, pos) : OVERLAY_REF_DISTANCE_M;
+        const dist = camEcef
+            ? Vector3.Distance(camEcef, pos)
+            : OVERLAY_REF_DISTANCE_M;
         // 2D（flat）正射では下限スケール（MIN_SCALE）を外す。下限が残ると最大ズーム時に
         // ワールドサイズが下限固定され、ortho フラスタム（radius 比例）だけが縮小して
         // アイコンが不自然に大きく見える。下限なし（0）で全ズーム画面上一定にする。
@@ -199,7 +202,8 @@ export const createGlobeMarkerManager = (
     };
 
     const add = (opts: GlobeMarkerOptions): string => {
-        if (disposed) throw new Error("GlobeMarkerManager.add: called after dispose");
+        if (disposed)
+            throw new Error("GlobeMarkerManager.add: called after dispose");
         const id = `globe-marker-${seq++}`;
         const icon = resolveIcon(opts.icon);
         // 平面版 addMarker と同様、icon.url の危険なスキーム（javascript: 等）を拒否する。
@@ -259,7 +263,8 @@ export const createGlobeMarkerManager = (
             id,
             lat: opts.lat,
             lon: opts.lon,
-            poleBaseDiameter: opts.line?.width ?? GLOBE_MARKER_DEFAULTS.poleBaseDiameter,
+            poleBaseDiameter:
+                opts.line?.width ?? GLOBE_MARKER_DEFAULTS.poleBaseDiameter,
             iconText,
             lineMesh,
             lineMat,
@@ -296,16 +301,25 @@ export const createGlobeMarkerManager = (
 
     const setEnabled = (id: string, enabled: boolean): void => {
         // 平面版と同様、dispose 後・未存在 id は throw して呼び出しミスを早期検出する。
-        if (disposed) throw new Error("GlobeMarkerManager.setEnabled: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobeMarkerManager.setEnabled: called after dispose",
+            );
         const node = nodes.get(id);
-        if (!node) throw new Error(`GlobeMarkerManager.setEnabled: id "${id}" not found`);
+        if (!node)
+            throw new Error(
+                `GlobeMarkerManager.setEnabled: id "${id}" not found`,
+            );
         node.enabled = enabled;
         node.lineMesh.setEnabled(enabled && !flat);
         node.iconText?.mesh.setEnabled(enabled);
     };
 
     const setFlatten = (next: boolean): void => {
-        if (disposed) throw new Error("GlobeMarkerManager.setFlatten: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobeMarkerManager.setFlatten: called after dispose",
+            );
         if (next === flat) return;
         flat = next;
         // ポールの有効可否は flat と node.enabled で決まる。アイコン/ラベルの位置は次回 update
@@ -317,7 +331,8 @@ export const createGlobeMarkerManager = (
 
     const update = (camEcef: Vector3): void => {
         // 平面版 MarkerManager.update と同様、dispose 後の呼び出しは throw して検知する。
-        if (disposed) throw new Error("GlobeMarkerManager.update: called after dispose");
+        if (disposed)
+            throw new Error("GlobeMarkerManager.update: called after dispose");
         if (nodes.size === 0) return;
         for (const node of nodes.values()) {
             if (!node.enabled) continue;

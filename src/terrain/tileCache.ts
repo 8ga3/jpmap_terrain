@@ -1,6 +1,6 @@
 /** LRU キャッシュ（標高データ用） */
 
-import { TileKey, TileCoord } from "./tileTypes";
+import type { TileCoord, TileKey } from "./tileTypes";
 
 export interface TileCacheEntry {
     coord: TileCoord;

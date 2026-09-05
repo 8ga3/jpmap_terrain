@@ -50,8 +50,7 @@ export function computeSunPosition(
     const { dayOfYear, utcHour } = toDayOfYearAndUtcHour(date);
 
     // 年内フラクション角 γ（ラジアン）
-    const gamma =
-        ((2 * Math.PI) / 365) * (dayOfYear - 1 + (utcHour - 12) / 24);
+    const gamma = ((2 * Math.PI) / 365) * (dayOfYear - 1 + (utcHour - 12) / 24);
 
     const cosG = Math.cos(gamma);
     const sinG = Math.sin(gamma);
@@ -89,7 +88,7 @@ export function computeSunPosition(
     // `Math.cos` は周期的なので天頂計算には影響しないが、午前/午後の判定（azimuth 分岐）が
     // 逆転するため、ここで [-180, 180) に折り返す。
     const hourAngleDegRaw = trueSolarTimeMin / 4 - 180;
-    const hourAngleDeg = ((hourAngleDegRaw % 360) + 540) % 360 - 180;
+    const hourAngleDeg = (((hourAngleDegRaw % 360) + 540) % 360) - 180;
     const hourAngleRad = (hourAngleDeg * Math.PI) / 180;
 
     const latRad = lat * DEG2RAD;

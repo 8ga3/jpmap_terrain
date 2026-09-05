@@ -1,32 +1,32 @@
 /**
  * Boids アルゴリズム・リージョン定義の unit test
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-    distance,
-    separation,
     alignment,
-    cohesion,
-    boundaryForce,
-    updateBoid,
-    updateFlock,
-    boidHeading,
     BOIDS_DEFAULTS,
     type BoidState,
-    type BoidsParams,
     type BoidsBounds,
+    type BoidsParams,
+    boidHeading,
+    boundaryForce,
+    cohesion,
+    distance,
+    separation,
+    updateBoid,
+    updateFlock,
 } from "../src/demos/boids/boids";
 
 import {
-    regionCorners,
+    DEFAULT_REGION,
     geoToLocal,
-    localToGeo,
-    regionBounds,
     isInsideRegion,
+    localToGeo,
     randomPositionInRegion,
     randomVelocity,
-    DEFAULT_REGION,
+    regionBounds,
+    regionCorners,
 } from "../src/demos/boids/region";
 
 // ---- Boids アルゴリズム ----
@@ -50,10 +50,7 @@ describe("separation", () => {
 
     it("近くに仲間がいなければゼロベクトルを返す", () => {
         const boid: BoidState = { x: 0, y: 0, vx: 1, vy: 0 };
-        const flock: BoidState[] = [
-            boid,
-            { x: 100, y: 100, vx: 1, vy: 0 },
-        ];
+        const flock: BoidState[] = [boid, { x: 100, y: 100, vx: 1, vy: 0 }];
         const result = separation(boid, flock, params);
         expect(result.x).toBe(0);
         expect(result.y).toBe(0);
@@ -117,7 +114,12 @@ describe("cohesion", () => {
 });
 
 describe("boundaryForce", () => {
-    const bounds: BoidsBounds = { minX: -100, maxX: 100, minY: -100, maxY: 100 };
+    const bounds: BoidsBounds = {
+        minX: -100,
+        maxX: 100,
+        minY: -100,
+        maxY: 100,
+    };
 
     it("中央にいるとき力はゼロ", () => {
         const boid: BoidState = { x: 0, y: 0, vx: 0, vy: 0 };
@@ -148,7 +150,12 @@ describe("boundaryForce", () => {
 
 describe("updateBoid", () => {
     const params: BoidsParams = { ...BOIDS_DEFAULTS };
-    const bounds: BoidsBounds = { minX: -150, maxX: 150, minY: -150, maxY: 150 };
+    const bounds: BoidsBounds = {
+        minX: -150,
+        maxX: 150,
+        minY: -150,
+        maxY: 150,
+    };
 
     it("1体のBoidが更新後も境界内にとどまる", () => {
         const boid: BoidState = { x: 140, y: 0, vx: 3, vy: 0 };
@@ -167,7 +174,12 @@ describe("updateBoid", () => {
 
 describe("updateFlock", () => {
     const params: BoidsParams = { ...BOIDS_DEFAULTS };
-    const bounds: BoidsBounds = { minX: -150, maxX: 150, minY: -150, maxY: 150 };
+    const bounds: BoidsBounds = {
+        minX: -150,
+        maxX: 150,
+        minY: -150,
+        maxY: 150,
+    };
 
     it("空のフロックを更新しても空を返す", () => {
         const result = updateFlock([], params, bounds, 0.1);

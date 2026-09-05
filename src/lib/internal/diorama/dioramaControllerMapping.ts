@@ -52,7 +52,8 @@ export const DEFAULT_STICK_DEADZONE = 0.15;
  * @param deadzone [0,1) を想定。1 以上は常に 0（入力を全て無視）を返す。
  */
 export const applyStickDeadzone = (value: number, deadzone: number): number => {
-    if (!Number.isFinite(value) || !Number.isFinite(deadzone) || deadzone >= 1) return 0;
+    if (!Number.isFinite(value) || !Number.isFinite(deadzone) || deadzone >= 1)
+        return 0;
     const abs = Math.abs(value);
     if (abs <= deadzone) return 0;
     const sign = Math.sign(value);
@@ -128,13 +129,18 @@ export const computeDioramaPanMetersFromStick = (
     basePanSpeedPerSec: number = DEFAULT_PAN_SPEED_PER_SEC,
     options: PanFromStickOptions = {},
 ): { eastM: number; northM: number } => {
-    if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return { eastM: 0, northM: 0 };
+    if (!Number.isFinite(dtSeconds) || dtSeconds <= 0)
+        return { eastM: 0, northM: 0 };
     const deadzone = options.deadzone ?? DEFAULT_STICK_DEADZONE;
-    const minHalfSizeM = options.minFootprintHalfSizeForSpeedM ?? DEFAULT_MIN_FOOTPRINT_HALF_SIZE_FOR_PAN_SPEED_M;
+    const minHalfSizeM =
+        options.minFootprintHalfSizeForSpeedM ??
+        DEFAULT_MIN_FOOTPRINT_HALF_SIZE_FOR_PAN_SPEED_M;
     const x = applyStickDeadzone(axes.x, deadzone);
     const y = applyStickDeadzone(axes.y, deadzone);
     if (x === 0 && y === 0) return { eastM: 0, northM: 0 };
-    const effectiveHalfSizeM = Number.isFinite(footprintHalfSizeM) ? Math.max(footprintHalfSizeM, minHalfSizeM) : minHalfSizeM;
+    const effectiveHalfSizeM = Number.isFinite(footprintHalfSizeM)
+        ? Math.max(footprintHalfSizeM, minHalfSizeM)
+        : minHalfSizeM;
     const speed = basePanSpeedPerSec * effectiveHalfSizeM;
     return {
         eastM: x * speed * dtSeconds,
@@ -162,7 +168,10 @@ export interface HorizontalUnitVector {
  *
  * @returns ベクトルが零ベクトル、または非有限値を含む場合は `0`。
  */
-export const computeHeadingRadFromHorizontal = (x: number, z: number): number => {
+export const computeHeadingRadFromHorizontal = (
+    x: number,
+    z: number,
+): number => {
     if (!Number.isFinite(x) || !Number.isFinite(z)) return 0;
     if (x === 0 && z === 0) return 0;
     return Math.atan2(x, z);
@@ -176,8 +185,12 @@ export const computeHeadingRadFromHorizontal = (x: number, z: number): number =>
  * 回転規約には依存しない）。`vec` の向き角を `h` とすると、返り値は
  * 向き角 `h + deltaRad` で同じ長さのベクトルになる。
  */
-export const rotateHorizontalUnitVector = (vec: HorizontalUnitVector, deltaRad: number): HorizontalUnitVector => {
-    if (!Number.isFinite(deltaRad) || deltaRad === 0) return { x: vec.x, z: vec.z };
+export const rotateHorizontalUnitVector = (
+    vec: HorizontalUnitVector,
+    deltaRad: number,
+): HorizontalUnitVector => {
+    if (!Number.isFinite(deltaRad) || deltaRad === 0)
+        return { x: vec.x, z: vec.z };
     const cos = Math.cos(deltaRad);
     const sin = Math.sin(deltaRad);
     return {
@@ -251,7 +264,8 @@ export const normalizeAngleRad = (angleRad: number): number => {
  * 浮動小数点の相対誤差が増え、安定化のための丸め処理が意図通りに働かなく
  * なるおそれがあるため、`(-π, π]`へ正規化した最短差分を返す。
  */
-export const angleDeltaRad = (a: number, b: number): number => normalizeAngleRad(b - a);
+export const angleDeltaRad = (a: number, b: number): number =>
+    normalizeAngleRad(b - a);
 
 /**
  * ヒステリシス付きで向き角を離散方位（既定8方位）へスナップする。
@@ -277,18 +291,26 @@ export const snapHeadingRad = (
     hysteresisRad: number = DEFAULT_HEADING_SNAP_HYSTERESIS_RAD,
 ): number => {
     if (!Number.isFinite(rawHeadingRad) || !(stepRad > 0)) {
-        return previousSnappedHeadingRad !== undefined && Number.isFinite(previousSnappedHeadingRad)
+        return previousSnappedHeadingRad !== undefined &&
+            Number.isFinite(previousSnappedHeadingRad)
             ? previousSnappedHeadingRad
             : 0;
     }
     const raw = normalizeAngleRad(rawHeadingRad);
-    const nearestBucketRad = normalizeAngleRad(Math.round(raw / stepRad) * stepRad);
-    if (previousSnappedHeadingRad === undefined || !Number.isFinite(previousSnappedHeadingRad)) {
+    const nearestBucketRad = normalizeAngleRad(
+        Math.round(raw / stepRad) * stepRad,
+    );
+    if (
+        previousSnappedHeadingRad === undefined ||
+        !Number.isFinite(previousSnappedHeadingRad)
+    ) {
         return nearestBucketRad;
     }
     const previous = normalizeAngleRad(previousSnappedHeadingRad);
     const diffFromPreviousRad = Math.abs(angleDeltaRad(previous, raw));
-    const safeHysteresisRad = Number.isFinite(hysteresisRad) ? Math.max(0, hysteresisRad) : 0;
+    const safeHysteresisRad = Number.isFinite(hysteresisRad)
+        ? Math.max(0, hysteresisRad)
+        : 0;
     if (diffFromPreviousRad <= stepRad / 2 + safeHysteresisRad) {
         return previous;
     }
@@ -311,7 +333,8 @@ export const computeHorizontalDisplacement = (
 ): { unit: HorizontalUnitVector; distanceM: number } => {
     const dx = toX - fromX;
     const dz = toZ - fromZ;
-    if (![dx, dz].every(Number.isFinite)) return { unit: { x: 0, z: 0 }, distanceM: 0 };
+    if (![dx, dz].every(Number.isFinite))
+        return { unit: { x: 0, z: 0 }, distanceM: 0 };
     const distanceM = Math.hypot(dx, dz);
     if (!(distanceM > 0)) return { unit: { x: 0, z: 0 }, distanceM: 0 };
     return { unit: { x: dx / distanceM, z: dz / distanceM }, distanceM };
@@ -348,14 +371,16 @@ export const isInsideDioramaDeadZone = (
     deadZoneRadiusM: number,
     hysteresisM: number = DEFAULT_DEAD_ZONE_HYSTERESIS_M,
 ): boolean => {
-    if (!Number.isFinite(distanceM) || !(deadZoneRadiusM >= 0)) return wasInsideDeadZone;
-    const safeHysteresisM = Number.isFinite(hysteresisM) ? Math.max(0, hysteresisM) : 0;
+    if (!Number.isFinite(distanceM) || !(deadZoneRadiusM >= 0))
+        return wasInsideDeadZone;
+    const safeHysteresisM = Number.isFinite(hysteresisM)
+        ? Math.max(0, hysteresisM)
+        : 0;
     if (wasInsideDeadZone) {
         return distanceM <= deadZoneRadiusM + safeHysteresisM;
     }
     return distanceM <= deadZoneRadiusM;
 };
-
 
 /** フットプリントの半辺長ズームの秒間倍率既定値（1秒間フルで倒すと半辺長が概ね1/2倍/2倍になる）。 */
 const DEFAULT_FOOTPRINT_ZOOM_RATE_PER_SEC = 2;
@@ -392,7 +417,7 @@ export const computeFootprintHalfSizeFactorFromStick = (
     if (!Number.isFinite(zoomRatePerSecond) || zoomRatePerSecond <= 0) return 1;
     const y = applyStickDeadzone(axisY, deadzone);
     if (y === 0) return 1;
-    return Math.pow(zoomRatePerSecond, y * dtSeconds);
+    return zoomRatePerSecond ** (y * dtSeconds);
 };
 
 /**
@@ -457,8 +482,12 @@ export const computeDioramaHeightMetersFromTriggers = (
 ): number => {
     if (!Number.isFinite(dtSeconds) || dtSeconds <= 0) return 0;
     if (!Number.isFinite(heightSpeedMPerSec)) return 0;
-    const left = Number.isFinite(leftTriggerValue) ? Math.max(0, Math.min(1, leftTriggerValue)) : 0;
-    const right = Number.isFinite(rightTriggerValue) ? Math.max(0, Math.min(1, rightTriggerValue)) : 0;
+    const left = Number.isFinite(leftTriggerValue)
+        ? Math.max(0, Math.min(1, leftTriggerValue))
+        : 0;
+    const right = Number.isFinite(rightTriggerValue)
+        ? Math.max(0, Math.min(1, rightTriggerValue))
+        : 0;
     const axis = right - left;
     if (axis === 0) return 0;
     return axis * heightSpeedMPerSec * dtSeconds;
@@ -491,7 +520,11 @@ export const clampDioramaHeightOffsetM = (
  * `DioramaTileMode`（`dioramaTerrain.ts`、型のみimport）を直接使うことで、
  * 巡回対象の値集合を型定義側と同期させる。
  */
-const DIORAMA_TILE_MODE_CYCLE_ORDER: readonly DioramaTileMode[] = ["std", "photo", "wireframe"];
+const DIORAMA_TILE_MODE_CYCLE_ORDER: readonly DioramaTileMode[] = [
+    "std",
+    "photo",
+    "wireframe",
+];
 
 /**
  * 現在のタイル種別から、巡回順序（{@link DIORAMA_TILE_MODE_CYCLE_ORDER}）における
@@ -500,8 +533,12 @@ const DIORAMA_TILE_MODE_CYCLE_ORDER: readonly DioramaTileMode[] = ["std", "photo
  * @param current 現在のタイル種別。巡回順序に含まれない値が渡された場合
  *   （型システム上は起こり得ないが、念のため）は先頭（std）を返す。
  */
-export const nextDioramaTileMode = (current: DioramaTileMode): DioramaTileMode => {
+export const nextDioramaTileMode = (
+    current: DioramaTileMode,
+): DioramaTileMode => {
     const currentIndex = DIORAMA_TILE_MODE_CYCLE_ORDER.indexOf(current);
     if (currentIndex < 0) return DIORAMA_TILE_MODE_CYCLE_ORDER[0];
-    return DIORAMA_TILE_MODE_CYCLE_ORDER[(currentIndex + 1) % DIORAMA_TILE_MODE_CYCLE_ORDER.length];
+    return DIORAMA_TILE_MODE_CYCLE_ORDER[
+        (currentIndex + 1) % DIORAMA_TILE_MODE_CYCLE_ORDER.length
+    ];
 };

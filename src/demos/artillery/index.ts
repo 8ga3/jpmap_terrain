@@ -11,15 +11,16 @@
  * - 砲弾はメッシュプールで再利用（物理ボディは発射ごとに生成）
  * - 砲弾飛行・地形バウンドは Havok 物理が担当
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+
+import type { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 import { Ray } from "@babylonjs/core/Culling/ray";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import type { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";
@@ -27,37 +28,37 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { createStageFrame, type StageFrame } from "./stageFrame";
-import { createDirectTerrainSampler } from "./terrainSampler";
+import { createAnnounce, createHitBanner } from "./announce";
+import { powderToSpeed } from "./ballistics";
+import { createExplosion } from "./explosion";
+import {
+    addScore,
+    type CannonState,
+    createInitialState,
+    type GameState,
+    isHit,
+    nextTurn,
+    type Team,
+} from "./gameLogic";
+import { createInitCancellation } from "./initCancellation";
+import { initPhysics } from "./physics";
 import {
     createProjectilePool,
     PROJECTILE_LIFETIME_SEC,
     type ProjectilePool,
 } from "./projectilePool";
-import { powderToSpeed } from "./ballistics";
-import { initPhysics } from "./physics";
+import { createArtilleryShadows } from "./shadows";
+import { createStageFrame, type StageFrame } from "./stageFrame";
 import {
+    COLLIDER_RETRY_DELAY_MS,
     createTerrainCollider,
     isColliderTerrainMeshName,
-    shouldRetryColliderBuild,
-    COLLIDER_RETRY_DELAY_MS,
     MAX_COLLIDER_BUILD_ATTEMPTS,
     MIN_COLLIDER_SAMPLE_RATE,
+    shouldRetryColliderBuild,
     type TerrainCollider,
 } from "./terrainCollider";
-import { createInitCancellation } from "./initCancellation";
-import {
-    createInitialState,
-    nextTurn,
-    addScore,
-    isHit,
-    type GameState,
-    type Team,
-    type CannonState,
-} from "./gameLogic";
-import { createExplosion } from "./explosion";
-import { createArtilleryShadows } from "./shadows";
-import { createAnnounce, createHitBanner } from "./announce";
+import { createDirectTerrainSampler } from "./terrainSampler";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -135,7 +136,11 @@ const createCannonMesh = (
     // 台座（ピボット直下に固定、回転しない）
     const base = MeshBuilder.CreateCylinder(
         `cannon-base-${team}`,
-        { height: CANNON_SCALE * 1.5, diameter: CANNON_SCALE * 2, tessellation: 12 },
+        {
+            height: CANNON_SCALE * 1.5,
+            diameter: CANNON_SCALE * 2,
+            tessellation: 12,
+        },
         scene,
     );
     base.position.y = -CANNON_SCALE * 0.75; // ピボットの少し下
@@ -173,7 +178,6 @@ const start = async (): Promise<void> => {
         }
     };
     const cancel = createInitCancellation(disposeViewerOnce);
-
 
     const camera = parseCameraStateFromUrl(location.href);
     const mapType = parseMapTypeFromUrl(location.href);
@@ -277,7 +281,10 @@ const start = async (): Promise<void> => {
     );
 
     // --- ゲーム状態 ---
-    let gameState: GameState = createInitialState(RED_CANNON_POS, BLUE_CANNON_POS);
+    let gameState: GameState = createInitialState(
+        RED_CANNON_POS,
+        BLUE_CANNON_POS,
+    );
     let firing = false;
     /**
      * 地形コリジョンが構築済みか。構築完了まで fire/restart を無効化する
@@ -303,11 +310,17 @@ const start = async (): Promise<void> => {
     };
 
     // --- UI 要素取得 ---
-    const angleSlider = document.getElementById("angle-slider") as HTMLInputElement;
+    const angleSlider = document.getElementById(
+        "angle-slider",
+    ) as HTMLInputElement;
     const angleValue = document.getElementById("angle-value")!;
-    const headingSlider = document.getElementById("heading-slider") as HTMLInputElement;
+    const headingSlider = document.getElementById(
+        "heading-slider",
+    ) as HTMLInputElement;
     const headingValue = document.getElementById("heading-value")!;
-    const powderSlider = document.getElementById("powder-slider") as HTMLInputElement;
+    const powderSlider = document.getElementById(
+        "powder-slider",
+    ) as HTMLInputElement;
     const powderValue = document.getElementById("powder-value")!;
     const fireBtn = document.getElementById("fire-btn")!;
     const restartBtn = document.getElementById("restart-btn")!;
@@ -395,8 +408,10 @@ const start = async (): Promise<void> => {
         // メッシュの辺と重なる場合にヒットしないことがある → わずかにオフセットして再試行
         const OFFSET = 0.5;
         const offsets = [
-            [OFFSET, 0], [-OFFSET, 0],
-            [0, OFFSET], [0, -OFFSET],
+            [OFFSET, 0],
+            [-OFFSET, 0],
+            [0, OFFSET],
+            [0, -OFFSET],
         ];
         for (const [dx, dz] of offsets) {
             const retry = castTerrainRay(x + dx, z + dz);
@@ -497,7 +512,10 @@ const start = async (): Promise<void> => {
             if (!isTerrainMesh(mesh)) continue;
             mesh.computeWorldMatrix(false);
             const sphere = mesh.getBoundingInfo().boundingSphere;
-            const dist = Vector3.Distance(sphere.centerWorld, scratchStageCenter);
+            const dist = Vector3.Distance(
+                sphere.centerWorld,
+                scratchStageCenter,
+            );
             if (dist <= PLAY_AREA_RADIUS + sphere.radiusWorld) {
                 out.push(mesh);
             }
@@ -526,7 +544,11 @@ const start = async (): Promise<void> => {
         // 紅は東(+X)向き → Z軸負回転で仰角
         // 青は西(-X)向き → Z軸正回転で仰角
         const elevSign = team === "red" ? -1 : 1;
-        cannon.pivot.rotation.set(0, headingRad, elevSign * (Math.PI / 2 - elevRad));
+        cannon.pivot.rotation.set(
+            0,
+            headingRad,
+            elevSign * (Math.PI / 2 - elevRad),
+        );
     };
 
     const placeCannonAtOffset = (
@@ -554,7 +576,8 @@ const start = async (): Promise<void> => {
     const isDebug = (): boolean =>
         process.env.NODE_ENV !== "production" &&
         typeof window !== "undefined" &&
-        (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true;
+        (window as unknown as { __ARTILLERY_DEBUG?: boolean })
+            .__ARTILLERY_DEBUG === true;
 
     /**
      * 地形コリジョンメッシュを現在の地形からサンプリングして 1 回だけ構築する。
@@ -596,7 +619,11 @@ const start = async (): Promise<void> => {
      * @returns 構築完了したら true。中断された場合は false。
      */
     const buildCollider = async (): Promise<boolean> => {
-        for (let attempt = 1; attempt <= MAX_COLLIDER_BUILD_ATTEMPTS; attempt++) {
+        for (
+            let attempt = 1;
+            attempt <= MAX_COLLIDER_BUILD_ATTEMPTS;
+            attempt++
+        ) {
             const rate = await buildColliderOnce();
             if (rate === null) return false; // 離脱により中断
             if (isDebug()) {
@@ -665,7 +692,9 @@ const start = async (): Promise<void> => {
             if (viewer.isTerrainIdle) {
                 fn();
             } else if (performance.now() - startTime >= TIMEOUT_MS) {
-                console.warn("[artillery] terrain load timed out; continuing best-effort");
+                console.warn(
+                    "[artillery] terrain load timed out; continuing best-effort",
+                );
                 fn();
             } else {
                 setTimeout(tryRun, POLL_INTERVAL_MS);
@@ -920,7 +949,9 @@ const start = async (): Promise<void> => {
                 gameState = addScore(gameState, gameState.turn);
                 // 被弾側の大砲をリスポーン（仕様: 命中した側の大砲は位置リセット）
                 const hitXOffset =
-                    gameState.turn === "red" ? CANNON_DISTANCE : -CANNON_DISTANCE;
+                    gameState.turn === "red"
+                        ? CANNON_DISTANCE
+                        : -CANNON_DISTANCE;
                 const hitCannonState =
                     gameState.turn === "red"
                         ? gameState.blueCannon

@@ -18,54 +18,79 @@
 // 他の import より前でこの副作用を登録する。ライブラリ利用側（各デモ）が個別に import しなくても動く。
 import "@babylonjs/core/Culling/ray";
 
-import { Scene } from "@babylonjs/core/scene";
-import { Vector2, Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import {
-    GeospatialCamera,
-    ComputeLookAtFromYawPitchToRef,
-    ComputeYawPitchFromLookAtToRef,
-} from "@babylonjs/core/Cameras/geospatialCamera";
 import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
 import { Camera } from "@babylonjs/core/Cameras/camera";
+import {
+    ComputeLookAtFromYawPitchToRef,
+    ComputeYawPitchFromLookAtToRef,
+    GeospatialCamera,
+} from "@babylonjs/core/Cameras/geospatialCamera";
+import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { Matrix, Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
-
-import { WORLD_TEXTURE_MAX_ZOOM, type MapType } from "../terrain/gsiTile";
-import { TERRAIN_CLICK_DRAG_THRESHOLD_PX, POLYGON_POINT_DRAG_THRESHOLD_PX } from "../lib/types";
+import { Scene } from "@babylonjs/core/scene";
 import type { ViewMode } from "../lib/types";
-import { clampZoomLevel, radiusToZoomLevel, zoomLevelToRadius } from "../terrain/urlState";
-import { DEG2RAD, geodeticToEcef, geodeticToEcefToRef, ecefToGeodetic, type Geodetic } from "../terrain/geo/ecef";
+import {
+    POLYGON_POINT_DRAG_THRESHOLD_PX,
+    TERRAIN_CLICK_DRAG_THRESHOLD_PX,
+} from "../lib/types";
 import {
     cameraTangentBasisToRef,
     panCenterOnSphereToRef,
     polePanSpeedMultiplier,
-    stepGroundClearanceRadius,
     rayEllipsoidNearHitToRef,
-    resolveTerrainClickElevationToRef,
     resolveRecalcCenterSource,
+    resolveTerrainClickElevationToRef,
+    stepGroundClearanceRadius,
 } from "../terrain/geo/cameraMapping";
-import { createGlobeTileManager, type GlobeTileManager, type GlobeTileSyncStats } from "../terrain/geo/globeTileManager";
+import {
+    DEG2RAD,
+    ecefToGeodetic,
+    type Geodetic,
+    geodeticToEcef,
+    geodeticToEcefToRef,
+} from "../terrain/geo/ecef";
+import {
+    createGlobeCircleManager,
+    type GlobeCircleManager,
+} from "../terrain/geo/globeCircleManager";
 import { viewForwardFromFrustumPlanesToRef } from "../terrain/geo/globeLod";
-import type { FrustumPlane } from "../terrain/visibleTiles";
-import { createGlobeMarkerManager, type GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
+import {
+    createGlobeMarkerManager,
+    type GlobeMarkerManager,
+} from "../terrain/geo/globeMarkerManager";
+import {
+    createGlobeModelManager,
+    type GlobeModelManager,
+} from "../terrain/geo/globeModelManager";
 import {
     createGlobePolygonManager,
     type GlobePolygonManager,
     type GlobePolygonPickablePoint,
 } from "../terrain/geo/globePolygonManager";
-import { createGlobeCircleManager, type GlobeCircleManager } from "../terrain/geo/globeCircleManager";
-import { createGlobeModelManager, type GlobeModelManager } from "../terrain/geo/globeModelManager";
+import {
+    createGlobeTileManager,
+    type GlobeTileManager,
+    type GlobeTileSyncStats,
+} from "../terrain/geo/globeTileManager";
 import { OVERLAY_REF_DISTANCE_M } from "../terrain/geo/overlayPlacement";
+import { type MapType, WORLD_TEXTURE_MAX_ZOOM } from "../terrain/gsiTile";
 import { computeSpaceFactor } from "../terrain/skybox";
+import {
+    clampZoomLevel,
+    radiusToZoomLevel,
+    zoomLevelToRadius,
+} from "../terrain/urlState";
+import type { FrustumPlane } from "../terrain/visibleTiles";
 
 /** グローブシーンの既定パラメータ（富士山周辺）。 */
 export const GLOBE_SCENE_DEFAULTS = {
@@ -430,7 +455,10 @@ export interface GlobeSceneController {
      * 外部カメラ（flight FollowCamera 等）の真の視錐台6平面＋ECEF位置を次回 syncTiles に
      * 反映する。null 指定で通常カメラ（GeospatialCamera）算出へ復帰する。
      */
-    setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcef: Vector3 | null) => void;
+    setExternalFrustum: (
+        planes: FrustumPlane[] | null,
+        cameraEcef: Vector3 | null,
+    ) => void;
     dispose: () => void;
 }
 
@@ -443,7 +471,11 @@ export class GlobeScene {
         canvas: HTMLCanvasElement,
         options: GlobeSceneInitOptions = {},
     ): Promise<Scene> {
-        const { scene } = this.createSceneWithController(engine, canvas, options);
+        const { scene } = this.createSceneWithController(
+            engine,
+            canvas,
+            options,
+        );
         return scene;
     }
 
@@ -679,7 +711,14 @@ export class GlobeScene {
                 scene.useRightHandedSystem,
                 dragLookAt,
             );
-            if (!cameraTangentBasisToRef(camera.center, dragLookAt, dragRight, dragFwd)) {
+            if (
+                !cameraTangentBasisToRef(
+                    camera.center,
+                    dragLookAt,
+                    dragRight,
+                    dragFwd,
+                )
+            ) {
                 return; // 真下視点の特異点
             }
             // 注視点距離での地表 m/px（掴んだ点がほぼカーソル追従する縮尺）。
@@ -689,8 +728,14 @@ export class GlobeScene {
             tangent.copyFrom(dragRight).scaleInPlace(-dx * mpp);
             tangent.addInPlace(dragFwd.scaleInPlace(dy * mpp));
             // 極付近の高速回転を抑える。極では東西の一定メートル移動が経度の巨大変化に対応する。
-            tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
-            camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
+            tangent.scaleInPlace(
+                polePanSpeedMultiplier(camera.center, camera.radius),
+            );
+            camera.center = panCenterOnSphereToRef(
+                camera.center,
+                tangent,
+                panned,
+            );
         };
 
         // ---- 2本指ジェスチャ（タッチ）パラメータ ----
@@ -735,7 +780,8 @@ export class GlobeScene {
 
             // モードは最初の2本指 move 時に確定し、指を離すまで維持（しきい値の跨ぎで切替えない）。
             if (twoFingerMode === null) {
-                twoFingerMode = spread < TWO_FINGER_TILT_SPREAD_PX ? "tilt" : "panRotate";
+                twoFingerMode =
+                    spread < TWO_FINGER_TILT_SPREAD_PX ? "tilt" : "panRotate";
             }
 
             // 2本指の重心移動（前フレーム→現フレーム）。動いたのは movedId の指のみ。
@@ -745,11 +791,15 @@ export class GlobeScene {
             if (twoFingerMode === "tilt") {
                 // チルト。上方向ドラッグ（dCy<0）でチルトアップ（pitch 増）。limits 範囲にクランプ。
                 const next = camera.pitch - dCy * TWO_FINGER_TILT_SENS;
-                camera.pitch = Math.min(MAX_PITCH_RAD, Math.max(MIN_PITCH_RAD, next));
+                camera.pitch = Math.min(
+                    MAX_PITCH_RAD,
+                    Math.max(MIN_PITCH_RAD, next),
+                );
             } else {
                 // 平行移動 ＋ 回転（ひねり）。
                 if (panEnabled) panByPixels(dCx, dCy);
-                if (dAng !== 0) camera.yaw = camera.yaw - dAng * TWO_FINGER_YAW_SENS;
+                if (dAng !== 0)
+                    camera.yaw = camera.yaw - dAng * TWO_FINGER_YAW_SENS;
             }
         };
 
@@ -807,7 +857,14 @@ export class GlobeScene {
                 scene.useRightHandedSystem,
                 dragLookAt,
             );
-            if (!cameraTangentBasisToRef(camera.center, dragLookAt, dragRight, dragFwd)) {
+            if (
+                !cameraTangentBasisToRef(
+                    camera.center,
+                    dragLookAt,
+                    dragRight,
+                    dragFwd,
+                )
+            ) {
                 return; // 真下視点の特異点
             }
 
@@ -818,8 +875,14 @@ export class GlobeScene {
             if (tangent.lengthSquared() < 1e-12) return;
             tangent.normalize().scaleInPlace(step);
             // 極付近の高速回転を抑える。左ドラッグパンと同一の減速を WASD にも適用する。
-            tangent.scaleInPlace(polePanSpeedMultiplier(camera.center, camera.radius));
-            camera.center = panCenterOnSphereToRef(camera.center, tangent, panned);
+            tangent.scaleInPlace(
+                polePanSpeedMultiplier(camera.center, camera.radius),
+            );
+            camera.center = panCenterOnSphereToRef(
+                camera.center,
+                tangent,
+                panned,
+            );
         };
 
         // ライト: 地表の up（地心法線）を基準に環境光 + 斜め方向の指向性ライト。
@@ -839,7 +902,11 @@ export class GlobeScene {
         // floating origin 下でもタイルメッシュと同じ真の ECEF 系なので、地球中心（原点）に静止
         // 配置すればよい。極（ECEF Z 軸）方向のみ semiMinorAxis で扁平させ、海面より僅かに沈める。
         const earthSink = EARTH_SPHERE_SINK_M;
-        const earth = CreateSphere("globe-earth", { diameter: 2, segments: 128 }, scene);
+        const earth = CreateSphere(
+            "globe-earth",
+            { diameter: 2, segments: 128 },
+            scene,
+        );
         // 単位球（半径 1）を楕円体半径へスケール。ECEF の極は Z 軸なので Z のみ扁平。
         earth.scaling.set(
             Wgs84Ellipsoid.semiMajorAxis - earthSink,
@@ -884,7 +951,10 @@ export class GlobeScene {
         sunOccluder.scaling.copyFrom(earth.scaling);
         sunOccluder.isPickable = false;
         sunOccluder.renderingGroupId = RG_BACKGROUND;
-        const sunOccluderMat = new StandardMaterial("globe-sun-occluder-mat", scene);
+        const sunOccluderMat = new StandardMaterial(
+            "globe-sun-occluder-mat",
+            scene,
+        );
         sunOccluderMat.disableLighting = true;
         sunOccluderMat.backFaceCulling = true;
         // 色は一切書かず深度のみ書く（不可視のオクルーダ）。depthWrite は既定で有効。
@@ -932,22 +1002,26 @@ export class GlobeScene {
         // ---- グローブマーカー ----
         const markerManager = createGlobeMarkerManager({
             scene,
-            terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+            terrainElevAt: (latDeg, lonDeg) =>
+                tileManager.terrainElevAt(latDeg, lonDeg),
         });
         // ---- グローブポリゴン ----
         const polygonManager = createGlobePolygonManager({
             scene,
-            terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+            terrainElevAt: (latDeg, lonDeg) =>
+                tileManager.terrainElevAt(latDeg, lonDeg),
         });
         // ---- グローブサークル ----
         const circleManager = createGlobeCircleManager({
             scene,
-            terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+            terrainElevAt: (latDeg, lonDeg) =>
+                tileManager.terrainElevAt(latDeg, lonDeg),
         });
         // ---- グローブモデル ----
         const modelManager = createGlobeModelManager({
             scene,
-            terrainElevAt: (latDeg, lonDeg) => tileManager.terrainElevAt(latDeg, lonDeg),
+            terrainElevAt: (latDeg, lonDeg) =>
+                tileManager.terrainElevAt(latDeg, lonDeg),
         });
 
         const lookAt = new Vector3();
@@ -960,7 +1034,10 @@ export class GlobeScene {
         // 非 null の間、通常カメラ（GeospatialCamera）から算出する frustum/cameraEcef の代わりに使う
         // （外部カメラは camera.yaw/pitch と実際の向きが一致しないため、GeospatialCamera 由来では
         //  正しい frustum を作れない）。`attachTileCamera` / 未指定復帰で null に戻す。
-        let externalFrustumOverride: { planes: FrustumPlane[]; cameraEcef: Vector3 } | null = null;
+        let externalFrustumOverride: {
+            planes: FrustumPlane[];
+            cameraEcef: Vector3;
+        } | null = null;
         // setExternalFrustum で受け取る Vector3/frustumPlanes の永続コピー先（呼び出し側が
         // スクラッチバッファを再利用して渡してきても、ここで即座にコピーすれば安全に保持できる。
         // 呼び出し側のアロケーション回避を許すための設計、レビュー指摘）。cameraEcefPos のみ
@@ -968,10 +1045,13 @@ export class GlobeScene {
         // 上書きする実装の場合、syncTiles 実行前に内容が変わって誤った視錐台でカリングされ得る
         // ため、planes も同様にコピーして一貫性を取る（レビュー指摘）。
         const externalFrustumCameraEcef = new Vector3();
-        const externalFrustumPlanesBuffer: FrustumPlane[] = Array.from({ length: 6 }, () => ({
-            normal: { x: 0, y: 0, z: 0 },
-            d: 0,
-        }));
+        const externalFrustumPlanesBuffer: FrustumPlane[] = Array.from(
+            { length: 6 },
+            () => ({
+                normal: { x: 0, y: 0, z: 0 },
+                d: 0,
+            }),
+        );
         // 外部 frustum（Follow mode）から導出する視線 forward の永続コピー先（毎フレームの
         // Vector3 アロケーションを避ける）。
         const externalViewForward = new Vector3();
@@ -998,14 +1078,20 @@ export class GlobeScene {
         // エイリアスすると実装依存で壊れ得るため、平面版 `tileManager.ts` と同様に分離する）。
         const frustumViewOnly = Matrix.Identity();
         const frustumTransform = Matrix.Identity();
-        const frustumRawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        const frustumRawPlanes: Plane[] = Array.from(
+            { length: 6 },
+            () => new Plane(0, 0, 0, 0),
+        );
         // 戻り値バッファ（syncTiles 呼び出し内で同期的に消費されるのみで、フレームを越えて
         // 保持されないため in-place 更新で安全に再利用できる）。毎フレームの map() による
         // 配列＋オブジェクト再生成を避ける。
-        const frustumPlanesResult: FrustumPlane[] = Array.from({ length: 6 }, () => ({
-            normal: { x: 0, y: 0, z: 0 },
-            d: 0,
-        }));
+        const frustumPlanesResult: FrustumPlane[] = Array.from(
+            { length: 6 },
+            () => ({
+                normal: { x: 0, y: 0, z: 0 },
+                d: 0,
+            }),
+        );
         /**
          * GeospatialCamera の実 view/projection から真の視錐台6平面を求める。
          * 結果は **camera 相対**（原点 = cameraEcef、回転のみ）で返す（`globeLod.ts` の
@@ -1022,7 +1108,10 @@ export class GlobeScene {
             if (camera.mode === Camera.ORTHOGRAPHIC_CAMERA) return undefined;
             frustumViewOnly.copyFrom(camera.getViewMatrix());
             frustumViewOnly.setRowFromFloats(3, 0, 0, 0, 1);
-            frustumViewOnly.multiplyToRef(camera.getProjectionMatrix(), frustumTransform);
+            frustumViewOnly.multiplyToRef(
+                camera.getProjectionMatrix(),
+                frustumTransform,
+            );
             Frustum.GetPlanesToRef(frustumTransform, frustumRawPlanes);
             for (let i = 0; i < 6; i++) {
                 const p = frustumRawPlanes[i];
@@ -1107,7 +1196,11 @@ export class GlobeScene {
             const tanX = tanY * (w / h);
             ref.copyFrom(rayFwd)
                 .addInPlace(rayRight.scaleInPlace(ndcx * tanX))
-                .addInPlace(rayUpTerm.copyFrom(camera.upVector).scaleInPlace(ndcy * tanY))
+                .addInPlace(
+                    rayUpTerm
+                        .copyFrom(camera.upVector)
+                        .scaleInPlace(ndcy * tanY),
+                )
                 .normalize();
             return ref;
         };
@@ -1153,7 +1246,9 @@ export class GlobeScene {
             originRef
                 .addInPlace(rayRight.scaleInPlace(ndcx * halfW))
                 .addInPlace(
-                    rayUpTerm.copyFrom(camera.upVector).scaleInPlace(ndcy * halfH),
+                    rayUpTerm
+                        .copyFrom(camera.upVector)
+                        .scaleInPlace(ndcy * halfH),
                 );
         };
 
@@ -1169,7 +1264,12 @@ export class GlobeScene {
             movement.zoomAccumulatedPixels += zoomDelta;
             // カーソル位置のレイ（原点 + 単位方向）。createPickingRay の Float32 桁落ちを避け、
             // ortho では平行投影として正しい原点オフセットを得るため computePickRayToRef を使う。
-            computePickRayToRef(scene.pointerX, scene.pointerY, cursorOrigin, cursorDir);
+            computePickRayToRef(
+                scene.pointerX,
+                scene.pointerY,
+                cursorOrigin,
+                cursorDir,
+            );
             // 注視点付近の代表標高（centerElevation）1点の楕円体面だけでは、カーソルが山の
             // 斜面を指していてもその山を無視してズーム先が山の奥に貫通する。レイマーチングで
             // カーソル方向の実際の地表交点を求める（computeTerrainClick と同じロジック）。
@@ -1189,7 +1289,9 @@ export class GlobeScene {
             );
             // 空を指している、または地表（山）を検出できない → 注視点方向（lookAt）ズームに
             // フォールバック。
-            movement.computedPerFrameZoomPickPoint = hit ? zoomTarget : undefined;
+            movement.computedPerFrameZoomPickPoint = hit
+                ? zoomTarget
+                : undefined;
         };
 
         // ---- _recalculateCenter 用の center 再取得を scene.pick 非依存にする差し替え ----
@@ -1300,9 +1402,15 @@ export class GlobeScene {
                 return;
             }
             // 地球の裏側の center を採らないよう、center→原点方向が lookAt とおおむね一致する場合のみ更新。
-            recalcCenterToOrigin.copyFrom(centerForRecalc).negateInPlace().normalize();
+            recalcCenterToOrigin
+                .copyFrom(centerForRecalc)
+                .negateInPlace()
+                .normalize();
             if (Vector3.Dot(recalcLookAt, recalcCenterToOrigin) <= 0) return;
-            const newRadius = Vector3.Distance(computeCameraEcef(), centerForRecalc);
+            const newRadius = Vector3.Distance(
+                computeCameraEcef(),
+                centerForRecalc,
+            );
             if (newRadius <= 1e-6) return;
             ComputeYawPitchFromLookAtToRef(
                 recalcLookAt,
@@ -1358,7 +1466,9 @@ export class GlobeScene {
          * レイマーチングで手前の山を検出するため（resolveTerrainClickElevationToRef 参照）、
          * 山岳地帯でクリックしても山を貫通して奥に着地しない。
          */
-        const computeTerrainClick = (e: PointerEvent): GlobeTerrainClickEvent | null => {
+        const computeTerrainClick = (
+            e: PointerEvent,
+        ): GlobeTerrainClickEvent | null => {
             const rect = canvas.getBoundingClientRect();
             const pxCss = e.clientX - rect.left;
             const pyCss = e.clientY - rect.top;
@@ -1384,7 +1494,11 @@ export class GlobeScene {
                 lon: clickGeo.lonDeg,
                 altitude: clickGeo.altMeters,
                 // world は採用した真の ECEF 交点（floating origin のレンダリング座標ではない）。
-                world: { x: clickHitElev.x, y: clickHitElev.y, z: clickHitElev.z },
+                world: {
+                    x: clickHitElev.x,
+                    y: clickHitElev.y,
+                    z: clickHitElev.z,
+                },
                 pointerEvent: e,
             };
         };
@@ -1399,7 +1513,8 @@ export class GlobeScene {
             };
         };
         const cancelClick = (e: PointerEvent): void => {
-            if (clickStart && clickStart.pointerId === e.pointerId) clickStart = null;
+            if (clickStart && clickStart.pointerId === e.pointerId)
+                clickStart = null;
         };
         const onClickPointerUp = (e: PointerEvent): void => {
             const start = clickStart;
@@ -1469,11 +1584,15 @@ export class GlobeScene {
         // 真の ECEF レイ × 楕円体/鉛直線で求める。
         const polygonPointHoverListeners: GlobePolygonPointListener[] = [];
         const polygonPointClickListeners: GlobePolygonPointClickListener[] = [];
-        const polygonPointDragStartListeners: GlobePolygonPointDragListener[] = [];
+        const polygonPointDragStartListeners: GlobePolygonPointDragListener[] =
+            [];
         const polygonPointDragListeners: GlobePolygonPointDragListener[] = [];
-        const polygonPointDragEndListeners: GlobePolygonPointDragListener[] = [];
-        let polygonPointHoverState: { polygonId: string; index: number } | null =
-            null;
+        const polygonPointDragEndListeners: GlobePolygonPointDragListener[] =
+            [];
+        let polygonPointHoverState: {
+            polygonId: string;
+            index: number;
+        } | null = null;
 
         const hasPolygonPointGestureListeners = (): boolean =>
             polygonPointClickListeners.length > 0 ||
@@ -1559,7 +1678,11 @@ export class GlobeScene {
         const computeDragGroundHit = (
             pxCss: number,
             pyCss: number,
-        ): { lat: number | null; lon: number | null; groundAltitude: number | null } => {
+        ): {
+            lat: number | null;
+            lon: number | null;
+            groundAltitude: number | null;
+        } => {
             computePickRayToRef(pxCss, pyCss, ppOrigin, ppRayDir);
             if (
                 !rayEllipsoidNearHitToRef(
@@ -1597,7 +1720,11 @@ export class GlobeScene {
                     };
                 }
             }
-            return { lat: geo.latDeg, lon: geo.lonDeg, groundAltitude: geo.altMeters };
+            return {
+                lat: geo.latDeg,
+                lon: geo.lonDeg,
+                groundAltitude: geo.altMeters,
+            };
         };
 
         /**
@@ -1612,7 +1739,14 @@ export class GlobeScene {
             const eqr = ellipsoidSemiMajor + startAltMeters;
             const pol = ellipsoidSemiMinor + startAltMeters;
             if (
-                !rayEllipsoidNearHitToRef(ppOrigin, ppRayDir, eqr, eqr, pol, ppScratch)
+                !rayEllipsoidNearHitToRef(
+                    ppOrigin,
+                    ppRayDir,
+                    eqr,
+                    eqr,
+                    pol,
+                    ppScratch,
+                )
             ) {
                 return { planeLat: null, planeLon: null };
             }
@@ -1665,7 +1799,10 @@ export class GlobeScene {
                 try {
                     l(event);
                 } catch (err) {
-                    console.error("[globe] polygon point hover listener threw:", err);
+                    console.error(
+                        "[globe] polygon point hover listener threw:",
+                        err,
+                    );
                 }
             }
         };
@@ -1781,7 +1918,10 @@ export class GlobeScene {
             // hover 検出（パン/ジェスチャ中でなく、hover リスナーがある場合）。
             if (dragging || polygonPointHoverListeners.length === 0) return;
             const rect = canvas.getBoundingClientRect();
-            const hit = pickPolygonPoint(e.clientX - rect.left, e.clientY - rect.top);
+            const hit = pickPolygonPoint(
+                e.clientX - rect.left,
+                e.clientY - rect.top,
+            );
             if (hit) {
                 if (
                     !polygonPointHoverState ||
@@ -1875,7 +2015,10 @@ export class GlobeScene {
             // ジェスチャをリセットする（planar と同様に pointercancel と両方で reset）。
             // pointerup は releasePointerCapture 前に gesture を null 化するため、
             // ここでの lostpointercapture では二重に dragEnd が発火しない。
-            canvas.addEventListener("lostpointercapture", onPolygonPointerCancel);
+            canvas.addEventListener(
+                "lostpointercapture",
+                onPolygonPointerCancel,
+            );
             polygonPointHandlersAttached = true;
         };
         const detachPolygonPointHandlers = (): void => {
@@ -1884,7 +2027,10 @@ export class GlobeScene {
             canvas.removeEventListener("pointermove", onPolygonPointerMove);
             canvas.removeEventListener("pointerup", onPolygonPointerUp);
             canvas.removeEventListener("pointercancel", onPolygonPointerCancel);
-            canvas.removeEventListener("lostpointercapture", onPolygonPointerCancel);
+            canvas.removeEventListener(
+                "lostpointercapture",
+                onPolygonPointerCancel,
+            );
             polygonPointGesture = null;
             if (polygonPointHoverState !== null) {
                 polygonPointHoverState = null;
@@ -1900,7 +2046,8 @@ export class GlobeScene {
                 return () => {
                     const i = listeners.indexOf(listener);
                     if (i >= 0) listeners.splice(i, 1);
-                    if (!hasAnyPolygonPointListener()) detachPolygonPointHandlers();
+                    if (!hasAnyPolygonPointListener())
+                        detachPolygonPointHandlers();
                 };
             };
         const subscribePolygonPointHover = (
@@ -1914,7 +2061,10 @@ export class GlobeScene {
                 // 最後の hover リスナー解除時は、click/drag リスナーが残って handler が
                 // 付いたままでも hover 検出が止まりカーソルが pointer のまま残り得る。
                 // planar (subscribePolygonPointHover) と同様に明示的にクリアする。
-                if (polygonPointHoverListeners.length === 0 && polygonPointHoverState !== null) {
+                if (
+                    polygonPointHoverListeners.length === 0 &&
+                    polygonPointHoverState !== null
+                ) {
                     polygonPointHoverState = null;
                     canvas.style.cursor = "";
                 }
@@ -1934,7 +2084,6 @@ export class GlobeScene {
             polygonPointDragEndListeners,
         );
 
-
         // ズーム中（ホイール入力〜慣性減衰）か否かを判定する。ホイールが idle かつ radius が
         // フレーム間で settle したら「ズーム終了」とみなし seat を復帰させる。
         // 地形衝突補正（clearanceBoost）や自動スクロール由来の radius 変動を「ズーム操作中」と
@@ -1947,7 +2096,10 @@ export class GlobeScene {
             const settling =
                 radiusDelta > ZOOM_SETTLE_RATIO * Math.max(1, naturalRadius);
             prevNaturalRadius = naturalRadius;
-            return performance.now() - lastWheelTimeMs < ZOOM_PAUSE_IDLE_MS || settling;
+            return (
+                performance.now() - lastWheelTimeMs < ZOOM_PAUSE_IDLE_MS ||
+                settling
+            );
         };
 
         const syncTiles = (): void => {
@@ -1957,11 +2109,19 @@ export class GlobeScene {
             // 外部 frustum から実視線 forward を導出して LOD の前方到達距離補正に渡す。通常カメラ
             // （override なし）は center が真の注視点なので補正不要＝渡さない（後方互換）。
             let viewForward: Vector3 | undefined;
-            if (override && viewForwardFromFrustumPlanesToRef(override.planes, externalViewForward)) {
+            if (
+                override &&
+                viewForwardFromFrustumPlanesToRef(
+                    override.planes,
+                    externalViewForward,
+                )
+            ) {
                 viewForward = externalViewForward;
             }
             const stats = tileManager.sync({
-                cameraEcef: override ? override.cameraEcef : computeCameraEcef(),
+                cameraEcef: override
+                    ? override.cameraEcef
+                    : computeCameraEcef(),
                 centerEcef: camera.center,
                 maxZoom: GLOBE_SCENE_DEFAULTS.maxZoom,
                 viewportHeight: engine.getRenderHeight(),
@@ -1974,7 +2134,9 @@ export class GlobeScene {
                 horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
                 referenceAltitude: centerElevation,
                 rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
-                frustumPlanes: override ? override.planes : computeCameraFrustumPlanes(),
+                frustumPlanes: override
+                    ? override.planes
+                    : computeCameraFrustumPlanes(),
                 // 登録済みモデル（avatar等）は注視点と無関係な地点にいる場合があるため、視錐台の
                 // 外でも最粗rootを確保し terrainElevAt/接地が機能するよう保険をかける。
                 // syncTiles は onBeforeRenderObservable から毎フレーム呼ばれるため、
@@ -1988,7 +2150,8 @@ export class GlobeScene {
                     }
                     return points;
                 })(),
-                textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
+                textureQualityFloorZoom:
+                    GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
                 viewForward,
                 // ズーム速度に関わらず実ビルドのフレーム集中によるガタつきを避けるため、
                 // globe バックエンドは常にキュー分散モードで同期する。実ビルドの消化は
@@ -2014,7 +2177,10 @@ export class GlobeScene {
         // center を毎フレーム動かすため、ズーム中（`zoomActive`）は seat を一時停止して鉛直方向の
         // 引っ張り合い（揺れの主因）を断つ。ズームが落ち着くと seat の lerp で滑らかに復帰する。
         // camAltMeters はカメラの楕円体高度（observer で 1 回だけ計算した値を共有）。
-        const seatCenterOnTerrain = (camAltMeters: number, zoomActive: boolean): void => {
+        const seatCenterOnTerrain = (
+            camAltMeters: number,
+            zoomActive: boolean,
+        ): void => {
             const g = ecefToGeodetic(camera.center);
             const elev = tileManager.terrainElevAt(g.latDeg, g.lonDeg);
             if (elev === null) return;
@@ -2026,14 +2192,20 @@ export class GlobeScene {
                 0,
                 Math.min(
                     1,
-                    (SEAT_ZERO_CLEARANCE - clearance) / (SEAT_ZERO_CLEARANCE - SEAT_FULL_CLEARANCE),
+                    (SEAT_ZERO_CLEARANCE - clearance) /
+                        (SEAT_ZERO_CLEARANCE - SEAT_FULL_CLEARANCE),
                 ),
             );
             if (seatFactor <= 0) return; // 十分高い → 地形に追従せず高度一定でパン
             geodeticToEcefToRef(g.latDeg, g.lonDeg, elev, seatCenter);
             // 同 lat/lon のまま高度だけ地形標高へ。残差を lerp で滑らかに（高度依存で強度を絞る）。
             // 毎フレーム呼ばれるため、LerpToRef で再利用バッファに書き割り当てを避ける。
-            Vector3.LerpToRef(camera.center, seatCenter, SEAT_LERP * seatFactor, seatLerp);
+            Vector3.LerpToRef(
+                camera.center,
+                seatCenter,
+                SEAT_LERP * seatFactor,
+                seatLerp,
+            );
             camera.center = seatLerp;
         };
 
@@ -2042,7 +2214,10 @@ export class GlobeScene {
         // 近接ズーム/低高度パンの保険として明示実装する（PoC は seat による実用回避のみ）。
         // camEcef / camGeo / lookAt は observer で 1 回だけ計算したものを共有する
         // （seat → 衝突で computeCameraEcef / ecefToGeodetic を二重実行しないため）。
-        const enforceGroundClearance = (camEcef: Vector3, camGeo: Geodetic): void => {
+        const enforceGroundClearance = (
+            camEcef: Vector3,
+            camGeo: Geodetic,
+        ): void => {
             // 外部（setAltitude / setView / ホイールズーム等、経路を問わず）が radius を直接
             // 上書きしていれば、地形衝突の追加分を破棄して現在の radius を新たな素の値として
             // 再基準化する。これをしないと stepGroundClearanceRadius が誤った naturalRadius
@@ -2054,7 +2229,10 @@ export class GlobeScene {
             ) {
                 clearanceBoost = 0;
             }
-            const terrain = tileManager.terrainElevAt(camGeo.latDeg, camGeo.lonDeg);
+            const terrain = tileManager.terrainElevAt(
+                camGeo.latDeg,
+                camGeo.lonDeg,
+            );
             if (terrain === null) {
                 // radius を変えないので次フレームの誤検知を避けるため基準値を現在値に同期する。
                 lastAppliedRadius = camera.radius;
@@ -2064,9 +2242,14 @@ export class GlobeScene {
             // center→camera 単位方向は -lookAt/|lookAt|。computeCameraEcef は lookAt を
             // radius 倍にスケール済み（|lookAt|=radius）なので、内積を |camEcef|·radius で割って
             // 単位ベクトル同士の内積へ正規化する。
-            const denom = Math.max(1, camEcef.length()) * Math.max(1, camera.radius);
+            const denom =
+                Math.max(1, camEcef.length()) * Math.max(1, camera.radius);
             const dAltPerRadius =
-                -(camEcef.x * lookAt.x + camEcef.y * lookAt.y + camEcef.z * lookAt.z) / denom;
+                -(
+                    camEcef.x * lookAt.x +
+                    camEcef.y * lookAt.y +
+                    camEcef.z * lookAt.z
+                ) / denom;
             // 追加分(clearanceBoost)を除いた素の radius/高度を基準にスムーズ補間で 1 フレーム進める。
             // これにより radius がアニメーション無しで一段に跳ねず、障害が解消すれば追加分が戻る
             // （単調増加を避ける）。
@@ -2123,7 +2306,9 @@ export class GlobeScene {
         const reanchorOverlaysForViewMode = (mode: ViewMode): void => {
             const camEcef = computeCameraEcef();
             const flatScale =
-                mode === "2d" ? camera.radius / OVERLAY_REF_DISTANCE_M : undefined;
+                mode === "2d"
+                    ? camera.radius / OVERLAY_REF_DISTANCE_M
+                    : undefined;
             markerManager.update(camEcef);
             polygonManager.update(camEcef, flatScale);
             circleManager.update(camEcef, flatScale);
@@ -2145,7 +2330,12 @@ export class GlobeScene {
                 setOverlayFlatten(true);
                 // 2D は skymap 無し。3D 分岐の宇宙黒への高度連動 lerp を行わないため、
                 // 背景を一定の昼空色へ固定する（3D 復帰時は次フレームの clearColor ループが上書き）。
-                scene.clearColor.set(DAY_SKY_COLOR.r, DAY_SKY_COLOR.g, DAY_SKY_COLOR.b, 1);
+                scene.clearColor.set(
+                    DAY_SKY_COLOR.r,
+                    DAY_SKY_COLOR.g,
+                    DAY_SKY_COLOR.b,
+                    1,
+                );
             } else {
                 camera.mode = Camera.PERSPECTIVE_CAMERA;
                 camera.pitch = savedPitch;
@@ -2200,9 +2390,12 @@ export class GlobeScene {
                 // 毎フレーム Color3 を新規生成しないよう、各チャンネルを直接 lerp して set する。
                 // 基調色は時刻連動の skyBaseColor（昼=青/夜=紺/日の出入り=茜）。
                 scene.clearColor.set(
-                    skyBaseColor.r + (SPACE_SKY_COLOR.r - skyBaseColor.r) * spaceFactor,
-                    skyBaseColor.g + (SPACE_SKY_COLOR.g - skyBaseColor.g) * spaceFactor,
-                    skyBaseColor.b + (SPACE_SKY_COLOR.b - skyBaseColor.b) * spaceFactor,
+                    skyBaseColor.r +
+                        (SPACE_SKY_COLOR.r - skyBaseColor.r) * spaceFactor,
+                    skyBaseColor.g +
+                        (SPACE_SKY_COLOR.g - skyBaseColor.g) * spaceFactor,
+                    skyBaseColor.b +
+                        (SPACE_SKY_COLOR.b - skyBaseColor.b) * spaceFactor,
                     1,
                 );
                 // ズーム中（ホイール〜慣性減衰）は seat を止め、鉛直の引っ張り合いによる揺れを防ぐ。
@@ -2230,7 +2423,8 @@ export class GlobeScene {
             circleManager.update(camEcef, flatScale);
             // モデルの接地・起立更新。
             modelManager.tick();
-            if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0) syncTiles();
+            if (frame % GLOBE_SCENE_DEFAULTS.syncIntervalFrames === 0)
+                syncTiles();
             // 実ビルド（Mesh/Geometry/Texture 生成）を複数フレームへ分散するため、syncTiles の
             // 間引き周期とは独立して毎フレーム消化する。キューが空なら早期 return で
             // コストはごく小さい。desiredKeys は syncTiles 実行時にしか更新されないため、連続
@@ -2247,10 +2441,15 @@ export class GlobeScene {
             const freshFrustumPlanes = overrideForDrain
                 ? overrideForDrain.planes
                 : computeCameraFrustumPlanes();
-            const freshCameraEcef = overrideForDrain ? overrideForDrain.cameraEcef : camEcef;
+            const freshCameraEcef = overrideForDrain
+                ? overrideForDrain.cameraEcef
+                : camEcef;
             tileManager.drainBuildQueue(
                 freshFrustumPlanes
-                    ? { frustumPlanes: freshFrustumPlanes, cameraEcef: freshCameraEcef }
+                    ? {
+                          frustumPlanes: freshFrustumPlanes,
+                          cameraEcef: freshCameraEcef,
+                      }
                     : undefined,
             );
             frame++;
@@ -2287,7 +2486,10 @@ export class GlobeScene {
             canvas.removeEventListener("keyup", onKeyUp);
             canvas.removeEventListener("blur", clearPressed);
             window.removeEventListener("blur", clearPressed);
-            document.removeEventListener("visibilitychange", onVisibilityChange);
+            document.removeEventListener(
+                "visibilitychange",
+                onVisibilityChange,
+            );
             canvas.removeEventListener("pointerdown", onPointerDown);
             canvas.removeEventListener("pointerup", onPointerUp);
             canvas.removeEventListener("pointercancel", onPointerCancel);
@@ -2334,7 +2536,10 @@ export class GlobeScene {
             // 契約は「6平面」なので枚数を検証し、6平面かつ ECEF 位置が揃うときのみ override を
             // 有効化する。6平面以外（空配列・不完全な配列）だと selectGlobeTiles 側で視錐台
             // カリングが暗黙に無効化される／部分平面で誤判定するため、その場合は override を解除する。
-            setExternalFrustum: (planes: FrustumPlane[] | null, cameraEcefPos: Vector3 | null) => {
+            setExternalFrustum: (
+                planes: FrustumPlane[] | null,
+                cameraEcefPos: Vector3 | null,
+            ) => {
                 if (planes && planes.length === 6 && cameraEcefPos) {
                     // 呼び出し側のスクラッチ（配列/Vector3）を直接保持せず、永続バッファへ即座に
                     // コピーする（呼び出し側が同じ参照を次回呼び出しで書き換えても安全）。

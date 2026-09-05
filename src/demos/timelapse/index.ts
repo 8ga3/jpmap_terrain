@@ -22,15 +22,12 @@
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
 import {
+    createUrlUpdater,
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
-    createUrlUpdater,
 } from "../../terrain/urlState";
 import { longitudeToOffsetMs, mountClock } from "./clockOverlay";
-import {
-    computeSimulatedDate,
-    parseTimelapseQuery,
-} from "./timelapseClock";
+import { computeSimulatedDate, parseTimelapseQuery } from "./timelapseClock";
 
 const DEMO_MOUNT_ID = "root";
 const CLOCK_ELEMENT_ID = "timelapse-clock";
@@ -90,7 +87,9 @@ export const resolveCameraInit = (
                 lat: cameraState.lat,
                 lon: cameraState.lon,
                 altitude: cameraState.altitude,
-                ...(atMatch[4] !== undefined ? { azimuth: cameraState.azimuth } : {}),
+                ...(atMatch[4] !== undefined
+                    ? { azimuth: cameraState.azimuth }
+                    : {}),
                 ...(atMatch[5] !== undefined ? { tilt: cameraState.tilt } : {}),
             };
         }

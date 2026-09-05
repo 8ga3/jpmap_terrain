@@ -5,10 +5,8 @@
  * （他テストでは Babylon を mock するパターンもあるが、本テストではベクトル成分検証のため実体に依存する）。
  */
 
-import { describe, it, expect } from "vitest";
-
-import { deriveSunState } from "../src/terrain/sunState";
-import { deriveSkyColor } from "../src/terrain/sunState";
+import { describe, expect, it } from "vitest";
+import { deriveSkyColor, deriveSunState } from "../src/terrain/sunState";
 
 describe("deriveSunState", () => {
     it("真昼（高度 60°）は dayFactor=1、skyLuminance≈1、太陽メッシュ可視", () => {

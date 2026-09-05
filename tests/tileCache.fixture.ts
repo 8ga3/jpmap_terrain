@@ -7,10 +7,11 @@
  * - ディスクキャッシュは `.tile-cache/` ディレクトリに保存（.gitignore 推奨）
  * - workers: 1 前提のため同期的なディスクI/Oでも問題ない
  */
+
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { test as base } from "@playwright/test";
-import * as fs from "fs";
-import * as path from "path";
-import * as crypto from "crypto";
 
 const GSI_TILE_PATTERN = /cyberjapandata\.gsi\.go\.jp\/xyz\//;
 
@@ -48,16 +49,31 @@ function readFromDisk(url: string): CacheEntry | null {
     if (!metaExists || !bodyExists) {
         // meta がない場合は中断による孤立 body の可能性があるため削除して自己修復
         if (bodyExists && !metaExists) {
-            try { fs.unlinkSync(bodyPath); } catch { /* ignore */ }
+            try {
+                fs.unlinkSync(bodyPath);
+            } catch {
+                /* ignore */
+            }
         }
         return null;
     }
     try {
         const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-        if (typeof meta.contentType !== "string" || typeof meta.status !== "number") {
+        if (
+            typeof meta.contentType !== "string" ||
+            typeof meta.status !== "number"
+        ) {
             // 旧形式または壊れたメタを best-effort で削除してキャッシュミス扱いにする
-            try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
-            try { fs.unlinkSync(bodyPath); } catch { /* ignore */ }
+            try {
+                fs.unlinkSync(metaPath);
+            } catch {
+                /* ignore */
+            }
+            try {
+                fs.unlinkSync(bodyPath);
+            } catch {
+                /* ignore */
+            }
             return null;
         }
         const body = fs.readFileSync(bodyPath);
@@ -65,8 +81,16 @@ function readFromDisk(url: string): CacheEntry | null {
     } catch {
         // JSON 破損や読み取りエラーの場合は残存ファイルを best-effort で削除して
         // 自己修復し、キャッシュミス扱いとする
-        try { fs.unlinkSync(metaPath); } catch { /* ignore */ }
-        try { fs.unlinkSync(bodyPath); } catch { /* ignore */ }
+        try {
+            fs.unlinkSync(metaPath);
+        } catch {
+            /* ignore */
+        }
+        try {
+            fs.unlinkSync(bodyPath);
+        } catch {
+            /* ignore */
+        }
         return null;
     }
 }
@@ -95,8 +119,16 @@ function writeToDisk(url: string, entry: CacheEntry): void {
         fs.renameSync(metaTmp, metaPath); // meta を最後（コミットマーカー）
     } catch (e) {
         // 書き込み/rename 失敗時は tmp ファイルを削除して例外を伝播する
-        try { fs.unlinkSync(metaTmp); } catch { /* ignore */ }
-        try { fs.unlinkSync(bodyTmp); } catch { /* ignore */ }
+        try {
+            fs.unlinkSync(metaTmp);
+        } catch {
+            /* ignore */
+        }
+        try {
+            fs.unlinkSync(bodyTmp);
+        } catch {
+            /* ignore */
+        }
         throw e;
     }
 }
@@ -147,7 +179,8 @@ export const test = base.extend({
             const response = await route.fetch();
             const body = await response.body();
             const contentType =
-                response.headers()["content-type"] ?? "application/octet-stream";
+                response.headers()["content-type"] ??
+                "application/octet-stream";
             // 404（タイル非存在）は決定的なので negative cache する。
             // レイヤー合成は欠測タイルで下位 DEM の 404 を多数プローブするため、
             // これをキャッシュしないと毎回実ネットワークに出て networkidle に到達できなくなる。
@@ -162,7 +195,11 @@ export const test = base.extend({
                 });
                 return;
             }
-            const entry: CacheEntry = { body, contentType, status: response.status() };
+            const entry: CacheEntry = {
+                body,
+                contentType,
+                status: response.status(),
+            };
             setCache(url, entry);
             await route.fulfill({
                 status: entry.status,

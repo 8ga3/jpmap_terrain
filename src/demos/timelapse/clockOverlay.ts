@@ -53,10 +53,7 @@ export const formatUtcOffsetLabel = (offsetMs: number): string => {
  *
  * `Invalid Date` が渡された場合は 0° を返す（呼び出し側でフォールバック値を期待しないよう注意）。
  */
-export const computeClockAngles = (
-    date: Date,
-    offsetMs = 0,
-): ClockAngles => {
+export const computeClockAngles = (date: Date, offsetMs = 0): ClockAngles => {
     if (Number.isNaN(date.getTime())) {
         return { hourDeg: 0, minuteDeg: 0 };
     }

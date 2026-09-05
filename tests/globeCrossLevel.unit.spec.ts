@@ -5,14 +5,13 @@
  * - snapEdgeElevation: 境界辺で粗メッシュ表面値を返し、辺以外は null
  */
 
-import { describe, it, expect } from "vitest";
-
-import { TILE_SIZE } from "../src/terrain/gsiTile";
+import { describe, expect, it } from "vitest";
 import {
+    type CoarseEdge,
     selectCoarseEdges,
     snapEdgeElevation,
-    type CoarseEdge,
 } from "../src/terrain/geo/crossLevel";
+import { TILE_SIZE } from "../src/terrain/gsiTile";
 
 /** 一定標高 value で埋めた粗タイル標高ラスタ。 */
 const constElev = (value: number): Float32Array =>
@@ -80,7 +79,13 @@ describe("selectCoarseEdges", () => {
 describe("snapEdgeElevation", () => {
     const segments = 4;
     const edges: CoarseEdge[] = [
-        { edge: "north", coarseElev: constElev(123), coarseX: 5, coarseY: 1, scale: 2 },
+        {
+            edge: "north",
+            coarseElev: constElev(123),
+            coarseX: 5,
+            coarseY: 1,
+            scale: 2,
+        },
     ];
 
     it("edges 空なら null", () => {
@@ -89,7 +94,16 @@ describe("snapEdgeElevation", () => {
 
     it("北辺(row=0)は粗メッシュ表面値を返す", () => {
         // 細タイル (12,10,4) の北辺頂点。粗標高は一定なので 123 が返る。
-        const v = snapEdgeElevation(edges, 0, 2, segments, 10, 4, (2 / segments) * TILE_SIZE, 0);
+        const v = snapEdgeElevation(
+            edges,
+            0,
+            2,
+            segments,
+            10,
+            4,
+            (2 / segments) * TILE_SIZE,
+            0,
+        );
         expect(v).toBeCloseTo(123, 6);
     });
 
@@ -123,10 +137,25 @@ describe("snapEdgeElevation の粗メッシュ表面サンプリング（bilinea
     it("segments が 256 を割り切らなくても線形勾配を正確にスナップ", () => {
         const segments = 3; // 256 を割り切らない → サブピクセルサンプルが発生
         const gEdges: CoarseEdge[] = [
-            { edge: "north", coarseElev: gradientX, coarseX: 5, coarseY: 1, scale: 2 },
+            {
+                edge: "north",
+                coarseElev: gradientX,
+                coarseX: 5,
+                coarseY: 1,
+                scale: 2,
+            },
         ];
         // 北辺(row=0), col=1（サブピクセル位置）の頂点。
-        const v = snapEdgeElevation(gEdges, 0, 1, segments, 10, 4, (1 / segments) * TILE_SIZE, 0);
+        const v = snapEdgeElevation(
+            gEdges,
+            0,
+            1,
+            segments,
+            10,
+            4,
+            (1 / segments) * TILE_SIZE,
+            0,
+        );
         // 期待値 = coarse ローカルピクセル x = cgx = 42 + 2/3（bilinear なら厳密一致）。
         // 最近傍だと 42.5 になりこの精度では一致しない。
         expect(v).toBeCloseTo(42 + 2 / 3, 4);

@@ -5,11 +5,12 @@
  * 一致していること（= sideOrientation の DOUBLESIDE による頂点倍化が起きていないこと）を
  * 検証する。倍化すると複製側が未着色のまま白く描画され、リボンが正しく表示されなくなる。
  */
-import { describe, it, expect, afterEach } from "vitest";
+
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Scene } from "@babylonjs/core/scene";
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createRouteLine } from "../src/demos/flight/routeLine";
 
@@ -40,7 +41,13 @@ describe("routeLine - ribbon の頂点カラーバッファ整合性", () => {
 
         // 1 フレーム更新して頂点・カラーを確定させる。
         route.update(
-            { angleDeg: 30, centerLat: 35.681, centerLon: 139.767, radiusM: 2000, altitudeM: 500 },
+            {
+                angleDeg: 30,
+                centerLat: 35.681,
+                centerLon: 139.767,
+                radiusM: 2000,
+                altitudeM: 500,
+            },
             1000,
         );
 

@@ -3,10 +3,16 @@
  * Quadtree 探索 + SSE による LOD 判定と視錐台カリングの挙動を検証する。
  */
 
-import { describe, it, expect, vi } from "vitest";
-import { computeQuadtreeTiles, isAABBInFrustum } from "../src/terrain/visibleTiles";
-import type { FrustumPlane, QuadtreeTilesOptions } from "../src/terrain/visibleTiles";
+import { describe, expect, it, vi } from "vitest";
 import type { TileCoord } from "../src/terrain/tileTypes";
+import type {
+    FrustumPlane,
+    QuadtreeTilesOptions,
+} from "../src/terrain/visibleTiles";
+import {
+    computeQuadtreeTiles,
+    isAABBInFrustum,
+} from "../src/terrain/visibleTiles";
 
 /** 全候補を内包する Frustum（6平面とも遠方）。 */
 const allVisiblePlanes: FrustumPlane[] = [
@@ -30,7 +36,7 @@ const noneVisiblePlanes: FrustumPlane[] = [
 
 /** x >= 0 のみ許容する（片側のみ可視）。 */
 const halfVisiblePlanes: FrustumPlane[] = [
-    { normal: { x: 1, y: 0, z: 0 }, d: 0 },        // x >= 0
+    { normal: { x: 1, y: 0, z: 0 }, d: 0 }, // x >= 0
     { normal: { x: -1, y: 0, z: 0 }, d: 1e9 },
     { normal: { x: 0, y: 1, z: 0 }, d: 1e9 },
     { normal: { x: 0, y: -1, z: 0 }, d: 1e9 },
@@ -57,15 +63,15 @@ const baseOpts: QuadtreeTilesOptions = {
 
 describe("isAABBInFrustum", () => {
     it("全可視 Frustum では AABB が可視と判定される", () => {
-        expect(
-            isAABBInFrustum(-1, -1, -1, 1, 1, 1, allVisiblePlanes)
-        ).toBe(true);
+        expect(isAABBInFrustum(-1, -1, -1, 1, 1, 1, allVisiblePlanes)).toBe(
+            true,
+        );
     });
 
     it("全不可視 Frustum では可視判定されない", () => {
-        expect(
-            isAABBInFrustum(-1, -1, -1, 1, 1, 1, noneVisiblePlanes)
-        ).toBe(false);
+        expect(isAABBInFrustum(-1, -1, -1, 1, 1, 1, noneVisiblePlanes)).toBe(
+            false,
+        );
     });
 });
 
@@ -96,7 +102,9 @@ describe("computeQuadtreeTiles", () => {
         // 全 root は minZoom のまま採用され、半面のみ残るので全件より少ない
         expect(result.length).toBeGreaterThan(0);
         expect(result.length).toBeLessThan(allVisibleCount);
-        expect(result.every((e) => e.coord.zoom === baseOpts.minZoom)).toBe(true);
+        expect(result.every((e) => e.coord.zoom === baseOpts.minZoom)).toBe(
+            true,
+        );
     });
 
     it("sseThreshold が極小なら全タイルが maxZoom になる", () => {
@@ -106,7 +114,9 @@ describe("computeQuadtreeTiles", () => {
             rootSearchRadius: 0,
         });
         expect(result.length).toBeGreaterThan(0);
-        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
+        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(
+            true,
+        );
     });
 
     it("sseThreshold が極大なら全タイルが minZoom になる", () => {
@@ -116,13 +126,15 @@ describe("computeQuadtreeTiles", () => {
             rootSearchRadius: 1,
         });
         expect(result.length).toBeGreaterThan(0);
-        expect(result.every((e) => e.coord.zoom === baseOpts.minZoom)).toBe(true);
+        expect(result.every((e) => e.coord.zoom === baseOpts.minZoom)).toBe(
+            true,
+        );
     });
 
     it("maxTiles で結果が制限され、先頭はカメラ最接近タイルが来る", () => {
         const result = computeQuadtreeTiles({
             ...baseOpts,
-            sseThreshold: 0.001,     // 細かく分割して候補を多くする
+            sseThreshold: 0.001, // 細かく分割して候補を多くする
             rootSearchRadius: 1,
             maxTiles: 5,
         });
@@ -150,7 +162,7 @@ describe("computeQuadtreeTiles", () => {
                 const parentY = b.y >> diff;
                 if (parentX === a.x && parentY === a.y) {
                     throw new Error(
-                        `親子関係検出: parent ${a.zoom}/${a.x}/${a.y}, child ${b.zoom}/${b.x}/${b.y}`
+                        `親子関係検出: parent ${a.zoom}/${a.x}/${a.y}, child ${b.zoom}/${b.x}/${b.y}`,
                     );
                 }
             }
@@ -162,7 +174,7 @@ describe("computeQuadtreeTiles", () => {
         // 遠景: root から離れるほど D が大きくなり早期採用される。
         const result = computeQuadtreeTiles({
             ...baseOpts,
-            tileSizeForZoom: (z) => 10 * Math.pow(2, 10 - z),
+            tileSizeForZoom: (z) => 10 * 2 ** (10 - z),
             viewportHeight: 1,
             cameraPosition: { x: 0, y: 1, z: 0 },
             sseThreshold: 2.0,
@@ -191,7 +203,7 @@ describe("computeQuadtreeTiles", () => {
 
     it("カメラを遠ざけると採用 zoom が全体的に下がる", () => {
         const scaled: Partial<QuadtreeTilesOptions> = {
-            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            tileSizeForZoom: (z) => 1e6 * 2 ** -z,
             rootSearchRadius: 0,
             // 既定しきい値は大きめに振れるため、感度検証はしきい値を明示固定する
             sseThreshold: 2.0,
@@ -207,13 +219,14 @@ describe("computeQuadtreeTiles", () => {
             cameraPosition: { x: 0, y: 1e7, z: 0 },
         });
         const avg = (entries: typeof near): number =>
-            entries.reduce((s, e) => s + e.coord.zoom, 0) / Math.max(1, entries.length);
+            entries.reduce((s, e) => s + e.coord.zoom, 0) /
+            Math.max(1, entries.length);
         expect(avg(far)).toBeLessThan(avg(near));
     });
 
     it("viewportHeight を大きくすると同じタイルが 1 段深く分割される", () => {
         const scaled: Partial<QuadtreeTilesOptions> = {
-            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            tileSizeForZoom: (z) => 1e6 * 2 ** -z,
             cameraPosition: { x: 0, y: 1e5, z: 0 },
             rootSearchRadius: 0,
             // 既定しきい値は 3x3 想定で大きいので、感度検証はしきい値を小さく固定する
@@ -242,7 +255,9 @@ describe("computeQuadtreeTiles", () => {
             sseThreshold: 0.001, // 最深まで分割
         });
         expect(result.length).toBeGreaterThan(0);
-        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
+        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(
+            true,
+        );
 
         // 全タイルが単一 root の子孫（minZoom へ落としたときの親 x/y が一致）
         const diff = baseOpts.maxZoom - baseOpts.minZoom;
@@ -262,7 +277,9 @@ describe("computeQuadtreeTiles", () => {
         });
         expect(result.length).toBeGreaterThan(0);
         // D が 1 にクランプされると SSE が大きく、maxZoom まで分割される。
-        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(true);
+        expect(result.every((e) => e.coord.zoom === baseOpts.maxZoom)).toBe(
+            true,
+        );
     });
 
     it("maxVisited 超過時にタイルが黙って破棄されず粗い LOD で強制採用される", () => {
@@ -318,7 +335,7 @@ describe("computeQuadtreeTiles", () => {
         // 中遠距離カメラで zoom 分布が混在する条件。
         // lodBias=2 は effectiveSseThreshold を4倍にし、早期に採用される。
         const scaled: Partial<QuadtreeTilesOptions> = {
-            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            tileSizeForZoom: (z) => 1e6 * 2 ** -z,
             rootSearchRadius: 0,
             sseThreshold: 2.0,
             cameraPosition: { x: 0, y: 1e5, z: 0 },
@@ -335,7 +352,8 @@ describe("computeQuadtreeTiles", () => {
             lodBias: 2,
         });
         const avg = (entries: typeof noBias): number =>
-            entries.reduce((s, e) => s + e.coord.zoom, 0) / Math.max(1, entries.length);
+            entries.reduce((s, e) => s + e.coord.zoom, 0) /
+            Math.max(1, entries.length);
 
         expect(noBias.length).toBeGreaterThan(0);
         expect(withBias.length).toBeGreaterThan(0);
@@ -345,7 +363,7 @@ describe("computeQuadtreeTiles", () => {
 
     it("lodBias=0 は lodBias 省略と同じ結果になる", () => {
         const scaled: Partial<QuadtreeTilesOptions> = {
-            tileSizeForZoom: (z) => 1e6 * Math.pow(2, -z),
+            tileSizeForZoom: (z) => 1e6 * 2 ** -z,
             rootSearchRadius: 0,
             sseThreshold: 2.0,
             cameraPosition: { x: 0, y: 1e5, z: 0 },
@@ -362,7 +380,9 @@ describe("computeQuadtreeTiles", () => {
         });
         expect(omitted.length).toBe(explicit.length);
         const keys = (entries: typeof omitted): string[] =>
-            entries.map((e) => `${e.coord.zoom}/${e.coord.x}/${e.coord.y}`).sort();
+            entries
+                .map((e) => `${e.coord.zoom}/${e.coord.x}/${e.coord.y}`)
+                .sort();
         expect(keys(omitted)).toEqual(keys(explicit));
     });
 });

@@ -6,18 +6,18 @@
  * - geodeticToEcefToRef が ref を書き換えて返す（アロケーション回避）ことを確認
  */
 
-import { describe, it, expect } from "vitest";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
 
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
+import { describe, expect, it } from "vitest";
 
 import {
     DEG2RAD,
-    RAD2DEG,
-    geodeticToEcef,
-    geodeticToEcefToRef,
     ecefToGeodetic,
     ecefToGeodeticToRef,
+    geodeticToEcef,
+    geodeticToEcefToRef,
+    RAD2DEG,
 } from "../src/terrain/geo/ecef";
 
 describe("定数", () => {
@@ -53,7 +53,7 @@ describe("軸規約（既知の基準点）", () => {
 describe("往復精度 geodetic → ecef → geodetic", () => {
     const samples: { name: string; lat: number; lon: number; alt: number }[] = [
         { name: "東京", lat: 35.681236, lon: 139.767125, alt: 40 },
-        { name: "富士山頂", lat: 35.360833, lon: 138.727500, alt: 3776 },
+        { name: "富士山頂", lat: 35.360833, lon: 138.7275, alt: 3776 },
         { name: "南半球高高度", lat: -33.8688, lon: 151.2093, alt: 12000 },
         { name: "赤道", lat: 0, lon: 0, alt: 0 },
         { name: "高緯度", lat: 80, lon: -170, alt: 500 },
@@ -98,13 +98,17 @@ describe("ecefToGeodeticToRef（in-place 版）", () => {
 
 describe("極の特異点", () => {
     it("ecefToGeodetic が北極で lat=90 を返す", () => {
-        const g = ecefToGeodetic(new Vector3(0, 0, Wgs84Ellipsoid.semiMinorAxis));
+        const g = ecefToGeodetic(
+            new Vector3(0, 0, Wgs84Ellipsoid.semiMinorAxis),
+        );
         expect(g.latDeg).toBe(90);
         expect(g.altMeters).toBeCloseTo(0, 3);
     });
 
     it("ecefToGeodetic が南極で lat=-90 を返す", () => {
-        const g = ecefToGeodetic(new Vector3(0, 0, -Wgs84Ellipsoid.semiMinorAxis));
+        const g = ecefToGeodetic(
+            new Vector3(0, 0, -Wgs84Ellipsoid.semiMinorAxis),
+        );
         expect(g.latDeg).toBe(-90);
         expect(g.altMeters).toBeCloseTo(0, 3);
     });

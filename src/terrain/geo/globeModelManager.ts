@@ -12,16 +12,17 @@
  * - per-axis scaling・フル Euler rotation（地心 up 起立に局所 pitch/roll を合成）
  * - animation の保持と play/stop
  */
-import type { Scene } from "@babylonjs/core/scene";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { Scene } from "@babylonjs/core/scene";
 
 import { importLoaderForUrl } from "../modelManager";
-import { surfaceOrientationToRef } from "./overlayPlacement";
 import { DEG2RAD, geodeticToEcefToRef } from "./ecef";
+import { surfaceOrientationToRef } from "./overlayPlacement";
 
 /** 高度モード。`terrain`=地表からのオフセット / `absolute`=楕円体面からの絶対高度。 */
 export type GlobeAltitudeMode = "terrain" | "absolute";
@@ -158,7 +159,9 @@ export const createGlobeModelManager = (
 
     /** 起立姿勢（地心 up + heading=rotation.y）に局所 pitch/roll(x,z) を合成して向きを与える。 */
     const applyOrientation = (node: GlobeModelNode): void => {
-        if (!surfaceOrientationToRef(node.root.position, node.rotation.y, quat)) {
+        if (
+            !surfaceOrientationToRef(node.root.position, node.rotation.y, quat)
+        ) {
             return; // 極などの特異点では向き更新をスキップ
         }
         if (node.rotation.x !== 0 || node.rotation.z !== 0) {
@@ -181,7 +184,12 @@ export const createGlobeModelManager = (
     /** モデルを ECEF へ接地し、可視状態と向きを更新する。 */
     const placeNode = (node: GlobeModelNode): void => {
         if (node.altitudeMode === "absolute") {
-            geodeticToEcefToRef(node.lat, node.lon, node.altitude, node.root.position);
+            geodeticToEcefToRef(
+                node.lat,
+                node.lon,
+                node.altitude,
+                node.root.position,
+            );
             node.elevationResolved = true;
             setVisible(node, node.enabled);
             applyOrientation(node);
@@ -197,9 +205,19 @@ export const createGlobeModelManager = (
                 return;
             }
             node.elevationResolved = true;
-            geodeticToEcefToRef(node.lat, node.lon, elev + node.altitude, node.root.position);
+            geodeticToEcefToRef(
+                node.lat,
+                node.lon,
+                elev + node.altitude,
+                node.root.position,
+            );
         } else {
-            geodeticToEcefToRef(node.lat, node.lon, node.altitude, node.root.position);
+            geodeticToEcefToRef(
+                node.lat,
+                node.lon,
+                node.altitude,
+                node.root.position,
+            );
             node.elevationResolved = true;
         }
         setVisible(node, node.enabled);
@@ -216,7 +234,10 @@ export const createGlobeModelManager = (
         return true;
     };
 
-    const loadModel = async (node: GlobeModelNode, url: string): Promise<void> => {
+    const loadModel = async (
+        node: GlobeModelNode,
+        url: string,
+    ): Promise<void> => {
         try {
             await importLoaderForUrl(url);
             // クエリ文字列・フラグメントを除去してから拡張子を判定する（modelManager.importLoaderForUrl と同方針）。
@@ -229,7 +250,9 @@ export const createGlobeModelManager = (
                 ? {
                       gltf: {
                           animationStartMode: (
-                              await import("@babylonjs/loaders/glTF/glTFFileLoader")
+                              await import(
+                                  "@babylonjs/loaders/glTF/glTFFileLoader"
+                              )
                           ).GLTFLoaderAnimationStartMode.NONE,
                       },
                   }
@@ -252,22 +275,32 @@ export const createGlobeModelManager = (
             for (const m of result.meshes) {
                 if (!m.parent) m.parent = node.root;
             }
-            node.root.scaling.set(node.scaling.x, node.scaling.y, node.scaling.z);
+            node.root.scaling.set(
+                node.scaling.x,
+                node.scaling.y,
+                node.scaling.z,
+            );
             node.loaded = true;
             placeNode(node); // 初期配置（原点表示のチラつき防止）
         } catch (err) {
             if (!node.cancelled) {
-                console.error(`[globe-model] failed to load "${node.id}" from "${url}":`, err);
+                console.error(
+                    `[globe-model] failed to load "${node.id}" from "${url}":`,
+                    err,
+                );
             }
         }
     };
 
     const add = (opts: GlobeModelOptions): string => {
-        if (disposed) throw new Error("GlobeModelManager.add: called after dispose");
+        if (disposed)
+            throw new Error("GlobeModelManager.add: called after dispose");
         const altitudeMode = opts.altitudeMode ?? "terrain";
         // absolute モードは海抜高度を意図するため、暗黙の 0m を契約違反として弾く。
         if (altitudeMode === "absolute" && opts.altitude === undefined) {
-            throw new Error('GlobeModelManager.add: altitudeMode="absolute" requires altitude');
+            throw new Error(
+                'GlobeModelManager.add: altitudeMode="absolute" requires altitude',
+            );
         }
         const id = `globe-model-${seq++}`;
         const root = new TransformNode(`${id}-root`, scene);
@@ -321,9 +354,11 @@ export const createGlobeModelManager = (
     };
 
     const update = (id: string, partial: GlobeModelUpdate): void => {
-        if (disposed) throw new Error("GlobeModelManager.update: called after dispose");
+        if (disposed)
+            throw new Error("GlobeModelManager.update: called after dispose");
         const node = nodes.get(id);
-        if (!node) throw new Error(`GlobeModelManager.update: id "${id}" not found`);
+        if (!node)
+            throw new Error(`GlobeModelManager.update: id "${id}" not found`);
 
         if (partial.lat !== undefined) node.lat = partial.lat;
         if (partial.lon !== undefined) node.lon = partial.lon;
@@ -349,7 +384,11 @@ export const createGlobeModelManager = (
         if (partial.scaling !== undefined) {
             node.scaling = resolveVec3(partial.scaling, node.scaling);
             if (node.loaded) {
-                node.root.scaling.set(node.scaling.x, node.scaling.y, node.scaling.z);
+                node.root.scaling.set(
+                    node.scaling.x,
+                    node.scaling.y,
+                    node.scaling.z,
+                );
             }
         }
         if (partial.enabled !== undefined) node.enabled = partial.enabled;
@@ -379,9 +418,15 @@ export const createGlobeModelManager = (
     };
 
     const setEnabled = (id: string, enabled: boolean): void => {
-        if (disposed) throw new Error("GlobeModelManager.setEnabled: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobeModelManager.setEnabled: called after dispose",
+            );
         const node = nodes.get(id);
-        if (!node) throw new Error(`GlobeModelManager.setEnabled: id "${id}" not found`);
+        if (!node)
+            throw new Error(
+                `GlobeModelManager.setEnabled: id "${id}" not found`,
+            );
         node.enabled = enabled;
         if (node.loaded) {
             setVisible(node, enabled && node.elevationResolved);
@@ -391,17 +436,27 @@ export const createGlobeModelManager = (
     const list = (): readonly string[] => Array.from(nodes.keys());
 
     const playAnimation = (id: string, name?: string): void => {
-        if (disposed) throw new Error("GlobeModelManager.playAnimation: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobeModelManager.playAnimation: called after dispose",
+            );
         const node = nodes.get(id);
-        if (!node) throw new Error(`GlobeModelManager.playAnimation: id "${id}" not found`);
+        if (!node)
+            throw new Error(
+                `GlobeModelManager.playAnimation: id "${id}" not found`,
+            );
         if (!node.loaded) {
-            console.warn(`[globe-model] playAnimation: model "${id}" is not loaded yet`);
+            console.warn(
+                `[globe-model] playAnimation: model "${id}" is not loaded yet`,
+            );
             return;
         }
         if (name !== undefined) {
             const ag = node.animationGroups.find((g) => g.name === name);
             if (!ag) {
-                console.warn(`[globe-model] playAnimation: animation "${name}" not found in model "${id}"`);
+                console.warn(
+                    `[globe-model] playAnimation: animation "${name}" not found in model "${id}"`,
+                );
                 return;
             }
             ag.play(true);
@@ -411,9 +466,15 @@ export const createGlobeModelManager = (
     };
 
     const stopAnimation = (id: string, name?: string): void => {
-        if (disposed) throw new Error("GlobeModelManager.stopAnimation: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobeModelManager.stopAnimation: called after dispose",
+            );
         const node = nodes.get(id);
-        if (!node) throw new Error(`GlobeModelManager.stopAnimation: id "${id}" not found`);
+        if (!node)
+            throw new Error(
+                `GlobeModelManager.stopAnimation: id "${id}" not found`,
+            );
         if (!node.loaded) return;
         if (name !== undefined) {
             const ag = node.animationGroups.find((g) => g.name === name);
@@ -424,7 +485,8 @@ export const createGlobeModelManager = (
     };
 
     const tick = (): void => {
-        if (disposed) throw new Error("GlobeModelManager.tick: called after dispose");
+        if (disposed)
+            throw new Error("GlobeModelManager.tick: called after dispose");
         if (nodes.size === 0) return;
         for (const node of nodes.values()) {
             if (!node.loaded) continue;

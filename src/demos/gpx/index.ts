@@ -25,9 +25,12 @@ import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { parseGpx } from "./parseGpx";
+import { clearElevationChart, renderElevationChart } from "./elevationChart";
 import type { ParsedGpx } from "./parseGpx";
+import { parseGpx } from "./parseGpx";
+import type { ElevationProfileSeries } from "./utils";
 import {
+    buildElevationProfiles,
     computeGpxStats,
     computeTrackStats,
     decimatePoints,
@@ -36,10 +39,7 @@ import {
     formatTrackLabel,
     formatWaypointLabel,
     MAX_RENDER_POINTS_PER_SEGMENT,
-    buildElevationProfiles,
 } from "./utils";
-import type { ElevationProfileSeries } from "./utils";
-import { clearElevationChart, renderElevationChart } from "./elevationChart";
 
 const DEMO_MOUNT_ID = "root";
 const STATUS_ID = "gpx-status";
@@ -56,8 +56,16 @@ const ID_TRACK_END_PREFIX = "gpx-track-end-";
 const ID_WAYPOINT_PREFIX = "gpx-waypoint-";
 
 /** トラックごとの識別色（インデックスを周期的に割り当てる）。 */
-const TRACK_COLORS = ["#2196f3", "#e91e63", "#4caf50", "#ff9800", "#9c27b0", "#00bcd4"];
-const colorForTrack = (index: number): string => TRACK_COLORS[index % TRACK_COLORS.length];
+const TRACK_COLORS = [
+    "#2196f3",
+    "#e91e63",
+    "#4caf50",
+    "#ff9800",
+    "#9c27b0",
+    "#00bcd4",
+];
+const colorForTrack = (index: number): string =>
+    TRACK_COLORS[index % TRACK_COLORS.length];
 
 /**
  * トラックポリラインの基準太さ（Tube半径, m, world, `lineWidthMode: "screen"` 用）。
@@ -67,7 +75,9 @@ const colorForTrack = (index: number): string => TRACK_COLORS[index % TRACK_COLO
 const TRACK_LINE_WIDTH = 3;
 
 /** トラックポリライン用の style を組み立てる。 */
-const buildTrackLineStyle = (color: string): NonNullable<PolygonOptions["style"]> => ({
+const buildTrackLineStyle = (
+    color: string,
+): NonNullable<PolygonOptions["style"]> => ({
     lineColor: color,
     lineWidth: TRACK_LINE_WIDTH,
     lineWidthMode: "screen",
@@ -152,7 +162,12 @@ const buildMarkerOptions = (
 
 /** GPX をマップに描画し、種別ごとの ID を返す */
 const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx): GpxIds => {
-    const result: GpxIds = { trackLineIds: [], trackStartIds: [], trackEndIds: [], waypointIds: [] };
+    const result: GpxIds = {
+        trackLineIds: [],
+        trackStartIds: [],
+        trackEndIds: [],
+        waypointIds: [],
+    };
 
     try {
         gpx.tracks.forEach((track, trackIndex) => {
@@ -167,7 +182,10 @@ const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx): GpxIds => {
                 // 数千点規模になり得るため間引く（addPolygon は頂点ごとに球体メッシュを
                 // 生成するため、間引かないとメッシュ数が膨大になり描画性能を損なう）。
                 // 統計（距離/標高）は元の全点データを使うため、この間引きは表示のみに影響する。
-                const renderPoints = decimatePoints(segment.points, MAX_RENDER_POINTS_PER_SEGMENT);
+                const renderPoints = decimatePoints(
+                    segment.points,
+                    MAX_RENDER_POINTS_PER_SEGMENT,
+                );
                 const opts: PolygonOptions = {
                     points: renderPoints.map((p) => ({
                         lat: p.lat,
@@ -190,17 +208,37 @@ const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx): GpxIds => {
 
             // トラック始点・終点のみ強調表示する。
             const firstSeg = track.segments.find((s) => s.points.length > 0);
-            const lastSeg = [...track.segments].reverse().find((s) => s.points.length > 0);
+            const lastSeg = [...track.segments]
+                .reverse()
+                .find((s) => s.points.length > 0);
             if (firstSeg) {
                 const p = firstSeg.points[0];
                 const id = `${ID_TRACK_START_PREFIX}${trackIndex}`;
-                viewer.addPolygon(id, buildMarkerOptions(p.lat, p.lon, p.ele, `${label}\n開始`, "#4caf50"));
+                viewer.addPolygon(
+                    id,
+                    buildMarkerOptions(
+                        p.lat,
+                        p.lon,
+                        p.ele,
+                        `${label}\n開始`,
+                        "#4caf50",
+                    ),
+                );
                 result.trackStartIds.push(id);
             }
             if (lastSeg) {
                 const p = lastSeg.points[lastSeg.points.length - 1];
                 const id = `${ID_TRACK_END_PREFIX}${trackIndex}`;
-                viewer.addPolygon(id, buildMarkerOptions(p.lat, p.lon, p.ele, `${label}\n終了`, "#f44336"));
+                viewer.addPolygon(
+                    id,
+                    buildMarkerOptions(
+                        p.lat,
+                        p.lon,
+                        p.ele,
+                        `${label}\n終了`,
+                        "#f44336",
+                    ),
+                );
                 result.trackEndIds.push(id);
             }
         });
@@ -208,7 +246,10 @@ const renderGpx = (viewer: JpmapTerrain, gpx: ParsedGpx): GpxIds => {
         gpx.waypoints.forEach((wpt, i) => {
             const id = `${ID_WAYPOINT_PREFIX}${i}`;
             const label = formatWaypointLabel(wpt.name, i);
-            viewer.addPolygon(id, buildMarkerOptions(wpt.lat, wpt.lon, wpt.ele, label, "#ffc107"));
+            viewer.addPolygon(
+                id,
+                buildMarkerOptions(wpt.lat, wpt.lon, wpt.ele, label, "#ffc107"),
+            );
             result.waypointIds.push(id);
         });
     } catch (err) {
@@ -239,7 +280,9 @@ const updateStatus = (
     gpx.tracks.forEach((track, i) => {
         const stats = computeTrackStats(track);
         lines.push(formatTrackLabel(track, i));
-        lines.push(`  水平移動距離: ${formatHorizontalDistance(stats.distanceMeters)}`);
+        lines.push(
+            `  水平移動距離: ${formatHorizontalDistance(stats.distanceMeters)}`,
+        );
         lines.push(
             `  ↑${formatElevationMeters(stats.elevationGainMeters)} ↓${formatElevationMeters(stats.elevationLossMeters)}` +
                 ` (${formatElevationMeters(stats.minElevationMeters)}〜${formatElevationMeters(stats.maxElevationMeters)})`,
@@ -248,7 +291,9 @@ const updateStatus = (
     });
     if (gpx.tracks.length > 1) {
         const total = computeGpxStats(gpx.tracks);
-        lines.push(`合計水平移動距離: ${formatHorizontalDistance(total.distanceMeters)}`);
+        lines.push(
+            `合計水平移動距離: ${formatHorizontalDistance(total.distanceMeters)}`,
+        );
     }
     if (gpx.waypoints.length > 0) {
         lines.push(`ウェイポイント: ${gpx.waypoints.length} 点`);
@@ -284,7 +329,9 @@ const start = async (): Promise<void> => {
     const statusEl = document.getElementById(STATUS_ID);
     const dropZone = document.getElementById(DROP_ZONE_ID);
     const elevationPanel = document.getElementById(ELEVATION_PANEL_ID);
-    const elevationCanvas = document.getElementById(ELEVATION_CANVAS_ID) as HTMLCanvasElement | null;
+    const elevationCanvas = document.getElementById(
+        ELEVATION_CANVAS_ID,
+    ) as HTMLCanvasElement | null;
 
     let currentIds: GpxIds = { ...EMPTY_GPX_IDS };
     let currentProfiles: ElevationProfileSeries[] = [];
@@ -305,26 +352,41 @@ const start = async (): Promise<void> => {
         if (!elevationPanel) return;
         const GAP_PX = 12;
 
-        const mapToggleRect = document.querySelector(".cp-maptoggle")?.getBoundingClientRect() ?? null;
-        const zoomBtnRects = Array.from(document.querySelectorAll(".cp-zoombtn")).map((el) =>
-            el.getBoundingClientRect(),
-        );
-        const scaleRowRect = document.querySelector(".cp-scale-text")?.parentElement?.getBoundingClientRect() ?? null;
+        const mapToggleRect =
+            document.querySelector(".cp-maptoggle")?.getBoundingClientRect() ??
+            null;
+        const zoomBtnRects = Array.from(
+            document.querySelectorAll(".cp-zoombtn"),
+        ).map((el) => el.getBoundingClientRect());
+        const scaleRowRect =
+            document
+                .querySelector(".cp-scale-text")
+                ?.parentElement?.getBoundingClientRect() ?? null;
 
-        const leftOffset = mapToggleRect ? Math.round(mapToggleRect.right + GAP_PX) : GAP_PX;
+        const leftOffset = mapToggleRect
+            ? Math.round(mapToggleRect.right + GAP_PX)
+            : GAP_PX;
         const rightOffset =
             zoomBtnRects.length > 0
-                ? Math.round(window.innerWidth - Math.min(...zoomBtnRects.map((r) => r.left)) + GAP_PX)
+                ? Math.round(
+                      window.innerWidth -
+                          Math.min(...zoomBtnRects.map((r) => r.left)) +
+                          GAP_PX,
+                  )
                 : GAP_PX;
         const bottomEdgeTop = scaleRowRect
             ? scaleRowRect.top
             : Math.min(
                   mapToggleRect?.top ?? Infinity,
-                  zoomBtnRects.length > 0 ? Math.min(...zoomBtnRects.map((r) => r.top)) : Infinity,
+                  zoomBtnRects.length > 0
+                      ? Math.min(...zoomBtnRects.map((r) => r.top))
+                      : Infinity,
               );
         const bottomOffset = Math.max(
             GAP_PX,
-            Number.isFinite(bottomEdgeTop) ? Math.round(window.innerHeight - bottomEdgeTop + GAP_PX) : GAP_PX,
+            Number.isFinite(bottomEdgeTop)
+                ? Math.round(window.innerHeight - bottomEdgeTop + GAP_PX)
+                : GAP_PX,
         );
 
         elevationPanel.style.left = `${leftOffset}px`;
@@ -342,7 +404,11 @@ const start = async (): Promise<void> => {
         elevationPanel?.classList.toggle("visible", hasProfiles);
         if (!elevationCanvas) return;
         if (hasProfiles) {
-            renderElevationChart(elevationCanvas, currentProfiles, colorForTrack);
+            renderElevationChart(
+                elevationCanvas,
+                currentProfiles,
+                colorForTrack,
+            );
         } else {
             clearElevationChart(elevationCanvas);
         }
@@ -357,8 +423,12 @@ const start = async (): Promise<void> => {
     // レイヤー表示状態
     const layerVisible = { track: true, waypoints: true };
 
-    const btnTrack = document.getElementById(BTN_TRACK_ID) as HTMLButtonElement | null;
-    const btnWaypoints = document.getElementById(BTN_WAYPOINTS_ID) as HTMLButtonElement | null;
+    const btnTrack = document.getElementById(
+        BTN_TRACK_ID,
+    ) as HTMLButtonElement | null;
+    const btnWaypoints = document.getElementById(
+        BTN_WAYPOINTS_ID,
+    ) as HTMLButtonElement | null;
 
     const refreshButtons = (): void => {
         const hasTrack = currentIds.trackLineIds.length > 0;
@@ -379,10 +449,12 @@ const start = async (): Promise<void> => {
             ...currentIds.trackStartIds,
             ...currentIds.trackEndIds,
         ]) {
-            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.track);
+            if (viewer.getPolygon(id))
+                viewer.setPolygonEnabled(id, layerVisible.track);
         }
         for (const id of currentIds.waypointIds) {
-            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.waypoints);
+            if (viewer.getPolygon(id))
+                viewer.setPolygonEnabled(id, layerVisible.waypoints);
         }
     };
 
@@ -402,11 +474,21 @@ const start = async (): Promise<void> => {
     }
 
     /** カメラを移動する対象点を決める（最初のトラックの始点、無ければ最初のウェイポイント）。 */
-    const firstFlyToTarget = (gpx: ParsedGpx): { lat: number; lon: number } | null => {
-        const firstTrack = gpx.tracks.find((t) => t.segments.some((s) => s.points.length > 0));
+    const firstFlyToTarget = (
+        gpx: ParsedGpx,
+    ): { lat: number; lon: number } | null => {
+        const firstTrack = gpx.tracks.find((t) =>
+            t.segments.some((s) => s.points.length > 0),
+        );
         if (firstTrack) {
-            const firstSeg = firstTrack.segments.find((s) => s.points.length > 0);
-            if (firstSeg) return { lat: firstSeg.points[0].lat, lon: firstSeg.points[0].lon };
+            const firstSeg = firstTrack.segments.find(
+                (s) => s.points.length > 0,
+            );
+            if (firstSeg)
+                return {
+                    lat: firstSeg.points[0].lat,
+                    lon: firstSeg.points[0].lon,
+                };
         }
         if (gpx.waypoints.length > 0) {
             return { lat: gpx.waypoints[0].lat, lon: gpx.waypoints[0].lon };

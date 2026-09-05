@@ -7,7 +7,7 @@
  * - 局所的な欠測（一部無効値）は fillInvalidPixels で補間される
  * - 全ピクセル無効なタイルは粗ズーム祖先へフォールバックする
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/terrain/gsiTile", async () => {
     const actual = (await vi.importActual(
@@ -19,8 +19,13 @@ vi.mock("../src/terrain/gsiTile", async () => {
     };
 });
 
-import { loadElevationTile, TILE_SIZE, toTileXY, NO_DATA_SENTINEL } from "../src/terrain/gsiTile";
 import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
+import {
+    loadElevationTile,
+    NO_DATA_SENTINEL,
+    TILE_SIZE,
+    toTileXY,
+} from "../src/terrain/gsiTile";
 
 const mockLoadElevationTile = vi.mocked(loadElevationTile);
 
@@ -37,11 +42,15 @@ beforeEach(() => {
 
 describe("fetchDioramaElevations", () => {
     it("zoomが非整数はRangeErrorでreject", async () => {
-        await expect(fetchDioramaElevations([TOKYO], 14.5)).rejects.toThrow(RangeError);
+        await expect(fetchDioramaElevations([TOKYO], 14.5)).rejects.toThrow(
+            RangeError,
+        );
     });
 
     it("zoomが負数はRangeErrorでreject", async () => {
-        await expect(fetchDioramaElevations([TOKYO], -1)).rejects.toThrow(RangeError);
+        await expect(fetchDioramaElevations([TOKYO], -1)).rejects.toThrow(
+            RangeError,
+        );
     });
 
     it("latがNaNの点を含む場合はRangeErrorでreject", async () => {
@@ -65,7 +74,11 @@ describe("fetchDioramaElevations", () => {
 
     it("戻り値の順序は入力点群の順序と一致する", async () => {
         mockLoadElevationTile.mockResolvedValue(constTile(100));
-        const points = [TOKYO, { lat: TOKYO.lat + 0.0001, lon: TOKYO.lon } , TOKYO];
+        const points = [
+            TOKYO,
+            { lat: TOKYO.lat + 0.0001, lon: TOKYO.lon },
+            TOKYO,
+        ];
         const elevations = await fetchDioramaElevations(points, ZOOM);
         expect(elevations.length).toBe(3);
         for (const e of elevations) expect(e).toBeCloseTo(100, 5);
@@ -94,7 +107,9 @@ describe("fetchDioramaElevations", () => {
     });
 
     it("タイル取得失敗時は該当点の標高を0mにフォールバックし、例外を投げない", async () => {
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
         mockLoadElevationTile.mockRejectedValue(new Error("network error"));
         const elevations = await fetchDioramaElevations([TOKYO], ZOOM);
         expect(elevations[0]).toBe(0);
@@ -106,7 +121,9 @@ describe("fetchDioramaElevations", () => {
         // 外周1pxのみ有効値(200)にし、内側は全て欠測（NO_DATA_SENTINEL）にする。
         // サンプル点がどこにマップされても内側の欠測領域に当たるようにし、
         // fillInvalidPixels のBFS補間が働かなければ0mへ落ちることを確実に検知できるようにする。
-        const tile = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);
+        const tile = new Float32Array(TILE_SIZE * TILE_SIZE).fill(
+            NO_DATA_SENTINEL,
+        );
         for (let x = 0; x < TILE_SIZE; x++) {
             tile[x] = 200;
             tile[(TILE_SIZE - 1) * TILE_SIZE + x] = 200;
@@ -125,7 +142,11 @@ describe("fetchDioramaElevations", () => {
         const parentX = x >> 1;
         const parentY = y >> 1;
         mockLoadElevationTile.mockImplementation(
-            async (z: number, tx: number, ty: number): Promise<Float32Array> => {
+            async (
+                z: number,
+                tx: number,
+                ty: number,
+            ): Promise<Float32Array> => {
                 if (z === ZOOM && tx === x && ty === y) {
                     return new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN);
                 }
@@ -140,8 +161,12 @@ describe("fetchDioramaElevations", () => {
     });
 
     it("祖先も含め有効データが皆無の場合は0mにフォールバックしconsole.errorを出力する", async () => {
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-        mockLoadElevationTile.mockResolvedValue(new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN));
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
+        mockLoadElevationTile.mockResolvedValue(
+            new Float32Array(TILE_SIZE * TILE_SIZE).fill(NaN),
+        );
         const elevations = await fetchDioramaElevations([TOKYO], ZOOM);
         expect(elevations[0]).toBe(0);
         expect(consoleErrorSpy).toHaveBeenCalled();

@@ -18,13 +18,13 @@ import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
 import { showToast } from "../../terrain/controlPanel";
 import {
-    parseCameraStateFromUrl,
-    createUrlUpdater,
-    parseMapTypeFromUrl,
-    updateMapTypeInUrl,
-    parseViewModeFromUrl,
-    updateViewModeInUrl,
     type CameraUrlState,
+    createUrlUpdater,
+    parseCameraStateFromUrl,
+    parseMapTypeFromUrl,
+    parseViewModeFromUrl,
+    updateMapTypeInUrl,
+    updateViewModeInUrl,
 } from "../../terrain/urlState";
 
 const DEMO_MOUNT_ID = "root";
@@ -51,9 +51,7 @@ export const resolveEngine = (search: string): EngineType | undefined => {
  * @param url 解析対象 URL（`location.href` 等）
  * @returns 取得できた場合は `CameraUrlState`、取得できない場合は `undefined`
  */
-export const resolveCameraState = (
-    url: string,
-): CameraUrlState | undefined =>
+export const resolveCameraState = (url: string): CameraUrlState | undefined =>
     parseCameraStateFromUrl(url) ?? undefined;
 
 /**
@@ -86,6 +84,7 @@ export const resolveDateTime = (search: string): Date | undefined => {
     if (!match) return undefined;
     // ログ汚染対策: 制御文字 (CR/LF/ESC 等) を `?` に置換し、長さも 64 文字に制限する。
     const sanitize = (value: string): string =>
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: ログ汚染対策として制御文字を意図的にマッチさせる
         value.replace(/[\r\n\x1B\x00-\x1F\x7F]/g, "?").slice(0, 64);
     let raw: string;
     try {
@@ -100,7 +99,9 @@ export const resolveDateTime = (search: string): Date | undefined => {
     }
     const d = new Date(raw);
     if (Number.isNaN(d.getTime())) {
-        console.warn(`[jpmap-terrain demo] invalid dateTime param: ${sanitize(raw)}`);
+        console.warn(
+            `[jpmap-terrain demo] invalid dateTime param: ${sanitize(raw)}`,
+        );
         return undefined;
     }
     return d;
@@ -110,9 +111,7 @@ export const resolveDateTime = (search: string): Date | undefined => {
  * `?autoSunPosition=` クエリ文字列から太陽位置自動更新フラグを解決する。
  * - `"true"` / `"false"` のみを許容し、それ以外は `undefined`（既定挙動を維持）。
  */
-export const resolveAutoSunPosition = (
-    search: string,
-): boolean | undefined => {
+export const resolveAutoSunPosition = (search: string): boolean | undefined => {
     const raw = new URLSearchParams(search).get("autoSunPosition");
     if (raw === "true") return true;
     if (raw === "false") return false;
@@ -123,9 +122,7 @@ export const resolveAutoSunPosition = (
  * `?showSunShadows=` クエリ文字列から太陽影描画フラグを解決する。
  * - `"true"` / `"false"` のみを許容し、それ以外は `undefined`（既定 OFF を維持）。
  */
-export const resolveShowSunShadows = (
-    search: string,
-): boolean | undefined => {
+export const resolveShowSunShadows = (search: string): boolean | undefined => {
     const raw = new URLSearchParams(search).get("showSunShadows");
     if (raw === "true") return true;
     if (raw === "false") return false;
@@ -272,7 +269,8 @@ const start = async (): Promise<void> => {
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
         (window as unknown as { scene: unknown }).scene = viewer.__debugScene;
-        (window as unknown as { showToast: typeof showToast }).showToast = showToast;
+        (window as unknown as { showToast: typeof showToast }).showToast =
+            showToast;
     }
 };
 

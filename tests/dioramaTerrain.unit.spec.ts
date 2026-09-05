@@ -12,21 +12,23 @@
  *   （呼び出し時点ではなく実行時点の状態を基準にすること）
  * - あるrebuildが失敗してもキューは止まらず、後続のrebuildは実行されること
  */
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 vi.mock("@babylonjs/core/scene", () => ({ Scene: class {} }));
 
 vi.mock("@babylonjs/core/Meshes/mesh", () => ({
-    Mesh: vi.fn<(name: string) => unknown>().mockImplementation(function (name) {
-        return {
-            name,
-            material: null as unknown,
-            parent: null as unknown,
-            dispose: vi.fn(),
-            setEnabled: vi.fn(),
-            convertToFlatShadedMesh: vi.fn(),
-        };
-    }),
+    Mesh: vi
+        .fn<(name: string) => unknown>()
+        .mockImplementation(function (name) {
+            return {
+                name,
+                material: null as unknown,
+                parent: null as unknown,
+                dispose: vi.fn(),
+                setEnabled: vi.fn(),
+                convertToFlatShadedMesh: vi.fn(),
+            };
+        }),
 }));
 
 vi.mock("@babylonjs/core/Meshes/mesh.vertexData", () => ({
@@ -42,22 +44,24 @@ vi.mock("@babylonjs/core/Meshes/mesh.vertexData", () => ({
 }));
 
 vi.mock("@babylonjs/core/Meshes/transformNode", () => ({
-    TransformNode: vi.fn<(name: string) => unknown>().mockImplementation(function (name) {
-        return {
-            name,
-            scaling: {
-                x: 1,
-                y: 1,
-                z: 1,
-                setAll(v: number): void {
-                    this.x = v;
-                    this.y = v;
-                    this.z = v;
+    TransformNode: vi
+        .fn<(name: string) => unknown>()
+        .mockImplementation(function (name) {
+            return {
+                name,
+                scaling: {
+                    x: 1,
+                    y: 1,
+                    z: 1,
+                    setAll(v: number): void {
+                        this.x = v;
+                        this.y = v;
+                        this.z = v;
+                    },
                 },
-            },
-            dispose: vi.fn(),
-        };
-    }),
+                dispose: vi.fn(),
+            };
+        }),
 }));
 
 vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
@@ -95,21 +99,31 @@ vi.mock("../src/terrain/diorama/dioramaGrid", () => ({
         (
             center: { lat: number; lon: number },
             footprintHalfSizeM: number,
-        ): { x: number; z: number; lat: number; lon: number; row: number; col: number }[] => {
+        ): {
+            x: number;
+            z: number;
+            lat: number;
+            lon: number;
+            row: number;
+            col: number;
+        }[] => {
             // gridSegments=2相当（3x3=9点）の固定モックデータ。実際のresolved.gridSegmentsに
             // 依存せず固定サイズを返すため、テスト側の baseOptions.gridSegments を
             // これと一致させる（buildMesh内の中心点インデックス計算・外周抽出の対象範囲を揃える）。
             const vertsPerSide = 3;
-            return Array.from({ length: vertsPerSide * vertsPerSide }, (_, i) => ({
-                x: i,
-                z: i,
-                lat: center.lat,
-                lon: center.lon,
-                row: Math.floor(i / vertsPerSide),
-                col: i % vertsPerSide,
-                // テストの都合上 footprintHalfSizeM も参照する（未使用警告回避）。
-                _footprintHalfSizeM: footprintHalfSizeM,
-            }));
+            return Array.from(
+                { length: vertsPerSide * vertsPerSide },
+                (_, i) => ({
+                    x: i,
+                    z: i,
+                    lat: center.lat,
+                    lon: center.lon,
+                    row: Math.floor(i / vertsPerSide),
+                    col: i % vertsPerSide,
+                    // テストの都合上 footprintHalfSizeM も参照する（未使用警告回避）。
+                    _footprintHalfSizeM: footprintHalfSizeM,
+                }),
+            );
         },
     ),
     buildDioramaGridIndices: vi.fn(() => new Uint32Array([0, 1, 2])),
@@ -126,7 +140,9 @@ vi.mock("../src/terrain/diorama/dioramaElevation", () => ({
 
 vi.mock("../src/terrain/diorama/dioramaTexture", () => ({
     computeDioramaTextureLayout: vi.fn(
-        (points: readonly unknown[]): {
+        (
+            points: readonly unknown[],
+        ): {
             zoom: number;
             mosaicWidthPx: number;
             mosaicHeightPx: number;
@@ -152,13 +168,19 @@ vi.mock("../src/terrain/diorama/dioramaSkirt", () => ({
     })),
 }));
 
-import { createDioramaTerrain, computeAutoZoomLevel } from "../src/terrain/diorama/dioramaTerrain";
-import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
-import { buildDioramaMosaicTexture, computeDioramaTextureLayout } from "../src/terrain/diorama/dioramaTexture";
-import { buildDioramaGridPoints } from "../src/terrain/diorama/dioramaGrid";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { fetchDioramaElevations } from "../src/terrain/diorama/dioramaElevation";
+import { buildDioramaGridPoints } from "../src/terrain/diorama/dioramaGrid";
+import {
+    computeAutoZoomLevel,
+    createDioramaTerrain,
+} from "../src/terrain/diorama/dioramaTerrain";
+import {
+    buildDioramaMosaicTexture,
+    computeDioramaTextureLayout,
+} from "../src/terrain/diorama/dioramaTexture";
 
 const mockFetchElevations = vi.mocked(fetchDioramaElevations);
 const mockBuildTexture = vi.mocked(buildDioramaMosaicTexture);
@@ -194,13 +216,19 @@ beforeEach(() => {
 describe("createDioramaTerrain の入力検証", () => {
     it("tableRadiusM <= 0 はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, tableRadiusM: 0 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                tableRadiusM: 0,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
     it("footprintHalfSizeM <= 0 はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, footprintHalfSizeM: 0 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                footprintHalfSizeM: 0,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
@@ -218,40 +246,61 @@ describe("createDioramaTerrain の入力検証", () => {
 
     it("textureZoom が非整数の場合はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, textureZoom: 16.5 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                textureZoom: 16.5,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
     it("heightScaleFactor が0以下の場合はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, heightScaleFactor: 0 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                heightScaleFactor: 0,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
     it("baseDepthRatio が負数の場合はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, baseDepthRatio: -0.1 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                baseDepthRatio: -0.1,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
     it("gridSegments が非整数の場合はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: 4.5 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                gridSegments: 4.5,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
     it("gridSegments が0以下の場合はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: 0 }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                gridSegments: 0,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
     it("gridSegments が NaN/Infinity の場合はRangeErrorでreject", async () => {
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: NaN }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                gridSegments: NaN,
+            }),
         ).rejects.toThrow(RangeError);
         await expect(
-            createDioramaTerrain(dummyScene, { ...baseOptions, gridSegments: Infinity }),
+            createDioramaTerrain(dummyScene, {
+                ...baseOptions,
+                gridSegments: Infinity,
+            }),
         ).rejects.toThrow(RangeError);
     });
 
@@ -263,7 +312,9 @@ describe("createDioramaTerrain の入力検証", () => {
 
     it("初回構築でbuildMeshが失敗した場合、rootは生成されない（シーンへのリークを防ぐ）", async () => {
         mockFetchElevations.mockRejectedValueOnce(new Error("boom"));
-        await expect(createDioramaTerrain(dummyScene, baseOptions)).rejects.toThrow("boom");
+        await expect(
+            createDioramaTerrain(dummyScene, baseOptions),
+        ).rejects.toThrow("boom");
         expect(mockTransformNode).not.toHaveBeenCalled();
     });
 
@@ -271,34 +322,41 @@ describe("createDioramaTerrain の入力検証", () => {
         // 1回目のStandardMaterial呼び出し（地形面用material）のforceCompilationAsyncを
         // 失敗させる。skirtMaterial用（2回目の呼び出し）は既定のresolveのままでよい
         // （Promise.allのため、どちらか一方の失敗で全体が失敗する）。
-        mockStandardMaterial.mockImplementationOnce(
-            function () {
-                return {
-                    diffuseTexture: null as unknown,
-                    diffuseColor: null as unknown,
-                    specularColor: null as unknown,
-                    backFaceCulling: true,
-                    dispose: vi.fn(),
-                    forceCompilationAsync: vi.fn(() => Promise.reject(new Error("compile failed"))),
-                };
-            } as unknown as typeof StandardMaterial,
-        );
+        mockStandardMaterial.mockImplementationOnce(function () {
+            return {
+                diffuseTexture: null as unknown,
+                diffuseColor: null as unknown,
+                specularColor: null as unknown,
+                backFaceCulling: true,
+                dispose: vi.fn(),
+                forceCompilationAsync: vi.fn(() =>
+                    Promise.reject(new Error("compile failed")),
+                ),
+            };
+        } as unknown as typeof StandardMaterial);
 
-        await expect(createDioramaTerrain(dummyScene, baseOptions)).rejects.toThrow("compile failed");
+        await expect(
+            createDioramaTerrain(dummyScene, baseOptions),
+        ).rejects.toThrow("compile failed");
 
         // mesh/skirtMesh（本テストのbuildMesh呼び出し分）が破棄されていることを確認する。
-        const meshInstances = mockMesh.mock.results.map((r) => r.value as { dispose: () => void });
+        const meshInstances = mockMesh.mock.results.map(
+            (r) => r.value as { dispose: () => void },
+        );
         expect(meshInstances.length).toBeGreaterThan(0);
         meshInstances.forEach((m) => expect(m.dispose).toHaveBeenCalled());
 
         // material/skirtMaterial（本テストのbuildMesh呼び出し分）が破棄されていることを確認する。
-        const materialInstances = mockStandardMaterial.mock.results.map((r) => r.value as { dispose: () => void });
+        const materialInstances = mockStandardMaterial.mock.results.map(
+            (r) => r.value as { dispose: () => void },
+        );
         expect(materialInstances.length).toBeGreaterThan(0);
         materialInstances.forEach((m) => expect(m.dispose).toHaveBeenCalled());
 
         // texture（buildDioramaMosaicTextureのモック戻り値）が破棄されていることを確認する。
-        const textureResult = await mockBuildTexture.mock.results[mockBuildTexture.mock.results.length - 1]
-            ?.value as { dispose: () => void };
+        const textureResult = (await mockBuildTexture.mock.results[
+            mockBuildTexture.mock.results.length - 1
+        ]?.value) as { dispose: () => void };
         expect(textureResult.dispose).toHaveBeenCalled();
     });
 
@@ -310,7 +368,9 @@ describe("createDioramaTerrain の入力検証", () => {
         // 直後（どちらの Promise もまだ未解決の時点）で両モックの呼び出し回数を確認すれば、
         // 直列実装（片方の完了を待ってからもう片方を呼ぶ）ではないことを決定的に検証できる。
         let resolveElevations: (value: Float32Array) => void = () => {};
-        let resolveTexture: (value: Awaited<ReturnType<typeof mockBuildTexture>>) => void = () => {};
+        let resolveTexture: (
+            value: Awaited<ReturnType<typeof mockBuildTexture>>,
+        ) => void = () => {};
         mockFetchElevations.mockImplementationOnce(
             () =>
                 new Promise((resolve) => {
@@ -331,7 +391,9 @@ describe("createDioramaTerrain の入力検証", () => {
         expect(mockBuildTexture).toHaveBeenCalledTimes(1);
 
         resolveElevations(new Float32Array(5));
-        resolveTexture({ dispose: vi.fn() } as unknown as Awaited<ReturnType<typeof mockBuildTexture>>);
+        resolveTexture({ dispose: vi.fn() } as unknown as Awaited<
+            ReturnType<typeof mockBuildTexture>
+        >);
         const terrain = await pending;
         terrain.dispose();
     });
@@ -404,7 +466,10 @@ describe("setView", () => {
         const terrain = await createDioramaTerrain(dummyScene, baseOptions);
         mockBuildGridPoints.mockClear();
 
-        await terrain.setView({ center: { lat: 40, lon: 141 }, footprintHalfSizeM: 1500 });
+        await terrain.setView({
+            center: { lat: 40, lon: 141 },
+            footprintHalfSizeM: 1500,
+        });
 
         expect(mockBuildGridPoints).toHaveBeenCalledTimes(1);
         const [center, footprintHalfSizeM] = mockBuildGridPoints.mock.calls[0];
@@ -457,7 +522,10 @@ describe("setTileMode / wireframe表示", () => {
     });
 
     it("wireframeからstd/photoへ戻すと、再びbuildDioramaMosaicTextureが呼ばれテクスチャが設定される", async () => {
-        const terrain = await createDioramaTerrain(dummyScene, { ...baseOptions, tileMode: "wireframe" });
+        const terrain = await createDioramaTerrain(dummyScene, {
+            ...baseOptions,
+            tileMode: "wireframe",
+        });
         mockBuildTexture.mockClear();
         mockStandardMaterial.mockClear();
 
@@ -548,10 +616,13 @@ describe("dispose後のrebuildガード", () => {
 
         // このrebuildで新規生成された Mesh（地形メッシュ + 側面壁メッシュの2つ）は
         // 破棄済みの root へ parent 設定されず、即座に dispose される。
-        const createdInThisRebuild = mockMesh.mock.results.map((r) => r.value as {
-            parent: unknown;
-            dispose: ReturnType<typeof vi.fn>;
-        });
+        const createdInThisRebuild = mockMesh.mock.results.map(
+            (r) =>
+                r.value as {
+                    parent: unknown;
+                    dispose: ReturnType<typeof vi.fn>;
+                },
+        );
         expect(createdInThisRebuild.length).toBeGreaterThan(0);
         for (const created of createdInThisRebuild) {
             expect(created.parent).toBeNull();
@@ -602,7 +673,10 @@ describe("computeAutoZoomLevel", () => {
 
 describe("demZoom/textureZoom自動算出（buildMesh経由）", () => {
     it("demZoom/textureZoom省略時、footprintHalfSizeMに応じて自動算出したズームでDEM/テクスチャを取得する", async () => {
-        const terrain = await createDioramaTerrain(dummyScene, { ...baseOptions, footprintHalfSizeM: 1600 });
+        const terrain = await createDioramaTerrain(dummyScene, {
+            ...baseOptions,
+            footprintHalfSizeM: 1600,
+        });
 
         // footprintHalfSizeM=1600（基準800の2倍）→ demZoom=13, textureZoom=15（基準より1段階粗い）。
         expect(mockFetchElevations.mock.calls[0][1]).toBe(13);

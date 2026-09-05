@@ -20,24 +20,25 @@
  * - `?map=photo`（航空写真。既定: 標準地図）
  * - `?snap=off`（クロスレベル標高スナップを無効化。比較用）
  */
-import type { Scene } from "@babylonjs/core/scene";
+
 import type { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera";
+import type { Scene } from "@babylonjs/core/scene";
 
 import humanGlbUrl from "../../../assets/human.glb";
 import { createBabylonEngine } from "../../lib/internal/engineFactory";
 import type { EngineType } from "../../lib/types";
-import { clamp, type MapType } from "../../terrain/gsiTile";
-import { yawPitchToUi } from "../../terrain/geo/cameraMapping";
 import {
-    parseCameraStateFromUrl,
-    createUrlUpdater,
-    zoomLevelToRadius,
-} from "../../terrain/urlState";
-import {
-    GlobeScene,
     GLOBE_SCENE_DEFAULTS,
+    GlobeScene,
     type GlobeSceneSyncInfo,
 } from "../../scenes/globe";
+import { yawPitchToUi } from "../../terrain/geo/cameraMapping";
+import { clamp, type MapType } from "../../terrain/gsiTile";
+import {
+    createUrlUpdater,
+    parseCameraStateFromUrl,
+    zoomLevelToRadius,
+} from "../../terrain/urlState";
 
 const DEMO_MOUNT_ID = "root";
 
@@ -50,7 +51,11 @@ const resolveEngine = (search: string): EngineType | undefined => {
 };
 
 /** `?key=` を数値として解決する（未指定 / NaN は fallback）。 */
-const resolveNumber = (search: string, key: string, fallback: number): number => {
+const resolveNumber = (
+    search: string,
+    key: string,
+    fallback: number,
+): number => {
     const raw = new URLSearchParams(search).get(key);
     if (raw === null) return fallback;
     const n = Number(raw);
@@ -97,10 +102,13 @@ const start = async (): Promise<void> => {
     const params = new URLSearchParams(search);
     // 既存共有形式 `@lat,lon,...` がパス/ハッシュにあれば最優先で復元（後方互換）。
     // なければ `?lat=&lon=&radius=&azimuth=&tilt=` のクエリにフォールバックする。
-    const hasAtPath = location.pathname.includes("/@") || location.hash.includes("@");
+    const hasAtPath =
+        location.pathname.includes("/@") || location.hash.includes("@");
     const atState = hasAtPath ? parseCameraStateFromUrl(location.href) : null;
-    const lat = atState?.lat ?? resolveNumber(search, "lat", GLOBE_SCENE_DEFAULTS.lat);
-    const lon = atState?.lon ?? resolveNumber(search, "lon", GLOBE_SCENE_DEFAULTS.lon);
+    const lat =
+        atState?.lat ?? resolveNumber(search, "lat", GLOBE_SCENE_DEFAULTS.lat);
+    const lon =
+        atState?.lon ?? resolveNumber(search, "lon", GLOBE_SCENE_DEFAULTS.lon);
     // URL 由来の minZoom は安全な範囲 [0, maxZoom] にクランプする
     // （負値・極端値だと toTileXY / 1<<zoom が壊れ、タイル選択が空になる）。
     const minZoom = clamp(
@@ -113,9 +121,14 @@ const start = async (): Promise<void> => {
     const radius =
         atState?.zoomLevel !== undefined
             ? GLOBE_SCENE_DEFAULTS.radius // zoomLevel はカメラ生成後に再設定（後段）
-            : (atState?.altitude ?? resolveNumber(search, "radius", GLOBE_SCENE_DEFAULTS.radius));
-    const azimuth = atState?.azimuth ?? resolveNumber(search, "azimuth", GLOBE_SCENE_DEFAULTS.azimuth);
-    const tilt = atState?.tilt ?? resolveNumber(search, "tilt", GLOBE_SCENE_DEFAULTS.tilt);
+            : (atState?.altitude ??
+              resolveNumber(search, "radius", GLOBE_SCENE_DEFAULTS.radius));
+    const azimuth =
+        atState?.azimuth ??
+        resolveNumber(search, "azimuth", GLOBE_SCENE_DEFAULTS.azimuth);
+    const tilt =
+        atState?.tilt ??
+        resolveNumber(search, "tilt", GLOBE_SCENE_DEFAULTS.tilt);
     const mapType: MapType = params.get("map") === "photo" ? "photo" : "std";
     const snapEnabled = params.get("snap") !== "off";
 
@@ -129,7 +142,10 @@ const start = async (): Promise<void> => {
     mount.appendChild(canvas);
     canvas.focus();
 
-    const engine = await createBabylonEngine(canvas, resolveEngine(search) ?? "webgpu");
+    const engine = await createBabylonEngine(
+        canvas,
+        resolveEngine(search) ?? "webgpu",
+    );
 
     const sceneFactory = new GlobeScene();
     // onSyncStats はレンダーループ（createSceneWithController return 後）でのみ呼ばれるが、
@@ -141,9 +157,19 @@ const start = async (): Promise<void> => {
     const urlUpdater = createUrlUpdater(1000);
     // onSyncStats は毎 sync（数百 ms 間隔）で呼ばれるため、毎回 urlUpdater を呼ぶとデバウンスが
     // 確定しない（タイマーが常にリセットされる）。カメラ状態が変化した時のみ更新を投げる。
-    let lastUrlState: { lat: number; lon: number; radius: number; yaw: number; pitch: number } | null = null;
+    let lastUrlState: {
+        lat: number;
+        lon: number;
+        radius: number;
+        yaw: number;
+        pitch: number;
+    } | null = null;
     const urlStateChanged = (
-        latDeg: number, lonDeg: number, radius: number, yaw: number, pitch: number,
+        latDeg: number,
+        lonDeg: number,
+        radius: number,
+        yaw: number,
+        pitch: number,
     ): boolean => {
         const p = lastUrlState;
         if (
@@ -170,7 +196,9 @@ const start = async (): Promise<void> => {
         snapEnabled,
         onSyncStats: (s: GlobeSceneSyncInfo) => {
             const zoomLabel =
-                s.minZoom !== null && s.maxZoom !== null ? `${s.minZoom}–${s.maxZoom}` : "-";
+                s.minZoom !== null && s.maxZoom !== null
+                    ? `${s.minZoom}–${s.maxZoom}`
+                    : "-";
             const floatingOrigin = infoScene?.floatingOriginMode ?? "-";
             // yaw/pitch[rad] → azimuth/tilt[deg]（azimuth は [0,360) 正規化）。
             const { azimuthDeg, tiltDeg } = yawPitchToUi(s.yaw, s.pitch);
@@ -230,8 +258,8 @@ const start = async (): Promise<void> => {
     if (params.get("polygon") !== "off") {
         controller.polygonManager.add({
             points: [
-                { lat: 35.38, lon: 138.70 },
-                { lat: 35.34, lon: 138.70 },
+                { lat: 35.38, lon: 138.7 },
+                { lat: 35.34, lon: 138.7 },
                 { lat: 35.36, lon: 138.76 },
             ],
             closed: true,
@@ -273,7 +301,8 @@ const start = async (): Promise<void> => {
     // デバッグ用に内部状態を露出（公開 API ではない）。
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { scene: Scene }).scene = controller.scene;
-        (window as unknown as { camera: GeospatialCamera }).camera = controller.camera;
+        (window as unknown as { camera: GeospatialCamera }).camera =
+            controller.camera;
     }
 };
 
@@ -283,6 +312,8 @@ if (
 ) {
     start().catch((err) => {
         console.error("[geospatial] failed to start:", err);
-        updateInfo(`Geospatial Globe (低レベル診断デモ)\n起動に失敗しました: ${String(err)}`);
+        updateInfo(
+            `Geospatial Globe (低レベル診断デモ)\n起動に失敗しました: ${String(err)}`,
+        );
     });
 }

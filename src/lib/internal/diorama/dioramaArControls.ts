@@ -82,31 +82,35 @@
  * `enterXRAsync` 前に呼ぶ）と「毎フレームの入力反映」
  * （{@link setupDioramaArControls}、`enterXRAsync` 後に呼ぶ）を分離している。
  */
-import type { Scene } from "@babylonjs/core/scene";
-import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
-import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
-import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
+
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { Scene } from "@babylonjs/core/scene";
+import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
+import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
+import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 // `xr-dom-overlay` feature をfeaturesManagerへ登録する副作用 import
 // （AR中もコントロールHUDを表示し続けるために使う）。
 import "@babylonjs/core/XR/features/WebXRDOMOverlay";
 
-import type { DioramaViewController } from "./dioramaViewController";
-import type { DioramaOrientationController } from "./dioramaOrientationController";
-import type { DioramaTileModeController } from "./dioramaTileModeController";
 import {
-    type StickAxes,
-    computeHeadingRadFromHorizontal,
-    rotateHorizontalUnitVector,
-    computePanAxesFromDirectionalInput,
-    snapHeadingRad,
-    computeHorizontalDisplacement,
-    isInsideDioramaDeadZone,
+    createDioramaArControlHud,
+    type DioramaArControlHud,
+} from "./dioramaArControlHud";
+import {
     angleDeltaRad,
     applyDPadGate,
+    computeHeadingRadFromHorizontal,
+    computeHorizontalDisplacement,
+    computePanAxesFromDirectionalInput,
+    isInsideDioramaDeadZone,
+    rotateHorizontalUnitVector,
+    type StickAxes,
+    snapHeadingRad,
 } from "./dioramaControllerMapping";
-import { createDioramaArControlHud, type DioramaArControlHud } from "./dioramaArControlHud";
+import type { DioramaOrientationController } from "./dioramaOrientationController";
+import type { DioramaTileModeController } from "./dioramaTileModeController";
+import type { DioramaViewController } from "./dioramaViewController";
 
 /**
  * AR操作GUI（仮想ジョイスティック+ズームボタン）を生成し、`dom-overlay` feature を
@@ -157,7 +161,10 @@ export interface ControllerStickState {
     left: StickAxes;
     right: StickAxes;
 }
-const zeroStickState = (): ControllerStickState => ({ left: { x: 0, y: 0 }, right: { x: 0, y: 0 } });
+const zeroStickState = (): ControllerStickState => ({
+    left: { x: 0, y: 0 },
+    right: { x: 0, y: 0 },
+});
 
 /** 左右コントローラーのトリガー押下量（[0,1]）を保持する（未接続時は `0`）。 */
 export interface ControllerTriggerState {
@@ -171,12 +178,14 @@ const zeroTriggerState = (): ControllerTriggerState => ({ left: 0, right: 0 });
  * する）。`NaN`/`Infinity` 等の非有限値は 0 へフォールバックしてからクランプする
  * （`Math.min`/`Math.max` は `NaN` を伝播させ、クランプの保証が崩れてしまうため）。
  */
-export const clamp1 = (v: number): number => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
+export const clamp1 = (v: number): number =>
+    Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0;
 /**
  * [0,1] へクランプする（トリガー押下量とGUI高さボタン由来の合算値の範囲を揃える）。
  * `clamp1` と同様、非有限値は 0 へフォールバックしてからクランプする。
  */
-export const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0);
+export const clamp01 = (v: number): number =>
+    Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
 
 /**
  * 追加されたコントローラーのthumbstick/trigger入力を `sticks`/`triggers` へ反映する
@@ -215,70 +224,100 @@ export const trackControllerSticks = (
         // 発火のたびに前回のthumbstick/trigger購読を解除してから登録し直す。
         let disposeAxisBinding: (() => void) | null = null;
         let disposeTriggerBinding: (() => void) | null = null;
-        const motionControllerObserver = controller.onMotionControllerInitObservable.add((motionController) => {
-            disposeAxisBinding?.();
-            disposeAxisBinding = null;
-            disposeTriggerBinding?.();
-            disposeTriggerBinding = null;
-            // 差し替え後のモーションコントローラーに thumbstick/trigger が無い場合、
-            // 以後どのobserverからも更新されず前回の値（押しっぱなし相当）が残留し
-            // 続けてしまう。再初期化のたびに一旦ニュートラル値へリセットしてから
-            // 判定・購読することで、コンポーネントが見つからない場合でも
-            // 回転/高さが暴走しないようにする。
-            sticks[handedness] = { x: 0, y: 0 };
-            triggers[handedness] = 0;
+        const motionControllerObserver =
+            controller.onMotionControllerInitObservable.add(
+                (motionController) => {
+                    disposeAxisBinding?.();
+                    disposeAxisBinding = null;
+                    disposeTriggerBinding?.();
+                    disposeTriggerBinding = null;
+                    // 差し替え後のモーションコントローラーに thumbstick/trigger が無い場合、
+                    // 以後どのobserverからも更新されず前回の値（押しっぱなし相当）が残留し
+                    // 続けてしまう。再初期化のたびに一旦ニュートラル値へリセットしてから
+                    // 判定・購読することで、コンポーネントが見つからない場合でも
+                    // 回転/高さが暴走しないようにする。
+                    sticks[handedness] = { x: 0, y: 0 };
+                    triggers[handedness] = 0;
 
-            const thumbstick = motionController.getComponentOfType("thumbstick");
-            if (thumbstick) {
-                const axisObserver = thumbstick.onAxisValueChangedObservable.add(({ x, y }) => {
-                    // 格納時点で[-1,1]へクランプ・非有限値を0へフォールバックする。
-                    // ここでサニタイズしないと、コントローラー由来の異常値（NaN等）が
-                    // 後段の `clamp1(sticks... + hud...)` で合算後にまとめて0扱いされ、
-                    // 同時に加算されるHUD側の正常な入力まで無効化されてしまう。
-                    sticks[handedness] = { x: clamp1(x), y: clamp1(y) };
-                });
-                disposeAxisBinding = () => thumbstick.onAxisValueChangedObservable.remove(axisObserver);
-                // バインド時点で既に倒されている場合、`onAxisValueChangedObservable` は
-                // その後の「変化」でのみ発火するため、現在値を初期反映しておかないと
-                // 検知できない（次項のtriggerと同じ理由）。
-                sticks[handedness] = { x: clamp1(thumbstick.axes.x), y: clamp1(thumbstick.axes.y) };
-            }
+                    const thumbstick =
+                        motionController.getComponentOfType("thumbstick");
+                    if (thumbstick) {
+                        const axisObserver =
+                            thumbstick.onAxisValueChangedObservable.add(
+                                ({ x, y }) => {
+                                    // 格納時点で[-1,1]へクランプ・非有限値を0へフォールバックする。
+                                    // ここでサニタイズしないと、コントローラー由来の異常値（NaN等）が
+                                    // 後段の `clamp1(sticks... + hud...)` で合算後にまとめて0扱いされ、
+                                    // 同時に加算されるHUD側の正常な入力まで無効化されてしまう。
+                                    sticks[handedness] = {
+                                        x: clamp1(x),
+                                        y: clamp1(y),
+                                    };
+                                },
+                            );
+                        disposeAxisBinding = () =>
+                            thumbstick.onAxisValueChangedObservable.remove(
+                                axisObserver,
+                            );
+                        // バインド時点で既に倒されている場合、`onAxisValueChangedObservable` は
+                        // その後の「変化」でのみ発火するため、現在値を初期反映しておかないと
+                        // 検知できない（次項のtriggerと同じ理由）。
+                        sticks[handedness] = {
+                            x: clamp1(thumbstick.axes.x),
+                            y: clamp1(thumbstick.axes.y),
+                        };
+                    }
 
-            const trigger = motionController.getComponentOfType("trigger");
-            if (trigger) {
-                const buttonObserver = trigger.onButtonStateChangedObservable.add((component) => {
-                    // sticksと同じ理由で、格納時点で[0,1]へクランプ・非有限値を
-                    // 0へフォールバックする。
-                    triggers[handedness] = clamp01(component.value);
-                });
-                disposeTriggerBinding = () => trigger.onButtonStateChangedObservable.remove(buttonObserver);
-                // `onMotionControllerInitObservable` 発火時点で既にトリガーが押されている
-                // 場合（例: コントローラー接続直後から押しっぱなしのケース）、
-                // `onButtonStateChangedObservable` はその後の「状態変化」でのみ発火するため
-                // 押しっぱなし状態を取りこぼす。バインド直後に現在値を一度読み取って
-                // 反映しておくことで、この取りこぼしを防ぐ。
-                triggers[handedness] = clamp01(trigger.value);
-            }
-        });
+                    const trigger =
+                        motionController.getComponentOfType("trigger");
+                    if (trigger) {
+                        const buttonObserver =
+                            trigger.onButtonStateChangedObservable.add(
+                                (component) => {
+                                    // sticksと同じ理由で、格納時点で[0,1]へクランプ・非有限値を
+                                    // 0へフォールバックする。
+                                    triggers[handedness] = clamp01(
+                                        component.value,
+                                    );
+                                },
+                            );
+                        disposeTriggerBinding = () =>
+                            trigger.onButtonStateChangedObservable.remove(
+                                buttonObserver,
+                            );
+                        // `onMotionControllerInitObservable` 発火時点で既にトリガーが押されている
+                        // 場合（例: コントローラー接続直後から押しっぱなしのケース）、
+                        // `onButtonStateChangedObservable` はその後の「状態変化」でのみ発火するため
+                        // 押しっぱなし状態を取りこぼす。バインド直後に現在値を一度読み取って
+                        // 反映しておくことで、この取りこぼしを防ぐ。
+                        triggers[handedness] = clamp01(trigger.value);
+                    }
+                },
+            );
 
         controllerCleanups.set(controller, () => {
-            controller.onMotionControllerInitObservable.remove(motionControllerObserver);
+            controller.onMotionControllerInitObservable.remove(
+                motionControllerObserver,
+            );
             disposeAxisBinding?.();
             disposeTriggerBinding?.();
         });
     };
 
     xr.input.controllers.forEach(bindController);
-    const addedObserver = xr.input.onControllerAddedObservable.add(bindController);
-    const removedObserver = xr.input.onControllerRemovedObservable.add((controller) => {
-        const handedness = controller.inputSource.handedness;
-        if (handedness === "left" || handedness === "right") {
-            sticks[handedness] = { x: 0, y: 0 };
-            triggers[handedness] = 0;
-        }
-        controllerCleanups.get(controller)?.();
-        controllerCleanups.delete(controller);
-    });
+    const addedObserver =
+        xr.input.onControllerAddedObservable.add(bindController);
+    const removedObserver = xr.input.onControllerRemovedObservable.add(
+        (controller) => {
+            const handedness = controller.inputSource.handedness;
+            if (handedness === "left" || handedness === "right") {
+                sticks[handedness] = { x: 0, y: 0 };
+                triggers[handedness] = 0;
+            }
+            controllerCleanups.get(controller)?.();
+            controllerCleanups.delete(controller);
+        },
+    );
     return () => {
         xr.input.onControllerAddedObservable.remove(addedObserver);
         xr.input.onControllerRemovedObservable.remove(removedObserver);
@@ -313,7 +352,10 @@ const SECONDARY_BUTTON_COMPONENT_ID: Record<"left" | "right", string> = {
  * （`getAllComponentsOfType("button")` の配列インデックス。0=プライマリ、
  * 1=セカンダリという一般的な並び順を仮定する）。
  */
-const PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES = { primary: 0, secondary: 1 } as const;
+const PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES = {
+    primary: 0,
+    secondary: 1,
+} as const;
 
 /**
  * 追加されたコントローラーのプライマリ（A/Xボタン）・セカンダリ（B/Yボタン）の
@@ -337,7 +379,10 @@ export const trackControllerButtonPresses = (
 ): (() => void) => {
     const controllerCleanups = new Map<WebXRInputSource, () => void>();
 
-    const bindPressObserver = (component: WebXRControllerComponent, onPress: () => void): (() => void) => {
+    const bindPressObserver = (
+        component: WebXRControllerComponent,
+        onPress: () => void,
+    ): (() => void) => {
         const observer = component.onButtonStateChangedObservable.add((c) => {
             if (c.changes.pressed?.current === true) onPress();
         });
@@ -350,43 +395,66 @@ export const trackControllerButtonPresses = (
 
         let disposePrimaryBinding: (() => void) | null = null;
         let disposeSecondaryBinding: (() => void) | null = null;
-        const motionControllerObserver = controller.onMotionControllerInitObservable.add((motionController) => {
-            // `trackControllerSticks` と同様、モーションコントローラーの再初期化時に
-            // 前回の購読を解除してから登録し直す。
-            disposePrimaryBinding?.();
-            disposePrimaryBinding = null;
-            disposeSecondaryBinding?.();
-            disposeSecondaryBinding = null;
+        const motionControllerObserver =
+            controller.onMotionControllerInitObservable.add(
+                (motionController) => {
+                    // `trackControllerSticks` と同様、モーションコントローラーの再初期化時に
+                    // 前回の購読を解除してから登録し直す。
+                    disposePrimaryBinding?.();
+                    disposePrimaryBinding = null;
+                    disposeSecondaryBinding?.();
+                    disposeSecondaryBinding = null;
 
-            const buttons = motionController.getAllComponentsOfType("button");
-            const primary =
-                motionController.getComponent(PRIMARY_BUTTON_COMPONENT_ID[handedness]) ??
-                buttons[PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES.primary];
-            if (primary) {
-                disposePrimaryBinding = bindPressObserver(primary, onPrimaryPress);
-            }
+                    const buttons =
+                        motionController.getAllComponentsOfType("button");
+                    const primary =
+                        motionController.getComponent(
+                            PRIMARY_BUTTON_COMPONENT_ID[handedness],
+                        ) ??
+                        buttons[
+                            PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES.primary
+                        ];
+                    if (primary) {
+                        disposePrimaryBinding = bindPressObserver(
+                            primary,
+                            onPrimaryPress,
+                        );
+                    }
 
-            const secondary =
-                motionController.getComponent(SECONDARY_BUTTON_COMPONENT_ID[handedness]) ??
-                buttons[PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES.secondary];
-            if (secondary) {
-                disposeSecondaryBinding = bindPressObserver(secondary, onSecondaryPress);
-            }
-        });
+                    const secondary =
+                        motionController.getComponent(
+                            SECONDARY_BUTTON_COMPONENT_ID[handedness],
+                        ) ??
+                        buttons[
+                            PRIMARY_SECONDARY_BUTTON_FALLBACK_INDICES.secondary
+                        ];
+                    if (secondary) {
+                        disposeSecondaryBinding = bindPressObserver(
+                            secondary,
+                            onSecondaryPress,
+                        );
+                    }
+                },
+            );
 
         controllerCleanups.set(controller, () => {
-            controller.onMotionControllerInitObservable.remove(motionControllerObserver);
+            controller.onMotionControllerInitObservable.remove(
+                motionControllerObserver,
+            );
             disposePrimaryBinding?.();
             disposeSecondaryBinding?.();
         });
     };
 
     xr.input.controllers.forEach(bindController);
-    const addedObserver = xr.input.onControllerAddedObservable.add(bindController);
-    const removedObserver = xr.input.onControllerRemovedObservable.add((controller) => {
-        controllerCleanups.get(controller)?.();
-        controllerCleanups.delete(controller);
-    });
+    const addedObserver =
+        xr.input.onControllerAddedObservable.add(bindController);
+    const removedObserver = xr.input.onControllerRemovedObservable.add(
+        (controller) => {
+            controllerCleanups.get(controller)?.();
+            controllerCleanups.delete(controller);
+        },
+    );
     return () => {
         xr.input.onControllerAddedObservable.remove(addedObserver);
         xr.input.onControllerRemovedObservable.remove(removedObserver);
@@ -437,11 +505,20 @@ export const setupDioramaArControls = (
     // 静かに握りつぶされないよう、`catch` で最低限のログ出力を行う。
     const exitAr = (): void => {
         xr.baseExperience.exitXRAsync().catch((err: unknown) => {
-            console.error("[jpmap-terrain diorama] failed to exit WebXR AR session:", err);
+            console.error(
+                "[jpmap-terrain diorama] failed to exit WebXR AR session:",
+                err,
+            );
         });
     };
-    const untrackButtons = trackControllerButtonPresses(xr, () => tileModeController.cycle(), exitAr);
-    const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() => tileModeController.cycle());
+    const untrackButtons = trackControllerButtonPresses(
+        xr,
+        () => tileModeController.cycle(),
+        exitAr,
+    );
+    const unsubscribeTileModeCycle = hud.onTileModeCyclePress(() =>
+        tileModeController.cycle(),
+    );
     const unsubscribeExitAr = hud.onExitArPress(exitAr);
 
     // パン方向の基準にする、直近でスナップ済みの向き角[rad]（冒頭のコメント参照）。
@@ -463,13 +540,18 @@ export const setupDioramaArControls = (
         // ヒステリシス付きで判定する（冒頭のコメント参照）。
         const cameraPosition = xr.baseExperience.camera.position;
         const dioramaPosition = dioramaRoot.position;
-        const { unit: awayFromUserUnit, distanceM } = computeHorizontalDisplacement(
-            cameraPosition.x,
-            cameraPosition.z,
-            dioramaPosition.x,
-            dioramaPosition.z,
+        const { unit: awayFromUserUnit, distanceM } =
+            computeHorizontalDisplacement(
+                cameraPosition.x,
+                cameraPosition.z,
+                dioramaPosition.x,
+                dioramaPosition.z,
+            );
+        const isNowInsideDeadZone = isInsideDioramaDeadZone(
+            distanceM,
+            wasInsideDeadZone,
+            tableRadiusM,
         );
-        const isNowInsideDeadZone = isInsideDioramaDeadZone(distanceM, wasInsideDeadZone, tableRadiusM);
         if (isNowInsideDeadZone && !wasInsideDeadZone) {
             // デッドゾーンへ新規に入った（外側→内側へ遷移した）タイミングで
             // スナップ基準をリセットする。リセットしないと、デッドゾーン内で
@@ -489,8 +571,14 @@ export const setupDioramaArControls = (
                 awayFromUserUnit,
                 -orientationController.getRotationRad(),
             );
-            const rawHeadingRad = computeHeadingRadFromHorizontal(localAwayFromUserUnit.x, localAwayFromUserUnit.z);
-            const snappedHeadingRad = snapHeadingRad(rawHeadingRad, previousSnappedHeadingRad);
+            const rawHeadingRad = computeHeadingRadFromHorizontal(
+                localAwayFromUserUnit.x,
+                localAwayFromUserUnit.z,
+            );
+            const snappedHeadingRad = snapHeadingRad(
+                rawHeadingRad,
+                previousSnappedHeadingRad,
+            );
             previousSnappedHeadingRad = snappedHeadingRad;
             // 生の向き角からスナップ後の向き角への差分だけ、奥方向の単位ベクトルを
             // 回転させる。単純な引き算（`snappedHeadingRad - rawHeadingRad`）は
@@ -500,15 +588,29 @@ export const setupDioramaArControls = (
             // 右方向は奥方向をさらに90°回転（時計回り）させて求める
             // （`computeHeadingRadFromHorizontal`の規約: 北→東が時計回りのため、
             // 奥方向を基準に+90°した方向が「右」に一致する）。
-            const headingDeltaRad = angleDeltaRad(rawHeadingRad, snappedHeadingRad);
-            const forwardUnit = rotateHorizontalUnitVector(localAwayFromUserUnit, headingDeltaRad);
-            const rightUnit = rotateHorizontalUnitVector(forwardUnit, Math.PI / 2);
+            const headingDeltaRad = angleDeltaRad(
+                rawHeadingRad,
+                snappedHeadingRad,
+            );
+            const forwardUnit = rotateHorizontalUnitVector(
+                localAwayFromUserUnit,
+                headingDeltaRad,
+            );
+            const rightUnit = rotateHorizontalUnitVector(
+                forwardUnit,
+                Math.PI / 2,
+            );
 
             const hudAxes = hud.getPanAxes();
             // Gamepad規約: スティック/ジョイスティックのy軸は前方向（奥へ倒す）が負値。
             const forwardAxis = clamp1(-(sticks.left.y + hudAxes.y));
             const rightAxis = clamp1(sticks.left.x + hudAxes.x);
-            panAxes = computePanAxesFromDirectionalInput(forwardAxis, rightAxis, forwardUnit, rightUnit);
+            panAxes = computePanAxesFromDirectionalInput(
+                forwardAxis,
+                rightAxis,
+                forwardUnit,
+                rightUnit,
+            );
         }
         // 右スティックの物理入力は十字ボタン相当の排他動作へ整形する
         // （X=回転・Y=ズームが斜めドリフトで同時発火しないようにする。
@@ -526,9 +628,18 @@ export const setupDioramaArControls = (
         // HUDの高さボタンは単一の符号付き軸[-1,1]（上昇=正）で表現されるため、
         // 物理トリガー値[0,1]へ変換してから合算・クランプする。
         const hudHeightAxis = hud.getHeightAxis();
-        const leftTriggerValue = clamp01(triggers.left + Math.max(0, -hudHeightAxis));
-        const rightTriggerValue = clamp01(triggers.right + Math.max(0, hudHeightAxis));
-        orientationController.feedAxes(rotationAxisX, leftTriggerValue, rightTriggerValue, dtSeconds);
+        const leftTriggerValue = clamp01(
+            triggers.left + Math.max(0, -hudHeightAxis),
+        );
+        const rightTriggerValue = clamp01(
+            triggers.right + Math.max(0, hudHeightAxis),
+        );
+        orientationController.feedAxes(
+            rotationAxisX,
+            leftTriggerValue,
+            rightTriggerValue,
+            dtSeconds,
+        );
     });
 
     return (): void => {
@@ -540,4 +651,3 @@ export const setupDioramaArControls = (
         hud.dispose();
     };
 };
-

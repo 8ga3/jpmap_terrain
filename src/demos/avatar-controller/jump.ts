@@ -85,7 +85,8 @@ export const tickJump = (
     // 等加速度の解析解: altitude += velocity * dt - 0.5 * g * dt²
     // これにより任意の dt でも理論上の最高点 h = v₀²/(2g) を正確に再現できる。
     // （velocity * dt のみだと peak で誤差が出る; newVelocity * dt は symplectic Euler で更に低くなる）
-    const newAltitude = state.altitude + state.velocity * dtSec - 0.5 * g * dtSec * dtSec;
+    const newAltitude =
+        state.altitude + state.velocity * dtSec - 0.5 * g * dtSec * dtSec;
     const newVelocity = state.velocity - g * dtSec;
 
     // 着地判定

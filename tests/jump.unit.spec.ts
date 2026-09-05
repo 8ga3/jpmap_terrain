@@ -3,7 +3,7 @@
  *
  * ジャンプ物理: startJump / tickJump / 着地判定 / 方向ロックを検証する。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
     DEFAULT_GRAVITY,
@@ -16,7 +16,10 @@ import {
 
 describe("startJump", () => {
     it("active=true で初速が正の値になる", () => {
-        const state = startJump(DEFAULT_JUMP_HEIGHT, DEFAULT_GRAVITY, { vx: 0, vy: 0 });
+        const state = startJump(DEFAULT_JUMP_HEIGHT, DEFAULT_GRAVITY, {
+            vx: 0,
+            vy: 0,
+        });
         expect(state.active).toBe(true);
         expect(state.velocity).toBeGreaterThan(0);
         expect(state.altitude).toBe(0);

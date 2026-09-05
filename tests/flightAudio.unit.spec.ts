@@ -7,7 +7,7 @@
  * ESM + vi.mock で完全にモジュールを分離して
  * 他テストとのキャッシュ衝突を回避する。
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // SoundState の数値定数（実装と一致させる）
 const SoundState = {
@@ -22,7 +22,9 @@ const SoundState = {
 // ─── モック ──────────────────────────────────────────────
 
 const mockEngineDispose = vi.fn();
-const mockUnlockAsync = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+const mockUnlockAsync = vi
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined);
 const mockEngine = {
     unlockAsync: mockUnlockAsync,
     dispose: mockEngineDispose,
@@ -35,7 +37,8 @@ const makeSound = (initialState: number = SoundState.Stopped) => ({
     dispose: vi.fn(),
 });
 
-const mockCreateAudioEngineAsync = vi.fn<() => Promise<typeof mockEngine>>()
+const mockCreateAudioEngineAsync = vi
+    .fn<() => Promise<typeof mockEngine>>()
     .mockResolvedValue(mockEngine);
 
 type MockSound = ReturnType<typeof makeSound>;
@@ -198,7 +201,9 @@ describe("createFlightAudio", () => {
             const error = new Error("sound load failed");
             mockCreateSoundAsync.mockRejectedValueOnce(error);
 
-            await expect(createFlightAudio()).rejects.toThrow("sound load failed");
+            await expect(createFlightAudio()).rejects.toThrow(
+                "sound load failed",
+            );
             expect(mockEngineDispose).toHaveBeenCalledTimes(1);
         });
 
@@ -209,7 +214,9 @@ describe("createFlightAudio", () => {
                 .mockResolvedValueOnce(engineSound)
                 .mockRejectedValueOnce(error);
 
-            await expect(createFlightAudio()).rejects.toThrow("wp sound load failed");
+            await expect(createFlightAudio()).rejects.toThrow(
+                "wp sound load failed",
+            );
             expect(engineSound.stop).toHaveBeenCalled();
             expect(engineSound.dispose).toHaveBeenCalled();
             expect(mockEngineDispose).toHaveBeenCalledTimes(1);

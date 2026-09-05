@@ -8,8 +8,8 @@
  * - パルス発光 + シアン/紫のグラデーション
  */
 
-import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Effect } from "@babylonjs/core/Materials/effect";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import type { Scene } from "@babylonjs/core/scene";
 
 // ─── シェーダーソース ────────────────────────────────────
@@ -154,8 +154,8 @@ let shaderRegistered = false;
 /** シェーダーソースを Effect.ShadersStore に登録する（初回のみ） */
 const ensureShaderRegistered = (): void => {
     if (shaderRegistered) return;
-    Effect.ShadersStore["waypointRingVertexShader"] = VERTEX_SHADER;
-    Effect.ShadersStore["waypointRingFragmentShader"] = FRAGMENT_SHADER;
+    Effect.ShadersStore.waypointRingVertexShader = VERTEX_SHADER;
+    Effect.ShadersStore.waypointRingFragmentShader = FRAGMENT_SHADER;
     shaderRegistered = true;
 };
 
@@ -164,7 +164,10 @@ const ensureShaderRegistered = (): void => {
  * @param scene Babylon.js シーン
  * @param id マテリアルに付与するユニーク名
  */
-export const createWaypointMaterial = (scene: Scene, id: string): ShaderMaterial => {
+export const createWaypointMaterial = (
+    scene: Scene,
+    id: string,
+): ShaderMaterial => {
     ensureShaderRegistered();
 
     const mat = new ShaderMaterial(
@@ -187,6 +190,9 @@ export const createWaypointMaterial = (scene: Scene, id: string): ShaderMaterial
  * @param material createWaypointMaterial で作成したマテリアル
  * @param time 経過時間 (秒)
  */
-export const updateWaypointMaterialTime = (material: ShaderMaterial, time: number): void => {
+export const updateWaypointMaterialTime = (
+    material: ShaderMaterial,
+    time: number,
+): void => {
     material.setFloat("uTime", time);
 };

@@ -178,10 +178,7 @@ export const projectToViewport = (
  *
  * @returns halfExtentM — カメラ中心から画面端（near side）までの概算距離 (m)
  */
-export const estimateViewExtent = (
-    altitude: number,
-    tilt: number,
-): number => {
+export const estimateViewExtent = (altitude: number, tilt: number): number => {
     // 非有限値は安全なデフォルトにフォールバック
     const safeAltitude = Number.isFinite(altitude) ? altitude : 1;
     const safeTilt = Number.isFinite(tilt) ? tilt : 0;
@@ -324,7 +321,9 @@ const computeAutoScrollProjected = (
  * `params.projection` を指定した場合は実スクリーン射影ベースで判定する
  * （{@link computeAutoScrollProjected}）。
  */
-export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult => {
+export const computeAutoScroll = (
+    params: AutoScrollParams,
+): AutoScrollResult => {
     const {
         avatarLat,
         avatarLon,
@@ -337,10 +336,16 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
 
     // 座標値に非有限値が含まれる場合は安全のため不動を返す
     if (
-        !Number.isFinite(avatarLat) || !Number.isFinite(avatarLon) ||
-        !Number.isFinite(cameraLat) || !Number.isFinite(cameraLon)
+        !Number.isFinite(avatarLat) ||
+        !Number.isFinite(avatarLon) ||
+        !Number.isFinite(cameraLat) ||
+        !Number.isFinite(cameraLon)
     ) {
-        return { lat: Number.isFinite(cameraLat) ? cameraLat : 0, lon: Number.isFinite(cameraLon) ? cameraLon : 0, scrolled: false };
+        return {
+            lat: Number.isFinite(cameraLat) ? cameraLat : 0,
+            lon: Number.isFinite(cameraLon) ? cameraLon : 0,
+            scrolled: false,
+        };
     }
 
     // 実スクリーン射影パラメータが指定されていれば、平坦近似ではなく射影ベースで判定する。
@@ -351,8 +356,12 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
     // 入力パラメータを有効範囲にクランプ（NaN は isFinite チェック後なのでここでは有限数のみ）
     const rawDeadzone = params.deadzoneRatio;
     const rawLerp = params.scrollLerp;
-    const deadzoneRatio = Number.isFinite(rawDeadzone) ? Math.max(0, Math.min(1, rawDeadzone)) : 0;
-    const scrollLerp = Number.isFinite(rawLerp) ? Math.max(0, Math.min(1, rawLerp)) : 0;
+    const deadzoneRatio = Number.isFinite(rawDeadzone)
+        ? Math.max(0, Math.min(1, rawDeadzone))
+        : 0;
+    const scrollLerp = Number.isFinite(rawLerp)
+        ? Math.max(0, Math.min(1, rawLerp))
+        : 0;
 
     // viewExtentOverride の非有限値は無視して estimateViewExtent にフォールバック
     const safeOverride =
@@ -361,9 +370,10 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
         viewExtentOverride > 0
             ? viewExtentOverride
             : undefined;
-    const extent = safeOverride !== undefined
-        ? safeOverride
-        : estimateViewExtent(cameraAltitude, cameraTilt);
+    const extent =
+        safeOverride !== undefined
+            ? safeOverride
+            : estimateViewExtent(cameraAltitude, cameraTilt);
 
     // 緯度経度差をメートルに変換
     const dLatM = (avatarLat - cameraLat) * METERS_PER_DEGREE_LAT;
@@ -391,7 +401,8 @@ export const computeAutoScroll = (params: AutoScrollParams): AutoScrollResult =>
     // はみ出し量をメートルに戻して lerp 分だけカメラを移動
     let dLonDeg =
         cosLat !== 0
-            ? (overflowX * extent * scrollLerp) / (METERS_PER_DEGREE_LAT * cosLat)
+            ? (overflowX * extent * scrollLerp) /
+              (METERS_PER_DEGREE_LAT * cosLat)
             : 0;
     let dLatDeg = (overflowY * extent * scrollLerp) / METERS_PER_DEGREE_LAT;
 

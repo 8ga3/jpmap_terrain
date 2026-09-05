@@ -1,4 +1,4 @@
-import { test, expect } from "./tileCache.fixture";
+import { expect, test } from "./tileCache.fixture";
 
 /**
  * 標高タイルの地形表現を遠方まで維持する回帰テスト。
@@ -108,7 +108,10 @@ async function waitForFrames(
             new Promise((resolve) => {
                 let count = 0;
                 const tick = (): void => {
-                    if (++count >= n) return resolve(true);
+                    if (++count >= n) {
+                        resolve(true);
+                        return;
+                    }
                     requestAnimationFrame(tick);
                 };
                 requestAnimationFrame(tick);

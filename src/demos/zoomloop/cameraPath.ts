@@ -53,7 +53,7 @@ export interface ZoomLoopState {
 
 /** イージング関数（加減速して滑らかに見せる）。高度・向きの補間に使用。 */
 export const easeInOutCubic = (t: number): number =>
-    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 
 /**
  * `easeInOutCubic` の逆関数（値 t から元の入力 p を求める）。
@@ -82,7 +82,11 @@ export const DEFAULT_POSITION_HOLD_ALTITUDE = 200_000;
  * 対数補間 `altitude(t) = startAlt * (endAlt/startAlt)^t` の逆算。
  * 高度 `altValue` に到達する t を求める（`altValue` が start/end の外側なら 0/1 にクランプ）。
  */
-const altitudeToT = (startAlt: number, endAlt: number, altValue: number): number => {
+const altitudeToT = (
+    startAlt: number,
+    endAlt: number,
+    altValue: number,
+): number => {
     if (startAlt <= 0 || endAlt <= 0 || altValue <= 0 || startAlt === endAlt) {
         return 0;
     }
@@ -109,7 +113,9 @@ const positionTFromAltitude = (
     endAlt: number,
     holdAltitude: number,
 ): number => {
-    const thresholdP = easeInOutCubicInverse(altitudeToT(startAlt, endAlt, holdAltitude));
+    const thresholdP = easeInOutCubicInverse(
+        altitudeToT(startAlt, endAlt, holdAltitude),
+    );
     if (endAlt >= startAlt) {
         if (thresholdP >= 1 || p <= thresholdP) return 0;
         return easeInOutCubic(clamp01((p - thresholdP) / (1 - thresholdP)));
@@ -127,7 +133,11 @@ const latLonToUnitVector = (latDeg: number, lonDeg: number): Vector3 => {
     const lat = (latDeg * Math.PI) / 180;
     const lon = (lonDeg * Math.PI) / 180;
     const cosLat = Math.cos(lat);
-    return new Vector3(cosLat * Math.cos(lon), Math.sin(lat), cosLat * Math.sin(lon));
+    return new Vector3(
+        cosLat * Math.cos(lon),
+        Math.sin(lat),
+        cosLat * Math.sin(lon),
+    );
 };
 
 /** 単位球面上の方向ベクトルを緯度経度[deg]へ変換する（`latLonToUnitVector` の逆変換）。 */
@@ -165,7 +175,10 @@ export const interpolatePosition = (
     let axis = Vector3.Cross(v0, v1);
     if (axis.lengthSquared() < POSITION_AXIS_EPSILON) {
         // 始点・終点がほぼ同一/対蹠点で軸が定まらない場合のフォールバック軸。
-        axis = Math.abs(v0.y) < 0.999 ? Vector3.Cross(v0, Vector3.Up()) : Vector3.Right();
+        axis =
+            Math.abs(v0.y) < 0.999
+                ? Vector3.Cross(v0, Vector3.Up())
+                : Vector3.Right();
     }
     axis.normalize();
 
@@ -192,7 +205,7 @@ export const interpolateAltitude = (
     if (startAlt <= 0 || endAlt <= 0) {
         return startAlt + (endAlt - startAlt) * t;
     }
-    return startAlt * Math.pow(endAlt / startAlt, t);
+    return startAlt * (endAlt / startAlt) ** t;
 };
 
 /**
@@ -233,8 +246,18 @@ export const computeCameraFrame = (
 ): CameraFrame => {
     const p = clamp01(progress);
     const t = easeInOutCubic(p);
-    const positionT = positionTFromAltitude(p, start.altitude, end.altitude, positionHoldAltitude);
-    const { lat, lon } = interpolatePosition(start, end, positionT, positionExtraTurns);
+    const positionT = positionTFromAltitude(
+        p,
+        start.altitude,
+        end.altitude,
+        positionHoldAltitude,
+    );
+    const { lat, lon } = interpolatePosition(
+        start,
+        end,
+        positionT,
+        positionExtraTurns,
+    );
     const altitude = interpolateAltitude(start.altitude, end.altitude, t);
     const { azimuth, tilt } = interpolateOrientation(start, end, t);
     return { lat, lon, altitude, azimuth, tilt };

@@ -22,12 +22,14 @@ export const circularOrbitPosition = (
 ): { lat: number; lon: number } => {
     const angleRad = (angleDeg * Math.PI) / 180;
     // 緯度方向: 1度 ≈ EARTH_RADIUS_M * π / 180 m
-    const dLat = (radiusM * Math.cos(angleRad)) / ((Math.PI / 180) * EARTH_RADIUS_M);
+    const dLat =
+        (radiusM * Math.cos(angleRad)) / ((Math.PI / 180) * EARTH_RADIUS_M);
     // 経度方向: cos(lat) 補正
     const cosLat = Math.cos((centerLat * Math.PI) / 180);
     const dLon =
         cosLat !== 0
-            ? (radiusM * Math.sin(angleRad)) / ((Math.PI / 180) * EARTH_RADIUS_M * cosLat)
+            ? (radiusM * Math.sin(angleRad)) /
+              ((Math.PI / 180) * EARTH_RADIUS_M * cosLat)
             : 0;
     return {
         lat: centerLat + dLat,
@@ -41,5 +43,5 @@ export const circularOrbitPosition = (
  * 時計回りの円軌道なので、進行方向は角度 + 90° (接線方向)。
  */
 export const circularOrbitHeading = (angleDeg: number): number => {
-    return ((angleDeg + 90) % 360 + 360) % 360;
+    return (((angleDeg + 90) % 360) + 360) % 360;
 };

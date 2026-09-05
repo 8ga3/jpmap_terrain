@@ -1,8 +1,8 @@
 /** URL に緯度・経度・カメラ姿勢を埋め込み / 復元するモジュール */
 
-import { clamp } from "./gsiTile";
-import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
 import type { MapType, ViewMode } from "../lib/types";
+import { JPMAP_TERRAIN_DEFAULTS } from "../lib/types";
+import { clamp } from "./gsiTile";
 
 export interface LatLon {
     lat: number;
@@ -13,7 +13,12 @@ export interface LatLon {
  * 緯度経度クランプ範囲（全球）。
  * globe（GeospatialCamera）は地球全体を描画できるため全球を許容する。
  */
-const WORLD_BOUNDS = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 } as const;
+const WORLD_BOUNDS = {
+    minLat: -90,
+    maxLat: 90,
+    minLon: -180,
+    maxLon: 180,
+} as const;
 
 /** カメラ姿勢を含む URL 状態 */
 export interface CameraUrlState extends LatLon {
@@ -131,7 +136,11 @@ const AT_PATTERN =
 
 /** altitude を [50, {@link ALTITUDE_MAX}] にクランプし整数化する */
 export const clampAltitude = (v: number): number => {
-    const c = clamp(v, CAMERA_URL_LIMITS.altitude.min, CAMERA_URL_LIMITS.altitude.max);
+    const c = clamp(
+        v,
+        CAMERA_URL_LIMITS.altitude.min,
+        CAMERA_URL_LIMITS.altitude.max,
+    );
     return Math.round(c);
 };
 
@@ -145,14 +154,14 @@ export const clampTilt = (v: number): number =>
 
 /** azimuth を [0, 360) に正規化する。NaN は 0 に倒す */
 export const normalizeAzimuth = (v: number): number => {
-    if (!isFinite(v)) return 0;
+    if (!Number.isFinite(v)) return 0;
     return ((v % 360) + 360) % 360;
 };
 
 const pickFinite = (raw: string | undefined, fallback: number): number => {
     if (raw === undefined) return fallback;
     const n = Number(raw);
-    return isFinite(n) ? n : fallback;
+    return Number.isFinite(n) ? n : fallback;
 };
 
 /**
@@ -166,9 +175,7 @@ const pickFinite = (raw: string | undefined, fallback: number): number => {
  *
  * 緯度経度は {@link WORLD_BOUNDS}（全球）でクランプする。
  */
-export const parseCameraStateFromUrl = (
-    url: string,
-): CameraUrlState | null => {
+export const parseCameraStateFromUrl = (url: string): CameraUrlState | null => {
     try {
         const parsed = new URL(url, "http://localhost");
 
@@ -180,28 +187,38 @@ export const parseCameraStateFromUrl = (
         if (atMatch) {
             const lat = Number(atMatch[1]);
             const lon = Number(atMatch[2]);
-            if (isFinite(lat) && isFinite(lon)) {
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
                 const clampedLat = clamp(lat, bounds.minLat, bounds.maxLat);
                 const clampedLon = clamp(lon, bounds.minLon, bounds.maxLon);
 
                 const rawThird = atMatch[3];
-                if (rawThird !== undefined && rawThird.endsWith("z")) {
+                if (rawThird?.endsWith("z")) {
                     // ズームレベル形式: @lat,lon,14.50z
                     const z = Number(rawThird.slice(0, -1));
-                    if (isFinite(z)) {
+                    if (Number.isFinite(z)) {
                         return {
                             lat: clampedLat,
                             lon: clampedLon,
-                            altitude: clampAltitude(CAMERA_URL_DEFAULTS.altitude),
-                            azimuth: normalizeAzimuth(CAMERA_URL_DEFAULTS.azimuth),
+                            altitude: clampAltitude(
+                                CAMERA_URL_DEFAULTS.altitude,
+                            ),
+                            azimuth: normalizeAzimuth(
+                                CAMERA_URL_DEFAULTS.azimuth,
+                            ),
                             tilt: clampTilt(CAMERA_URL_DEFAULTS.tilt),
                             zoomLevel: clampZoomLevel(z),
                         };
                     }
                 }
 
-                const altitude = pickFinite(rawThird, CAMERA_URL_DEFAULTS.altitude);
-                const azimuth = pickFinite(atMatch[4], CAMERA_URL_DEFAULTS.azimuth);
+                const altitude = pickFinite(
+                    rawThird,
+                    CAMERA_URL_DEFAULTS.altitude,
+                );
+                const azimuth = pickFinite(
+                    atMatch[4],
+                    CAMERA_URL_DEFAULTS.azimuth,
+                );
                 const tilt = pickFinite(atMatch[5], CAMERA_URL_DEFAULTS.tilt);
                 return {
                     lat: clampedLat,
@@ -219,7 +236,7 @@ export const parseCameraStateFromUrl = (
         if (latStr !== null && lonStr !== null) {
             const lat = Number(latStr);
             const lon = Number(lonStr);
-            if (isFinite(lat) && isFinite(lon)) {
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
                 return {
                     lat: clamp(lat, bounds.minLat, bounds.maxLat),
                     lon: clamp(lon, bounds.minLon, bounds.maxLon),
@@ -242,9 +259,7 @@ export const parseCameraStateFromUrl = (
  *
  * @deprecated 新規コードでは {@link parseCameraStateFromUrl} を使用してください。
  */
-export const parseLatLonFromUrl = (
-    url: string,
-): LatLon | null => {
+export const parseLatLonFromUrl = (url: string): LatLon | null => {
     const state = parseCameraStateFromUrl(url);
     if (state === null) return null;
     return { lat: state.lat, lon: state.lon };
@@ -315,8 +330,12 @@ export function toAtPath(
         const z = clampZoomLevel(state.zoomLevel);
         return `${head}${latStr},${lonStr},${z.toFixed(ZOOM_LEVEL_PRECISION)}z`;
     }
-    const altitude = clampAltitude(state.altitude ?? CAMERA_URL_DEFAULTS.altitude);
-    const azimuth = normalizeAzimuth(state.azimuth ?? CAMERA_URL_DEFAULTS.azimuth);
+    const altitude = clampAltitude(
+        state.altitude ?? CAMERA_URL_DEFAULTS.altitude,
+    );
+    const azimuth = normalizeAzimuth(
+        state.azimuth ?? CAMERA_URL_DEFAULTS.azimuth,
+    );
     const tilt = clampTilt(state.tilt ?? CAMERA_URL_DEFAULTS.tilt);
     return `${head}${latStr},${lonStr},${altitude},${azimuth.toFixed(AZIMUTH_TILT_PRECISION)},${tilt.toFixed(AZIMUTH_TILT_PRECISION)}`;
 }
@@ -394,7 +413,10 @@ export const withMapTypeInUrl = (url: string, mapType: MapType): string => {
  *（Node.js / SSR など、ブラウザグローバルが存在しない実行環境）では何もしない。
  */
 export const updateMapTypeInUrl = (mapType: MapType): void => {
-    if (typeof window === "undefined" || typeof window.history === "undefined") {
+    if (
+        typeof window === "undefined" ||
+        typeof window.history === "undefined"
+    ) {
         return;
     }
     const next = withMapTypeInUrl(window.location.href, mapType);
@@ -444,7 +466,10 @@ export const withViewModeInUrl = (url: string, viewMode: ViewMode): string => {
  * `window` / `history` が未定義な環境では何もしない。
  */
 export const updateViewModeInUrl = (viewMode: ViewMode): void => {
-    if (typeof window === "undefined" || typeof window.history === "undefined") {
+    if (
+        typeof window === "undefined" ||
+        typeof window.history === "undefined"
+    ) {
         return;
     }
     const next = withViewModeInUrl(window.location.href, viewMode);

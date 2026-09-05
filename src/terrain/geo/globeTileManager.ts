@@ -12,38 +12,46 @@
  * - テクスチャは描画 zoom（<= maxZoom=z18）。
  * - z16-18 は z15 祖先の標高を共有し、geom キャッシュ上でデデュプされる。
  */
-import { Scene } from "@babylonjs/core/scene";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { isAABBInFrustumRelativeToCamera, type FrustumPlane } from "../visibleTiles";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import type { Scene } from "@babylonjs/core/scene";
 import {
-    loadElevationTile,
-    textureUrl,
-    toTileXY,
-    tileCenterLatLon,
-    TILE_SIZE,
+    fillInvalidPixels,
     isAllNaN,
     isInvalidElev,
-    fillInvalidPixels,
-    TileFetchError,
+    loadElevationTile,
     type MapType,
+    TILE_SIZE,
+    TileFetchError,
+    textureUrl,
+    tileCenterLatLon,
+    toTileXY,
 } from "../gsiTile";
-import { stitchTileEdges, type StitchNeighbors } from "../tileStitching";
-import { ecefToGeodetic } from "./ecef";
-import { latLonToPixel, totalPixelsForZoom } from "./mapping";
-import { selectGlobeTiles, tileEcefAabb, tileKey, type GlobeTile } from "./globeLod";
-import { selectCoarseEdges, type CoarseEdge } from "./crossLevel";
+import { type StitchNeighbors, stitchTileEdges } from "../tileStitching";
 import {
-    buildGlobeTileMeshData,
+    type FrustumPlane,
+    isAABBInFrustumRelativeToCamera,
+} from "../visibleTiles";
+import { type CoarseEdge, selectCoarseEdges } from "./crossLevel";
+import { ecefToGeodetic } from "./ecef";
+import { sampleElevBilinear } from "./elevSample";
+import {
+    type GlobeTile,
+    selectGlobeTiles,
+    tileEcefAabb,
+    tileKey,
+} from "./globeLod";
+import {
     adaptiveMeshSegments,
+    buildGlobeTileMeshData,
     type GlobeTileMeshData,
 } from "./globeMesh";
-import { sampleElevBilinear } from "./elevSample";
+import { latLonToPixel, totalPixelsForZoom } from "./mapping";
 
 /** タイルマテリアルの鏡面反射（地形なので弱め）。 */
 const TILE_SPECULAR = new Color3(0.02, 0.02, 0.02);
@@ -142,7 +150,6 @@ const PENDING_RELEASE_TIMEOUT_MS = 5_000;
  * ちらつく。四分木の全祖先を対象にするため floor は 0 とする（探索回数は最大でも zoom 段数）。
  */
 const SEAMLESS_FLOOR_ZOOM = 0;
-
 
 export interface GlobeTileManagerOptions {
     /** タイルメッシュを生成するシーン。 */
@@ -270,7 +277,10 @@ export interface GlobeTileManager {
      * 消化対象タイルだけ AABB で視錐台内かを安価に再チェックし、外れていれば `desiredKeys` の
      * 更新を待たずに破棄する。省略時は従来どおり `desiredKeys` のみで判定する。
      */
-    drainBuildQueue: (freshFrustum?: { frustumPlanes: readonly FrustumPlane[]; cameraEcef: Vector3 }) => void;
+    drainBuildQueue: (freshFrustum?: {
+        frustumPlanes: readonly FrustumPlane[];
+        cameraEcef: Vector3;
+    }) => void;
     /**
      * 緯度経度の地形標高[m]を、ロード済みの最も詳細な geom タイルから bilinear 取得。
      * geomMaxZoom→minZoom を探索し最初に見つかったものを使う（無ければ null）。
@@ -367,7 +377,10 @@ export const createGlobeTileManager = (
     // 投げられたエラーから両者を区別できない。失敗を永続化すると一時障害でも地形が恒久
     // 欠落するため、指数バックオフで再試行する（no-data は再試行しても成功しないが、上限間隔で
     // 抑制される）。
-    const failedRetryAt = new Map<string, { retryAt: number; attempts: number }>();
+    const failedRetryAt = new Map<
+        string,
+        { retryAt: number; attempts: number }
+    >();
     // sync ごとにまとめてログするための、新たに取得失敗した geom タイルキー。
     // GSI 側に標高データが無い箇所（no-data/404）は珍しくなく、per-tile 警告だとログが
     // 溢れるため、sync 時に 1 行へ間引いて出力する。
@@ -430,9 +443,13 @@ export const createGlobeTileManager = (
     const dequeueGeomLoad = (): GeomLoadQueueEntry | undefined => {
         if (geomLoadQueueHead >= geomLoadQueue.length) return undefined;
         const entry = geomLoadQueue[geomLoadQueueHead];
-        geomLoadQueue[geomLoadQueueHead] = undefined as unknown as GeomLoadQueueEntry;
+        geomLoadQueue[geomLoadQueueHead] =
+            undefined as unknown as GeomLoadQueueEntry;
         geomLoadQueueHead++;
-        if (geomLoadQueueHead > 64 && geomLoadQueueHead * 2 >= geomLoadQueue.length) {
+        if (
+            geomLoadQueueHead > 64 &&
+            geomLoadQueueHead * 2 >= geomLoadQueue.length
+        ) {
             geomLoadQueue.splice(0, geomLoadQueueHead);
             geomLoadQueueHead = 0;
         }
@@ -469,12 +486,13 @@ export const createGlobeTileManager = (
     let syncedAtLeastOnce = false;
 
     /** 描画タイル(zoom 最大18) → ジオメトリ用標高タイル(最大 geomMaxZoom=15)の対応。 */
-    const geomCoordOf = (t: GlobeTile): { gz: number; gx: number; gy: number } => {
+    const geomCoordOf = (
+        t: GlobeTile,
+    ): { gz: number; gx: number; gy: number } => {
         const gz = Math.min(t.zoom, geomMaxZoom);
         const d = t.zoom - gz;
         return { gz, gx: t.x >> d, gy: t.y >> d };
     };
-
 
     /**
      * 粗ズーム親 DEM から geom タイル (gz,gx,gy) 領域を最近傍で TILE_SIZE 角に切り出す（globe 版）。
@@ -518,13 +536,19 @@ export const createGlobeTileManager = (
     // （PR レビュー）。settle 後はエントリを削除し、後続の再試行は新規取得に倒す（一時障害
     // 解消後の再取得を阻害しない）。
     const coarseParentInFlight = new Map<string, Promise<Float32Array>>();
-    const loadCoarseParent = (cz: number, px: number, py: number): Promise<Float32Array> => {
+    const loadCoarseParent = (
+        cz: number,
+        px: number,
+        py: number,
+    ): Promise<Float32Array> => {
         const key = `${cz}/${px}/${py}`;
         let p = coarseParentInFlight.get(key);
         if (!p) {
             p = loadElevationTile(cz, px, py);
             coarseParentInFlight.set(key, p);
-            void p.catch(() => {}).finally(() => coarseParentInFlight.delete(key));
+            void p
+                .catch(() => {})
+                .finally(() => coarseParentInFlight.delete(key));
         }
         return p;
     };
@@ -551,7 +575,8 @@ export const createGlobeTileManager = (
             return await loadElevationTile(gz, gx, gy);
         } catch (err) {
             // 決定的な 404（未配信）のみ粗ズームへフォールバックする。一時障害は再 throw してバックオフに委ねる。
-            if (!(err instanceof TileFetchError) || err.status !== 404) throw err;
+            if (!(err instanceof TileFetchError) || err.status !== 404)
+                throw err;
             const floor = Math.max(0, gz - GEOM_ELEV_FALLBACK_DEPTH);
             for (let cz = gz - 1; cz >= floor; cz--) {
                 const d = gz - cz;
@@ -562,7 +587,8 @@ export const createGlobeTileManager = (
                 } catch (e) {
                     // 404（未配信）のみさらに 1 段粗く再試行。一時障害（タイムアウト/ネットワーク/5xx 等）は
                     // 握りつぶさず再 throw し、バックオフ再取得に委ねる（誤って平坦化に倒さない）。
-                    if (e instanceof TileFetchError && e.status === 404) continue;
+                    if (e instanceof TileFetchError && e.status === 404)
+                        continue;
                     throw e;
                 }
             }
@@ -593,7 +619,11 @@ export const createGlobeTileManager = (
             if (!e) continue;
             const total = totalPixelsForZoom(gz);
             const { px, py } = latLonToPixel(latDeg, lonDeg, total);
-            return sampleElevBilinear(e, px - x * TILE_SIZE, py - y * TILE_SIZE);
+            return sampleElevBilinear(
+                e,
+                px - x * TILE_SIZE,
+                py - y * TILE_SIZE,
+            );
         }
         return null;
     };
@@ -602,7 +632,12 @@ export const createGlobeTileManager = (
      * geom タイル 1 件分の標高フェッチを開始する（旧 `loadTile` 本体）。完了/失敗のいずれでも
      * `activeGeomLoads` を解放し、待機キューがあれば次のロードを起動する。
      */
-    const startGeomLoad = (gz: number, gx: number, gy: number, gk: string): void => {
+    const startGeomLoad = (
+        gz: number,
+        gx: number,
+        gy: number,
+        gk: string,
+    ): void => {
         activeGeomLoads++;
         loadGeomElevation(gz, gx, gy)
             .then((elev) => {
@@ -684,7 +719,9 @@ export const createGlobeTileManager = (
 
     /** geom タイル全面を単一標高 v[m] で埋めた Float32Array を生成する（湖面平坦化用）。 */
     const flatElevArray = (v: number): Float32Array =>
-        new Float32Array(TILE_SIZE * TILE_SIZE).fill(Number.isFinite(v) ? v : 0);
+        new Float32Array(TILE_SIZE * TILE_SIZE).fill(
+            Number.isFinite(v) ? v : 0,
+        );
 
     /** 標高タイルの 1 辺（256px 列/行）の有効ピクセル平均[m]。全 NaN なら undefined。 */
     const tileEdgeMean = (
@@ -718,8 +755,16 @@ export const createGlobeTileManager = (
      * GSI は湖面など水域の z15 タイルを 404 で配信しないことがあり（本栖湖 15/28998/12927 等）、
      * その場合この近傍代表標高（湖岸/湖面 ≒ 湖面標高）で穴を埋める。隣接が一切無効なら undefined。
      */
-    const neighborRepElev = (gz: number, gx: number, gy: number): number | undefined => {
-        const facing: readonly [number, number, "top" | "bottom" | "left" | "right"][] = [
+    const neighborRepElev = (
+        gz: number,
+        gx: number,
+        gy: number,
+    ): number | undefined => {
+        const facing: readonly [
+            number,
+            number,
+            "top" | "bottom" | "left" | "right",
+        ][] = [
             [0, -1, "bottom"], // 上隣の下辺がこのタイルの上辺に接する
             [0, 1, "top"],
             [-1, 0, "right"],
@@ -827,9 +872,10 @@ export const createGlobeTileManager = (
         const toRemove: string[] = [];
         for (const dk of hiddenChildTiles) {
             const c = parseKey(dk);
-            if (includeSameZoom ? c.zoom < baseZoom : c.zoom <= baseZoom) continue;
+            if (includeSameZoom ? c.zoom < baseZoom : c.zoom <= baseZoom)
+                continue;
             const diff = c.zoom - baseZoom;
-            if ((c.x >> diff) === baseX && (c.y >> diff) === baseY) {
+            if (c.x >> diff === baseX && c.y >> diff === baseY) {
                 toRemove.push(dk);
             }
         }
@@ -882,7 +928,11 @@ export const createGlobeTileManager = (
     };
 
     /** 指定矩形領域内の hiddenChildTiles を一斉に表示状態にする（平面版 enableDescendants）。 */
-    const enableDescendants = (areaZoom: number, ax: number, ay: number): void => {
+    const enableDescendants = (
+        areaZoom: number,
+        ax: number,
+        ay: number,
+    ): void => {
         revealReadyDescendants(areaZoom, ax, ay, true);
     };
 
@@ -919,9 +969,17 @@ export const createGlobeTileManager = (
         if (loadedCoord) {
             const cands = new Set<string>();
             cands.add(tileKey(loadedCoord.zoom, loadedCoord.x, loadedCoord.y));
-            for (let az = loadedCoord.zoom - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
+            for (
+                let az = loadedCoord.zoom - 1;
+                az >= SEAMLESS_FLOOR_ZOOM;
+                az--
+            ) {
                 const diff = loadedCoord.zoom - az;
-                const ak = tileKey(az, loadedCoord.x >> diff, loadedCoord.y >> diff);
+                const ak = tileKey(
+                    az,
+                    loadedCoord.x >> diff,
+                    loadedCoord.y >> diff,
+                );
                 if (pendingRelease.has(ak)) cands.add(ak);
             }
             const descendants = pendingAncestorIndex.get(
@@ -1005,7 +1063,11 @@ export const createGlobeTileManager = (
     // 大きな湖ほど粗くしないと祖先タイルも全面水面（all-NaN）になるため複数段試す。
     const COARSE_SEED_DELTAS: ReadonlyArray<number> = [4, 6, 8, 10];
     /** 粗ズームタイルを取得（in-flight 重複排除のみメモ化）。all-NaN や取得失敗は null。 */
-    const loadCoarseTile = (cz: number, cx: number, cy: number): Promise<Float32Array | null> => {
+    const loadCoarseTile = (
+        cz: number,
+        cx: number,
+        cy: number,
+    ): Promise<Float32Array | null> => {
         const ck = tileKey(cz, cx, cy);
         let p = coarseTileMemo.get(ck);
         if (!p) {
@@ -1043,13 +1105,17 @@ export const createGlobeTileManager = (
                     let n = 0;
                     for (let i = 0; i < data.length; i++) {
                         const v = data[i];
-                        if (!isInvalidElev(v)) { sum += v; n++; }
+                        if (!isInvalidElev(v)) {
+                            sum += v;
+                            n++;
+                        }
                     }
                     // 取得完了までに当該 geom タイルが prune（eviction/dispose）または解決済み
                     // （allNanGeom から除外）になっている場合は書き込まない。さもないと dispose/prune
                     // 後に coarseSeed が再増加（リーク）・不要な seed が残る（レビュー指摘）。
                     if (n > 0) {
-                        if (allNanGeom.has(gk) && elevCache.has(gk)) coarseSeed.set(gk, sum / n);
+                        if (allNanGeom.has(gk) && elevCache.has(gk))
+                            coarseSeed.set(gk, sum / n);
                         return;
                     }
                 }
@@ -1058,14 +1124,23 @@ export const createGlobeTileManager = (
                 coarseSeedPending.delete(gk);
                 // done フラグも、まだ未解決(allNanGeom)かつキャッシュに在るタイルにのみ立てる。
                 // prune/解決済みのタイルで完了フラグだけ復活させない（レビュー指摘）。
-                if (allNanGeom.has(gk) && elevCache.has(gk)) coarseSeedDone.add(gk);
+                if (allNanGeom.has(gk) && elevCache.has(gk))
+                    coarseSeedDone.add(gk);
             }
         })();
     };
     const ALL_NAN_REFINE_MAX_ITER = 8;
-    const allNanNeighborOffsets: ReadonlyArray<[number, number, keyof StitchNeighbors]> = [
-        [0, -1, "top"], [0, 1, "bottom"], [-1, 0, "left"], [1, 0, "right"],
-        [-1, -1, "topLeft"], [1, -1, "topRight"], [-1, 1, "bottomLeft"], [1, 1, "bottomRight"],
+    const allNanNeighborOffsets: ReadonlyArray<
+        [number, number, keyof StitchNeighbors]
+    > = [
+        [0, -1, "top"],
+        [0, 1, "bottom"],
+        [-1, 0, "left"],
+        [1, 0, "right"],
+        [-1, -1, "topLeft"],
+        [1, -1, "topRight"],
+        [-1, 1, "bottomLeft"],
+        [1, 1, "bottomRight"],
     ];
     const refineAllNaNTiles = (): void => {
         if (allNanGeom.size === 0) return;
@@ -1120,9 +1195,13 @@ export const createGlobeTileManager = (
             for (const [k, data] of elevCache) {
                 if (allNanGeom.has(k)) continue; // 未解決 all-NaN は除外
                 const v = data[mid];
-                if (!isInvalidElev(v)) { inViewSum += v; inViewCount++; }
+                if (!isInvalidElev(v)) {
+                    inViewSum += v;
+                    inViewCount++;
+                }
             }
-            const inViewRep = inViewCount > 0 ? inViewSum / inViewCount : undefined;
+            const inViewRep =
+                inViewCount > 0 ? inViewSum / inViewCount : undefined;
             // 視界内に有効タイルがあれば代表標高を更新して保持する（全面水面化後の同期
             // フォールバックに使う）。湖へ陸地から接近する経路では湖岸標高が記録される。
             if (inViewRep !== undefined) lastRepElev = inViewRep;
@@ -1131,8 +1210,8 @@ export const createGlobeTileManager = (
                 if (!elevCache.has(gk)) continue;
                 const { zoom: gz, x: gx, y: gy } = parseKey(gk);
                 // 同 zoom 隣接が in-flight の間は確定を見送る（揃えば波状反復で解決しうる）。
-                const neighborLoading = allNanNeighborOffsets.some(
-                    ([dx, dy]) => loading.has(tileKey(gz, gx + dx, gy + dy)),
+                const neighborLoading = allNanNeighborOffsets.some(([dx, dy]) =>
+                    loading.has(tileKey(gz, gx + dx, gy + dy)),
                 );
                 if (neighborLoading) continue;
 
@@ -1209,13 +1288,21 @@ export const createGlobeTileManager = (
      * `continuous=true`（連続カメラアニメーション向け）: 実ビルドを `pendingBuilds` へ
      * 積み、`drainBuildQueue` が毎フレーム高々数件ずつ消化することでバーストを分散する。
      */
-    const buildReadyTiles = (tiles: readonly GlobeTile[], continuous: boolean): void => {
+    const buildReadyTiles = (
+        tiles: readonly GlobeTile[],
+        continuous: boolean,
+    ): void => {
         for (const t of tiles) {
             const k = tileKey(t.zoom, t.x, t.y);
             const { gz, gx, gy } = geomCoordOf(t);
             const gk = tileKey(gz, gx, gy);
             // 遠方の粗 zoom タイルは距離適応でメッシュ分割数を上げ、ロード済み DEM 詳細を活かす。
-            const segs = adaptiveMeshSegments(t.tileSizeMeters, t.zoom, gz, segments);
+            const segs = adaptiveMeshSegments(
+                t.tileSizeMeters,
+                t.zoom,
+                gz,
+                segments,
+            );
             const cachedElev = elevCache.get(gk);
             // 標高が視覚的に意味を持つか。固定 minZoom ではなく、カメラ距離も考慮する
             // （`ELEVATION_RELEVANT_MAX_DISTANCE_M` 参照）。`globeLod` の SSE 距離累進で root zoom
@@ -1223,7 +1310,8 @@ export const createGlobeTileManager = (
             // 地形表現を維持したい。全球視点（distance が極めて大きい）は従来どおり
             // 「標高が視覚的に無意味」として扱う。
             const isElevationRelevant =
-                t.zoom >= minZoom || t.distance <= ELEVATION_RELEVANT_MAX_DISTANCE_M;
+                t.zoom >= minZoom ||
+                t.distance <= ELEVATION_RELEVANT_MAX_DISTANCE_M;
             // #459: gz<gateBelowGz の距離適応タイルが「標高が意味を持つ」間だけ terrainElevAt の
             // 採用対象に載せる。距離が離れて無意味化したら外す（terrainElevAt が全球視点の超粗
             // タイル標高を返さないため）。gz>=gateBelowGz は常に採用対象なので記録不要。判定基準を
@@ -1246,7 +1334,8 @@ export const createGlobeTileManager = (
             // フラット(0m)で一度表示してから実標高で再構築するとカメラ近景でチラつくため。
             // - failedRetryAt（取得失敗でバックオフ中）は「フラット確定」扱いで即建築（恒久欠けを防ぐ）。
             // - 標高が視覚的に無意味（全球視点等）なら即建築。
-            if (isFlatFallback && !failedRetryAt.has(gk) && isElevationRelevant) continue;
+            if (isFlatFallback && !failedRetryAt.has(gk) && isElevationRelevant)
+                continue;
 
             // 暫定平坦建築の代表標高[m]（sig へ反映し、隣接ロードで値が変われば再建築させる）。
             let repElev: number | undefined;
@@ -1257,7 +1346,10 @@ export const createGlobeTileManager = (
             //     隣接タイルの接線標高（湖岸/湖面 ≒ 湖面標高）で平坦化し、段差無く連続させる。
             //     隣接も全て無効なら従来どおり 0m（外洋として妥当）。標高が無意味な距離帯は対象外。
             if (isFlatFallback && isElevationRelevant) {
-                repElev = coarseSeed.get(gk) ?? neighborRepElev(gz, gx, gy) ?? lastRepElev;
+                repElev =
+                    coarseSeed.get(gk) ??
+                    neighborRepElev(gz, gx, gy) ??
+                    lastRepElev;
                 if (repElev !== undefined) geomElev = flatElevArray(repElev);
             }
 
@@ -1267,7 +1359,8 @@ export const createGlobeTileManager = (
             //     暫定代表標高（粗ズーム祖先 ?? 隣接接線 ?? 直近代表標高 ?? referenceAltitude）で平坦建築。
             //     地図テクスチャは標高非依存で読まれるため、湖面相当の高さに平坦な正しい地図が描かれる。
             //     `refineAllNaNTiles` が正確な湖面標高で確定（allNanGeom から除外）し次第、sig 差分で再建築。
-            const isAllNanPending = !!cachedElev && allNanGeom.has(gk) && isElevationRelevant;
+            const isAllNanPending =
+                !!cachedElev && allNanGeom.has(gk) && isElevationRelevant;
             if (isAllNanPending) {
                 repElev =
                     coarseSeed.get(gk) ??
@@ -1289,7 +1382,11 @@ export const createGlobeTileManager = (
             let stitchNeighbors: StitchNeighbors | undefined;
             let stitchSig = "";
             if (!isFlatFallback && !isAllNanPending && isElevationRelevant) {
-                const { neighbors, sig: nSig } = collectSameZoomNeighbors(gz, gx, gy);
+                const { neighbors, sig: nSig } = collectSameZoomNeighbors(
+                    gz,
+                    gx,
+                    gy,
+                );
                 if (nSig.length > 0) {
                     stitchNeighbors = neighbors;
                     stitchSig = `s${nSig}|`;
@@ -1303,7 +1400,12 @@ export const createGlobeTileManager = (
             // 残る z16-18×粗 境界の「陰影シーム」除去（geom 座標へ写像した粗表面評価）は
             // 後続フェーズの磨き込み対象。
             let edges: readonly CoarseEdge[] = [];
-            if (snapEnabled && t.zoom <= geomMaxZoom && !isFlatFallback && !isAllNanPending) {
+            if (
+                snapEnabled &&
+                t.zoom <= geomMaxZoom &&
+                !isFlatFallback &&
+                !isAllNanPending
+            ) {
                 const r = selectCoarseEdges(
                     t,
                     (kk) => desiredKeys.has(kk),
@@ -1376,8 +1478,15 @@ export const createGlobeTileManager = (
             applyGeometry(
                 existing,
                 buildGlobeTileMeshData({
-                    zoom: t.zoom, tx: t.x, ty: t.y,
-                    geomElev, geomZoom: gz, geomX: gx, geomY: gy, segments: segs, edges,
+                    zoom: t.zoom,
+                    tx: t.x,
+                    ty: t.y,
+                    geomElev,
+                    geomZoom: gz,
+                    geomX: gx,
+                    geomY: gy,
+                    segments: segs,
+                    edges,
                 }),
             );
             builtEdgeSig.set(k, sig);
@@ -1482,7 +1591,10 @@ export const createGlobeTileManager = (
      */
     const isStillInFreshFrustum = (
         tile: GlobeTile,
-        freshFrustum: { frustumPlanes: readonly FrustumPlane[]; cameraEcef: Vector3 },
+        freshFrustum: {
+            frustumPlanes: readonly FrustumPlane[];
+            cameraEcef: Vector3;
+        },
     ): boolean => {
         if (tile.zoom <= minZoom) return true;
         const aabb = tileEcefAabb(tile.zoom, tile.x, tile.y, drainAabbScratch);
@@ -1508,9 +1620,10 @@ export const createGlobeTileManager = (
      * `isStillInFreshFrustum` による安価な追加チェックで、視界外へ出たジョブを
      * `desiredKeys` の更新を待たずに破棄する。
      */
-    const drainBuildQueue = (
-        freshFrustum?: { frustumPlanes: readonly FrustumPlane[]; cameraEcef: Vector3 },
-    ): void => {
+    const drainBuildQueue = (freshFrustum?: {
+        frustumPlanes: readonly FrustumPlane[];
+        cameraEcef: Vector3;
+    }): void => {
         if (pendingBuilds.size === 0) return;
         const start = performance.now();
         let n = 0;
@@ -1525,7 +1638,8 @@ export const createGlobeTileManager = (
             pendingBuilds.delete(k);
             n++;
             if (!desiredKeys.has(k)) continue;
-            if (freshFrustum && !isStillInFreshFrustum(job.tile, freshFrustum)) continue;
+            if (freshFrustum && !isStillInFreshFrustum(job.tile, freshFrustum))
+                continue;
             executeBuildJob(k, job);
         }
     };
@@ -1533,7 +1647,8 @@ export const createGlobeTileManager = (
     const sync = (params: GlobeTileSyncParams): GlobeTileSyncStats => {
         syncedAtLeastOnce = true;
         // 暫定代表標高の最終フォールバックとして referenceAltitude（カメラ中心地表標高）を保持。
-        if (Number.isFinite(params.referenceAltitude)) lastReferenceAltitude = params.referenceAltitude;
+        if (Number.isFinite(params.referenceAltitude))
+            lastReferenceAltitude = params.referenceAltitude;
         // #465: カメラ高度で base の見た目（地図テクスチャ/海色）を切り替える。低〜中高度では
         // 海色にして地平線際の緑（低ズーム世界地図）露出を防ぐ。境界をまたいだときのみ再適用する。
         lastCamAltMeters = ecefToGeodetic(params.cameraEcef).altMeters;
@@ -1582,7 +1697,8 @@ export const createGlobeTileManager = (
         const hasZoomRelation = (z: number, x: number, y: number): boolean => {
             for (let az = z - 1; az >= SEAMLESS_FLOOR_ZOOM; az--) {
                 const diff = z - az;
-                if (desiredKeys.has(tileKey(az, x >> diff, y >> diff))) return true;
+                if (desiredKeys.has(tileKey(az, x >> diff, y >> diff)))
+                    return true;
             }
             return visibleAncestorKeys.has(tileKey(z, x, y));
         };
@@ -1606,7 +1722,13 @@ export const createGlobeTileManager = (
                         PENDING_RELEASE_TIMEOUT_MS,
                     );
                     // builtEdgeSig は残す（再可視化で復元する際の不要な再構築を避ける）。
-                    addPendingRelease(key, { mesh, zoom: c.zoom, x: c.x, y: c.y, timerId });
+                    addPendingRelease(key, {
+                        mesh,
+                        zoom: c.zoom,
+                        x: c.x,
+                        y: c.y,
+                        timerId,
+                    });
                 }
             } else {
                 disposeMesh(key, mesh);
@@ -1676,7 +1798,6 @@ export const createGlobeTileManager = (
         // checkAndReleaseCoveredTiles が呼ばれず、既に祖先/子孫が揃った pending が
         // タイムアウトまで滞留しうる。全 pending を対象に再判定し即時解放する（同等）。
         if (pendingRelease.size > 0) checkAndReleaseCoveredTiles();
-
 
         // 新規取得失敗を 1 行へ間引いて出力（per-tile 警告の氾濫を防ぐ）。失敗要因は
         // no-data/404 と一時的なネットワーク障害の双方があり区別しないため、中立な文言にする。
@@ -1958,7 +2079,12 @@ export const createGlobeTileManager = (
         // 標高ロード中・LOD 遷移の残置タイル・ビルドキュー滞留がある間は安定とみなさない。
         // pendingBuilds は既存メッシュのジオメトリ更新（縫合差し替え等）だけを積む場合もあり、
         // その場合 loaded/readyMeshes の判定だけでは反映前を検知できないため個別にチェックする。
-        if (loading.size > 0 || pendingRelease.size > 0 || pendingBuilds.size > 0) return false;
+        if (
+            loading.size > 0 ||
+            pendingRelease.size > 0 ||
+            pendingBuilds.size > 0
+        )
+            return false;
         // さらに、現在の希望タイル(desiredKeys)がすべて loaded かつテクスチャ適用済み(readyMeshes)で
         // あることを要求する。loading/pendingRelease だけでは、メッシュ生成済みでもテクスチャの
         // onLoad/onError 到達前（白メッシュ）に「安定」と誤判定しうるため（ビジュアル回帰の
@@ -1973,5 +2099,13 @@ export const createGlobeTileManager = (
     // 常時表示の粗いベースレイヤを一度だけ構築する。
     buildBaseLayer();
 
-    return { sync, drainBuildQueue, terrainElevAt, isIdle, getMapType, setMapType, dispose };
+    return {
+        sync,
+        drainBuildQueue,
+        terrainElevAt,
+        isIdle,
+        getMapType,
+        setMapType,
+        dispose,
+    };
 };

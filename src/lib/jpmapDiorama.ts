@@ -9,31 +9,21 @@
  * セッション統合）を、mount〜dispose・入力集約・AR統合を持つ1つのクラスへ組み上げる。
  */
 
-import { Scene } from "@babylonjs/core/scene";
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color4, Color3 } from "@babylonjs/core/Maths/math.color";
-
-import { createBabylonEngine } from "./internal/engineFactory";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Scene } from "@babylonjs/core/scene";
 import {
-    DioramaArState,
-    DioramaArStateChangeListener,
-    DioramaCenter,
-    DioramaTileMode,
-    DioramaTileModeChangeListener,
-    JPMAP_DIORAMA_DEFAULTS,
-    JpmapDioramaOptions,
-    JpmapDioramaViewChangeListener,
-} from "./types";
-import { createDioramaTerrain, type DioramaTerrain } from "../terrain/diorama/dioramaTerrain";
-import {
-    createDioramaViewController,
-    type DioramaViewController,
-} from "./internal/diorama/dioramaViewController";
+    createDioramaTerrain,
+    type DioramaTerrain,
+} from "../terrain/diorama/dioramaTerrain";
+import { createDioramaArControlHud } from "./internal/diorama/dioramaArControlHud";
+import type { StickAxes } from "./internal/diorama/dioramaControllerMapping";
+import { setupDioramaKeyboardControls } from "./internal/diorama/dioramaKeyboardControls";
 import {
     createDioramaOrientationController,
     type DioramaOrientationController,
@@ -42,16 +32,31 @@ import {
     createDioramaTileModeController,
     type DioramaTileModeController,
 } from "./internal/diorama/dioramaTileModeController";
-import { setupDioramaKeyboardControls } from "./internal/diorama/dioramaKeyboardControls";
-import { createDioramaArControlHud } from "./internal/diorama/dioramaArControlHud";
-import { setupDioramaTouchControls, type DioramaTouchControls } from "./internal/diorama/dioramaTouchControls";
+import {
+    type DioramaTouchControls,
+    setupDioramaTouchControls,
+} from "./internal/diorama/dioramaTouchControls";
+import {
+    createDioramaViewController,
+    type DioramaViewController,
+} from "./internal/diorama/dioramaViewController";
 import {
     attachDioramaArButton,
     createDioramaArSessionController,
-    isImmersiveArSupported,
     type DioramaArSessionController,
+    isImmersiveArSupported,
 } from "./internal/diorama/webXrArSession";
-import type { StickAxes } from "./internal/diorama/dioramaControllerMapping";
+import { createBabylonEngine } from "./internal/engineFactory";
+import {
+    type DioramaArState,
+    type DioramaArStateChangeListener,
+    type DioramaCenter,
+    type DioramaTileMode,
+    type DioramaTileModeChangeListener,
+    JPMAP_DIORAMA_DEFAULTS,
+    type JpmapDioramaOptions,
+    type JpmapDioramaViewChangeListener,
+} from "./types";
 
 /** 何も行わないタッチHUD代替。`enableDefaultControls: false` 時に使う（冒頭のクラスコメント参照）。 */
 const NOOP_TOUCH_CONTROLS: DioramaTouchControls = {
@@ -113,12 +118,23 @@ export class JpmapDiorama {
      * @param options 初期化オプション（spec/diorama-api.md §5.2）
      * @returns 初期化済みの `JpmapDiorama` インスタンス
      */
-    public static async create(mountElement: HTMLElement, options: JpmapDioramaOptions): Promise<JpmapDiorama> {
+    public static async create(
+        mountElement: HTMLElement,
+        options: JpmapDioramaOptions,
+    ): Promise<JpmapDiorama> {
         if (!mountElement) {
-            throw new TypeError("JpmapDiorama.create: mountElement is required");
+            throw new TypeError(
+                "JpmapDiorama.create: mountElement is required",
+            );
         }
-        if (!options || options.center === undefined || options.center === null) {
-            throw new TypeError("JpmapDiorama.create: options.center is required");
+        if (
+            !options ||
+            options.center === undefined ||
+            options.center === null
+        ) {
+            throw new TypeError(
+                "JpmapDiorama.create: options.center is required",
+            );
         }
         const instance = new JpmapDiorama(mountElement);
         await instance.initAsync(options);
@@ -131,12 +147,18 @@ export class JpmapDiorama {
      * 同等の後始末をしてから再 throw する。
      */
     private async initAsync(options: JpmapDioramaOptions): Promise<void> {
-        const footprintHalfSizeM = options.footprintHalfSizeM ?? JPMAP_DIORAMA_DEFAULTS.footprintHalfSizeM;
-        const tableRadiusM = options.tableRadiusM ?? JPMAP_DIORAMA_DEFAULTS.tableRadiusM;
+        const footprintHalfSizeM =
+            options.footprintHalfSizeM ??
+            JPMAP_DIORAMA_DEFAULTS.footprintHalfSizeM;
+        const tableRadiusM =
+            options.tableRadiusM ?? JPMAP_DIORAMA_DEFAULTS.tableRadiusM;
         const tileMode = options.tileMode ?? JPMAP_DIORAMA_DEFAULTS.tileMode;
         const engineType = options.engine ?? JPMAP_DIORAMA_DEFAULTS.engine;
-        const enableDefaultControls = options.enableDefaultControls ?? JPMAP_DIORAMA_DEFAULTS.enableDefaultControls;
-        const showArButton = options.showArButton ?? JPMAP_DIORAMA_DEFAULTS.showArButton;
+        const enableDefaultControls =
+            options.enableDefaultControls ??
+            JPMAP_DIORAMA_DEFAULTS.enableDefaultControls;
+        const showArButton =
+            options.showArButton ?? JPMAP_DIORAMA_DEFAULTS.showArButton;
 
         // ARボタン・タッチHUD（いずれも `position: absolute` で `mountElement` 配下へ
         // 追加される）の基準座標を安定させる。`mountElement` が既定の `position: static`
@@ -161,7 +183,9 @@ export class JpmapDiorama {
             // そのまま使う（reverse-Z変換されない）ため、reverse-Z前提の深度クリア値・
             // 比較関数と組み合わせるとAR中の深度テストが破綻する
             // （`createBabylonEngine` の `CreateBabylonEngineOptions.reverseDepthBuffer` 参照）。
-            const engine = await createBabylonEngine(canvas, engineType, { reverseDepthBuffer: false });
+            const engine = await createBabylonEngine(canvas, engineType, {
+                reverseDepthBuffer: false,
+            });
             this._engine = engine;
 
             const scene = new Scene(engine);
@@ -189,8 +213,16 @@ export class JpmapDiorama {
             camera.attachControl(canvas, false);
             this._camera = camera;
 
-            new HemisphericLight("jpmap-diorama-ambient-light", new Vector3(0, 1, 0), scene).intensity = 0.6;
-            const sunLight = new DirectionalLight("jpmap-diorama-sun-light", new Vector3(-0.4, -1, -0.3), scene);
+            new HemisphericLight(
+                "jpmap-diorama-ambient-light",
+                new Vector3(0, 1, 0),
+                scene,
+            ).intensity = 0.6;
+            const sunLight = new DirectionalLight(
+                "jpmap-diorama-sun-light",
+                new Vector3(-0.4, -1, -0.3),
+                scene,
+            );
             sunLight.intensity = 0.8;
             sunLight.diffuse = new Color3(1, 0.98, 0.92);
 
@@ -213,25 +245,43 @@ export class JpmapDiorama {
 
             // 箱庭の配置・向き・地形を3階層のTransformNodeへ分離する
             // （`dioramaOrientationController.ts` 冒頭のコメント参照）。
-            const placementRoot = new TransformNode("jpmap-diorama-placement-root", scene);
-            const orientationRoot = new TransformNode("jpmap-diorama-orientation-root", scene);
+            const placementRoot = new TransformNode(
+                "jpmap-diorama-placement-root",
+                scene,
+            );
+            const orientationRoot = new TransformNode(
+                "jpmap-diorama-orientation-root",
+                scene,
+            );
             orientationRoot.parent = placementRoot;
             dioramaTerrain.root.parent = orientationRoot;
             this._placementRoot = placementRoot;
             this._orientationRoot = orientationRoot;
 
-            const viewController = createDioramaViewController(dioramaTerrain, options.center, footprintHalfSizeM);
-            const orientationController = createDioramaOrientationController(orientationRoot);
-            const tileModeController = createDioramaTileModeController(dioramaTerrain, tileMode);
+            const viewController = createDioramaViewController(
+                dioramaTerrain,
+                options.center,
+                footprintHalfSizeM,
+            );
+            const orientationController =
+                createDioramaOrientationController(orientationRoot);
+            const tileModeController = createDioramaTileModeController(
+                dioramaTerrain,
+                tileMode,
+            );
             this._viewController = viewController;
             this._orientationController = orientationController;
             this._tileModeController = tileModeController;
-            this._unsubscribeViewChange = viewController.onChange((center, nextFootprintHalfSizeM) => {
-                this._notifyViewChange(center, nextFootprintHalfSizeM);
-            });
-            this._unsubscribeTileModeChange = tileModeController.onChange((nextTileMode) => {
-                this._notifyTileModeChange(nextTileMode);
-            });
+            this._unsubscribeViewChange = viewController.onChange(
+                (center, nextFootprintHalfSizeM) => {
+                    this._notifyViewChange(center, nextFootprintHalfSizeM);
+                },
+            );
+            this._unsubscribeTileModeChange = tileModeController.onChange(
+                (nextTileMode) => {
+                    this._notifyTileModeChange(nextTileMode);
+                },
+            );
 
             let touchControls: DioramaTouchControls;
             if (enableDefaultControls) {
@@ -285,11 +335,16 @@ export class JpmapDiorama {
             );
             this._arController = arController;
             this._arSupported = await isImmersiveArSupported();
-            this._unsubscribeArActiveChange = arController.onActiveChange((active) => {
-                this._notifyArStateChange(active ? "active" : "inactive");
-            });
+            this._unsubscribeArActiveChange = arController.onActiveChange(
+                (active) => {
+                    this._notifyArStateChange(active ? "active" : "inactive");
+                },
+            );
             if (this._arSupported && showArButton) {
-                this._detachArButton = attachDioramaArButton(this.mountElement, arController);
+                this._detachArButton = attachDioramaArButton(
+                    this.mountElement,
+                    arController,
+                );
             }
 
             engine.runRenderLoop(() => {
@@ -311,22 +366,26 @@ export class JpmapDiorama {
     }
 
     private _requireViewController(): DioramaViewController {
-        if (!this._viewController) throw new Error("JpmapDiorama: instance is disposed");
+        if (!this._viewController)
+            throw new Error("JpmapDiorama: instance is disposed");
         return this._viewController;
     }
 
     private _requireOrientationController(): DioramaOrientationController {
-        if (!this._orientationController) throw new Error("JpmapDiorama: instance is disposed");
+        if (!this._orientationController)
+            throw new Error("JpmapDiorama: instance is disposed");
         return this._orientationController;
     }
 
     private _requireTileModeController(): DioramaTileModeController {
-        if (!this._tileModeController) throw new Error("JpmapDiorama: instance is disposed");
+        if (!this._tileModeController)
+            throw new Error("JpmapDiorama: instance is disposed");
         return this._tileModeController;
     }
 
     private _requireArController(): DioramaArSessionController {
-        if (!this._arController) throw new Error("JpmapDiorama: instance is disposed");
+        if (!this._arController)
+            throw new Error("JpmapDiorama: instance is disposed");
         return this._arController;
     }
 
@@ -349,14 +408,19 @@ export class JpmapDiorama {
 
     /** フットプリントの半辺長[m]を変更する（地形の再構築を伴う非同期処理）。 */
     public setFootprintHalfSize(halfSizeM: number): Promise<void> {
-        return this._requireViewController().setView({ footprintHalfSizeM: halfSizeM });
+        return this._requireViewController().setView({
+            footprintHalfSizeM: halfSizeM,
+        });
     }
 
     /**
      * 中心・フットプリント半辺長の一方または両方を1回の再構築にまとめて適用する。
      * 個別に呼ぶより低遅延（`dioramaTerrain.ts` の `setView` と同じ設計意図）。
      */
-    public setView(patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> {
+    public setView(patch: {
+        center?: DioramaCenter;
+        footprintHalfSizeM?: number;
+    }): Promise<void> {
         return this._requireViewController().setView(patch);
     }
 
@@ -382,7 +446,10 @@ export class JpmapDiorama {
         };
     }
 
-    private _notifyViewChange(center: DioramaCenter, footprintHalfSizeM: number): void {
+    private _notifyViewChange(
+        center: DioramaCenter,
+        footprintHalfSizeM: number,
+    ): void {
         if (this._disposed) return;
         for (const listener of this._viewListeners.slice()) {
             try {
@@ -393,7 +460,10 @@ export class JpmapDiorama {
                 // ミューテーションは防げないため）。
                 listener({ center: { ...center }, footprintHalfSizeM });
             } catch (err) {
-                console.error("[jpmap-terrain diorama] onViewChange listener threw:", err);
+                console.error(
+                    "[jpmap-terrain diorama] onViewChange listener threw:",
+                    err,
+                );
             }
         }
     }
@@ -419,7 +489,9 @@ export class JpmapDiorama {
      * タイル種別が変化した後に呼ばれるリスナーを登録する。
      * @returns 購読解除関数。
      */
-    public onTileModeChange(listener: DioramaTileModeChangeListener): () => void {
+    public onTileModeChange(
+        listener: DioramaTileModeChangeListener,
+    ): () => void {
         if (this._disposed) {
             return () => {
                 /* no-op: instance is already disposed */
@@ -441,7 +513,10 @@ export class JpmapDiorama {
             try {
                 listener(tileMode);
             } catch (err) {
-                console.error("[jpmap-terrain diorama] onTileModeChange listener threw:", err);
+                console.error(
+                    "[jpmap-terrain diorama] onTileModeChange listener threw:",
+                    err,
+                );
             }
         }
     }
@@ -450,11 +525,16 @@ export class JpmapDiorama {
 
     /** 箱庭全体の回転角・度（get / set）。 */
     public get rotationDeg(): number {
-        return (this._requireOrientationController().getRotationRad() * 180) / Math.PI;
+        return (
+            (this._requireOrientationController().getRotationRad() * 180) /
+            Math.PI
+        );
     }
 
     public set rotationDeg(value: number) {
-        this._requireOrientationController().setRotationRad((value * Math.PI) / 180);
+        this._requireOrientationController().setRotationRad(
+            (value * Math.PI) / 180,
+        );
     }
 
     /** 箱庭の設置高さオフセット[m]（get / set）。 */
@@ -473,7 +553,11 @@ export class JpmapDiorama {
      * `enableDefaultControls: false` の場合、またはホスト独自の入力（ゲームパッド等）を
      * 内蔵操作に加えて併用したい場合に、host アプリが毎フレーム呼ぶ。
      */
-    public feedPanZoomAxes(panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void {
+    public feedPanZoomAxes(
+        panAxes: StickAxes,
+        zoomAxisY: number,
+        dtSeconds: number,
+    ): void {
         this._requireViewController().feedAxes(panAxes, zoomAxisY, dtSeconds);
     }
 
@@ -484,7 +568,12 @@ export class JpmapDiorama {
         rightTriggerValue: number,
         dtSeconds: number,
     ): void {
-        this._requireOrientationController().feedAxes(rotationAxisX, leftTriggerValue, rightTriggerValue, dtSeconds);
+        this._requireOrientationController().feedAxes(
+            rotationAxisX,
+            leftTriggerValue,
+            rightTriggerValue,
+            dtSeconds,
+        );
     }
 
     // ---- WebXR AR ----
@@ -503,7 +592,11 @@ export class JpmapDiorama {
     /** ARセッションへ突入する（`isArSupported()` が `false` の場合は reject）。 */
     public enterAr(): Promise<void> {
         if (!this._arSupported) {
-            return Promise.reject(new Error("JpmapDiorama.enterAr: WebXR immersive-ar is not supported"));
+            return Promise.reject(
+                new Error(
+                    "JpmapDiorama.enterAr: WebXR immersive-ar is not supported",
+                ),
+            );
         }
         return this._requireArController().enter();
     }
@@ -539,7 +632,10 @@ export class JpmapDiorama {
             try {
                 listener(state);
             } catch (err) {
-                console.error("[jpmap-terrain diorama] onArStateChange listener threw:", err);
+                console.error(
+                    "[jpmap-terrain diorama] onArStateChange listener threw:",
+                    err,
+                );
             }
         }
     }
@@ -578,7 +674,10 @@ export class JpmapDiorama {
         try {
             this._arController?.dispose();
         } catch (err) {
-            console.error("[jpmap-terrain diorama] arController.dispose threw:", err);
+            console.error(
+                "[jpmap-terrain diorama] arController.dispose threw:",
+                err,
+            );
         }
         this._arController = null;
 
@@ -587,7 +686,10 @@ export class JpmapDiorama {
         try {
             this._touchControls?.dispose();
         } catch (err) {
-            console.error("[jpmap-terrain diorama] touchControls.dispose threw:", err);
+            console.error(
+                "[jpmap-terrain diorama] touchControls.dispose threw:",
+                err,
+            );
         }
         this._touchControls = null;
 
@@ -598,7 +700,10 @@ export class JpmapDiorama {
         try {
             this._dioramaTerrain?.dispose();
         } catch (err) {
-            console.error("[jpmap-terrain diorama] dioramaTerrain.dispose threw:", err);
+            console.error(
+                "[jpmap-terrain diorama] dioramaTerrain.dispose threw:",
+                err,
+            );
         }
         this._dioramaTerrain = null;
         this._placementRoot = null;

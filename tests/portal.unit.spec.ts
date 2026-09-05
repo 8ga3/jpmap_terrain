@@ -4,7 +4,7 @@
 /**
  * `src/demos/portal/index.ts` の純粋関数 unit test。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { buildPortalHtml } from "../src/demos/portal/index";
 
@@ -53,9 +53,7 @@ describe("buildPortalHtml", () => {
         expect(html).toContain("海上保安庁許可第292502号");
         expect(html).toContain("Vector Map Level 0 (VMAP0)");
         // 既存の Source リンクも維持される。
-        expect(html).toContain(
-            'href="https://github.com/8ga3/jpmap_terrain"',
-        );
+        expect(html).toContain('href="https://github.com/8ga3/jpmap_terrain"');
     });
 
     it("フッターにビルド時のバージョンを表示する", () => {

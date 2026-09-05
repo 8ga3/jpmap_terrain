@@ -6,7 +6,7 @@
  * 切り出す（両者が相互参照すると循環依存になるため）。両者が同じ式を使うことで、
  * 粗タイル表面の再構成がメッシュ生成と一致し、LOD 境界の陰影シームを防ぐ。
  */
-import { TILE_SIZE, isInvalidElev } from "../gsiTile";
+import { isInvalidElev, TILE_SIZE } from "../gsiTile";
 
 /**
  * 標高ラスタ（TILE_SIZE 角）をローカルピクセル座標で bilinear サンプルする。

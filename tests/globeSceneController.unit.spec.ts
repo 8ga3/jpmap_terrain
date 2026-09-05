@@ -5,52 +5,52 @@
  * 差し替え、ECEF 変換（`geo/ecef`）と yaw/pitch ↔ azimuth/tilt（`geo/cameraMapping`）は実物で
  * 往復精度を確認する。overlay 未対応・viewMode "3d" 固定・mapType 切替の暫定挙動もあわせて検証する。
  */
-import { describe, it, expect, vi, Mock } from "vitest";
 
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
-import { createGlobeSceneController } from "../src/scenes/globeSceneController";
-import {
-    createGlobeMarkerManagerAdapter,
-    createGlobePolygonManagerAdapter,
-    createGlobeCircleManagerAdapter,
-    createGlobeModelManagerAdapter,
-} from "../src/scenes/globeSceneController";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { describe, expect, it, type Mock, vi } from "vitest";
 import type {
+    PolygonPointDragEvent,
+    PolygonPointPointerEvent,
+    TerrainClickEvent,
+} from "../src/lib/types";
+import type {
+    GlobePolygonPointClickListener,
+    GlobePolygonPointDragEvent,
+    GlobePolygonPointDragListener,
+    GlobePolygonPointEvent,
+    GlobePolygonPointListener,
     GlobeSceneController,
     GlobeTerrainClickEvent,
     GlobeTerrainClickListener,
-    GlobePolygonPointEvent,
-    GlobePolygonPointDragEvent,
-    GlobePolygonPointListener,
-    GlobePolygonPointClickListener,
-    GlobePolygonPointDragListener,
 } from "../src/scenes/globe";
-import type {
-    TerrainClickEvent,
-    PolygonPointPointerEvent,
-    PolygonPointDragEvent,
-} from "../src/lib/types";
-import type {
-    GlobeMarkerManager,
-    GlobeMarkerOptions,
-} from "../src/terrain/geo/globeMarkerManager";
-import type {
-    GlobePolygonManager,
-    GlobePolygonOptions,
-} from "../src/terrain/geo/globePolygonManager";
+import {
+    createGlobeCircleManagerAdapter,
+    createGlobeMarkerManagerAdapter,
+    createGlobeModelManagerAdapter,
+    createGlobePolygonManagerAdapter,
+    createGlobeSceneController,
+} from "../src/scenes/globeSceneController";
+import { ecefToGeodetic, geodeticToEcef } from "../src/terrain/geo/ecef";
 import type {
     GlobeCircleManager,
     GlobeCircleOptions,
 } from "../src/terrain/geo/globeCircleManager";
 import type {
+    GlobeMarkerManager,
+    GlobeMarkerOptions,
+} from "../src/terrain/geo/globeMarkerManager";
+import type {
     GlobeModelManager,
     GlobeModelOptions,
-    GlobeModelUpdate,
     GlobeModelState,
+    GlobeModelUpdate,
 } from "../src/terrain/geo/globeModelManager";
-import { geodeticToEcef, ecefToGeodetic } from "../src/terrain/geo/ecef";
+import type {
+    GlobePolygonManager,
+    GlobePolygonOptions,
+} from "../src/terrain/geo/globePolygonManager";
 
 /** camera のみ参照する軽量スタブ GlobeSceneController を作る。 */
 const makeStub = (
@@ -253,7 +253,10 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
         const c = createGlobeSceneController(gc, "photo");
         expect(c.getMapType()).toBe("photo");
-        const c2 = createGlobeSceneController(makeStub(35, 139, 1000, 0, 0).gc, "std");
+        const c2 = createGlobeSceneController(
+            makeStub(35, 139, 1000, 0, 0).gc,
+            "std",
+        );
         expect(c2.getMapType()).toBe("standard");
     });
 
@@ -331,15 +334,27 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
         });
         expect(stub.polygonHoverListenerCount()).toBe(1);
         const pe = {} as PointerEvent;
-        stub.triggerPolygonHover({ polygonId: "p1", index: 2, pointerEvent: pe });
+        stub.triggerPolygonHover({
+            polygonId: "p1",
+            index: 2,
+            pointerEvent: pe,
+        });
         stub.triggerPolygonHover(null);
         expect(received).toHaveLength(2);
-        expect(received[0]).toEqual({ polygonId: "p1", index: 2, pointerEvent: pe });
+        expect(received[0]).toEqual({
+            polygonId: "p1",
+            index: 2,
+            pointerEvent: pe,
+        });
         expect(received[0]?.pointerEvent).toBe(pe);
         expect(received[1]).toBeNull();
         off();
         expect(stub.polygonHoverListenerCount()).toBe(0);
-        stub.triggerPolygonHover({ polygonId: "p1", index: 0, pointerEvent: pe });
+        stub.triggerPolygonHover({
+            polygonId: "p1",
+            index: 0,
+            pointerEvent: pe,
+        });
         expect(received).toHaveLength(2);
     });
 
@@ -351,9 +366,17 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
             received.push(e);
         });
         const pe = {} as PointerEvent;
-        stub.triggerPolygonClick({ polygonId: "p2", index: 5, pointerEvent: pe });
+        stub.triggerPolygonClick({
+            polygonId: "p2",
+            index: 5,
+            pointerEvent: pe,
+        });
         expect(received).toHaveLength(1);
-        expect(received[0]).toEqual({ polygonId: "p2", index: 5, pointerEvent: pe });
+        expect(received[0]).toEqual({
+            polygonId: "p2",
+            index: 5,
+            pointerEvent: pe,
+        });
     });
 
     it("subscribePolygonPointDrag* は lat/lon/groundAltitude/planeLat/planeLon/pointerAltitude を橋渡しする", () => {
@@ -548,9 +571,13 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
 
     it("isTerrainIdle は tileManager.isIdle へ委譲する（true/false）", () => {
         const idle = makeStub(35, 139, 1000, 0, 0, true);
-        expect(createGlobeSceneController(idle.gc, "std").isTerrainIdle()).toBe(true);
+        expect(createGlobeSceneController(idle.gc, "std").isTerrainIdle()).toBe(
+            true,
+        );
         const busy = makeStub(35, 139, 1000, 0, 0, false);
-        expect(createGlobeSceneController(busy.gc, "std").isTerrainIdle()).toBe(false);
+        expect(createGlobeSceneController(busy.gc, "std").isTerrainIdle()).toBe(
+            false,
+        );
     });
 
     it("dispose は GlobeSceneController.dispose へ委譲する", () => {
@@ -562,9 +589,16 @@ describe("createGlobeSceneController (globe backend adapter)", () => {
 
     it("setSunState(null) は決定的フォールバック日時で太陽を反映する（planar と挙動一致, レビュー対応）", () => {
         const { gc } = makeStub(35, 139, 1000, 0, 0);
-        const sunLight = (gc as unknown as { sunLight: { direction: Vector3; intensity: number } }).sunLight;
-        const hemiLight = (gc as unknown as { hemiLight: { intensity: number } }).hemiLight;
-        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: Mock } }).sunMesh;
+        const sunLight = (
+            gc as unknown as {
+                sunLight: { direction: Vector3; intensity: number };
+            }
+        ).sunLight;
+        const hemiLight = (
+            gc as unknown as { hemiLight: { intensity: number } }
+        ).hemiLight;
+        const sunMesh = (gc as unknown as { sunMesh: { setEnabled: Mock } })
+            .sunMesh;
         const c = createGlobeSceneController(gc, "std");
         c.setSunState(null);
         // null フォールバックでも太陽計算が走り、ライト強度が一定値へ更新される（早期 return しない）。
@@ -697,7 +731,11 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
     it("elevationResolved は terrainElevAt が null のとき false", () => {
         const stub = makeGlobeMarkerStub();
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => null);
-        const h = m.add("p1", { lat: VALID_LAT, lon: VALID_LON, text: { value: "x" } });
+        const h = m.add("p1", {
+            lat: VALID_LAT,
+            lon: VALID_LON,
+            text: { value: "x" },
+        });
         expect(h.elevationResolved).toBe(false);
         expect(h.icon).toBeNull();
         expect(h.text?.value).toBe("x");
@@ -706,9 +744,9 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
     it("icon/text のいずれも無い add は throw する（planar parity）", () => {
         const stub = makeGlobeMarkerStub();
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 0);
-        expect(() =>
-            m.add("p1", { lat: VALID_LAT, lon: VALID_LON }),
-        ).toThrow(/at least one of icon\/text is required/);
+        expect(() => m.add("p1", { lat: VALID_LAT, lon: VALID_LON })).toThrow(
+            /at least one of icon\/text is required/,
+        );
     });
 
     it("同一 id の add は throw する", () => {
@@ -721,9 +759,9 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
     it("JAPAN_BOUNDS 外の lat/lon は throw する", () => {
         const stub = makeGlobeMarkerStub();
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 0);
-        expect(() => m.add("p1", { lat: 0, lon: 0, text: { value: "x" } })).toThrow(
-            /JAPAN_BOUNDS/,
-        );
+        expect(() =>
+            m.add("p1", { lat: 0, lon: 0, text: { value: "x" } }),
+        ).toThrow(/JAPAN_BOUNDS/);
     });
 
     it("get は未知 id で null、既知 id でハンドルを返す", () => {
@@ -738,7 +776,12 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
         const stub = makeGlobeMarkerStub();
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 50);
         m.add("p1", { lat: VALID_LAT, lon: VALID_LON, text: { value: "a" } });
-        const h = m.update("p1", { lat: 34, lon: 135, text: { value: "b" }, enabled: false });
+        const h = m.update("p1", {
+            lat: 34,
+            lon: 135,
+            text: { value: "b" },
+            enabled: false,
+        });
         expect(stub.removed).toEqual(["g0"]);
         expect(stub.added).toHaveLength(2);
         expect(h.lat).toBeCloseTo(34, 6);
@@ -764,7 +807,9 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
         const m = createGlobeMarkerManagerAdapter(stub.mgr, () => 0);
         expect(() => m.update("none", { enabled: false })).toThrow(/not found/);
         m.add("p1", { ...BASE });
-        expect(() => m.update("p1", { lat: 0, lon: 0 })).toThrow(/JAPAN_BOUNDS/);
+        expect(() => m.update("p1", { lat: 0, lon: 0 })).toThrow(
+            /JAPAN_BOUNDS/,
+        );
     });
 
     it("remove は委譲し、未知 id では warn のみで throw しない", () => {
@@ -811,187 +856,199 @@ describe("createGlobeMarkerManagerAdapter (marker overlay)", () => {
     });
 });
 
-        describe("createGlobePolygonManagerAdapter (polygon overlay)", () => {
-            const PTS = [
-                { lat: 35.36, lon: 138.72, altitude: 100 },
-                { lat: 35.37, lon: 138.73, altitude: 120 },
-            ];
+describe("createGlobePolygonManagerAdapter (polygon overlay)", () => {
+    const PTS = [
+        { lat: 35.36, lon: 138.72, altitude: 100 },
+        { lat: 35.37, lon: 138.73, altitude: 120 },
+    ];
 
-            it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {
-                const stub = makeGlobePolygonStub();
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 10);
-                const h = m.add("poly", {
-                    points: PTS,
-                    labels: ["A", "B"],
-                    edgeLabels: ["AB"],
-                    style: { pointColor: "#00ff00" },
-                });
-                expect(h.id).toBe("poly");
-                expect(h.points).toHaveLength(2);
-                expect(h.closed).toBe(false);
-                expect(h.altitudeMode).toBe("terrain");
-                expect(h.labels).toEqual(["A", "B"]);
-                expect(h.edgeLabels).toEqual(["AB"]);
-                expect(h.style.pointColor).toBe("#00ff00");
-                expect(h.style.lineColor).toBe("#ff0000");
-                expect(h.elevationResolved).toBe(true);
-                expect(m.get("poly")?.id).toBe("poly");
-                expect(m.list()).toEqual(["poly"]);
-                expect(stub.added[0].opts.points).toHaveLength(2);
-            });
-
-            it("terrain 未解決なら elevationResolved=false、absolute は altitude 必須かつ常に true", () => {
-                const terrainStub = makeGlobePolygonStub();
-                const terrain = createGlobePolygonManagerAdapter(terrainStub.mgr, () => null);
-                expect(terrain.add("t", { points: PTS }).elevationResolved).toBe(false);
-                const absStub = makeGlobePolygonStub();
-                const abs = createGlobePolygonManagerAdapter(absStub.mgr, () => null);
-                expect(
-                    abs.add("a", { points: PTS, altitudeMode: "absolute" }).elevationResolved,
-                ).toBe(true);
-                expect(() =>
-                    abs.add("bad", {
-                        points: [{ lat: 35.36, lon: 138.72 }],
-                        altitudeMode: "absolute",
-                    }),
-                ).toThrow(/requires altitude/);
-            });
-
-            it("update と表示フラグ変更は add-then-remove で内部ノードを作り直す", () => {
-                const stub = makeGlobePolygonStub();
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS });
-                const h = m.update("poly", { closed: true, labelsEnabled: false });
-                expect(h.closed).toBe(true);
-                expect(h.labelsEnabled).toBe(false);
-                expect(stub.removed).toEqual(["gp0"]);
-                m.setWallsEnabled("poly", false);
-                expect(stub.removed).toEqual(["gp0", "gp1"]);
-                expect(m.get("poly")?.wallsEnabled).toBe(false);
-            });
-
-            it("update は構造不変（点座標/ラベルのみ）なら setContent で in-place 更新し再構築しない", () => {
-                const stub = makeGlobePolygonStub();
-                stub.setContentResult.value = true; // in-place 成功を模擬
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS, labels: ["a", "b"] });
-                expect(stub.added).toHaveLength(1);
-                const h = m.update("poly", {
-                    points: [
-                        { lat: 35.37, lon: 138.73 },
-                        { lat: 35.38, lon: 138.74 },
-                    ],
-                    labels: ["a2", "b2"],
-                });
-                // in-place: 再 add / remove は発生しない。
-                expect(stub.added).toHaveLength(1);
-                expect(stub.removed).toEqual([]);
-                expect(stub.contentCalls).toHaveLength(1);
-                expect(stub.contentCalls[0].id).toBe("gp0");
-                expect(h.points[0].lat).toBeCloseTo(35.37);
-                expect(h.labels?.[0]).toBe("a2");
-            });
-
-            it("update に labels:undefined を渡すと既存ラベルをクリアし setContent へ undefined を渡す", () => {
-                const stub = makeGlobePolygonStub();
-                stub.setContentResult.value = true; // in-place 成功を模擬
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS, labels: ["a", "b"] });
-                // labels キーを明示 undefined で渡す → 構造不変なので in-place 更新。
-                const h = m.update("poly", { points: PTS, labels: undefined });
-                expect(stub.added).toHaveLength(1);
-                expect(stub.removed).toEqual([]);
-                expect(stub.contentCalls).toHaveLength(1);
-                // ラベルはクリアされ、ハンドルには labels が露出しない。
-                expect(h.labels).toBeUndefined();
-                const content = stub.contentCalls[0].content as {
-                    labels?: unknown;
-                };
-                expect(content.labels).toBeUndefined();
-            });
-
-            it("update は setContent が false（点数不一致など）なら従来どおり再構築へフォールバックする", () => {
-                const stub = makeGlobePolygonStub();
-                stub.setContentResult.value = false; // in-place 不可を模擬
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS });
-                const h = m.update("poly", {
-                    points: [
-                        { lat: 35.37, lon: 138.73 },
-                        { lat: 35.38, lon: 138.74 },
-                    ],
-                });
-                expect(stub.contentCalls).toHaveLength(1);
-                // フォールバックで新規 add + 旧 remove。
-                expect(stub.added).toHaveLength(2);
-                expect(stub.removed).toEqual(["gp0"]);
-                expect(h.points[1].lat).toBeCloseTo(35.38);
-            });
-
-            it("setEnabled は委譲し、点編集 API はハンドルを再構築する", () => {
-                const stub = makeGlobePolygonStub();
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS });
-                m.setEnabled("poly", false);
-                expect(stub.enabledCalls).toEqual([{ id: "gp0", enabled: false }]);
-                expect(m.get("poly")?.enabled).toBe(false);
-                expect(m.insertPoint("poly", 1, { lat: 35.365, lon: 138.725 }).points).toHaveLength(3);
-                expect(m.updatePoint("poly", 1, { label: "mid" }).labels?.[1]).toBe("mid");
-                expect(m.removePoint("poly", 1).points).toHaveLength(2);
-                expect(m.replacePoints("poly", [{ lat: 35.36, lon: 138.72 }]).points).toHaveLength(1);
-                expect(m.get("poly")?.labels).toBeUndefined();
-            });
-
-            it("rebuild 中の add 例外時は旧 globeId・旧状態を保持する（トランザクション）", () => {
-                const stub = makeGlobePolygonStub();
-                let failNext = false;
-                const baseAdd = stub.mgr.add.bind(stub.mgr);
-                (stub.mgr as { add: GlobePolygonManager["add"] }).add = (opts) => {
-                    if (failNext) throw new Error("globe add failed");
-                    return baseAdd(opts);
-                };
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS, wallsEnabled: true });
-                failNext = true;
-                expect(() => m.setWallsEnabled("poly", false)).toThrow(/globe add failed/);
-                // 旧ノードは remove されず、状態も巻き戻る（wallsEnabled=true のまま）。
-                expect(stub.removed).toEqual([]);
-                expect(m.get("poly")?.wallsEnabled).toBe(true);
-            });
-
-            it("remove/list/dispose とエラー条件", () => {
-                const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-                const stub = makeGlobePolygonStub();
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                expect(() => m.add("bad", { points: [] })).toThrow(/at least 1/);
-                m.add("poly", { points: PTS });
-                expect(() => m.add("poly", { points: PTS })).toThrow(/already exists/);
-                m.remove("poly");
-                expect(m.list()).toEqual([]);
-                m.remove("missing");
-                expect(warn).toHaveBeenCalled();
-                // dispose 時に残っているポリゴンのみ remove し、内部マネージャは破棄しない。
-                m.add("poly2", { points: PTS });
-                const aliveId = stub.added[stub.added.length - 1].id;
-                m.dispose();
-                expect(stub.disposed()).toBe(false);
-                expect(stub.removed).toContain(aliveId);
-                expect(() => m.add("x", { points: PTS })).toThrow(/disposed/);
-                warn.mockRestore();
-            });
-
-            it("resolvePublicPolygonId は内部 globeId を公開 id へ逆引きする", () => {
-                const stub = makeGlobePolygonStub();
-                const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
-                m.add("poly", { points: PTS });
-                const globeId = stub.added[stub.added.length - 1].id;
-                expect(m.resolvePublicPolygonId(globeId)).toBe("poly");
-                expect(m.resolvePublicPolygonId("unknown")).toBeNull();
-                // remove 後は逆引きできない。
-                m.remove("poly");
-                expect(m.resolvePublicPolygonId(globeId)).toBeNull();
-            });
+    it("add/get/list は globe マネージャへ委譲し、既定補完済みハンドルを返す", () => {
+        const stub = makeGlobePolygonStub();
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 10);
+        const h = m.add("poly", {
+            points: PTS,
+            labels: ["A", "B"],
+            edgeLabels: ["AB"],
+            style: { pointColor: "#00ff00" },
         });
+        expect(h.id).toBe("poly");
+        expect(h.points).toHaveLength(2);
+        expect(h.closed).toBe(false);
+        expect(h.altitudeMode).toBe("terrain");
+        expect(h.labels).toEqual(["A", "B"]);
+        expect(h.edgeLabels).toEqual(["AB"]);
+        expect(h.style.pointColor).toBe("#00ff00");
+        expect(h.style.lineColor).toBe("#ff0000");
+        expect(h.elevationResolved).toBe(true);
+        expect(m.get("poly")?.id).toBe("poly");
+        expect(m.list()).toEqual(["poly"]);
+        expect(stub.added[0].opts.points).toHaveLength(2);
+    });
+
+    it("terrain 未解決なら elevationResolved=false、absolute は altitude 必須かつ常に true", () => {
+        const terrainStub = makeGlobePolygonStub();
+        const terrain = createGlobePolygonManagerAdapter(
+            terrainStub.mgr,
+            () => null,
+        );
+        expect(terrain.add("t", { points: PTS }).elevationResolved).toBe(false);
+        const absStub = makeGlobePolygonStub();
+        const abs = createGlobePolygonManagerAdapter(absStub.mgr, () => null);
+        expect(
+            abs.add("a", { points: PTS, altitudeMode: "absolute" })
+                .elevationResolved,
+        ).toBe(true);
+        expect(() =>
+            abs.add("bad", {
+                points: [{ lat: 35.36, lon: 138.72 }],
+                altitudeMode: "absolute",
+            }),
+        ).toThrow(/requires altitude/);
+    });
+
+    it("update と表示フラグ変更は add-then-remove で内部ノードを作り直す", () => {
+        const stub = makeGlobePolygonStub();
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS });
+        const h = m.update("poly", { closed: true, labelsEnabled: false });
+        expect(h.closed).toBe(true);
+        expect(h.labelsEnabled).toBe(false);
+        expect(stub.removed).toEqual(["gp0"]);
+        m.setWallsEnabled("poly", false);
+        expect(stub.removed).toEqual(["gp0", "gp1"]);
+        expect(m.get("poly")?.wallsEnabled).toBe(false);
+    });
+
+    it("update は構造不変（点座標/ラベルのみ）なら setContent で in-place 更新し再構築しない", () => {
+        const stub = makeGlobePolygonStub();
+        stub.setContentResult.value = true; // in-place 成功を模擬
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS, labels: ["a", "b"] });
+        expect(stub.added).toHaveLength(1);
+        const h = m.update("poly", {
+            points: [
+                { lat: 35.37, lon: 138.73 },
+                { lat: 35.38, lon: 138.74 },
+            ],
+            labels: ["a2", "b2"],
+        });
+        // in-place: 再 add / remove は発生しない。
+        expect(stub.added).toHaveLength(1);
+        expect(stub.removed).toEqual([]);
+        expect(stub.contentCalls).toHaveLength(1);
+        expect(stub.contentCalls[0].id).toBe("gp0");
+        expect(h.points[0].lat).toBeCloseTo(35.37);
+        expect(h.labels?.[0]).toBe("a2");
+    });
+
+    it("update に labels:undefined を渡すと既存ラベルをクリアし setContent へ undefined を渡す", () => {
+        const stub = makeGlobePolygonStub();
+        stub.setContentResult.value = true; // in-place 成功を模擬
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS, labels: ["a", "b"] });
+        // labels キーを明示 undefined で渡す → 構造不変なので in-place 更新。
+        const h = m.update("poly", { points: PTS, labels: undefined });
+        expect(stub.added).toHaveLength(1);
+        expect(stub.removed).toEqual([]);
+        expect(stub.contentCalls).toHaveLength(1);
+        // ラベルはクリアされ、ハンドルには labels が露出しない。
+        expect(h.labels).toBeUndefined();
+        const content = stub.contentCalls[0].content as {
+            labels?: unknown;
+        };
+        expect(content.labels).toBeUndefined();
+    });
+
+    it("update は setContent が false（点数不一致など）なら従来どおり再構築へフォールバックする", () => {
+        const stub = makeGlobePolygonStub();
+        stub.setContentResult.value = false; // in-place 不可を模擬
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS });
+        const h = m.update("poly", {
+            points: [
+                { lat: 35.37, lon: 138.73 },
+                { lat: 35.38, lon: 138.74 },
+            ],
+        });
+        expect(stub.contentCalls).toHaveLength(1);
+        // フォールバックで新規 add + 旧 remove。
+        expect(stub.added).toHaveLength(2);
+        expect(stub.removed).toEqual(["gp0"]);
+        expect(h.points[1].lat).toBeCloseTo(35.38);
+    });
+
+    it("setEnabled は委譲し、点編集 API はハンドルを再構築する", () => {
+        const stub = makeGlobePolygonStub();
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS });
+        m.setEnabled("poly", false);
+        expect(stub.enabledCalls).toEqual([{ id: "gp0", enabled: false }]);
+        expect(m.get("poly")?.enabled).toBe(false);
+        expect(
+            m.insertPoint("poly", 1, { lat: 35.365, lon: 138.725 }).points,
+        ).toHaveLength(3);
+        expect(m.updatePoint("poly", 1, { label: "mid" }).labels?.[1]).toBe(
+            "mid",
+        );
+        expect(m.removePoint("poly", 1).points).toHaveLength(2);
+        expect(
+            m.replacePoints("poly", [{ lat: 35.36, lon: 138.72 }]).points,
+        ).toHaveLength(1);
+        expect(m.get("poly")?.labels).toBeUndefined();
+    });
+
+    it("rebuild 中の add 例外時は旧 globeId・旧状態を保持する（トランザクション）", () => {
+        const stub = makeGlobePolygonStub();
+        let failNext = false;
+        const baseAdd = stub.mgr.add.bind(stub.mgr);
+        (stub.mgr as { add: GlobePolygonManager["add"] }).add = (opts) => {
+            if (failNext) throw new Error("globe add failed");
+            return baseAdd(opts);
+        };
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS, wallsEnabled: true });
+        failNext = true;
+        expect(() => m.setWallsEnabled("poly", false)).toThrow(
+            /globe add failed/,
+        );
+        // 旧ノードは remove されず、状態も巻き戻る（wallsEnabled=true のまま）。
+        expect(stub.removed).toEqual([]);
+        expect(m.get("poly")?.wallsEnabled).toBe(true);
+    });
+
+    it("remove/list/dispose とエラー条件", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const stub = makeGlobePolygonStub();
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        expect(() => m.add("bad", { points: [] })).toThrow(/at least 1/);
+        m.add("poly", { points: PTS });
+        expect(() => m.add("poly", { points: PTS })).toThrow(/already exists/);
+        m.remove("poly");
+        expect(m.list()).toEqual([]);
+        m.remove("missing");
+        expect(warn).toHaveBeenCalled();
+        // dispose 時に残っているポリゴンのみ remove し、内部マネージャは破棄しない。
+        m.add("poly2", { points: PTS });
+        const aliveId = stub.added[stub.added.length - 1].id;
+        m.dispose();
+        expect(stub.disposed()).toBe(false);
+        expect(stub.removed).toContain(aliveId);
+        expect(() => m.add("x", { points: PTS })).toThrow(/disposed/);
+        warn.mockRestore();
+    });
+
+    it("resolvePublicPolygonId は内部 globeId を公開 id へ逆引きする", () => {
+        const stub = makeGlobePolygonStub();
+        const m = createGlobePolygonManagerAdapter(stub.mgr, () => 1);
+        m.add("poly", { points: PTS });
+        const globeId = stub.added[stub.added.length - 1].id;
+        expect(m.resolvePublicPolygonId(globeId)).toBe("poly");
+        expect(m.resolvePublicPolygonId("unknown")).toBeNull();
+        // remove 後は逆引きできない。
+        m.remove("poly");
+        expect(m.resolvePublicPolygonId(globeId)).toBeNull();
+    });
+});
 
 const makeGlobeCircleStub = (): {
     mgr: GlobeCircleManager;
@@ -1057,7 +1114,9 @@ describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
     it("label=null は非表示、string はカスタム文字列を保持する", () => {
         const stub = makeGlobeCircleStub();
         const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
-        expect(m.add("a", { center: CENTER, radius: 100, label: null }).label).toBeNull();
+        expect(
+            m.add("a", { center: CENTER, radius: 100, label: null }).label,
+        ).toBeNull();
         expect(
             m.add("b", { center: CENTER, radius: 100, label: "custom" }).label,
         ).toBe("custom");
@@ -1065,10 +1124,13 @@ describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
 
     it("terrain 未解決なら elevationResolved=false、absolute は altitude 必須かつ常に true", () => {
         const terrainStub = makeGlobeCircleStub();
-        const terrain = createGlobeCircleManagerAdapter(terrainStub.mgr, () => null);
-        expect(terrain.add("t", { center: CENTER, radius: 100 }).elevationResolved).toBe(
-            false,
+        const terrain = createGlobeCircleManagerAdapter(
+            terrainStub.mgr,
+            () => null,
         );
+        expect(
+            terrain.add("t", { center: CENTER, radius: 100 }).elevationResolved,
+        ).toBe(false);
         const absStub = makeGlobeCircleStub();
         const abs = createGlobeCircleManagerAdapter(absStub.mgr, () => null);
         expect(
@@ -1079,17 +1141,23 @@ describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
             }).elevationResolved,
         ).toBe(true);
         expect(() =>
-            abs.add("bad", { center: CENTER, radius: 100, altitudeMode: "absolute" }),
+            abs.add("bad", {
+                center: CENTER,
+                radius: 100,
+                altitudeMode: "absolute",
+            }),
         ).toThrow(/requires center.altitude/);
     });
 
     it("radius/segments の検証で throw する", () => {
         const stub = makeGlobeCircleStub();
         const m = createGlobeCircleManagerAdapter(stub.mgr, () => 1);
-        expect(() => m.add("x", { center: CENTER, radius: 0 })).toThrow(/radius/);
-        expect(() => m.add("y", { center: CENTER, radius: 100, segments: 2 })).toThrow(
-            /segments/,
+        expect(() => m.add("x", { center: CENTER, radius: 0 })).toThrow(
+            /radius/,
         );
+        expect(() =>
+            m.add("y", { center: CENTER, radius: 100, segments: 2 }),
+        ).toThrow(/segments/);
     });
 
     it("update と各トグルは add-then-remove で内部ノードを作り直す", () => {
@@ -1127,7 +1195,9 @@ describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
         m.setEnabled("c", false);
         expect(stub.enabledCalls).toEqual([{ id: "gc0", enabled: false }]);
         expect(m.get("c")?.enabled).toBe(false);
-        expect(() => m.add("c", { center: CENTER, radius: 100 })).toThrow(/already exists/);
+        expect(() => m.add("c", { center: CENTER, radius: 100 })).toThrow(
+            /already exists/,
+        );
         m.remove("c");
         expect(m.list()).toEqual([]);
         m.remove("missing");
@@ -1137,7 +1207,9 @@ describe("createGlobeCircleManagerAdapter (circle overlay)", () => {
         m.dispose();
         expect(stub.disposed()).toBe(false);
         expect(stub.removed).toContain(aliveId);
-        expect(() => m.add("x", { center: CENTER, radius: 100 })).toThrow(/disposed/);
+        expect(() => m.add("x", { center: CENTER, radius: 100 })).toThrow(
+            /disposed/,
+        );
         warn.mockRestore();
     });
 });
@@ -1184,7 +1256,8 @@ const makeGlobeModelStub = (): {
                 enabled: opts.enabled ?? true,
                 gravity: opts.gravity ?? true,
                 loaded: true,
-                elevationResolved: (opts.altitudeMode ?? "terrain") === "absolute",
+                elevationResolved:
+                    (opts.altitudeMode ?? "terrain") === "absolute",
                 animationNames: ["walk"],
             });
             return id;
@@ -1196,7 +1269,8 @@ const makeGlobeModelStub = (): {
             if (partial.lat !== undefined) s.lat = partial.lat;
             if (partial.lon !== undefined) s.lon = partial.lon;
             if (partial.altitude !== undefined) s.altitude = partial.altitude;
-            if (partial.altitudeMode !== undefined) s.altitudeMode = partial.altitudeMode;
+            if (partial.altitudeMode !== undefined)
+                s.altitudeMode = partial.altitudeMode;
             if (partial.scaling !== undefined) {
                 s.scaling = {
                     x: partial.scaling.x ?? s.scaling.x,
@@ -1263,25 +1337,32 @@ describe("createGlobeModelManagerAdapter (model overlay)", () => {
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
         m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon });
-        expect(() => m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon })).toThrow(
-            /already exists/,
-        );
-        expect(() => m.add("b", { url: "a.glb", lat: 999, lon: POS.lon })).toThrow();
+        expect(() =>
+            m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon }),
+        ).toThrow(/already exists/);
+        expect(() =>
+            m.add("b", { url: "a.glb", lat: 999, lon: POS.lon }),
+        ).toThrow();
     });
 
     it("url 未指定/空文字は throw（planar 契約と整合）", () => {
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => 1);
-        expect(() => m.add("a", { url: "", lat: POS.lat, lon: POS.lon })).toThrow(
-            /url is required/,
-        );
+        expect(() =>
+            m.add("a", { url: "", lat: POS.lat, lon: POS.lon }),
+        ).toThrow(/url is required/);
     });
 
     it("absolute は altitude 必須、terrain 未解決なら elevationResolved=false", () => {
         const stub = makeGlobeModelStub();
         const m = createGlobeModelManagerAdapter(stub.mgr, () => null);
         expect(() =>
-            m.add("a", { url: "a.glb", lat: POS.lat, lon: POS.lon, altitudeMode: "absolute" }),
+            m.add("a", {
+                url: "a.glb",
+                lat: POS.lat,
+                lon: POS.lon,
+                altitudeMode: "absolute",
+            }),
         ).toThrow(/requires altitude/);
         const h = m.add("t", { url: "a.glb", lat: POS.lat, lon: POS.lon });
         expect(h.elevationResolved).toBe(false);
@@ -1329,9 +1410,9 @@ describe("createGlobeModelManagerAdapter (model overlay)", () => {
         m.add("b", { url: "a.glb", lat: POS.lat, lon: POS.lon });
         m.dispose();
         expect(stub.disposed()).toBe(false);
-        expect(() => m.add("c", { url: "a.glb", lat: POS.lat, lon: POS.lon })).toThrow(
-            /disposed/,
-        );
+        expect(() =>
+            m.add("c", { url: "a.glb", lat: POS.lat, lon: POS.lon }),
+        ).toThrow(/disposed/);
         warn.mockRestore();
     });
 

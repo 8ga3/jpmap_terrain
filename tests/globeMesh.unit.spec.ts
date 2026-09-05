@@ -6,17 +6,16 @@
  *   アンカー相対の小さな頂点座標、UV の北端 v=1、法線本数
  */
 
-import { describe, it, expect } from "vitest";
-
-import { TILE_SIZE, NO_DATA_SENTINEL } from "../src/terrain/gsiTile";
+import { describe, expect, it } from "vitest";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
-import { pixelToLatLon, totalPixelsForZoom } from "../src/terrain/geo/mapping";
 import { sampleElevBilinear } from "../src/terrain/geo/elevSample";
 import {
-    buildGlobeTileMeshData,
-    adaptiveMeshSegments,
     ADAPTIVE_SEGMENTS_MAX,
+    adaptiveMeshSegments,
+    buildGlobeTileMeshData,
 } from "../src/terrain/geo/globeMesh";
+import { pixelToLatLon, totalPixelsForZoom } from "../src/terrain/geo/mapping";
+import { NO_DATA_SENTINEL, TILE_SIZE } from "../src/terrain/gsiTile";
 
 describe("sampleElevBilinear", () => {
     it("定数ラスタは定数を返す", () => {
@@ -56,11 +55,15 @@ describe("sampleElevBilinear", () => {
     it("番兵値 NO_DATA_SENTINEL(-100) を無効として除外する", () => {
         // 穴埋め残しの番兵値が有効標高として混入すると、メッシュ/terrainElevAt が
         // -100m へ引っ張られて沈む。NaN と同様に重み計算から除外する。
-        const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);
+        const elev = new Float32Array(TILE_SIZE * TILE_SIZE).fill(
+            NO_DATA_SENTINEL,
+        );
         elev[0] = 80; // (x=0,y=0) のみ有効
         expect(sampleElevBilinear(elev, 0.5, 0.5)).toBeCloseTo(80, 6);
         // 全隅が番兵なら 0 を返す（4隅すべて無効）。
-        const allSentinel = new Float32Array(TILE_SIZE * TILE_SIZE).fill(NO_DATA_SENTINEL);
+        const allSentinel = new Float32Array(TILE_SIZE * TILE_SIZE).fill(
+            NO_DATA_SENTINEL,
+        );
         expect(sampleElevBilinear(allSentinel, 3, 3)).toBe(0);
     });
 });
@@ -151,7 +154,9 @@ describe("adaptiveMeshSegments", () => {
 
     it("遠方 zoom=10 タイル（≈32km/辺）は 128 分割へ引き上げる（≈250m/頂点=zoom12相当）", () => {
         // target = round(31916/250)=128, avail=256(gz==zoom), cap=128 → 128。
-        expect(adaptiveMeshSegments(EDGE.z10, 10, 10, BASE)).toBe(ADAPTIVE_SEGMENTS_MAX);
+        expect(adaptiveMeshSegments(EDGE.z10, 10, 10, BASE)).toBe(
+            ADAPTIVE_SEGMENTS_MAX,
+        );
         expect(ADAPTIVE_SEGMENTS_MAX).toBe(128);
     });
 
@@ -166,7 +171,9 @@ describe("adaptiveMeshSegments", () => {
 
     it("最粗の巨大タイル（zoom=8, ≈128km/辺）は上限 128 で頭打ち", () => {
         // target=round(127665/250)=511 だが cap=128。
-        expect(adaptiveMeshSegments(EDGE.z8, 8, 8, BASE)).toBe(ADAPTIVE_SEGMENTS_MAX);
+        expect(adaptiveMeshSegments(EDGE.z8, 8, 8, BASE)).toBe(
+            ADAPTIVE_SEGMENTS_MAX,
+        );
     });
 
     it("近景 z16-18（geomZoom=15 を共有）は DEM 利用可能サンプル数までに抑え既定据え置き", () => {
@@ -182,8 +189,14 @@ describe("adaptiveMeshSegments", () => {
     });
 
     it("結果は常に baseSegments 以上（近景の解像度を下げない）", () => {
-        for (const [edge, z] of [[EDGE.z10, 10], [EDGE.z13, 13], [150, 18]] as const) {
-            expect(adaptiveMeshSegments(edge, z, Math.min(z, 15), BASE)).toBeGreaterThanOrEqual(BASE);
+        for (const [edge, z] of [
+            [EDGE.z10, 10],
+            [EDGE.z13, 13],
+            [150, 18],
+        ] as const) {
+            expect(
+                adaptiveMeshSegments(edge, z, Math.min(z, 15), BASE),
+            ).toBeGreaterThanOrEqual(BASE);
         }
     });
 });
