@@ -1,6 +1,7 @@
 # jpmap_terrain
 
 [![npm version](https://img.shields.io/npm/v/jpmap-terrain.svg)](https://www.npmjs.com/package/jpmap-terrain)
+[![Netlify Status](https://api.netlify.com/api/v1/badges/a763be1a-7cfe-46f9-9f40-bf561a82b952/deploy-status)](https://app.netlify.com/projects/jpmap-terrain/deploys)
 
 地理院タイルの標高データをもとに、Babylon.js で 3D 地形表現を構築するためのフロントエンドプロジェクトです。
 
