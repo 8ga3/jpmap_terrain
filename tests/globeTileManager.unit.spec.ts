@@ -263,7 +263,9 @@ describe("createGlobeTileManager", () => {
         const baseMats = MaterialMock.mock.results
             .slice(0, 16)
             .map((r) => r.value as { disableDepthWrite?: boolean });
-        baseMats.forEach((m) => expect(m.disableDepthWrite).toBe(true));
+        baseMats.forEach((m) => {
+            expect(m.disableDepthWrite).toBe(true);
+        });
     });
 
     it("ベーステクスチャ onLoad で diffuseColor を白に戻しティントを解除する", () => {
@@ -384,9 +386,9 @@ describe("createGlobeTileManager", () => {
             .slice(0, 16)
             .map((r) => r.value as { dispose: Mock });
         mgr.dispose();
-        baseMeshes.forEach((m) =>
-            expect(m.dispose).toHaveBeenCalledWith(false, true),
-        );
+        baseMeshes.forEach((m) => {
+            expect(m.dispose).toHaveBeenCalledWith(false, true);
+        });
     });
 
     it("標高ロード完了後に初めてメッシュを建築し、テクスチャ onLoad で表示する", async () => {
@@ -828,14 +830,20 @@ describe("createGlobeTileManager", () => {
                 },
         );
         // 子のテクスチャ到着 → 表示。
-        capturedTextures.slice(0, 4).forEach((t) => t.onLoad?.());
-        childMeshes.forEach((m) => expect(m.isEnabled()).toBe(true));
+        capturedTextures.slice(0, 4).forEach((t) => {
+            t.onLoad?.();
+        });
+        childMeshes.forEach((m) => {
+            expect(m.isEnabled()).toBe(true);
+        });
 
         // zoom-out: 親 z10 へ。親の標高はまだロード中なので親は建築されない。
         selectedTiles = [tile(100, 100, 10)];
         mgr.sync(syncParams());
         // 子は pendingRelease で保持され、まだ破棄されない（背景球が見えない）。
-        childMeshes.forEach((m) => expect(m.dispose).not.toHaveBeenCalled());
+        childMeshes.forEach((m) => {
+            expect(m.dispose).not.toHaveBeenCalled();
+        });
 
         await flush(); // 親の標高到着
         mgr.sync(syncParams()); // 親メッシュ建築（非表示で待機）
@@ -844,14 +852,16 @@ describe("createGlobeTileManager", () => {
             isEnabled: () => boolean;
         };
         // 親が描画可能になる前は子をまだ保持。
-        childMeshes.forEach((m) => expect(m.dispose).not.toHaveBeenCalled());
+        childMeshes.forEach((m) => {
+            expect(m.dispose).not.toHaveBeenCalled();
+        });
 
         // 親のテクスチャ到着 → 親表示 + 旧子タイルを一斉解放。
         capturedTextures[4].onLoad?.();
         expect(parentMesh.isEnabled()).toBe(true);
-        childMeshes.forEach((m) =>
-            expect(m.dispose).toHaveBeenCalledWith(false, true),
-        );
+        childMeshes.forEach((m) => {
+            expect(m.dispose).toHaveBeenCalledWith(false, true);
+        });
     });
 
     it("zoom-in: 新レベル(子)が全て揃うまで旧(親)を保持し、原子的にスワップする", async () => {
@@ -886,17 +896,25 @@ describe("createGlobeTileManager", () => {
                 MeshMock.mock.results[i].value as { isEnabled: () => boolean },
         );
         // 子はテクスチャ前は非表示。親も継続表示（穴を作らない）。
-        children.forEach((m) => expect(m.isEnabled()).toBe(false));
+        children.forEach((m) => {
+            expect(m.isEnabled()).toBe(false);
+        });
         expect(parent.dispose).not.toHaveBeenCalled();
 
         // 子のうち 3 枚だけ到着 → まだ非表示・親保持（レベル違いの重なりを防ぐ）。
-        capturedTextures.slice(1, 4).forEach((t) => t.onLoad?.());
-        children.slice(0, 3).forEach((m) => expect(m.isEnabled()).toBe(false));
+        capturedTextures.slice(1, 4).forEach((t) => {
+            t.onLoad?.();
+        });
+        children.slice(0, 3).forEach((m) => {
+            expect(m.isEnabled()).toBe(false);
+        });
         expect(parent.dispose).not.toHaveBeenCalled();
 
         // 4 枚目到着 → 原子的スワップ：子を一斉表示し、親を解放。
         capturedTextures[4].onLoad?.();
-        children.forEach((m) => expect(m.isEnabled()).toBe(true));
+        children.forEach((m) => {
+            expect(m.isEnabled()).toBe(true);
+        });
         expect(parent.dispose).toHaveBeenCalledWith(false, true);
     });
 
@@ -929,7 +947,9 @@ describe("createGlobeTileManager", () => {
             (i) =>
                 MeshMock.mock.results[i].value as { isEnabled: () => boolean },
         );
-        children.forEach((m) => expect(m.isEnabled()).toBe(false));
+        children.forEach((m) => {
+            expect(m.isEnabled()).toBe(false);
+        });
 
         // 1 枚目が onError（テクスチャ取得失敗）→ 即表示せず非表示待機を維持・親保持。
         capturedTextures[1].onError?.();
@@ -937,8 +957,12 @@ describe("createGlobeTileManager", () => {
         expect(parent.dispose).not.toHaveBeenCalled();
 
         // 残り 3 枚到着 → 4 枚すべて描画可能になり原子スワップ：onError の子も含め一斉表示、親解放。
-        capturedTextures.slice(2, 5).forEach((t) => t.onLoad?.());
-        children.forEach((m) => expect(m.isEnabled()).toBe(true));
+        capturedTextures.slice(2, 5).forEach((t) => {
+            t.onLoad?.();
+        });
+        children.forEach((m) => {
+            expect(m.isEnabled()).toBe(true);
+        });
         expect(parent.dispose).toHaveBeenCalledWith(false, true);
     });
 
@@ -974,16 +998,24 @@ describe("createGlobeTileManager", () => {
                 MeshMock.mock.results[i].value as { isEnabled: () => boolean },
         );
         // 子はテクスチャ前は非表示。
-        children.forEach((m) => expect(m.isEnabled()).toBe(false));
+        children.forEach((m) => {
+            expect(m.isEnabled()).toBe(false);
+        });
 
         // 3 枚到着 → まだ非表示・親保持。
-        capturedTextures.slice(1, 4).forEach((t) => t.onLoad?.());
-        children.slice(0, 3).forEach((m) => expect(m.isEnabled()).toBe(false));
+        capturedTextures.slice(1, 4).forEach((t) => {
+            t.onLoad?.();
+        });
+        children.slice(0, 3).forEach((m) => {
+            expect(m.isEnabled()).toBe(false);
+        });
         expect(parent.dispose).not.toHaveBeenCalled();
 
         // 4 枚目到着 → 原子的スワップ：子を一斉表示し、親を解放。
         capturedTextures[4].onLoad?.();
-        children.forEach((m) => expect(m.isEnabled()).toBe(true));
+        children.forEach((m) => {
+            expect(m.isEnabled()).toBe(true);
+        });
         expect(parent.dispose).toHaveBeenCalledWith(false, true);
     });
 

@@ -812,13 +812,15 @@ export class GlobeScene {
                 return;
             }
             // タッチの位置追跡を更新し、2本指以上なら 2本指ハンドラへ委譲（シングルパンはしない）。
-            if (e.pointerType === "touch" && touchPoints.has(e.pointerId)) {
-                const prev = touchPoints.get(e.pointerId)!;
-                const now = { x: e.clientX, y: e.clientY };
-                touchPoints.set(e.pointerId, now);
-                if (touchPoints.size >= 2) {
-                    handleTwoFingerMove(e.pointerId, prev, now);
-                    return;
+            if (e.pointerType === "touch") {
+                const prev = touchPoints.get(e.pointerId);
+                if (prev !== undefined) {
+                    const now = { x: e.clientX, y: e.clientY };
+                    touchPoints.set(e.pointerId, now);
+                    if (touchPoints.size >= 2) {
+                        handleTwoFingerMove(e.pointerId, prev, now);
+                        return;
+                    }
                 }
             }
             if (!dragging) return;

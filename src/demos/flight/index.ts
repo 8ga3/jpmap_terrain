@@ -1423,7 +1423,9 @@ const start = async (): Promise<void> => {
             // 例: `TypeError: this._updateMatrixForUniformOverride is not a function`
             // これを避けるため、この順序を守る。
             viewer.dispose();
-            pipCleanups.forEach((fn) => fn());
+            pipCleanups.forEach((fn) => {
+                fn();
+            });
             if (pipViewer) {
                 pipViewer.dispose();
             }

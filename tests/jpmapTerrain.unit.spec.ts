@@ -527,13 +527,13 @@ const createPolygonManagerStub = (): PolygonManager => {
             if (!points || points.length < 1) {
                 throw new Error("points must contain at least 1 entry");
             }
-            points.forEach((point, index) =>
+            points.forEach((point, index) => {
                 validatePointForNode(
                     node,
                     point,
                     `JpmapTerrain.replacePolygonPoints[${id}][${index}]`,
-                ),
-            );
+                );
+            });
             node.replacePoints(points);
             return node.getHandle();
         },
@@ -1470,7 +1470,8 @@ describe("JpmapTerrain (skeleton)", () => {
             const mount = createMountElement();
             await create(mount);
 
-            const canvas = mount.querySelector("canvas")!;
+            const canvas = mount.querySelector("canvas");
+            if (canvas === null) throw new Error("unreachable");
             expect(canvas.id).toBe("");
         });
 
@@ -1478,7 +1479,8 @@ describe("JpmapTerrain (skeleton)", () => {
             const mount = createMountElement();
             await create(mount);
 
-            const canvas = mount.querySelector("canvas")!;
+            const canvas = mount.querySelector("canvas");
+            if (canvas === null) throw new Error("unreachable");
             const ev = new Event("touchmove", {
                 bubbles: true,
                 cancelable: true,
@@ -1492,7 +1494,8 @@ describe("JpmapTerrain (skeleton)", () => {
             const mount = createMountElement();
             await create(mount);
 
-            const canvas = mount.querySelector("canvas")!;
+            const canvas = mount.querySelector("canvas");
+            if (canvas === null) throw new Error("unreachable");
             const pinch = new Event("wheel", {
                 bubbles: true,
                 cancelable: true,
@@ -2481,11 +2484,13 @@ describe("JpmapTerrain (skeleton)", () => {
                 });
                 const first = viewer.dateTime;
                 expect(first).toBeInstanceOf(Date);
+                if (first === null) throw new Error("unreachable");
                 vi.advanceTimersByTime(60_000);
                 const second = viewer.dateTime;
                 expect(second).toBeInstanceOf(Date);
-                expect(second!.getTime()).toBeGreaterThanOrEqual(
-                    first!.getTime(),
+                if (second === null) throw new Error("unreachable");
+                expect(second.getTime()).toBeGreaterThanOrEqual(
+                    first.getTime(),
                 );
             } finally {
                 vi.useRealTimers();
@@ -2937,7 +2942,11 @@ describe("JpmapTerrain (skeleton)", () => {
             sceneMockModule.__triggerPolygonPointDrag(buildDrag());
             sceneMockModule.__triggerPolygonPointDragEnd(buildDrag());
             expect(calls.length).toBe(0);
-            expect(() => offs.forEach((o) => o())).not.toThrow();
+            expect(() => {
+                offs.forEach((o) => {
+                    o();
+                });
+            }).not.toThrow();
         });
     });
 

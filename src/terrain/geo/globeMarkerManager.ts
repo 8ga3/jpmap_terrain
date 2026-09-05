@@ -182,7 +182,8 @@ export const createGlobeMarkerManager = (
         // 2D の毎フレーム・全マーカーでの不要計算を避ける。
         const lineHeight = computeOverlayLineHeight(dist);
         orientYToUpToRef(up, quat);
-        node.lineMesh.rotationQuaternion!.copyFrom(quat);
+        node.lineMesh.rotationQuaternion ??= new Quaternion();
+        node.lineMesh.rotationQuaternion.copyFrom(quat);
         const diameter = node.poleBaseDiameter * distScale;
         node.lineMesh.scaling.set(diameter, lineHeight, diameter);
         // 中点 = 地表 + up*(lineHeight/2)。

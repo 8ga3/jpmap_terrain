@@ -344,14 +344,18 @@ describe("createDioramaTerrain の入力検証", () => {
             (r) => r.value as { dispose: () => void },
         );
         expect(meshInstances.length).toBeGreaterThan(0);
-        meshInstances.forEach((m) => expect(m.dispose).toHaveBeenCalled());
+        meshInstances.forEach((m) => {
+            expect(m.dispose).toHaveBeenCalled();
+        });
 
         // material/skirtMaterial（本テストのbuildMesh呼び出し分）が破棄されていることを確認する。
         const materialInstances = mockStandardMaterial.mock.results.map(
             (r) => r.value as { dispose: () => void },
         );
         expect(materialInstances.length).toBeGreaterThan(0);
-        materialInstances.forEach((m) => expect(m.dispose).toHaveBeenCalled());
+        materialInstances.forEach((m) => {
+            expect(m.dispose).toHaveBeenCalled();
+        });
 
         // texture（buildDioramaMosaicTextureのモック戻り値）が破棄されていることを確認する。
         const textureResult = (await mockBuildTexture.mock.results[

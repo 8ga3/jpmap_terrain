@@ -1,5 +1,14 @@
 import { expect, test } from "./tileCache.fixture";
 
+type TestWindow = Window & {
+    scene?: {
+        isReady: () => boolean;
+        activeCamera?: { yaw: number; pitch: number };
+    };
+    renderCount: number;
+    viewer: { tilt: number; azimuth: number };
+};
+
 /**
  * VR テストを時刻依存から切り離すための固定クエリ。
  * - `dateTime`: 夏至日本時間正午 (UTC 表記) — 太陽高度が高く陰影変動が最小。
@@ -110,7 +119,7 @@ for (const scene of scenes) {
             );
             if (scene.waitForTerrainStable) {
                 await page.waitForFunction(
-                    () => (window as any).scene?.isReady(),
+                    () => (window as unknown as TestWindow).scene?.isReady(),
                     { timeout: 30000 },
                 );
                 await waitForTerrainStable(page);
@@ -118,21 +127,24 @@ for (const scene of scenes) {
             if (scene.renderCount) {
                 await page.evaluate(() => {
                     const raf = window.requestAnimationFrame;
-                    (window as any).renderCount = 0;
+                    (window as unknown as TestWindow).renderCount = 0;
                     window.requestAnimationFrame = (
                         cb: FrameRequestCallback,
                     ) => {
-                        (window as any).renderCount++;
+                        (window as unknown as TestWindow).renderCount++;
                         return raf(cb);
                     };
                 });
             }
-            await page.waitForFunction(() => (window as any).scene?.isReady(), {
-                timeout: 5000,
-            });
+            await page.waitForFunction(
+                () => (window as unknown as TestWindow).scene?.isReady(),
+                {
+                    timeout: 5000,
+                },
+            );
             // reset render count
             await page.evaluate(() => {
-                (window as any).renderCount = 0;
+                (window as unknown as TestWindow).renderCount = 0;
             });
             // await page.waitForFunction(() => (window as any).renderCount === scene.renderCount || 1, { timeout: 5000 });
             // 注意:
@@ -162,9 +174,12 @@ async function waitForScene(
     await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
         timeout: 120000,
     });
-    await page.waitForFunction(() => (window as any).scene?.isReady(), {
-        timeout: 30000,
-    });
+    await page.waitForFunction(
+        () => (window as unknown as TestWindow).scene?.isReady(),
+        {
+            timeout: 30000,
+        },
+    );
     // タイル読み込み + 連鎖リフレッシュ安定待ち
     await waitForTerrainStable(page);
 }
@@ -212,7 +227,8 @@ for (const engine of engines) {
         // （pitch は limits.pitchMin≈ε でクランプされ厳密な 0 にはならない）。
         await page.waitForFunction(
             () => {
-                const cam = (window as any).scene?.activeCamera;
+                const cam = (window as unknown as TestWindow).scene
+                    ?.activeCamera;
                 if (cam == null || cam.yaw == null || cam.pitch == null) {
                     return false;
                 }
@@ -268,15 +284,18 @@ async function waitForSceneWithSkybox(
     await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
         timeout: 120000,
     });
-    await page.waitForFunction(() => (window as any).scene?.isReady(), {
-        timeout: 30000,
-    });
+    await page.waitForFunction(
+        () => (window as unknown as TestWindow).scene?.isReady(),
+        {
+            timeout: 30000,
+        },
+    );
     await page.waitForLoadState("networkidle", { timeout: 30000 });
 
     // チルトを大きめ（SKYBOX_TILT_DEG = 75°）に倒して画面上部に空を映す。
     // `viewer.tilt` setter は内部で beta クランプ済み（upperBetaLimit ≈ 89°）。
     await page.evaluate((tiltValue) => {
-        (window as any).viewer.tilt = tiltValue;
+        (window as unknown as TestWindow).viewer.tilt = tiltValue;
     }, SKYBOX_TILT_DEG);
 
     // タイル再評価 + 連鎖リフレッシュ安定待ち
@@ -322,15 +341,18 @@ for (const engine of engines) {
         await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
             timeout: 120000,
         });
-        await page.waitForFunction(() => (window as any).scene?.isReady(), {
-            timeout: 30000,
-        });
+        await page.waitForFunction(
+            () => (window as unknown as TestWindow).scene?.isReady(),
+            {
+                timeout: 30000,
+            },
+        );
         await page.waitForLoadState("networkidle", { timeout: 30000 });
 
         // 東向き + チルト最大で地平線+空を画面内に収める
         await page.evaluate(
             ({ tilt, azimuth }) => {
-                const viewer = (window as any).viewer;
+                const viewer = (window as unknown as TestWindow).viewer;
                 viewer.azimuth = azimuth;
                 viewer.tilt = tilt;
             },

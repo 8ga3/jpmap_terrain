@@ -399,9 +399,9 @@ const createHoldButtonGroup = (
         element: container,
         getAxis,
         dispose: () => {
-            listeners.forEach(({ el, type, fn }) =>
-                el.removeEventListener(type, fn),
-            );
+            listeners.forEach(({ el, type, fn }) => {
+                el.removeEventListener(type, fn);
+            });
         },
     };
 };
@@ -509,7 +509,9 @@ const createTapButton = (spec: {
 
     const callbacks = new Set<() => void>();
     const onClick = (): void => {
-        callbacks.forEach((callback) => callback());
+        callbacks.forEach((callback) => {
+            callback();
+        });
     };
     button.addEventListener("click", onClick);
 

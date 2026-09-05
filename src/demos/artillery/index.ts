@@ -62,6 +62,15 @@ import { createDirectTerrainSampler } from "./terrainSampler";
 
 const DEMO_MOUNT_ID = "root";
 
+/** id で要素を取得する。存在しない場合は例外を投げる（HTML 側の欠落を早期検知するため）。 */
+const requireElement = (id: string): HTMLElement => {
+    const el = document.getElementById(id);
+    if (el === null) {
+        throw new Error(`[artillery] element not found: #${id}`);
+    }
+    return el;
+};
+
 /**
  * ステージ: 起伏のある場所を選定
  * 箱根付近（芦ノ湖周辺）— 起伏が多く砲撃戦に適する
@@ -313,21 +322,21 @@ const start = async (): Promise<void> => {
     const angleSlider = document.getElementById(
         "angle-slider",
     ) as HTMLInputElement;
-    const angleValue = document.getElementById("angle-value")!;
+    const angleValue = requireElement("angle-value");
     const headingSlider = document.getElementById(
         "heading-slider",
     ) as HTMLInputElement;
-    const headingValue = document.getElementById("heading-value")!;
+    const headingValue = requireElement("heading-value");
     const powderSlider = document.getElementById(
         "powder-slider",
     ) as HTMLInputElement;
-    const powderValue = document.getElementById("powder-value")!;
-    const fireBtn = document.getElementById("fire-btn")!;
-    const restartBtn = document.getElementById("restart-btn")!;
-    const scoreRedEl = document.getElementById("score-red")!;
-    const scoreBlueEl = document.getElementById("score-blue")!;
-    const turnRedEl = document.getElementById("turn-indicator-red")!;
-    const turnBlueEl = document.getElementById("turn-indicator-blue")!;
+    const powderValue = requireElement("powder-value");
+    const fireBtn = requireElement("fire-btn");
+    const restartBtn = requireElement("restart-btn");
+    const scoreRedEl = requireElement("score-red");
+    const scoreBlueEl = requireElement("score-blue");
+    const turnRedEl = requireElement("turn-indicator-red");
+    const turnBlueEl = requireElement("turn-indicator-blue");
     /**
      * コリジョン構築状態を UI（fire/restart ボタンの有効・無効）へ反映する。
      * 構築完了まで操作を無効化し、未完成コライダーへの発射や多重再構築を防ぐ。
@@ -341,10 +350,10 @@ const start = async (): Promise<void> => {
 
     // --- 中央ターン告知（HAKONE / 攻撃ターン表示） ---
     const announce = createAnnounce({
-        root: document.getElementById("turn-announce")!,
-        stage: document.getElementById("announce-stage")!,
-        turn: document.getElementById("announce-turn")!,
-        blocker: document.getElementById("input-blocker")!,
+        root: requireElement("turn-announce"),
+        stage: requireElement("announce-stage"),
+        turn: requireElement("announce-turn"),
+        blocker: requireElement("input-blocker"),
     });
     /** ステージ名（中央告知に表示）。 */
     const STAGE_NAME = "HAKONE";
@@ -353,7 +362,7 @@ const start = async (): Promise<void> => {
     announce.show({ stage: STAGE_NAME, team: gameState.turn, hold: null });
 
     // 命中時に表示する HIT! バナー
-    const hitBanner = createHitBanner(document.getElementById("hit-banner")!);
+    const hitBanner = createHitBanner(requireElement("hit-banner"));
 
     // --- 大砲メッシュ配置 ---
     const redCannon = createCannonMesh(scene, "red");
@@ -403,7 +412,8 @@ const start = async (): Promise<void> => {
     const terrainRay = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 20000);
     const getTerrainY = (x: number, z: number): number => {
         const pick = castTerrainRay(x, z);
-        if (pick?.hit) return pickToLocalY(pick.pickedPoint!);
+        if (pick?.hit && pick.pickedPoint)
+            return pickToLocalY(pick.pickedPoint);
 
         // メッシュの辺と重なる場合にヒットしないことがある → わずかにオフセットして再試行
         const OFFSET = 0.5;
@@ -415,7 +425,8 @@ const start = async (): Promise<void> => {
         ];
         for (const [dx, dz] of offsets) {
             const retry = castTerrainRay(x + dx, z + dz);
-            if (retry?.hit) return pickToLocalY(retry.pickedPoint!);
+            if (retry?.hit && retry.pickedPoint)
+                return pickToLocalY(retry.pickedPoint);
         }
         return NaN;
     };
