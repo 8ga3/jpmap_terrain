@@ -12,15 +12,18 @@
  *
  * 注: 見た目（silhouette）の最終確認はビジュアル回帰 tests/elevationFarView.spec.ts で行う。
  */
-import { describe, it, expect } from "vitest";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { ComputeLookAtFromYawPitchToRef } from "@babylonjs/core/Cameras/geospatialCamera";
 
-import { geodeticToEcef } from "../src/terrain/geo/ecef";
-import { tileEdgeMeters } from "../src/terrain/gsiTile";
-import { selectGlobeTiles, type GlobeLodOptions } from "../src/terrain/geo/globeLod";
-import { adaptiveMeshSegments } from "../src/terrain/geo/globeMesh";
+import { ComputeLookAtFromYawPitchToRef } from "@babylonjs/core/Cameras/geospatialCamera";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { describe, expect, it } from "vitest";
 import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
+import { geodeticToEcef } from "../src/terrain/geo/ecef";
+import {
+    type GlobeLodOptions,
+    selectGlobeTiles,
+} from "../src/terrain/geo/globeLod";
+import { adaptiveMeshSegments } from "../src/terrain/geo/globeMesh";
+import { tileEdgeMeters } from "../src/terrain/gsiTile";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -43,7 +46,13 @@ const GEOM_MAX_ZOOM = GLOBE_SCENE_DEFAULTS.geomMaxZoom; // 15
 /** GeospatialCamera と同一手順で cameraEcef を求める。 */
 function computeCameraEcef(centerEcef: Vector3): Vector3 {
     const lookAt = new Vector3();
-    ComputeLookAtFromYawPitchToRef(YAW, PITCH, centerEcef, /*useRH*/ true, lookAt);
+    ComputeLookAtFromYawPitchToRef(
+        YAW,
+        PITCH,
+        centerEcef,
+        /*useRH*/ true,
+        lookAt,
+    );
     return centerEcef.subtract(lookAt.scale(RADIUS_M)); // center - lookAt * radius
 }
 
@@ -74,7 +83,10 @@ describe("farViewGeomResolution", () => {
     const tiles = selectGlobeTiles(opts);
 
     it("カメラ→富士山山頂の距離が想定範囲（約100km）にある", () => {
-        const d = Vector3.Distance(cameraEcef, geodeticToEcef(FUJI_LAT, FUJI_LON, 3776));
+        const d = Vector3.Distance(
+            cameraEcef,
+            geodeticToEcef(FUJI_LAT, FUJI_LON, 3776),
+        );
         expect(d).toBeGreaterThan(90_000);
         expect(d).toBeLessThan(110_000);
     });
@@ -84,18 +96,27 @@ describe("farViewGeomResolution", () => {
         // 距離累進 + distCapZoom により最粗 root は zoom=10 まで下がる。
         expect(minZ).toBeLessThanOrEqual(10);
         // 富士山帯（>=90km）に zoom<=10 のタイルが実在する。
-        const farCoarse = tiles.filter((t) => t.zoom <= 10 && t.distance >= 90_000);
+        const farCoarse = tiles.filter(
+            (t) => t.zoom <= 10 && t.distance >= 90_000,
+        );
         expect(farCoarse.length).toBeGreaterThan(0);
     });
 
     it("距離適応 segments により遠方タイルの実効解像度が zoom12 相当（<=250m/頂点）に保たれる", () => {
         // 富士山帯の最粗タイル群それぞれについて、adaptiveMeshSegments 適用後の 1 頂点あたり
         // 地表距離が 250m 以下（=zoom12 相当）になり、既定 segments=32 の ~1km/頂点から改善する。
-        const farCoarse = tiles.filter((t) => t.zoom <= 10 && t.distance >= 90_000);
+        const farCoarse = tiles.filter(
+            (t) => t.zoom <= 10 && t.distance >= 90_000,
+        );
         expect(farCoarse.length).toBeGreaterThan(0);
         for (const t of farCoarse) {
             const gz = Math.min(t.zoom, GEOM_MAX_ZOOM);
-            const segs = adaptiveMeshSegments(t.tileSizeMeters, t.zoom, gz, BASE_SEGMENTS);
+            const segs = adaptiveMeshSegments(
+                t.tileSizeMeters,
+                t.zoom,
+                gz,
+                BASE_SEGMENTS,
+            );
             const mPerVertex = t.tileSizeMeters / segs;
             const baseMPerVertex = t.tileSizeMeters / BASE_SEGMENTS;
 
@@ -115,12 +136,19 @@ describe("farViewGeomResolution", () => {
         const near = tiles.filter((t) => t.zoom >= 16);
         for (const t of near) {
             const gz = Math.min(t.zoom, GEOM_MAX_ZOOM);
-            const segs = adaptiveMeshSegments(t.tileSizeMeters, t.zoom, gz, BASE_SEGMENTS);
+            const segs = adaptiveMeshSegments(
+                t.tileSizeMeters,
+                t.zoom,
+                gz,
+                BASE_SEGMENTS,
+            );
             // 覆う DEM サンプル数 = 256/2^(zoom-gz) <= 32 のため既定据え置き（詳細を捏造しない）。
             expect(segs).toBe(BASE_SEGMENTS);
         }
         // 中景（z13-15）も 1 辺が小さく既定のまま（target<=base）であることの目安。
         const midZ13 = tileEdgeMeters(FUJI_LAT, 13);
-        expect(adaptiveMeshSegments(midZ13, 13, 13, BASE_SEGMENTS)).toBe(BASE_SEGMENTS);
+        expect(adaptiveMeshSegments(midZ13, 13, 13, BASE_SEGMENTS)).toBe(
+            BASE_SEGMENTS,
+        );
     });
 });

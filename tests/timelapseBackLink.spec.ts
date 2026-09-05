@@ -1,4 +1,4 @@
-import { test, expect } from "./tileCache.fixture";
+import { expect, test } from "./tileCache.fixture";
 
 /**
  * タイムラプスデモの戻るリンクからポータルへ戻れない不具合の回帰防止。
@@ -8,7 +8,9 @@ import { test, expect } from "./tileCache.fixture";
  * 再びタイムラプス HTML へフォールバックされてしまっていた。
  * 戻るリンクは絶対パス `/` を指し、ポータル (`<ul class="demos">`) へ遷移すること。
  */
-test("timelapse back-link navigates to portal even after URL is rewritten to /timelapse/@...", async ({ page }) => {
+test("timelapse back-link navigates to portal even after URL is rewritten to /timelapse/@...", async ({
+    page,
+}) => {
     await page.goto("/timelapse/@35.681236,139.767125");
     await page.waitForLoadState("domcontentloaded");
 

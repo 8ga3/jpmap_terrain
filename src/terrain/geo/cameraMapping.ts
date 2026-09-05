@@ -17,7 +17,7 @@
  */
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
-import { DEG2RAD, RAD2DEG, ecefToGeodeticToRef, type Geodetic } from "./ecef";
+import { DEG2RAD, ecefToGeodeticToRef, type Geodetic, RAD2DEG } from "./ecef";
 
 /** ECEF 北極軸（`EcefFromLatLonAltToRef` 規約: X→経度0, Y→東経90°, Z→北極）。 */
 const ECEF_POLE = new Vector3(0, 0, 1);
@@ -530,9 +530,16 @@ export const resolveTerrainClickElevationToRef = (
     // [loT, hiT] に確定して true を返す局所探索。反転が無ければ false（loT/hiT は未確定）。
     let loT = tNear;
     let hiT = tFar;
-    const subdivideForCrossing = (ta: number, tb: number, cap: number): boolean => {
+    const subdivideForCrossing = (
+        ta: number,
+        tb: number,
+        cap: number,
+    ): boolean => {
         const subSpan = tb - ta;
-        const subSteps = Math.min(Math.max(1, Math.ceil(subSpan / stepDistanceM)), cap);
+        const subSteps = Math.min(
+            Math.max(1, Math.ceil(subSpan / stepDistanceM)),
+            cap,
+        );
         let subPrevT = ta;
         for (let i = 1; i <= subSteps; i++) {
             const t = ta + (subSpan * i) / subSteps;
@@ -553,7 +560,10 @@ export const resolveTerrainClickElevationToRef = (
     // idealSteps は頭打ち前の理想ステップ数（= 実効ステップ幅が stepDistanceM 相当に保てているか
     // の判定にも使う。steps < idealSteps なら maxCoarseSteps で頭打ちして粗くなっている）。
     const idealSteps = Math.max(1, Math.ceil((tFar - tNear) / stepDistanceM));
-    const steps = Math.min(Math.max(minCoarseSteps, idealSteps), maxCoarseSteps);
+    const steps = Math.min(
+        Math.max(minCoarseSteps, idealSteps),
+        maxCoarseSteps,
+    );
     let crossed = false;
     let coarseLoT = tNear; // 反転区間の手前端（直前の非反転サンプル）
     let coarseHiT = tFar; // 反転区間の奥端（初めて反転したサンプル）

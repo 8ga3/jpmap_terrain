@@ -11,13 +11,13 @@
  * jsdom 環境でも副作用なく `resolveEngine` / `resolveLatLon` だけを検証できる。
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+    resolveAutoSunPosition,
+    resolveDateTime,
     resolveEngine,
     resolveLatLon,
-    resolveDateTime,
-    resolveAutoSunPosition,
     resolveShowSunShadows,
 } from "../src/demos/viewer/index";
 
@@ -99,6 +99,7 @@ describe("resolveDateTime", () => {
             expect(warn).toHaveBeenCalledTimes(1);
             const msg = String(warn.mock.calls[0][0]);
             // 制御文字が混入していない
+            // biome-ignore lint/suspicious/noControlCharactersInRegex: サニタイズ検証のため制御文字を意図的にマッチさせる
             expect(/[\r\n\x1B\x00-\x1F\x7F]/.test(msg)).toBe(false);
             // 64 文字制限が効いている（プレフィックスを除いた raw 部分は最大 64）
             const rawInLog = msg.replace(
@@ -112,25 +113,19 @@ describe("resolveDateTime", () => {
     });
 
     it("?dateTime=<ISO with +09:00 offset> → UTC 等価値の Date を返す", () => {
-        const result = resolveDateTime(
-            "?dateTime=2025-04-25T05:13:00+09:00",
-        );
+        const result = resolveDateTime("?dateTime=2025-04-25T05:13:00+09:00");
         expect(result).toBeInstanceOf(Date);
         expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
     });
 
     it("?dateTime=<ISO with -05:00 offset> → 負オフセットも正しく解釈する", () => {
-        const result = resolveDateTime(
-            "?dateTime=2025-04-25T05:13:00-05:00",
-        );
+        const result = resolveDateTime("?dateTime=2025-04-25T05:13:00-05:00");
         expect(result).toBeInstanceOf(Date);
         expect(result?.toISOString()).toBe("2025-04-25T10:13:00.000Z");
     });
 
     it("?dateTime=<percent-encoded +09:00> も同値で解釈する", () => {
-        const result = resolveDateTime(
-            "?dateTime=2025-04-25T05:13:00%2B09:00",
-        );
+        const result = resolveDateTime("?dateTime=2025-04-25T05:13:00%2B09:00");
         expect(result).toBeInstanceOf(Date);
         expect(result?.toISOString()).toBe("2025-04-24T20:13:00.000Z");
     });

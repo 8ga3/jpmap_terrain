@@ -22,27 +22,31 @@
  * 丸ごとスキップし、`StandardMaterial.wireframe = true` + 単色（{@link WIREFRAME_COLOR}）
  * で描画する。他の2種別（std/photo）は従来通り `buildDioramaMosaicTexture` を使う。
  */
-import type { Scene } from "@babylonjs/core/scene";
+
+import { Material } from "@babylonjs/core/Materials/material";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import type { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Material } from "@babylonjs/core/Materials/material";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import type { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import type { Scene } from "@babylonjs/core/scene";
 
 import type { MapType } from "../gsiTile";
+import { fetchDioramaElevations } from "./dioramaElevation";
 import {
-    buildDioramaGridPoints,
     buildDioramaGridIndices,
-    extractGridPerimeterIndices,
+    buildDioramaGridPoints,
     type DioramaCenter,
     type DioramaGridOptions,
+    extractGridPerimeterIndices,
 } from "./dioramaGrid";
-import { fetchDioramaElevations } from "./dioramaElevation";
-import { computeDioramaTextureLayout, buildDioramaMosaicTexture } from "./dioramaTexture";
-import { buildDioramaSkirtGeometry } from "./dioramaSkirt";
 import { measureAsync } from "./dioramaPerfLog";
+import { buildDioramaSkirtGeometry } from "./dioramaSkirt";
+import {
+    buildDioramaMosaicTexture,
+    computeDioramaTextureLayout,
+} from "./dioramaTexture";
 
 /**
  * 箱庭地形のタイル種別。ラスタタイルの `MapType`（"std"=標準地図/"photo"=写真）に加え、
@@ -107,7 +111,10 @@ export interface DioramaTerrain {
      * ネットワーク往復分のレイテンシが積み重なる。AR中のコントローラー操作
      * （地図移動・拡大縮小が同時に入力される）等、低遅延性が重要な場面ではこちらを使う。
      */
-    setView(patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void>;
+    setView(patch: {
+        center?: DioramaCenter;
+        footprintHalfSizeM?: number;
+    }): Promise<void>;
     dispose(): void;
 }
 
@@ -180,7 +187,10 @@ export const computeAutoZoomLevel = (
     minZoom: number = AUTO_ZOOM_MIN,
     maxZoom: number = AUTO_TEXTURE_ZOOM_MAX,
 ): number => {
-    const ratio = footprintHalfSizeM > 0 ? footprintHalfSizeM / AUTO_ZOOM_REFERENCE_FOOTPRINT_HALF_SIZE_M : 1;
+    const ratio =
+        footprintHalfSizeM > 0
+            ? footprintHalfSizeM / AUTO_ZOOM_REFERENCE_FOOTPRINT_HALF_SIZE_M
+            : 1;
     const zoom = referenceZoom - Math.log2(ratio);
     if (!Number.isFinite(zoom)) return minZoom;
     return Math.min(maxZoom, Math.max(minZoom, Math.round(zoom)));
@@ -189,21 +199,27 @@ export const computeAutoZoomLevel = (
 /** 有限の正数であることを検証する（0以下・NaN・Infinityを拒否）。 */
 const assertPositiveFinite = (value: number, name: string): void => {
     if (!(Number.isFinite(value) && value > 0)) {
-        throw new RangeError(`${name} must be a positive finite number (got ${value})`);
+        throw new RangeError(
+            `${name} must be a positive finite number (got ${value})`,
+        );
     }
 };
 
 /** 0以上の有限数であることを検証する（負数・NaN・Infinityを拒否）。 */
 const assertNonNegativeFinite = (value: number, name: string): void => {
     if (!(Number.isFinite(value) && value >= 0)) {
-        throw new RangeError(`${name} must be a non-negative finite number (got ${value})`);
+        throw new RangeError(
+            `${name} must be a non-negative finite number (got ${value})`,
+        );
     }
 };
 
 /** 0以上の整数であることを検証する（ズームレベル用。非整数・負数・NaN・Infinityを拒否）。 */
 const assertNonNegativeInteger = (value: number, name: string): void => {
     if (!(Number.isInteger(value) && value >= 0)) {
-        throw new RangeError(`${name} must be a non-negative integer (got ${value})`);
+        throw new RangeError(
+            `${name} must be a non-negative integer (got ${value})`,
+        );
     }
 };
 
@@ -227,16 +243,20 @@ const resolveOptions = (options: DioramaTerrainOptions): ResolvedOptions => {
     // buildMesh側で行う）。明示指定された場合のみ検証する（非整数/負数は
     // toTileXY・totalPixelsForZoom（gsiTile.ts/geo/mapping.ts）を不正な
     // タイル要求・レイアウト計算に導くため）。
-    if (options.demZoom !== undefined) assertNonNegativeInteger(options.demZoom, "demZoom");
-    if (options.textureZoom !== undefined) assertNonNegativeInteger(options.textureZoom, "textureZoom");
+    if (options.demZoom !== undefined)
+        assertNonNegativeInteger(options.demZoom, "demZoom");
+    if (options.textureZoom !== undefined)
+        assertNonNegativeInteger(options.textureZoom, "textureZoom");
     // gridSegmentsは省略可（省略時はDEFAULTS.gridSegmentsを使う）。明示指定された
     // 場合のみ検証する。非整数/0以下/NaN/Infinityを許すと、buildDioramaGridIndices等
     // （dioramaGrid.ts）の添字計算 `vertsPerSide = gridSegments + 1` が非整数の
     // 頂点インデックスを生成し、Uint32Arrayへの変換で切り捨てられて破綻したメッシュに
     // なるため、ここでも早期に検証する（dioramaGrid.ts側の検証と二重になるが、
     // 非同期のタイル取得等を開始する前に失敗させるため）。
-    if (options.gridSegments !== undefined) assertPositiveInteger(options.gridSegments, "gridSegments");
-    const heightScaleFactor = options.heightScaleFactor ?? DEFAULTS.heightScaleFactor;
+    if (options.gridSegments !== undefined)
+        assertPositiveInteger(options.gridSegments, "gridSegments");
+    const heightScaleFactor =
+        options.heightScaleFactor ?? DEFAULTS.heightScaleFactor;
     const baseDepthRatio = options.baseDepthRatio ?? DEFAULTS.baseDepthRatio;
     assertPositiveFinite(heightScaleFactor, "heightScaleFactor");
     assertNonNegativeFinite(baseDepthRatio, "baseDepthRatio");
@@ -279,8 +299,14 @@ const buildMesh = async (
     scene: Scene,
     resolved: ResolvedOptions,
 ): Promise<BuiltMesh> => {
-    const gridOptions: DioramaGridOptions = { gridSegments: resolved.gridSegments };
-    const points = buildDioramaGridPoints(resolved.center, resolved.footprintHalfSizeM, gridOptions);
+    const gridOptions: DioramaGridOptions = {
+        gridSegments: resolved.gridSegments,
+    };
+    const points = buildDioramaGridPoints(
+        resolved.center,
+        resolved.footprintHalfSizeM,
+        gridOptions,
+    );
     const indices = buildDioramaGridIndices(gridOptions);
 
     // demZoom/textureZoomが明示指定されていない場合、footprintHalfSizeMから自動算出する
@@ -288,7 +314,12 @@ const buildMesh = async (
     // 取得タイル数がほぼ一定に保たれ、動作が重くならないようにするため。
     const demZoom =
         resolved.demZoom ??
-        computeAutoZoomLevel(resolved.footprintHalfSizeM, AUTO_ZOOM_REFERENCE_DEM_ZOOM, AUTO_ZOOM_MIN, AUTO_DEM_ZOOM_MAX);
+        computeAutoZoomLevel(
+            resolved.footprintHalfSizeM,
+            AUTO_ZOOM_REFERENCE_DEM_ZOOM,
+            AUTO_ZOOM_MIN,
+            AUTO_DEM_ZOOM_MAX,
+        );
     const textureZoom =
         resolved.textureZoom ??
         computeAutoZoomLevel(
@@ -314,10 +345,14 @@ const buildMesh = async (
     // （並列実行のため、各ラベルの経過時間は重複し得るが、どちらが支配的かの
     // 切り分けには十分）。
     const [elevations, texture] = await Promise.all([
-        measureAsync("dem-fetch", () => fetchDioramaElevations(points, demZoom)),
+        measureAsync("dem-fetch", () =>
+            fetchDioramaElevations(points, demZoom),
+        ),
         tileMode === "wireframe"
             ? Promise.resolve(undefined)
-            : measureAsync("texture-build-total", () => buildDioramaMosaicTexture(scene, textureLayout, tileMode)),
+            : measureAsync("texture-build-total", () =>
+                  buildDioramaMosaicTexture(scene, textureLayout, tileMode),
+              ),
     ]);
 
     // 基準面の標高として、中心に最も近い格子点の標高を使う（行列状グリッドは
@@ -326,14 +361,16 @@ const buildMesh = async (
     // root.position.y=0 付近へ収めるための基準としては十分な精度。
     const centerRow = Math.round(resolved.gridSegments / 2);
     const centerCol = centerRow;
-    const baseElevation = elevations[centerRow * (resolved.gridSegments + 1) + centerCol];
+    const baseElevation =
+        elevations[centerRow * (resolved.gridSegments + 1) + centerCol];
 
     const positions = new Float32Array(points.length * 3);
     const uvs = new Float32Array(points.length * 2);
     for (let i = 0; i < points.length; i++) {
         const p = points[i];
         positions[i * 3] = p.x;
-        positions[i * 3 + 1] = (elevations[i] - baseElevation) * resolved.heightScaleFactor;
+        positions[i * 3 + 1] =
+            (elevations[i] - baseElevation) * resolved.heightScaleFactor;
         positions[i * 3 + 2] = p.z;
         uvs[i * 2] = textureLayout.uvs[i].u;
         uvs[i * 2 + 1] = textureLayout.uvs[i].v;
@@ -434,7 +471,10 @@ const buildMesh = async (
     // 済んでいない未スケールの巨大メッシュがレンダーループへ混入しないようにする。
     try {
         await measureAsync("shader-compile", () =>
-            Promise.all([material.forceCompilationAsync(mesh), skirtMaterial.forceCompilationAsync(skirtMesh)]),
+            Promise.all([
+                material.forceCompilationAsync(mesh),
+                skirtMaterial.forceCompilationAsync(skirtMesh),
+            ]),
         );
     } catch (err) {
         // コンパイル待ちの間に失敗した場合、ここまでで生成済みのMesh/Material/Texture
@@ -472,10 +512,14 @@ export const createDioramaTerrain = async (
     const root = new TransformNode("diorama-root", scene);
     const applyScale = (): void => {
         if (!(resolved.tableRadiusM > 0)) {
-            throw new RangeError(`tableRadiusM must be > 0 (got ${resolved.tableRadiusM})`);
+            throw new RangeError(
+                `tableRadiusM must be > 0 (got ${resolved.tableRadiusM})`,
+            );
         }
         if (!(resolved.footprintHalfSizeM > 0)) {
-            throw new RangeError(`footprintHalfSizeM must be > 0 (got ${resolved.footprintHalfSizeM})`);
+            throw new RangeError(
+                `footprintHalfSizeM must be > 0 (got ${resolved.footprintHalfSizeM})`,
+            );
         }
         // 正方形フットプリントの最遠点（四隅）は中心から footprintHalfSizeM * √2 の
         // 距離にある。tableRadiusM は「中心からの最大半径」（デッドゾーン半径・
@@ -489,7 +533,6 @@ export const createDioramaTerrain = async (
     built.mesh.parent = root;
     built.skirtMesh.parent = root;
     applyScale();
-
 
     /**
      * 保留中の rebuild チェーン。`enqueueRebuild` はこれに繋げて直列化する。
@@ -516,7 +559,9 @@ export const createDioramaTerrain = async (
      */
     let disposed = false;
 
-    const enqueueRebuild = (patch: (current: ResolvedOptions) => ResolvedOptions): Promise<void> => {
+    const enqueueRebuild = (
+        patch: (current: ResolvedOptions) => ResolvedOptions,
+    ): Promise<void> => {
         const run = async (): Promise<void> => {
             // dispose 後にキューの順番が回ってきた場合は何もしない
             // （新規フェッチ・メッシュ生成自体を行わない）。
@@ -524,8 +569,9 @@ export const createDioramaTerrain = async (
             const next = patch(resolved);
             // `setView`等による再構築1回分の総所要時間。実機（Meta Quest 3）で
             // 報告されている「2秒以上」の体感遅延に最も近い実測値。
-            const rebuilt = await measureAsync(`rebuild-total (tileMode=${next.tileMode})`, () =>
-                buildMesh(scene, next),
+            const rebuilt = await measureAsync(
+                `rebuild-total (tileMode=${next.tileMode})`,
+                () => buildMesh(scene, next),
             );
             if (disposed) {
                 // buildMesh 実行中（非同期のタイル取得等の最中）に dispose された場合。
@@ -560,24 +606,39 @@ export const createDioramaTerrain = async (
             } catch (err) {
                 // 呼び出し側の一貫したエラーハンドリング（Promise.catch/await+try-catch）のため、
                 // 同期例外ではなく reject として返す（他のメソッドと同じ非同期契約に揃える）。
-                return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+                return Promise.reject(
+                    err instanceof Error ? err : new Error(String(err)),
+                );
             }
-            return enqueueRebuild((current) => ({ ...current, footprintHalfSizeM: halfSizeM }));
+            return enqueueRebuild((current) => ({
+                ...current,
+                footprintHalfSizeM: halfSizeM,
+            }));
         },
         setTileMode: (tileMode: DioramaTileMode): Promise<void> =>
             enqueueRebuild((current) => ({ ...current, tileMode })),
-        setView: (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
+        setView: (patch: {
+            center?: DioramaCenter;
+            footprintHalfSizeM?: number;
+        }): Promise<void> => {
             if (patch.footprintHalfSizeM !== undefined) {
                 try {
-                    assertPositiveFinite(patch.footprintHalfSizeM, "footprintHalfSizeM");
+                    assertPositiveFinite(
+                        patch.footprintHalfSizeM,
+                        "footprintHalfSizeM",
+                    );
                 } catch (err) {
-                    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+                    return Promise.reject(
+                        err instanceof Error ? err : new Error(String(err)),
+                    );
                 }
             }
             return enqueueRebuild((current) => ({
                 ...current,
                 ...(patch.center !== undefined ? { center: patch.center } : {}),
-                ...(patch.footprintHalfSizeM !== undefined ? { footprintHalfSizeM: patch.footprintHalfSizeM } : {}),
+                ...(patch.footprintHalfSizeM !== undefined
+                    ? { footprintHalfSizeM: patch.footprintHalfSizeM }
+                    : {}),
             }));
         },
         dispose: (): void => {

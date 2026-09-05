@@ -1,14 +1,14 @@
-import { describe, it, expect } from "vitest";
-import {
-    nanMean,
-    stitchTileEdges,
-    stitchTileEdgesCrossLevel,
-    selectCoarseEdgeNeighbors,
-} from "../src/terrain/tileStitching";
+import { describe, expect, it } from "vitest";
 import type {
-    StitchNeighbors,
     CoarseEdgeNeighbor,
     CoarseTileSource,
+    StitchNeighbors,
+} from "../src/terrain/tileStitching";
+import {
+    nanMean,
+    selectCoarseEdgeNeighbors,
+    stitchTileEdges,
+    stitchTileEdgesCrossLevel,
 } from "../src/terrain/tileStitching";
 
 // --- nanMean ---
@@ -336,8 +336,20 @@ describe("stitchTileEdgesCrossLevel", () => {
         const coarseL = fill(S, 70);
         const coarseR = fill(S, 80);
         const neighbors: CoarseEdgeNeighbor[] = [
-            { elevation: coarseL, direction: "left", subX: 0, subY: 0, scale: 2 },
-            { elevation: coarseR, direction: "right", subX: 1, subY: 0, scale: 2 },
+            {
+                elevation: coarseL,
+                direction: "left",
+                subX: 0,
+                subY: 0,
+                scale: 2,
+            },
+            {
+                elevation: coarseR,
+                direction: "right",
+                subX: 1,
+                subY: 0,
+                scale: 2,
+            },
         ];
         stitchTileEdgesCrossLevel(target, neighbors, S);
         for (let r = 1; r < S - 1; r++) {
@@ -441,7 +453,8 @@ describe("stitchTileEdgesCrossLevel", () => {
 // --- selectCoarseEdgeNeighbors ---
 
 describe("selectCoarseEdgeNeighbors", () => {
-    const makeElev = (v: number, size = 4): Float32Array => new Float32Array(size * size).fill(v);
+    const makeElev = (v: number, size = 4): Float32Array =>
+        new Float32Array(size * size).fill(v);
 
     it("同 zoom 隣接が描画中のときは cross-level 候補に含めない", () => {
         // 全方向の同 zoom 隣接が visible → 結果は空
@@ -509,7 +522,11 @@ describe("selectCoarseEdgeNeighbors", () => {
             coord,
             13,
             () => false,
-            () => ({ elevation: makeElev(0), wasAllNaN: true, unblocked: false }),
+            () => ({
+                elevation: makeElev(0),
+                wasAllNaN: true,
+                unblocked: false,
+            }),
         );
         expect(result).toEqual([]);
     });
@@ -523,7 +540,11 @@ describe("selectCoarseEdgeNeighbors", () => {
             () => false,
             (c) => {
                 if (c.zoom === 13 && c.x === 7273 && c.y === 3224) {
-                    return { elevation: elev, wasAllNaN: true, unblocked: true };
+                    return {
+                        elevation: elev,
+                        wasAllNaN: true,
+                        unblocked: true,
+                    };
                 }
                 return undefined;
             },

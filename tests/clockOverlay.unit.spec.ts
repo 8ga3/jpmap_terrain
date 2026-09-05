@@ -4,7 +4,7 @@
 /**
  * `src/demos/timelapse/clockOverlay.ts` の純粋関数と DOM マウントの unit test。
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
     computeClockAngles,
@@ -111,7 +111,9 @@ describe("formatClockLabel", () => {
     });
 
     it("Invalid Date は --:-- とオフセット", () => {
-        expect(formatClockLabel(new Date("invalid"), 9 * H)).toBe("--:-- UTC+9");
+        expect(formatClockLabel(new Date("invalid"), 9 * H)).toBe(
+            "--:-- UTC+9",
+        );
     });
 });
 

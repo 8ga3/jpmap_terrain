@@ -11,12 +11,13 @@
  * - Y 軸 → 東経 90°
  * - Z 軸 → 北極
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+
+import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial";
 import {
     EcefFromLatLonAltToRef,
     Wgs84Ellipsoid,
 } from "@babylonjs/core/Maths/math.geospatial.functions";
-import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 export const DEG2RAD = Math.PI / 180;
 export const RAD2DEG = 180 / Math.PI;
@@ -66,10 +67,7 @@ export const geodeticToEcef = (
  * 軸の規約は `geodeticToEcef` / Babylon の `EcefFromLatLonAltToRef` と同じ
  * （X→経度0, Y→東経90°, Z→北極）。
  */
-export const ecefToGeodeticToRef = (
-    ecef: Vector3,
-    out: Geodetic,
-): Geodetic => {
+export const ecefToGeodeticToRef = (ecef: Vector3, out: Geodetic): Geodetic => {
     const a = Wgs84Ellipsoid.semiMajorAxis;
     const b = Wgs84Ellipsoid.semiMinorAxis;
     const e2 = Wgs84Ellipsoid.firstEccentricitySquared;

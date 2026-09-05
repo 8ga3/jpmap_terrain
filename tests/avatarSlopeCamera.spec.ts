@@ -1,4 +1,4 @@
-import { test, expect } from "./tileCache.fixture";
+import { expect, test } from "./tileCache.fixture";
 
 /**
  * 坂道地形上でアバターを移動させた際のカメラ/スクロール/ズーム回帰防止。
@@ -78,7 +78,10 @@ async function waitForFrames(
             new Promise((resolve) => {
                 let count = 0;
                 const tick = (): void => {
-                    if (++count >= n) return resolve(true);
+                    if (++count >= n) {
+                        resolve(true);
+                        return;
+                    }
                     requestAnimationFrame(tick);
                 };
                 requestAnimationFrame(tick);
@@ -168,13 +171,16 @@ async function gotoAvatarSlopeScene(
 
     // 事前確認: このシーン中心が実際に勾配のある地形であること（平坦地誤選定の検知）。
     // `terrainElevAt` は公開 API。約100m 東西で数m以上の標高差があることを期待する。
-    const elevationDeltaM = await page.evaluate(({ lat, lon }) => {
-        const viewer = (window as unknown as { viewer: DemoViewer }).viewer;
-        const elevAt = viewer.terrainElevAt(lat, lon);
-        const elevOffset = viewer.terrainElevAt(lat, lon + 0.001);
-        if (elevAt === null || elevOffset === null) return null;
-        return Math.abs(elevAt - elevOffset);
-    }, { lat: SLOPE_LAT, lon: SLOPE_LON });
+    const elevationDeltaM = await page.evaluate(
+        ({ lat, lon }) => {
+            const viewer = (window as unknown as { viewer: DemoViewer }).viewer;
+            const elevAt = viewer.terrainElevAt(lat, lon);
+            const elevOffset = viewer.terrainElevAt(lat, lon + 0.001);
+            if (elevAt === null || elevOffset === null) return null;
+            return Math.abs(elevAt - elevOffset);
+        },
+        { lat: SLOPE_LAT, lon: SLOPE_LON },
+    );
     expect(elevationDeltaM).not.toBeNull();
     expect(elevationDeltaM as number).toBeGreaterThan(1);
 
@@ -182,7 +188,8 @@ async function gotoAvatarSlopeScene(
     // `MAX_CLICK_DISTANCE_M`（5000m）以内であれば `onTerrainClick` が受理する。
     const canvas = page.locator("canvas").first();
     const box = await canvas.boundingBox();
-    if (!box) throw new Error("[avatarSlopeCamera] canvas bounding box not found");
+    if (!box)
+        throw new Error("[avatarSlopeCamera] canvas bounding box not found");
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 
     // テレポート先が坂道シーン中心の近傍であること（東京駅初期スポーンから
@@ -192,7 +199,7 @@ async function gotoAvatarSlopeScene(
             const viewer = (window as unknown as { viewer?: DemoViewer })
                 .viewer;
             const model = viewer?.getModel("avatar") ?? null;
-            if (!model || !model.elevationResolved) return false;
+            if (!model?.elevationResolved) return false;
             return (
                 Math.abs(model.lat - lat) < 0.05 &&
                 Math.abs(model.lon - lon) < 0.05
@@ -257,7 +264,9 @@ test("Avatar stays within viewport while moving on sloped terrain with WebGL2", 
     // `waitForFunction` はここでは常に truthy（オブジェクト）を返して解決するはずだが、
     // 型上は `false` も取り得るため明示的に narrowing しておく。
     if (moveResult === false) {
-        throw new Error("[avatarSlopeCamera] waitForFunction resolved without a result payload");
+        throw new Error(
+            "[avatarSlopeCamera] waitForFunction resolved without a result payload",
+        );
     }
 
     // sampleCap（安全弁）で打ち切られていない = 所定距離まで正常に移動できたことを明示的に検証する。
@@ -297,13 +306,20 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
     // 移動できなかった」異常系として `reachedCap` で検知し、後段で明示的に
     // アサートする（偽陽性でテストが成功してしまうのを防ぐ）。
     await page.keyboard.down("KeyW");
-    const { samples: altitudeSamples, finalDistance, reachedCap } = await page.evaluate(
+    const {
+        samples: altitudeSamples,
+        finalDistance,
+        reachedCap,
+    } = await page.evaluate(
         async ({ moveDistanceM, sampleCap, metersPerDegLat }) => {
-            const viewer = (window as unknown as { viewer: DemoViewer })
-                .viewer;
+            const viewer = (window as unknown as { viewer: DemoViewer }).viewer;
             const start = viewer.getModel("avatar");
             if (!start) {
-                return { samples: [] as number[], finalDistance: 0, reachedCap: false };
+                return {
+                    samples: [] as number[],
+                    finalDistance: 0,
+                    reachedCap: false,
+                };
             }
             const startLat = start.lat;
             const startLon = start.lon;
@@ -316,7 +332,8 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
                 const tick = (): void => {
                     samples.push(viewer.altitude);
                     const model = viewer.getModel("avatar");
-                    const dLat = ((model?.lat ?? startLat) - startLat) * metersPerDegLat;
+                    const dLat =
+                        ((model?.lat ?? startLat) - startLat) * metersPerDegLat;
                     const dLon =
                         ((model?.lon ?? startLon) - startLon) *
                         metersPerDegLat *
@@ -363,7 +380,9 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
     // 通常のイージング/自動スクロールに伴う変化は緩やかであり、
     // 1 フレームで大きく飛ぶことは無い。
     for (let i = 1; i < altitudeSamples.length; i++) {
-        const frameDelta = Math.abs(altitudeSamples[i] - altitudeSamples[i - 1]);
+        const frameDelta = Math.abs(
+            altitudeSamples[i] - altitudeSamples[i - 1],
+        );
         expect(frameDelta).toBeLessThan(initialAltitude * 0.3);
     }
 

@@ -21,10 +21,10 @@ import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type {
     JpmapTerrainOptions,
     PolygonOptions,
-    PolygonPointOptions,
-    TerrainClickEvent,
-    PolygonPointPointerEvent,
     PolygonPointDragEvent,
+    PolygonPointOptions,
+    PolygonPointPointerEvent,
+    TerrainClickEvent,
 } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
@@ -32,7 +32,7 @@ import {
 } from "../../terrain/urlState";
 import {
     DEFAULT_DISTANCE_DEMO_MODE,
-    DistanceDemoMode,
+    type DistanceDemoMode,
     formatEdgeLabel,
     formatPointLabel,
 } from "./utils";
@@ -85,9 +85,7 @@ const buildPolygonOptions = (
     points: readonly PolygonPointOptions[],
     closed: boolean,
 ): PolygonOptions => {
-    const edgeCount = closed
-        ? points.length
-        : Math.max(0, points.length - 1);
+    const edgeCount = closed ? points.length : Math.max(0, points.length - 1);
     const edgeLabels: (string | undefined)[] = [];
     for (let i = 0; i < edgeCount; i++) {
         const a = points[i];
@@ -402,7 +400,8 @@ const start = async (): Promise<void> => {
         if (state.mode === "edit" && hovering) {
             // 2D ではドラッグの高度変更を無効化しているため ns-resize は出さない。
             const altitudeEditable =
-                (shiftPressed || state.altitudeMode) && viewer.viewMode !== "2d";
+                (shiftPressed || state.altitudeMode) &&
+                viewer.viewMode !== "2d";
             renderCanvas.style.cursor = altitudeEditable ? "ns-resize" : "move";
         }
     };
@@ -424,13 +423,15 @@ const start = async (): Promise<void> => {
             applyModeCursor(lastPointerCanvasX, lastPointerCanvasY);
         }
     });
-    const onShiftKey = (down: boolean) => (ev: KeyboardEvent): void => {
-        if (ev.key !== "Shift") return;
-        shiftPressed = down;
-        if (lastPointerCanvasX !== null && lastPointerCanvasY !== null) {
-            applyModeCursor(lastPointerCanvasX, lastPointerCanvasY);
-        }
-    };
+    const onShiftKey =
+        (down: boolean) =>
+        (ev: KeyboardEvent): void => {
+            if (ev.key !== "Shift") return;
+            shiftPressed = down;
+            if (lastPointerCanvasX !== null && lastPointerCanvasY !== null) {
+                applyModeCursor(lastPointerCanvasX, lastPointerCanvasY);
+            }
+        };
     window.addEventListener("keydown", onShiftKey(true));
     window.addEventListener("keyup", onShiftKey(false));
 
@@ -524,7 +525,8 @@ const start = async (): Promise<void> => {
 
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
-        (window as unknown as { distanceState: DemoState }).distanceState = state;
+        (window as unknown as { distanceState: DemoState }).distanceState =
+            state;
     }
 };
 

@@ -4,11 +4,12 @@
  * Babylon.js 9.x AudioV2 API を使用して、followモードでの
  * エンジン音ループとウェイポイント通過SEを管理する。
  */
-import { CreateAudioEngineAsync } from "@babylonjs/core/AudioV2/webAudio/webAudioEngine";
-import { CreateSoundAsync } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2";
+
 import type { AudioEngineV2 } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2";
+import { CreateSoundAsync } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2";
 import type { StaticSound } from "@babylonjs/core/AudioV2/abstractAudio/staticSound";
 import { SoundState } from "@babylonjs/core/AudioV2/soundState";
+import { CreateAudioEngineAsync } from "@babylonjs/core/AudioV2/webAudio/webAudioEngine";
 
 import planeNoiseUrl from "../../../assets/plane-noise.mp3";
 import planeWpUrl from "../../../assets/plane-wp.mp3";

@@ -1,6 +1,10 @@
 /** カメラFrustum内の可視タイルを Quadtree + SSE で算出する */
 
-import { TileCoord, convertTileZoom, computeSubTileOffset } from "./tileTypes";
+import {
+    computeSubTileOffset,
+    convertTileZoom,
+    type TileCoord,
+} from "./tileTypes";
 
 export interface FrustumPlane {
     normal: { x: number; y: number; z: number };
@@ -41,7 +45,7 @@ export const isAABBInFrustum = (
     maxX: number,
     maxY: number,
     maxZ: number,
-    planes: readonly FrustumPlane[]
+    planes: readonly FrustumPlane[],
 ): boolean => {
     for (const plane of planes) {
         const { normal, d } = plane;
@@ -124,7 +128,14 @@ const computeTileAABB = (
     baseCenter: TileCoord,
     tileSizeForZoom: (zoom: number) => number,
     maxElevation: number,
-): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } => {
+): {
+    minX: number;
+    minY: number;
+    minZ: number;
+    maxX: number;
+    maxY: number;
+    maxZ: number;
+} => {
     const tileSize = tileSizeForZoom(coord.zoom);
     const center = convertTileZoom(baseCenter, coord.zoom);
     const { fracX, fracY } = computeSubTileOffset(baseCenter, coord.zoom);
@@ -177,7 +188,7 @@ const distanceFootprintToPoint = (
  * - `maxTiles` 超過時はカメラ距離 D の昇順ソート後に先頭 `maxTiles` 件へ打ち切る。
  */
 export const computeQuadtreeTiles = (
-    opts: QuadtreeTilesOptions
+    opts: QuadtreeTilesOptions,
 ): LodTileEntry[] => {
     const {
         maxZoom,
@@ -201,14 +212,18 @@ export const computeQuadtreeTiles = (
     // SSE 分母の定数部分。fov=0 等の極小値で発散しないよう下限を設定。
     const tanHalfFov = Math.tan(verticalFov / 2);
     const sseDenomBase = 2 * Math.max(1e-6, tanHalfFov);
-    const effectiveSseThreshold = sseThreshold * Math.pow(2, lodBias);
+    const effectiveSseThreshold = sseThreshold * 2 ** lodBias;
 
     // 暴発的な再帰を防ぐ安全弁。通常運用では到達しない。
     const maxVisited = _maxVisited ?? Math.max(maxTiles, 256) * 32;
     let visited = 0;
     let maxVisitedReached = false;
 
-    const shouldAccept = (tileSize: number, distance: number, zoom: number): boolean => {
+    const shouldAccept = (
+        tileSize: number,
+        distance: number,
+        zoom: number,
+    ): boolean => {
         if (zoom >= maxZoom) return true;
         const d = Math.max(1, distance);
         const sse = (tileSize * viewportHeight) / (d * sseDenomBase);
@@ -230,14 +245,27 @@ export const computeQuadtreeTiles = (
         // タイル座標範囲外（地球の外）を除外。
         // 低 zoom の root 格子が地球範囲を越えて無効タイル 404 を量産するのを防ぐ。
         const limit = 1 << coord.zoom;
-        if (coord.x < 0 || coord.x >= limit || coord.y < 0 || coord.y >= limit) return;
+        if (coord.x < 0 || coord.x >= limit || coord.y < 0 || coord.y >= limit)
+            return;
 
-        const aabb = computeTileAABB(coord, baseCenter, tileSizeForZoom, maxElevation);
-        if (!isAABBInFrustum(
-            aabb.minX, aabb.minY, aabb.minZ,
-            aabb.maxX, aabb.maxY, aabb.maxZ,
-            frustumPlanes,
-        )) return;
+        const aabb = computeTileAABB(
+            coord,
+            baseCenter,
+            tileSizeForZoom,
+            maxElevation,
+        );
+        if (
+            !isAABBInFrustum(
+                aabb.minX,
+                aabb.minY,
+                aabb.minZ,
+                aabb.maxX,
+                aabb.maxY,
+                aabb.maxZ,
+                frustumPlanes,
+            )
+        )
+            return;
 
         // SSE 計算はフットプリント距離（カメラ高度＋水平距離）を使う。
         // AABB 全体との最短距離だとカメラがその高さ内に入っているとき 0 になり、過剰分割になる。
@@ -290,7 +318,7 @@ export const computeQuadtreeTiles = (
     if (maxVisitedReached) {
         console.warn(
             `[visibleTiles] maxVisited limit (${maxVisited}) reached; ` +
-            `${accepted.length} tiles force-accepted at coarser LOD to prevent gaps.`,
+                `${accepted.length} tiles force-accepted at coarser LOD to prevent gaps.`,
         );
     }
 

@@ -33,9 +33,9 @@
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 import {
-    computeDioramaRotationRadFromStick,
-    computeDioramaHeightMetersFromTriggers,
     clampDioramaHeightOffsetM,
+    computeDioramaHeightMetersFromTriggers,
+    computeDioramaRotationRadFromStick,
 } from "./dioramaControllerMapping";
 
 export interface DioramaOrientationController {
@@ -47,7 +47,12 @@ export interface DioramaOrientationController {
      * 回転軸（右スティックX相当）・左右トリガー値（[0,1]、キーボード等価入力では
      * 0 または 1）を1フレーム分適用する。呼び出し元が毎フレーム呼ぶこと。
      */
-    feedAxes(rotationAxisX: number, leftTriggerValue: number, rightTriggerValue: number, dtSeconds: number): void;
+    feedAxes(
+        rotationAxisX: number,
+        leftTriggerValue: number,
+        rightTriggerValue: number,
+        dtSeconds: number,
+    ): void;
     /**
      * 回転角[rad]を明示的に設定する（ホストアプリからの `JpmapDiorama.rotationDeg`
      * setter用）。`feedAxes` と同じ対象ノードへ同期的に反映するため、以後の
@@ -70,7 +75,9 @@ export interface DioramaOrientationController {
  *   `orientationRoot.rotation.y`/`orientationRoot.position.y` の現在値を引き継ぐ
  *   （通常は生成直後の 0 のままで問題ない）。
  */
-export const createDioramaOrientationController = (orientationRoot: TransformNode): DioramaOrientationController => {
+export const createDioramaOrientationController = (
+    orientationRoot: TransformNode,
+): DioramaOrientationController => {
     let rotationRad = orientationRoot.rotation.y;
     let heightOffsetM = clampDioramaHeightOffsetM(orientationRoot.position.y);
     orientationRoot.position.y = heightOffsetM;
@@ -86,15 +93,24 @@ export const createDioramaOrientationController = (orientationRoot: TransformNod
         ): void => {
             if (!(dtSeconds > 0)) return;
 
-            const deltaRad = computeDioramaRotationRadFromStick(rotationAxisX, dtSeconds);
+            const deltaRad = computeDioramaRotationRadFromStick(
+                rotationAxisX,
+                dtSeconds,
+            );
             if (deltaRad !== 0) {
                 rotationRad += deltaRad;
                 orientationRoot.rotation.y = rotationRad;
             }
 
-            const deltaM = computeDioramaHeightMetersFromTriggers(leftTriggerValue, rightTriggerValue, dtSeconds);
+            const deltaM = computeDioramaHeightMetersFromTriggers(
+                leftTriggerValue,
+                rightTriggerValue,
+                dtSeconds,
+            );
             if (deltaM !== 0) {
-                heightOffsetM = clampDioramaHeightOffsetM(heightOffsetM + deltaM);
+                heightOffsetM = clampDioramaHeightOffsetM(
+                    heightOffsetM + deltaM,
+                );
                 orientationRoot.position.y = heightOffsetM;
             }
         },

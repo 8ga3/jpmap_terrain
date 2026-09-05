@@ -1,13 +1,24 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { snapScale, pickScaleWithin, formatScale, SCALE_STEPS, createControlPanel, showToast } from "../src/terrain/controlPanel";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+    createControlPanel,
+    formatScale,
+    pickScaleWithin,
+    SCALE_STEPS,
+    showToast,
+    snapScale,
+} from "../src/terrain/controlPanel";
 
 function cleanupDOM(): void {
     document.body.innerHTML = "";
-    document.head.querySelectorAll("#cp-focus-style").forEach((el) => el.remove());
-    document.head.querySelectorAll("#cp-responsive-style").forEach((el) => el.remove());
+    document.head
+        .querySelectorAll("#cp-focus-style")
+        .forEach((el) => el.remove());
+    document.head
+        .querySelectorAll("#cp-responsive-style")
+        .forEach((el) => el.remove());
 }
 
 describe("createControlPanel locateMe ボタン", () => {
@@ -53,7 +64,9 @@ describe("createControlPanel attribution", () => {
         const link = panel.scaleBar.attribution;
         expect(link.tagName).toBe("A");
         expect(link.textContent).toBe("地理院タイル");
-        expect(link.getAttribute("href")).toBe("https://maps.gsi.go.jp/development/ichiran.html");
+        expect(link.getAttribute("href")).toBe(
+            "https://maps.gsi.go.jp/development/ichiran.html",
+        );
         expect(link.target).toBe("_blank");
         expect(link.relList.contains("noopener")).toBe(true);
         expect(link.relList.contains("noreferrer")).toBe(true);
@@ -126,7 +139,9 @@ describe("createControlPanel レスポンシブ対応", () => {
     it("地図切替/視点切替ボタンに識別クラスが付与される", () => {
         const panel = createControlPanel();
         expect(panel.mapToggle.classList.contains("cp-maptoggle")).toBe(true);
-        expect(panel.viewModeButton.classList.contains("cp-viewmode")).toBe(true);
+        expect(panel.viewModeButton.classList.contains("cp-viewmode")).toBe(
+            true,
+        );
     });
 
     it("ボタンに touch-action: manipulation が適用される（ダブルタップズーム抑止）", () => {
@@ -138,8 +153,12 @@ describe("createControlPanel レスポンシブ対応", () => {
 
     it("スケールバーのテキスト要素に cp-scale-text クラスが付与される", () => {
         const panel = createControlPanel();
-        expect(panel.scaleBar.label.classList.contains("cp-scale-text")).toBe(true);
-        expect(panel.scaleBar.attribution.classList.contains("cp-scale-text")).toBe(true);
+        expect(panel.scaleBar.label.classList.contains("cp-scale-text")).toBe(
+            true,
+        );
+        expect(
+            panel.scaleBar.attribution.classList.contains("cp-scale-text"),
+        ).toBe(true);
     });
 });
 
@@ -297,7 +316,9 @@ describe("showToast", () => {
         showToast("新しい", 1000);
         // 古い setTimeout の残り 500ms を経過させても新しいトーストは残る
         vi.advanceTimersByTime(500);
-        const current = document.querySelector("[role='status']") as HTMLElement;
+        const current = document.querySelector(
+            "[role='status']",
+        ) as HTMLElement;
         expect(current.textContent).toBe("新しい");
         expect(current.style.opacity).toBe("1");
     });

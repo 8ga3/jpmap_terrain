@@ -6,10 +6,14 @@
  * haversine 距離計算・距離フォーマットは共通ユーティリティ `../shared/geoUtils` を使用する。
  */
 
-import type { ParsedGpxPoint, ParsedGpxSegment, ParsedGpxTrack } from "./parseGpx";
-export {
-    formatHorizontalDistance,
-} from "../shared/geoUtils";
+import type {
+    ParsedGpxPoint,
+    ParsedGpxSegment,
+    ParsedGpxTrack,
+} from "./parseGpx";
+
+export { formatHorizontalDistance } from "../shared/geoUtils";
+
 import { haversineDistanceMeters } from "../shared/geoUtils";
 
 /** トラック統計（1トラック分、または複数トラック合算） */
@@ -38,13 +42,22 @@ const EMPTY_STATS: GpxTrackStats = {
 };
 
 /** 1 セグメント分の統計を計算し、`acc` に加算する（min/max は Math.min/max で更新）。 */
-const accumulateSegmentStats = (points: ParsedGpxPoint[], acc: GpxTrackStats): void => {
+const accumulateSegmentStats = (
+    points: ParsedGpxPoint[],
+    acc: GpxTrackStats,
+): void => {
     acc.pointCount += points.length;
     for (let i = 0; i < points.length; i++) {
         const ele = points[i].ele;
         if (ele !== null) {
-            acc.maxElevationMeters = acc.maxElevationMeters === null ? ele : Math.max(acc.maxElevationMeters, ele);
-            acc.minElevationMeters = acc.minElevationMeters === null ? ele : Math.min(acc.minElevationMeters, ele);
+            acc.maxElevationMeters =
+                acc.maxElevationMeters === null
+                    ? ele
+                    : Math.max(acc.maxElevationMeters, ele);
+            acc.minElevationMeters =
+                acc.minElevationMeters === null
+                    ? ele
+                    : Math.min(acc.minElevationMeters, ele);
         }
         if (i === 0) continue;
         const prev = points[i - 1];
@@ -67,7 +80,9 @@ export const computeTrackStats = (track: ParsedGpxTrack): GpxTrackStats => {
 };
 
 /** 複数トラックの統計を合算する。 */
-export const computeGpxStats = (tracks: readonly ParsedGpxTrack[]): GpxTrackStats => {
+export const computeGpxStats = (
+    tracks: readonly ParsedGpxTrack[],
+): GpxTrackStats => {
     const acc: GpxTrackStats = { ...EMPTY_STATS };
     for (const track of tracks) {
         const trackStats = computeTrackStats(track);
@@ -79,13 +94,19 @@ export const computeGpxStats = (tracks: readonly ParsedGpxTrack[]): GpxTrackStat
             acc.maxElevationMeters =
                 acc.maxElevationMeters === null
                     ? trackStats.maxElevationMeters
-                    : Math.max(acc.maxElevationMeters, trackStats.maxElevationMeters);
+                    : Math.max(
+                          acc.maxElevationMeters,
+                          trackStats.maxElevationMeters,
+                      );
         }
         if (trackStats.minElevationMeters !== null) {
             acc.minElevationMeters =
                 acc.minElevationMeters === null
                     ? trackStats.minElevationMeters
-                    : Math.min(acc.minElevationMeters, trackStats.minElevationMeters);
+                    : Math.min(
+                          acc.minElevationMeters,
+                          trackStats.minElevationMeters,
+                      );
         }
     }
     return acc;
@@ -98,12 +119,15 @@ export const formatElevationMeters = (meters: number | null): string => {
 };
 
 /** セグメント配列を平坦化した点列を返す（描画用ではなく統計/表示補助向け）。 */
-export const flattenSegments = (segments: readonly ParsedGpxSegment[]): ParsedGpxPoint[] =>
-    segments.flatMap((s) => s.points);
+export const flattenSegments = (
+    segments: readonly ParsedGpxSegment[],
+): ParsedGpxPoint[] => segments.flatMap((s) => s.points);
 
 /** トラックラベル（トラック名。無ければ連番）。 */
-export const formatTrackLabel = (track: ParsedGpxTrack, index: number): string =>
-    track.name ?? `トラック ${index + 1}`;
+export const formatTrackLabel = (
+    track: ParsedGpxTrack,
+    index: number,
+): string => track.name ?? `トラック ${index + 1}`;
 
 /**
  * 描画用ポリライン頂点数の上限（1セグメントあたり）。
@@ -166,7 +190,10 @@ export const buildElevationProfiles = (
             }
         }
         if (points.length < 2) return;
-        series.push({ trackIndex, points: decimatePoints(points, MAX_CHART_POINTS_PER_TRACK) });
+        series.push({
+            trackIndex,
+            points: decimatePoints(points, MAX_CHART_POINTS_PER_TRACK),
+        });
     });
     return series;
 };
@@ -176,7 +203,10 @@ export const buildElevationProfiles = (
  * `points.length <= maxPoints` の場合はそのまま返す。連続して同一 index を
  * 選ばないよう重複は除去する。
  */
-export const decimatePoints = <T>(points: readonly T[], maxPoints: number): T[] => {
+export const decimatePoints = <T>(
+    points: readonly T[],
+    maxPoints: number,
+): T[] => {
     if (points.length <= maxPoints || maxPoints < 2) return [...points];
     const result: T[] = [];
     const step = (points.length - 1) / (maxPoints - 1);
@@ -191,5 +221,7 @@ export const decimatePoints = <T>(points: readonly T[], maxPoints: number): T[] 
 };
 
 /** ウェイポイントラベル（名前。無ければ連番）。 */
-export const formatWaypointLabel = (name: string | null, index: number): string =>
-    name ?? `WPT ${index + 1}`;
+export const formatWaypointLabel = (
+    name: string | null,
+    index: number,
+): string => name ?? `WPT ${index + 1}`;

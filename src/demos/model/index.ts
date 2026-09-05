@@ -13,14 +13,15 @@
  * - クリック可能範囲はカメラから一定距離以内
  * - 地面以外は無視
  */
+
+import humanGlbUrl from "../../../assets/human.glb";
+import humanObjUrl from "../../../assets/human.obj";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import humanGlbUrl from "../../../assets/human.glb";
-import humanObjUrl from "../../../assets/human.obj";
 // MTL は OBJ ローダーが rootUrl から自動取得するが、
 // Vite にバンドル対象として認識させるためインポートしておく。
 import "../../../assets/human.mtl";
@@ -92,12 +93,24 @@ const start = async (): Promise<void> => {
     // --- UI 要素の取得 ---
     const latDisplay = document.getElementById("model-lat") as HTMLSpanElement;
     const lonDisplay = document.getElementById("model-lon") as HTMLSpanElement;
-    const azimuthDisplay = document.getElementById("model-azimuth") as HTMLSpanElement;
-    const azimuthSlider = document.getElementById("azimuth-slider") as HTMLInputElement;
-    const scaleDisplay = document.getElementById("model-scale") as HTMLSpanElement;
-    const scaleSlider = document.getElementById("scale-slider") as HTMLInputElement;
-    const flyToBtn = document.getElementById("fly-to-model") as HTMLButtonElement;
-    const formatSelect = document.getElementById("format-select") as HTMLSelectElement;
+    const azimuthDisplay = document.getElementById(
+        "model-azimuth",
+    ) as HTMLSpanElement;
+    const azimuthSlider = document.getElementById(
+        "azimuth-slider",
+    ) as HTMLInputElement;
+    const scaleDisplay = document.getElementById(
+        "model-scale",
+    ) as HTMLSpanElement;
+    const scaleSlider = document.getElementById(
+        "scale-slider",
+    ) as HTMLInputElement;
+    const flyToBtn = document.getElementById(
+        "fly-to-model",
+    ) as HTMLButtonElement;
+    const formatSelect = document.getElementById(
+        "format-select",
+    ) as HTMLSelectElement;
 
     let modelLat = TOKYO_STATION.lat;
     let modelLon = TOKYO_STATION.lon;
@@ -171,7 +184,10 @@ const start = async (): Promise<void> => {
         const cameraLat = viewer.lat;
         const cameraLon = viewer.lon;
         const dLat = (event.lat - cameraLat) * 111320;
-        const dLon = (event.lon - cameraLon) * 111320 * Math.cos((cameraLat * Math.PI) / 180);
+        const dLon =
+            (event.lon - cameraLon) *
+            111320 *
+            Math.cos((cameraLat * Math.PI) / 180);
         const dist = Math.sqrt(dLat * dLat + dLon * dLon);
         if (dist > MAX_CLICK_DISTANCE_M) return;
 

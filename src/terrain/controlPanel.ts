@@ -75,7 +75,7 @@ const createCompass = (): HTMLDivElement => {
     // 北（赤い三角）
     const north = document.createElementNS(
         "http://www.w3.org/2000/svg",
-        "polygon"
+        "polygon",
     );
     north.setAttribute("points", "14,2 9,14 19,14");
     north.setAttribute("fill", "#e53935");
@@ -83,7 +83,7 @@ const createCompass = (): HTMLDivElement => {
     // 南（グレーの三角）
     const south = document.createElementNS(
         "http://www.w3.org/2000/svg",
-        "polygon"
+        "polygon",
     );
     south.setAttribute("points", "14,26 9,14 19,14");
     south.setAttribute("fill", "#9e9e9e");
@@ -95,7 +95,10 @@ const createCompass = (): HTMLDivElement => {
     // アクセシビリティ
     container.setAttribute("role", "button");
     container.tabIndex = 0;
-    container.setAttribute("aria-label", "方位磁針: クリックで北向きにリセット");
+    container.setAttribute(
+        "aria-label",
+        "方位磁針: クリックで北向きにリセット",
+    );
     container.classList.add("cp-compass");
 
     // :focus-visible スタイルを CSS で適用（JS の matches() 例外を回避）
@@ -169,15 +172,24 @@ const createZoomButtons = (): {
 
     // 現在地ボタン（ズーム＋の上）
     const locateMe = makeBtn("", "現在地を表示");
-    const locateSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const locateSvg = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "svg",
+    );
     locateSvg.setAttribute("width", "18");
     locateSvg.setAttribute("height", "18");
     locateSvg.setAttribute("viewBox", "0 0 24 24");
     locateSvg.setAttribute("fill", "none");
     locateSvg.setAttribute("aria-hidden", "true");
     locateSvg.setAttribute("focusable", "false");
-    const locatePath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    locatePath.setAttribute("d", "M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z");
+    const locatePath = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "path",
+    );
+    locatePath.setAttribute(
+        "d",
+        "M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z",
+    );
     locatePath.setAttribute("fill", "#f2f7ff");
     locateSvg.appendChild(locatePath);
     locateMe.textContent = "";
@@ -260,7 +272,12 @@ const createZoomButtons = (): {
         locateMe,
         zoomIn,
         zoomOut,
-        scaleBar: { container: scaleContainer, bar: scaleBar, label: scaleLabel, attribution },
+        scaleBar: {
+            container: scaleContainer,
+            bar: scaleBar,
+            label: scaleLabel,
+            attribution,
+        },
     };
 };
 
@@ -339,8 +356,8 @@ const createViewModeToggleButton = (): HTMLButtonElement => {
 
 /** きれいな数値にスナップ */
 export const SCALE_STEPS = [
-    1, 2, 5, 10, 20, 50, 100, 200, 500,
-    1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000,
+    1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10_000, 20_000,
+    50_000, 100_000,
 ];
 
 export const snapScale = (meters: number): number => {
@@ -449,13 +466,17 @@ export const showToast = (message: string, durationMs = 3000): void => {
     toastFadeTimer = setTimeout(() => {
         toastFadeTimer = null;
         el.style.opacity = "0";
-        el.addEventListener("transitionend", () => {
-            if (toastRemoveTimer !== null) {
-                clearTimeout(toastRemoveTimer);
-                toastRemoveTimer = null;
-            }
-            removeToastElement(el);
-        }, { once: true });
+        el.addEventListener(
+            "transitionend",
+            () => {
+                if (toastRemoveTimer !== null) {
+                    clearTimeout(toastRemoveTimer);
+                    toastRemoveTimer = null;
+                }
+                removeToastElement(el);
+            },
+            { once: true },
+        );
         // transitionend が発火しない場合のフォールバック（トランジション時間 + 余裕）
         toastRemoveTimer = setTimeout(() => {
             toastRemoveTimer = null;
@@ -483,5 +504,13 @@ export const createControlPanel = (): ControlPanelElements => {
 
     // スケールバー（ズームボタンコンテナ内に統合済み）
 
-    return { compass, locateMe, zoomIn, zoomOut, mapToggle, viewModeButton, scaleBar };
+    return {
+        compass,
+        locateMe,
+        zoomIn,
+        zoomOut,
+        mapToggle,
+        viewModeButton,
+        scaleBar,
+    };
 };

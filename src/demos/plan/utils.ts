@@ -7,15 +7,17 @@
  */
 
 import type { ParsedWaypoint } from "./parsePlan";
+
 export {
-    haversineDistanceMeters,
-    formatHorizontalDistance,
     formatAltitudeDelta,
+    formatHorizontalDistance,
+    haversineDistanceMeters,
 } from "../shared/geoUtils";
+
 import {
-    haversineDistanceMeters,
-    formatHorizontalDistance,
     formatAltitudeDelta,
+    formatHorizontalDistance,
+    haversineDistanceMeters,
 } from "../shared/geoUtils";
 
 /**

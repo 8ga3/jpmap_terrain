@@ -62,7 +62,12 @@ beforeEach(() => {
 describe("add", () => {
     it("ring（閉ポリゴン）と center（中心 1 点）の 2 ノードへ委譲する", () => {
         const mgr = makeManager();
-        const id = mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, segments: 16 });
+        const id = mgr.add({
+            centerLat: 35,
+            centerLon: 139,
+            radiusMeters: 5000,
+            segments: 16,
+        });
         expect(addCalls.length).toBe(2);
         // ring ノード: 閉ポリゴン・円周点列・頂点マーカー無効。
         expect(addCalls[0].closed).toBe(true);
@@ -83,7 +88,12 @@ describe("add", () => {
 
     it("ラベル指定時は center ノードにラベルを委譲する", () => {
         const mgr = makeManager();
-        mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, label: "中心" });
+        mgr.add({
+            centerLat: 35,
+            centerLon: 139,
+            radiusMeters: 5000,
+            label: "中心",
+        });
         expect(addCalls[1].labelsEnabled).toBe(true);
         expect(addCalls[1].labels?.[0]).toBe("中心");
     });
@@ -101,18 +111,28 @@ describe("add", () => {
 
     it("radius <= 0 は throw", () => {
         const mgr = makeManager();
-        expect(() => mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 0 })).toThrow(
-            /radiusMeters/,
-        );
+        expect(() =>
+            mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 0 }),
+        ).toThrow(/radiusMeters/);
     });
 
     it("segments が範囲外は throw", () => {
         const mgr = makeManager();
         expect(() =>
-            mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, segments: 2 }),
+            mgr.add({
+                centerLat: 35,
+                centerLon: 139,
+                radiusMeters: 5000,
+                segments: 2,
+            }),
         ).toThrow(/segments/);
         expect(() =>
-            mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000, segments: 1000 }),
+            mgr.add({
+                centerLat: 35,
+                centerLon: 139,
+                radiusMeters: 5000,
+                segments: 1000,
+            }),
         ).toThrow(/segments/);
     });
 });
@@ -120,7 +140,11 @@ describe("add", () => {
 describe("委譲（remove/setEnabled/update/dispose）", () => {
     it("remove / setEnabled は ring・center 両ノードへ委譲する", () => {
         const mgr = makeManager();
-        const id = mgr.add({ centerLat: 35, centerLon: 139, radiusMeters: 5000 });
+        const id = mgr.add({
+            centerLat: 35,
+            centerLon: 139,
+            radiusMeters: 5000,
+        });
         mgr.setEnabled(id, false);
         mgr.update();
         mgr.remove(id);

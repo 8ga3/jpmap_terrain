@@ -26,23 +26,25 @@
  * 命名メモ: VR PoC 同様、本リポジトリでは "VR" が Playwright Visual Regression テストの
  * 略称としても使われているため、シンボル名には "WebXr" プレフィックスを用いる。
  */
-import type { Scene } from "@babylonjs/core/scene";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { Scene } from "@babylonjs/core/scene";
 // `scene.createDefaultXRExperienceAsync` を Scene プロトタイプへ追加する副作用 import。
 import "@babylonjs/core/Helpers/sceneHelpers";
+import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
+import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
-import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
-import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
-
-import type { DioramaViewController } from "./dioramaViewController";
+import type { DioramaArControlHud } from "./dioramaArControlHud";
+import {
+    createDioramaArControlHudForSession,
+    setupDioramaArControls,
+} from "./dioramaArControls";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
 import type { DioramaTouchControls } from "./dioramaTouchControls";
-import { createDioramaArControlHudForSession, setupDioramaArControls } from "./dioramaArControls";
-import type { DioramaArControlHud } from "./dioramaArControlHud";
-
+import type { DioramaViewController } from "./dioramaViewController";
 
 /** 機能検出 (`IsSessionSupportedAsync`) のタイムアウト[ms]。
  *  環境によっては（実デバイス無し等）Promise がいつまでも解決しないことがあるため、
@@ -51,7 +53,11 @@ import type { DioramaArControlHud } from "./dioramaArControlHud";
 const SUPPORT_CHECK_TIMEOUT_MS = 4000;
 
 /** `promise` が `timeoutMs` 以内に解決しなければ `onTimeout` の値へフォールバックする。 */
-const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, onTimeout: T): Promise<T> =>
+const withTimeout = <T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    onTimeout: T,
+): Promise<T> =>
     new Promise<T>((resolve) => {
         const timer = setTimeout(() => resolve(onTimeout), timeoutMs);
         promise.then(
@@ -71,14 +77,18 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, onTimeout: T): P
  */
 export const isImmersiveArSupported = async (): Promise<boolean> => {
     try {
-        if (typeof navigator === "undefined" || !("xr" in navigator)) return false;
+        if (typeof navigator === "undefined" || !("xr" in navigator))
+            return false;
         return await withTimeout(
             WebXRSessionManager.IsSessionSupportedAsync("immersive-ar"),
             SUPPORT_CHECK_TIMEOUT_MS,
             false,
         );
     } catch (err) {
-        console.warn("[jpmap-terrain diorama] WebXR AR support check failed:", err);
+        console.warn(
+            "[jpmap-terrain diorama] WebXR AR support check failed:",
+            err,
+        );
         return false;
     }
 };
@@ -160,7 +170,9 @@ const placeDioramaRelativeToCamera = (
     dioramaRoot: TransformNode,
     camera: WebXRCamera,
 ): void => {
-    const forward = camera.getDirection(Vector3.Forward(scene.useRightHandedSystem));
+    const forward = camera.getDirection(
+        Vector3.Forward(scene.useRightHandedSystem),
+    );
     forward.y = 0;
     if (forward.lengthSquared() < HORIZONTAL_DIRECTION_EPSILON) {
         // カメラがほぼ真上/真下を向いている退化ケース。シーンの既定前方向へフォールバックする。
@@ -253,15 +265,22 @@ export const createDioramaArSessionController = (
             try {
                 listener(active);
             } catch (err) {
-                console.error("[jpmap-terrain diorama] onActiveChange listener threw:", err);
+                console.error(
+                    "[jpmap-terrain diorama] onActiveChange listener threw:",
+                    err,
+                );
             }
         }
     };
 
-    const isActive = (): boolean => xr !== null && xr.baseExperience.state !== WebXRState.NOT_IN_XR;
+    const isActive = (): boolean =>
+        xr !== null && xr.baseExperience.state !== WebXRState.NOT_IN_XR;
 
     const enter = (): Promise<void> => {
-        if (disposed) return Promise.reject(new Error("DioramaArSessionController is already disposed"));
+        if (disposed)
+            return Promise.reject(
+                new Error("DioramaArSessionController is already disposed"),
+            );
         if (isActive()) return Promise.resolve();
         if (enteringPromise) return enteringPromise;
         // 前回セッションの `WebXRDefaultExperience`（input/enterExitUI/renderTarget等の
@@ -314,7 +333,9 @@ export const createDioramaArSessionController = (
         isActive,
         enter,
         exit,
-        onActiveChange: (listener: DioramaArActiveChangeListener): (() => void) => {
+        onActiveChange: (
+            listener: DioramaArActiveChangeListener,
+        ): (() => void) => {
             listeners.push(listener);
             let removed = false;
             return (): void => {
@@ -373,12 +394,18 @@ export const attachDioramaArButton = (
     button.addEventListener("click", () => {
         if (controller.isActive()) {
             controller.exit().catch((err: unknown) => {
-                console.error("[jpmap-terrain diorama] failed to exit WebXR AR session:", err);
+                console.error(
+                    "[jpmap-terrain diorama] failed to exit WebXR AR session:",
+                    err,
+                );
             });
             return;
         }
         controller.enter().catch((err: unknown) => {
-            console.error("[jpmap-terrain diorama] failed to start WebXR AR session:", err);
+            console.error(
+                "[jpmap-terrain diorama] failed to start WebXR AR session:",
+                err,
+            );
         });
     });
 
@@ -512,7 +539,11 @@ const enterAr = async (
         hud = createDioramaArControlHudForSession(xrExperience, mount);
 
         if (xrExperience.baseExperience.state === WebXRState.NOT_IN_XR) {
-            await xrExperience.baseExperience.enterXRAsync("immersive-ar", "local-floor", xrExperience.renderTarget);
+            await xrExperience.baseExperience.enterXRAsync(
+                "immersive-ar",
+                "local-floor",
+                xrExperience.renderTarget,
+            );
         }
 
         // パススルー表示: フレームバッファの alpha を 0 にし、実世界カメラ映像が
@@ -540,7 +571,11 @@ const enterAr = async (
             framesWaited += 1;
             if (framesWaited < AR_PLACEMENT_WAIT_FRAMES) return;
             scene.onBeforeRenderObservable.remove(placementObserver);
-            placeDioramaRelativeToCamera(scene, dioramaRoot, xrExperience.baseExperience.camera);
+            placeDioramaRelativeToCamera(
+                scene,
+                dioramaRoot,
+                xrExperience.baseExperience.camera,
+            );
         });
 
         const restoreOnExit = (): void => {

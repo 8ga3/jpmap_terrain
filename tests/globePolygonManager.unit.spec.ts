@@ -15,7 +15,11 @@ interface StubMesh {
     material: unknown;
     enabled: boolean;
     disposeCount: number;
-    position: { length: () => number; copyFrom: (v: unknown) => unknown; addInPlace: (v: unknown) => unknown };
+    position: {
+        length: () => number;
+        copyFrom: (v: unknown) => unknown;
+        addInPlace: (v: unknown) => unknown;
+    };
     scaling: { setAll: (v: number) => void };
     lastScale?: number;
     billboardMode?: number;
@@ -74,7 +78,14 @@ vi.mock("@babylonjs/core/Meshes/Builders/sphereBuilder", () => ({
 }));
 
 vi.mock("@babylonjs/core/Meshes/Builders/tubeBuilder", () => ({
-    CreateTube: (name: string, opts: { instance?: StubMesh; radius?: number; radiusFunction?: unknown }) => {
+    CreateTube: (
+        name: string,
+        opts: {
+            instance?: StubMesh;
+            radius?: number;
+            radiusFunction?: unknown;
+        },
+    ) => {
         if (opts.instance) {
             if (name.includes("outline")) lineInstanceUpdates.push(1);
             else dropInstanceUpdates.push(1);
@@ -189,8 +200,13 @@ const pts3 = [
 ];
 
 const makeManager = () => {
-    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => 1000);
-    const mgr = createGlobePolygonManager({ scene: {} as never, terrainElevAt });
+    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(
+        () => 1000,
+    );
+    const mgr = createGlobePolygonManager({
+        scene: {} as never,
+        terrainElevAt,
+    });
     return { mgr, terrainElevAt };
 };
 
@@ -253,7 +269,9 @@ describe("add / CRUD", () => {
         const { mgr } = makeManager();
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         expect(() => mgr.remove("nope")).not.toThrow();
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('id "nope" not found'),
+        );
         warn.mockRestore();
     });
 
@@ -314,8 +332,12 @@ describe("update", () => {
     });
 
     it("terrain 標高未解決なら全要素を非表示にする", () => {
-        const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => null);
-        const mgr = createGlobePolygonManager({ scene: {} as never, terrainElevAt });
+        const terrainElevAt: (lat: number, lon: number) => number | null =
+            vi.fn(() => null);
+        const mgr = createGlobePolygonManager({
+            scene: {} as never,
+            terrainElevAt,
+        });
         mgr.add({ points: pts3 });
         expect(createdPoints.every((m) => !m.enabled)).toBe(true);
         expect(createdDrops.every((m) => !m.enabled)).toBe(true);
@@ -389,9 +411,9 @@ describe("setFlatten", () => {
 
     it("setFlatten(true) は flat 進入時に全頂点の terrainElevAt を引いて elevs を terrain 基準へ正規化する", () => {
         // 3D で absolute 高度を使っていたポリゴンの elevs(=絶対高度) を 2D へ持ち越さないことを担保する。
-        const terrainElevAt = vi.fn<(lat: number, lon: number) => number | null>(
-            () => null,
-        );
+        const terrainElevAt = vi.fn<
+            (lat: number, lon: number) => number | null
+        >(() => null);
         const mgr = createGlobePolygonManager({
             scene: {} as never,
             terrainElevAt,
@@ -445,7 +467,11 @@ describe("flat + flatScale サイズ一定（追加ケース）", () => {
         // 高度を 10 倍にしても flat スケールは不変（高度が「生きない」）。
         createdPoints.length = 0;
         mgr.add({
-            points: pts3.map((p) => ({ ...p, lat: p.lat + 0.01, altitude: 5000 })),
+            points: pts3.map((p) => ({
+                ...p,
+                lat: p.lat + 0.01,
+                altitude: 5000,
+            })),
             altitudeMode: "absolute",
             style: { pointDiameter: 10 },
         });
@@ -486,7 +512,10 @@ describe("lineWidthMode: screen（アウトラインの radiusFunction）", () =
 
     it("3D（非 flat）では cameraEcef ありなら radiusFunction を頂点ごとに設定する", () => {
         const { mgr } = makeManager();
-        mgr.add({ points: pts3, style: { lineWidthMode: "screen", lineWidth: 2 } });
+        mgr.add({
+            points: pts3,
+            style: { lineWidthMode: "screen", lineWidth: 2 },
+        });
         mgr.update(cameraEcef, undefined);
         expect(createdLines).toHaveLength(1);
         expect(typeof createdLines[0].lastRadiusFunction).toBe("function");
@@ -495,7 +524,10 @@ describe("lineWidthMode: screen（アウトラインの radiusFunction）", () =
     it("flat（2D）では cameraEcef があっても radiusFunction を無効化し、一律 flatScale を使う", () => {
         const { mgr } = makeManager();
         mgr.setFlatten(true);
-        mgr.add({ points: pts3, style: { lineWidthMode: "screen", lineWidth: 2 } });
+        mgr.add({
+            points: pts3,
+            style: { lineWidthMode: "screen", lineWidth: 2 },
+        });
         const flatScale = 3;
         // 実運用（globe.ts）では 2D でも camEcef は常に渡されるため、cameraEcef ありでも
         // flat 時は距離由来の per-vertex 計算を行わないことを検証する。
@@ -529,7 +561,10 @@ describe("色フォールバック", () => {
     it("非 hex の line/wall 色でも throw しない", () => {
         const { mgr } = makeManager();
         expect(() =>
-            mgr.add({ points: pts3, style: { lineColor: "red", wallColor: "blue" } }),
+            mgr.add({
+                points: pts3,
+                style: { lineColor: "red", wallColor: "blue" },
+            }),
         ).not.toThrow();
     });
 });
@@ -563,7 +598,11 @@ describe("setContent（in-place 更新, ラベルチラつき対策）", () => {
 
     it("ラベルが既存テクスチャに収まらない場合のみ当該ラベルを作り直す", () => {
         const { mgr } = makeManager();
-        const id = mgr.add({ points: pts3, closed: true, labels: ["A", "B", "C"] });
+        const id = mgr.add({
+            points: pts3,
+            closed: true,
+            labels: ["A", "B", "C"],
+        });
         const planesAfterAdd = createdPlanes.length;
         const ok = mgr.setContent(id, {
             points: pts3,
@@ -584,7 +623,8 @@ describe("setContent（in-place 更新, ラベルチラつき対策）", () => {
             edgeLabels: ["x", "y", "z"],
         });
         const pointLabelPlanes = createdPlanes.filter(
-            (p) => p.name.includes("-label-") && !p.name.includes("-edge-label-"),
+            (p) =>
+                p.name.includes("-label-") && !p.name.includes("-edge-label-"),
         );
         const edgeLabelPlanes = createdPlanes.filter((p) =>
             p.name.includes("-edge-label-"),

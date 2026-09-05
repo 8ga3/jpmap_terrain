@@ -18,35 +18,43 @@
  * 他の import 解決時に先走って実行され、`createEngineMock` の TDZ エラーになる。
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
-import type { CircleManager } from "../src/terrain/circleManager";
-import type { MarkerManager } from "../src/terrain/markerManager";
-import type { ModelManager } from "../src/terrain/modelManager";
-import type { PolygonManager } from "../src/terrain/polygonManager";
-import { assertLatLonInBounds } from "../src/terrain/overlayCoords";
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    type Mock,
+    vi,
+} from "vitest";
 import {
     CIRCLE_DEFAULTS,
     CIRCLE_RADIUS_MAX_M,
     CIRCLE_SEGMENTS_MAX,
     CIRCLE_SEGMENTS_MIN,
-    MARKER_DEFAULTS,
-    MODEL_DEFAULTS,
-    POLYGON_DEFAULTS,
     type CircleHandle,
     type CircleOptions,
     type CircleUpdate,
+    MARKER_DEFAULTS,
     type MarkerHandle,
     type MarkerOptions,
     type MarkerUpdate,
+    MODEL_DEFAULTS,
     type ModelHandle,
     type ModelOptions,
     type ModelUpdate,
+    POLYGON_DEFAULTS,
     type PolygonHandle,
     type PolygonOptions,
     type PolygonPointOptions,
     type PolygonPointPartial,
     type PolygonUpdate,
 } from "../src/lib/types";
+import type { CircleManager } from "../src/terrain/circleManager";
+import type { MarkerManager } from "../src/terrain/markerManager";
+import type { ModelManager } from "../src/terrain/modelManager";
+import { assertLatLonInBounds } from "../src/terrain/overlayCoords";
+import type { PolygonManager } from "../src/terrain/polygonManager";
 
 // Engine / Scene 生成はテスト対象外（Babylon.js に委譲）。
 // jsdom では WebGPU/WebGL2 を提供できないため、最低限のスタブで差し替える。
@@ -58,15 +66,21 @@ let lastEngineResize: Mock = vi.fn();
 // `[i][2]`（high precision matrix オプション）を検証する用途があるため、可変引数ではなく
 // 明示的なパラメータとして宣言する。
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const createEngineMock = vi.fn(async (_canvas: unknown, _preferred?: "webgpu" | "webgl2", _options?: { highPrecisionMatrix?: boolean }) => {
-    const resize = vi.fn();
-    lastEngineResize = resize;
-    return {
-        runRenderLoop: vi.fn(),
-        resize,
-        dispose: engineDispose,
-    };
-});
+const createEngineMock = vi.fn(
+    async (
+        _canvas: unknown,
+        _preferred?: "webgpu" | "webgl2",
+        _options?: { highPrecisionMatrix?: boolean },
+    ) => {
+        const resize = vi.fn();
+        lastEngineResize = resize;
+        return {
+            runRenderLoop: vi.fn(),
+            resize,
+            dispose: engineDispose,
+        };
+    },
+);
 
 vi.mock("../src/lib/internal/engineFactory", () => ({
     createBabylonEngine: createEngineMock,
@@ -100,7 +114,9 @@ class TestResizeObserver {
         this.targets.delete(target);
     }
 }
-(globalThis as unknown as { ResizeObserver: typeof TestResizeObserver }).ResizeObserver = TestResizeObserver;
+(
+    globalThis as unknown as { ResizeObserver: typeof TestResizeObserver }
+).ResizeObserver = TestResizeObserver;
 const triggerResizeObservers = (): void => {
     for (const ro of resizeObservers) {
         if (ro.targets.size === 0) continue;
@@ -112,147 +128,190 @@ const triggerResizeObservers = (): void => {
 // Polygon API テストでは実際の Polygon ノード（Babylon 実体に依存）ではなく、
 // 振る舞いのみを再現した軽量スタブファクトリを用いる。
 const createPolygonNode = (
-        _scene: unknown,
-        id: string,
-        options: { points: readonly { lat: number; lon: number; altitude?: number }[]; closed?: boolean; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; pointsEnabled?: boolean; verticalsEnabled?: boolean; labelsEnabled?: boolean; wallsEnabled?: boolean },
-    ) => {
-        let enabled = options.enabled ?? true;
-        let pointsEnabled = options.pointsEnabled ?? true;
-        let verticalsEnabled = options.verticalsEnabled ?? true;
-        let labelsEnabled = options.labelsEnabled ?? true;
-        let wallsEnabled = options.wallsEnabled ?? true;
-        const altitudeMode = options.altitudeMode ?? "terrain";
-        let elevationResolved = altitudeMode === "absolute";
-        const points = options.points.map((p) => ({ ...p }));
-        return {
+    _scene: unknown,
+    id: string,
+    options: {
+        points: readonly { lat: number; lon: number; altitude?: number }[];
+        closed?: boolean;
+        altitudeMode?: "terrain" | "absolute";
+        enabled?: boolean;
+        pointsEnabled?: boolean;
+        verticalsEnabled?: boolean;
+        labelsEnabled?: boolean;
+        wallsEnabled?: boolean;
+    },
+) => {
+    let enabled = options.enabled ?? true;
+    let pointsEnabled = options.pointsEnabled ?? true;
+    let verticalsEnabled = options.verticalsEnabled ?? true;
+    let labelsEnabled = options.labelsEnabled ?? true;
+    let wallsEnabled = options.wallsEnabled ?? true;
+    const altitudeMode = options.altitudeMode ?? "terrain";
+    let elevationResolved = altitudeMode === "absolute";
+    const points = options.points.map((p) => ({ ...p }));
+    return {
+        id,
+        altitudeMode,
+        closed: options.closed ?? false,
+        points,
+        applyTransform: () => {
+            /* no-op */
+        },
+        setEnabledLogical: (v: boolean) => {
+            enabled = v;
+        },
+        setPointsEnabledLogical: (v: boolean) => {
+            pointsEnabled = v;
+        },
+        setVerticalsEnabledLogical: (v: boolean) => {
+            verticalsEnabled = v;
+        },
+        setLabelsEnabledLogical: (v: boolean) => {
+            labelsEnabled = v;
+        },
+        setWallsEnabledLogical: (v: boolean) => {
+            wallsEnabled = v;
+        },
+        setElevationResolved: (v: boolean) => {
+            elevationResolved = v;
+        },
+        getHandle: (): PolygonHandle => ({
             id,
-            altitudeMode,
+            points: points.map((p) => ({ ...p })),
             closed: options.closed ?? false,
-            points,
-            applyTransform: () => {
-                /* no-op */
+            altitudeMode,
+            labels: undefined,
+            edgeLabels: undefined,
+            style: {} as unknown as PolygonHandle["style"],
+            enabled,
+            pointsEnabled,
+            verticalsEnabled,
+            labelsEnabled,
+            wallsEnabled,
+            elevationResolved,
+        }),
+        dispose: () => {
+            /* no-op */
+        },
+        insertPoint: (
+            index: number,
+            point: { lat: number; lon: number; altitude?: number },
+        ) => {
+            points.splice(index, 0, { ...point });
+        },
+        removePoint: (index: number) => {
+            points.splice(index, 1);
+        },
+        updatePoint: (
+            index: number,
+            partial: {
+                lat?: number;
+                lon?: number;
+                altitude?: number;
+                label?: string | null;
             },
-            setEnabledLogical: (v: boolean) => {
-                enabled = v;
-            },
-            setPointsEnabledLogical: (v: boolean) => {
-                pointsEnabled = v;
-            },
-            setVerticalsEnabledLogical: (v: boolean) => {
-                verticalsEnabled = v;
-            },
-            setLabelsEnabledLogical: (v: boolean) => {
-                labelsEnabled = v;
-            },
-            setWallsEnabledLogical: (v: boolean) => {
-                wallsEnabled = v;
-            },
-            setElevationResolved: (v: boolean) => {
-                elevationResolved = v;
-            },
-            getHandle: (): PolygonHandle => ({
-                id,
-                points: points.map((p) => ({ ...p })),
-                closed: options.closed ?? false,
-                altitudeMode,
-                labels: undefined,
-                edgeLabels: undefined,
-                style: {} as unknown as PolygonHandle["style"],
-                enabled,
-                pointsEnabled,
-                verticalsEnabled,
-                labelsEnabled,
-                wallsEnabled,
-                elevationResolved,
-            }),
-            dispose: () => {
-                /* no-op */
-            },
-            insertPoint: (
-                index: number,
-                point: { lat: number; lon: number; altitude?: number },
-            ) => {
-                points.splice(index, 0, { ...point });
-            },
-            removePoint: (index: number) => {
-                points.splice(index, 1);
-            },
-            updatePoint: (
-                index: number,
-                partial: {
-                    lat?: number;
-                    lon?: number;
-                    altitude?: number;
-                    label?: string | null;
-                },
-            ) => {
-                const cur = points[index];
-                if (!cur) return;
-                if (partial.lat !== undefined) cur.lat = partial.lat;
-                if (partial.lon !== undefined) cur.lon = partial.lon;
-                if (partial.altitude !== undefined) cur.altitude = partial.altitude;
-            },
-            replacePoints: (
-                next: readonly { lat: number; lon: number; altitude?: number }[],
-            ) => {
-                points.length = 0;
-                for (const p of next) points.push({ ...p });
-            },
-        };
+        ) => {
+            const cur = points[index];
+            if (!cur) return;
+            if (partial.lat !== undefined) cur.lat = partial.lat;
+            if (partial.lon !== undefined) cur.lon = partial.lon;
+            if (partial.altitude !== undefined) cur.altitude = partial.altitude;
+        },
+        replacePoints: (
+            next: readonly { lat: number; lon: number; altitude?: number }[],
+        ) => {
+            points.length = 0;
+            for (const p of next) points.push({ ...p });
+        },
     };
+};
 
 // Circle API テストでは実際の Circle ノード（Babylon 実体に依存）ではなく、
 // 振る舞いのみを再現した軽量スタブファクトリを用いる。
 const createCircleNode = (
-        _scene: unknown,
-        id: string,
-        options: { center: { lat: number; lon: number; altitude?: number }; radius: number; segments?: number; altitudeMode?: "terrain" | "absolute"; enabled?: boolean; pointEnabled?: boolean; lineEnabled?: boolean; wallEnabled?: boolean; labelEnabled?: boolean },
-    ) => {
-        let enabled = options.enabled ?? true;
-        let pointEnabled = options.pointEnabled ?? true;
-        let lineEnabled = options.lineEnabled ?? true;
-        let wallEnabled = options.wallEnabled ?? true;
-        let labelEnabled = options.labelEnabled ?? true;
-        const altitudeMode = options.altitudeMode ?? "terrain";
-        let elevationResolved = altitudeMode === "absolute";
-        let _center = { ...options.center };
-        let _radius = options.radius;
-        const segments = options.segments ?? 64;
-        return {
+    _scene: unknown,
+    id: string,
+    options: {
+        center: { lat: number; lon: number; altitude?: number };
+        radius: number;
+        segments?: number;
+        altitudeMode?: "terrain" | "absolute";
+        enabled?: boolean;
+        pointEnabled?: boolean;
+        lineEnabled?: boolean;
+        wallEnabled?: boolean;
+        labelEnabled?: boolean;
+    },
+) => {
+    let enabled = options.enabled ?? true;
+    let pointEnabled = options.pointEnabled ?? true;
+    let lineEnabled = options.lineEnabled ?? true;
+    let wallEnabled = options.wallEnabled ?? true;
+    let labelEnabled = options.labelEnabled ?? true;
+    const altitudeMode = options.altitudeMode ?? "terrain";
+    let elevationResolved = altitudeMode === "absolute";
+    let _center = { ...options.center };
+    let _radius = options.radius;
+    const segments = options.segments ?? 64;
+    return {
+        id,
+        altitudeMode,
+        get center() {
+            return _center;
+        },
+        set center(v: { lat: number; lon: number; altitude?: number }) {
+            _center = { ...v };
+        },
+        get radius() {
+            return _radius;
+        },
+        set radius(v: number) {
+            _radius = v;
+        },
+        get segments() {
+            return segments;
+        },
+        applyTransform: () => {
+            /* no-op */
+        },
+        setEnabledLogical: (v: boolean) => {
+            enabled = v;
+        },
+        setPointEnabledLogical: (v: boolean) => {
+            pointEnabled = v;
+        },
+        setLineEnabledLogical: (v: boolean) => {
+            lineEnabled = v;
+        },
+        setWallEnabledLogical: (v: boolean) => {
+            wallEnabled = v;
+        },
+        setLabelEnabledLogical: (v: boolean) => {
+            labelEnabled = v;
+        },
+        setElevationResolved: (v: boolean) => {
+            elevationResolved = v;
+        },
+        getHandle: (): CircleHandle => ({
             id,
+            center: { ..._center },
+            radius: _radius,
+            segments,
             altitudeMode,
-            get center() { return _center; },
-            set center(v: { lat: number; lon: number; altitude?: number }) {
-                _center = { ...v };
-            },
-            get radius() { return _radius; },
-            set radius(v: number) { _radius = v; },
-            get segments() { return segments; },
-            applyTransform: () => { /* no-op */ },
-            setEnabledLogical: (v: boolean) => { enabled = v; },
-            setPointEnabledLogical: (v: boolean) => { pointEnabled = v; },
-            setLineEnabledLogical: (v: boolean) => { lineEnabled = v; },
-            setWallEnabledLogical: (v: boolean) => { wallEnabled = v; },
-            setLabelEnabledLogical: (v: boolean) => { labelEnabled = v; },
-            setElevationResolved: (v: boolean) => { elevationResolved = v; },
-            getHandle: (): CircleHandle => ({
-                id,
-                center: { ..._center },
-                radius: _radius,
-                segments,
-                altitudeMode,
-                label: null,
-                style: {} as unknown as CircleHandle["style"],
-                enabled,
-                pointEnabled,
-                lineEnabled,
-                wallEnabled,
-                labelEnabled,
-                elevationResolved,
-            }),
-            dispose: () => { /* no-op */ },
-        };
+            label: null,
+            style: {} as unknown as CircleHandle["style"],
+            enabled,
+            pointEnabled,
+            lineEnabled,
+            wallEnabled,
+            labelEnabled,
+            elevationResolved,
+        }),
+        dispose: () => {
+            /* no-op */
+        },
     };
+};
 
 const createMarkerManagerStub = (): MarkerManager => {
     const markers = new Map<string, MarkerHandle>();
@@ -321,7 +380,9 @@ const createMarkerManagerStub = (): MarkerManager => {
 
 const validatePolygonOptions = (options: PolygonOptions): void => {
     if (!options.points || options.points.length < 1) {
-        throw new Error("JpmapTerrain.addPolygon: points must contain at least 1 entry");
+        throw new Error(
+            "JpmapTerrain.addPolygon: points must contain at least 1 entry",
+        );
     }
     const altitudeMode = options.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode;
     options.points.forEach((point, index) => {
@@ -356,7 +417,9 @@ const createPolygonManagerStub = (): PolygonManager => {
     ): void => {
         assertLatLonInBounds(point.lat, point.lon, prefix);
         if (node.altitudeMode === "absolute" && point.altitude === undefined) {
-            throw new Error(`${prefix}: altitudeMode="absolute" requires altitude`);
+            throw new Error(
+                `${prefix}: altitudeMode="absolute" requires altitude`,
+            );
         }
     };
     return {
@@ -375,14 +438,18 @@ const createPolygonManagerStub = (): PolygonManager => {
             const prev = requireNode(id);
             const current = prev.getHandle();
             const merged: PolygonOptions = {
-                points: (partial.points ?? current.points).map((p) => ({ ...p })),
+                points: (partial.points ?? current.points).map((p) => ({
+                    ...p,
+                })),
                 closed: partial.closed ?? current.closed,
                 altitudeMode: partial.altitudeMode ?? current.altitudeMode,
                 labels: ("labels" in partial
                     ? partial.labels
                     : current.labels) as PolygonOptions["labels"],
                 edgeLabels:
-                    "edgeLabels" in partial ? partial.edgeLabels : current.edgeLabels,
+                    "edgeLabels" in partial
+                        ? partial.edgeLabels
+                        : current.edgeLabels,
                 style: "style" in partial ? partial.style : current.style,
                 enabled: partial.enabled ?? current.enabled,
                 verticalsEnabled:
@@ -426,7 +493,11 @@ const createPolygonManagerStub = (): PolygonManager => {
         insertPoint(id: string, index: number, point: PolygonPointOptions) {
             assertActive();
             const node = requireNode(id);
-            validatePointForNode(node, point, `JpmapTerrain.insertPolygonPoint[${id}]`);
+            validatePointForNode(
+                node,
+                point,
+                `JpmapTerrain.insertPolygonPoint[${id}]`,
+            );
             node.insertPoint(index, point);
             return node.getHandle();
         },
@@ -440,7 +511,8 @@ const createPolygonManagerStub = (): PolygonManager => {
             assertActive();
             const node = requireNode(id);
             const current = node.points[index];
-            if (!current) throw new Error(`Polygon point index "${index}" not found`);
+            if (!current)
+                throw new Error(`Polygon point index "${index}" not found`);
             const next = { ...current, ...partial };
             validatePointForNode(
                 node,
@@ -498,7 +570,9 @@ const validateCircleOptions = (
     }
     const altitudeMode = options.altitudeMode ?? CIRCLE_DEFAULTS.altitudeMode;
     if (altitudeMode === "absolute" && options.center.altitude === undefined) {
-        throw new Error(`${prefix}: altitudeMode="absolute" requires center.altitude`);
+        throw new Error(
+            `${prefix}: altitudeMode="absolute" requires center.altitude`,
+        );
     }
 };
 
@@ -531,12 +605,16 @@ const createCircleManagerStub = (): CircleManager => {
             const current = optionsById.get(id) ?? node.getHandle();
             const merged: CircleOptions = {
                 ...current,
-                center: partial.center ? { ...partial.center } : { ...current.center },
+                center: partial.center
+                    ? { ...partial.center }
+                    : { ...current.center },
                 radius: partial.radius ?? current.radius,
                 segments: partial.segments ?? current.segments,
                 altitudeMode: partial.altitudeMode ?? current.altitudeMode,
                 label: partial.label ?? current.label,
-                style: partial.style ? { ...current.style, ...partial.style } : current.style,
+                style: partial.style
+                    ? { ...current.style, ...partial.style }
+                    : current.style,
                 enabled: partial.enabled ?? current.enabled,
                 pointEnabled: partial.pointEnabled ?? current.pointEnabled,
                 lineEnabled: partial.lineEnabled ?? current.lineEnabled,
@@ -622,14 +700,18 @@ const createModelManagerStub = (): ModelManager => {
         add(id: string, options: ModelOptions) {
             if (disposed) throw new Error("ModelManager has been disposed");
             if (models.has(id)) throw new Error(`id "${id}" already exists`);
-            assertLatLonInBounds(options.lat, options.lon, "JpmapTerrain.addModel");
+            assertLatLonInBounds(
+                options.lat,
+                options.lon,
+                "JpmapTerrain.addModel",
+            );
             if (
                 (options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode) ===
                     "absolute" &&
                 options.altitude === undefined
             ) {
                 throw new Error(
-                    "JpmapTerrain.addModel: altitudeMode=\"absolute\" requires altitude",
+                    'JpmapTerrain.addModel: altitudeMode="absolute" requires altitude',
                 );
             }
             const entry: ModelHandle = {
@@ -638,7 +720,8 @@ const createModelManagerStub = (): ModelManager => {
                 lat: options.lat,
                 lon: options.lon,
                 altitude: options.altitude ?? MODEL_DEFAULTS.altitude,
-                altitudeMode: options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode,
+                altitudeMode:
+                    options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode,
                 rotation: { ...MODEL_DEFAULTS.rotation, ...options.rotation },
                 scaling: { ...MODEL_DEFAULTS.scaling, ...options.scaling },
                 enabled: options.enabled ?? MODEL_DEFAULTS.enabled,
@@ -673,7 +756,11 @@ const createModelManagerStub = (): ModelManager => {
                 enabled: partial.enabled ?? current.enabled,
                 gravity: partial.gravity ?? current.gravity,
             };
-            assertLatLonInBounds(next.lat, next.lon, "JpmapTerrain.updateModel");
+            assertLatLonInBounds(
+                next.lat,
+                next.lon,
+                "JpmapTerrain.updateModel",
+            );
             models.set(id, next);
             return toHandle(next);
         },
@@ -721,7 +808,11 @@ vi.mock("../src/scenes/globeSceneController", () => {
         readonly lat: number;
         readonly lon: number;
         readonly altitude: number;
-        readonly world: { readonly x: number; readonly y: number; readonly z: number };
+        readonly world: {
+            readonly x: number;
+            readonly y: number;
+            readonly z: number;
+        };
         readonly pointerEvent: PointerEvent;
     };
     const terrainClickListeners: Array<(e: TerrainClickEventLike) => void> = [];
@@ -858,7 +949,8 @@ vi.mock("../src/scenes/globeSceneController", () => {
                 },
             ) => {
                 // pointerup 後のスナップショット無効化テスト用
-                latestOnCameraInteractionEnd = opts?.onCameraInteractionEnd ?? null;
+                latestOnCameraInteractionEnd =
+                    opts?.onCameraInteractionEnd ?? null;
                 // コントローラのインメモリ実装をテスト用に提供する。
                 let lat = opts?.lat ?? 0;
                 let lon = opts?.lon ?? 0;
@@ -884,7 +976,8 @@ vi.mock("../src/scenes/globeSceneController", () => {
                         lon = values.lon;
                         centerChanged = true;
                     }
-                    if (values.altitude !== undefined) altitude = values.altitude;
+                    if (values.altitude !== undefined)
+                        altitude = values.altitude;
                     if (values.azimuth !== undefined) azimuth = values.azimuth;
                     if (values.tilt !== undefined) {
                         // 2D 中は tilt を反映しない（復帰時の値だけ更新）
@@ -903,10 +996,12 @@ vi.mock("../src/scenes/globeSceneController", () => {
                     getAltitude: () => altitude,
                     getAzimuth: () => azimuth,
                     getTilt: () => (lastViewMode === "2d" ? 0 : tilt),
-                    getZoomLevel: () => lastViewMode === "2d" ? 14.0 : undefined,
+                    getZoomLevel: () =>
+                        lastViewMode === "2d" ? 14.0 : undefined,
                     setLat: (v: number) => applyView({ lat: v }, true),
                     setLon: (v: number) => applyView({ lon: v }, true),
-                    setAltitude: (v: number) => applyView({ altitude: v }, true),
+                    setAltitude: (v: number) =>
+                        applyView({ altitude: v }, true),
                     setAzimuth: (v: number) => applyView({ azimuth: v }, true),
                     setTilt: (v: number) => applyView({ tilt: v }, true),
                     setView: (
@@ -959,18 +1054,22 @@ vi.mock("../src/scenes/globeSceneController", () => {
                             if (removed) return;
                             removed = true;
                             const idx = terrainClickListeners.indexOf(listener);
-                            if (idx !== -1) terrainClickListeners.splice(idx, 1);
+                            if (idx !== -1)
+                                terrainClickListeners.splice(idx, 1);
                         };
                     },
                     subscribePolygonPointHover: (
-                        listener: (e: PolygonPointPointerEventLike | null) => void,
+                        listener: (
+                            e: PolygonPointPointerEventLike | null,
+                        ) => void,
                     ) => subscribeStub(polygonPointHoverListeners, listener),
                     subscribePolygonPointClick: (
                         listener: (e: PolygonPointPointerEventLike) => void,
                     ) => subscribeStub(polygonPointClickListeners, listener),
                     subscribePolygonPointDragStart: (
                         listener: (e: PolygonPointDragEventLike) => void,
-                    ) => subscribeStub(polygonPointDragStartListeners, listener),
+                    ) =>
+                        subscribeStub(polygonPointDragStartListeners, listener),
                     subscribePolygonPointDrag: (
                         listener: (e: PolygonPointDragEventLike) => void,
                     ) => subscribeStub(polygonPointDragListeners, listener),
@@ -1018,9 +1117,7 @@ vi.mock("../src/scenes/globeSceneController", () => {
         __setLastMapType: (v: "standard" | "photo"): void => {
             lastMapType = v;
         },
-        __getSetViewModeCalls: (): Array<"3d" | "2d"> => [
-            ...setViewModeCalls,
-        ],
+        __getSetViewModeCalls: (): Array<"3d" | "2d"> => [...setViewModeCalls],
         __resetSetViewModeCalls: (): void => {
             setViewModeCalls.length = 0;
         },
@@ -1046,7 +1143,8 @@ vi.mock("../src/scenes/globeSceneController", () => {
         __triggerCameraInteractionEnd: (): void => {
             latestOnCameraInteractionEnd?.();
         },
-        __getTerrainClickListenerCount: (): number => terrainClickListeners.length,
+        __getTerrainClickListenerCount: (): number =>
+            terrainClickListeners.length,
         __triggerTerrainClick: (event: TerrainClickEventLike): void => {
             for (const listener of terrainClickListeners.slice()) {
                 listener(event);
@@ -1070,9 +1168,7 @@ vi.mock("../src/scenes/globeSceneController", () => {
         ): void => {
             for (const l of polygonPointDragStartListeners.slice()) l(event);
         },
-        __triggerPolygonPointDrag: (
-            event: PolygonPointDragEventLike,
-        ): void => {
+        __triggerPolygonPointDrag: (event: PolygonPointDragEventLike): void => {
             for (const l of polygonPointDragListeners.slice()) l(event);
         },
         __triggerPolygonPointDragEnd: (
@@ -1103,7 +1199,9 @@ type UiTarget =
     | "mapToggle"
     | "viewModeButton"
     | "attribution";
-const sceneMockModule = (await import("../src/scenes/globeSceneController")) as unknown as {
+const sceneMockModule = (await import(
+    "../src/scenes/globeSceneController"
+)) as unknown as {
     __getRefreshCount: () => number;
     __resetRefreshCount: () => void;
     __getUiVisibility: () => Record<UiTarget, boolean>;
@@ -1133,11 +1231,13 @@ const sceneMockModule = (await import("../src/scenes/globeSceneController")) as 
         pointerEvent: PointerEvent;
     }) => void;
     __resetTerrainClickListeners: () => void;
-    __triggerPolygonPointHover: (event: {
-        polygonId: string;
-        index: number;
-        pointerEvent: PointerEvent;
-    } | null) => void;
+    __triggerPolygonPointHover: (
+        event: {
+            polygonId: string;
+            index: number;
+            pointerEvent: PointerEvent;
+        } | null,
+    ) => void;
     __triggerPolygonPointClick: (event: {
         polygonId: string;
         index: number;
@@ -1380,7 +1480,10 @@ describe("JpmapTerrain (skeleton)", () => {
             await create(mount);
 
             const canvas = mount.querySelector("canvas")!;
-            const ev = new Event("touchmove", { bubbles: true, cancelable: true });
+            const ev = new Event("touchmove", {
+                bubbles: true,
+                cancelable: true,
+            });
             canvas.dispatchEvent(ev);
 
             expect(ev.defaultPrevented).toBe(true);
@@ -1391,13 +1494,19 @@ describe("JpmapTerrain (skeleton)", () => {
             await create(mount);
 
             const canvas = mount.querySelector("canvas")!;
-            const pinch = new Event("wheel", { bubbles: true, cancelable: true });
+            const pinch = new Event("wheel", {
+                bubbles: true,
+                cancelable: true,
+            });
             Object.assign(pinch, { ctrlKey: true, deltaY: -10 });
             canvas.dispatchEvent(pinch);
             expect(pinch.defaultPrevented).toBe(true);
 
             // ctrlKey なしの通常 wheel には干渉しない（地図ズーム/スクロール用）。
-            const normal = new Event("wheel", { bubbles: true, cancelable: true });
+            const normal = new Event("wheel", {
+                bubbles: true,
+                cancelable: true,
+            });
             Object.assign(normal, { ctrlKey: false, deltaY: -10 });
             canvas.dispatchEvent(normal);
             expect(normal.defaultPrevented).toBe(false);
@@ -1415,9 +1524,13 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("初期化途中で例外が発生した場合 canvas を mountElement から除去する", async () => {
             const mount = createMountElement();
-            createEngineMock.mockRejectedValueOnce(new Error("engine init failed"));
+            createEngineMock.mockRejectedValueOnce(
+                new Error("engine init failed"),
+            );
 
-            await expect(JpmapTerrain.create(mount)).rejects.toThrow("engine init failed");
+            await expect(JpmapTerrain.create(mount)).rejects.toThrow(
+                "engine init failed",
+            );
 
             expect(mount.querySelectorAll("canvas").length).toBe(0);
         });
@@ -2259,17 +2372,17 @@ describe("JpmapTerrain (skeleton)", () => {
             await create(createMountElement(), {
                 showViewModeButton: false,
             });
-            expect(
-                sceneMockModule.__getUiVisibility().viewModeButton,
-            ).toBe(false);
+            expect(sceneMockModule.__getUiVisibility().viewModeButton).toBe(
+                false,
+            );
         });
 
         it("showViewModeButton 既定は true", async () => {
             const viewer = await create(createMountElement());
             expect(viewer.showViewModeButton).toBe(true);
-            expect(
-                sceneMockModule.__getUiVisibility().viewModeButton,
-            ).toBe(true);
+            expect(sceneMockModule.__getUiVisibility().viewModeButton).toBe(
+                true,
+            );
         });
     });
 
@@ -2372,7 +2485,9 @@ describe("JpmapTerrain (skeleton)", () => {
                 vi.advanceTimersByTime(60_000);
                 const second = viewer.dateTime;
                 expect(second).toBeInstanceOf(Date);
-                expect(second!.getTime()).toBeGreaterThanOrEqual(first!.getTime());
+                expect(second!.getTime()).toBeGreaterThanOrEqual(
+                    first!.getTime(),
+                );
             } finally {
                 vi.useRealTimers();
             }
@@ -2549,7 +2664,9 @@ describe("JpmapTerrain (skeleton)", () => {
         it("dispose 後の addPolygon は throw、その他 API は no-op / null / [] を返す", async () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
-            expect(() => viewer.addPolygon("p1", { points: validPoints })).toThrow();
+            expect(() =>
+                viewer.addPolygon("p1", { points: validPoints }),
+            ).toThrow();
             expect(viewer.getPolygon("p1")).toBeNull();
             expect(viewer.listPolygons()).toEqual([]);
             expect(() => viewer.removePolygon("p1")).not.toThrow();
@@ -2655,14 +2772,16 @@ describe("JpmapTerrain (skeleton)", () => {
     describe("onTerrainClick", () => {
         // jsdom には PointerEvent が無いため、必要な形だけスタブする。
         const stubPointerEvent = (): PointerEvent =>
-            ({ shiftKey: false, ctrlKey: false } as unknown as PointerEvent);
-        const buildEvent = (overrides?: Partial<{
-            lat: number;
-            lon: number;
-            altitude: number;
-            world: { x: number; y: number; z: number };
-            pointerEvent: PointerEvent;
-        }>): {
+            ({ shiftKey: false, ctrlKey: false }) as unknown as PointerEvent;
+        const buildEvent = (
+            overrides?: Partial<{
+                lat: number;
+                lon: number;
+                altitude: number;
+                world: { x: number; y: number; z: number };
+                pointerEvent: PointerEvent;
+            }>,
+        ): {
             lat: number;
             lon: number;
             altitude: number;
@@ -2716,7 +2835,7 @@ describe("JpmapTerrain (skeleton)", () => {
     // ポリゴン頂点インタラクション API
     describe("onPolygonPoint*", () => {
         const stubPointerEvent = (): PointerEvent =>
-            ({ shiftKey: false, ctrlKey: false } as unknown as PointerEvent);
+            ({ shiftKey: false, ctrlKey: false }) as unknown as PointerEvent;
         const buildPointer = (
             overrides?: Partial<{ polygonId: string; index: number }>,
         ) => ({
@@ -2828,7 +2947,10 @@ describe("JpmapTerrain (skeleton)", () => {
 
         it("addCircle → getCircle / listCircles で参照できる", async () => {
             const viewer = await create(createMountElement());
-            const handle = viewer.addCircle("c1", { center: validCenter, radius: 100 });
+            const handle = viewer.addCircle("c1", {
+                center: validCenter,
+                radius: 100,
+            });
             expect(handle.id).toBe("c1");
             expect(viewer.getCircle("c1")?.id).toBe("c1");
             expect(viewer.listCircles()).toEqual(["c1"]);
@@ -2851,25 +2973,43 @@ describe("JpmapTerrain (skeleton)", () => {
         it("setCircle{Point,Line,Wall,Label}Enabled は登録済み id に対して throw しない", async () => {
             const viewer = await create(createMountElement());
             viewer.addCircle("c1", { center: validCenter, radius: 100 });
-            expect(() => viewer.setCirclePointEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCircleLineEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCircleWallEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCircleLabelEnabled("c1", false)).not.toThrow();
+            expect(() =>
+                viewer.setCirclePointEnabled("c1", false),
+            ).not.toThrow();
+            expect(() =>
+                viewer.setCircleLineEnabled("c1", false),
+            ).not.toThrow();
+            expect(() =>
+                viewer.setCircleWallEnabled("c1", false),
+            ).not.toThrow();
+            expect(() =>
+                viewer.setCircleLabelEnabled("c1", false),
+            ).not.toThrow();
         });
 
         it("dispose 後の addCircle は throw、その他 API は no-op / null / [] を返す", async () => {
             const viewer = await create(createMountElement());
             viewer.dispose();
-            expect(() => viewer.addCircle("c1", { center: validCenter, radius: 100 })).toThrow();
+            expect(() =>
+                viewer.addCircle("c1", { center: validCenter, radius: 100 }),
+            ).toThrow();
             expect(() => viewer.updateCircle("c1", { radius: 200 })).toThrow();
             expect(viewer.getCircle("c1")).toBeNull();
             expect(viewer.listCircles()).toEqual([]);
             expect(() => viewer.removeCircle("c1")).not.toThrow();
             expect(() => viewer.setCircleEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCirclePointEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCircleLineEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCircleWallEnabled("c1", false)).not.toThrow();
-            expect(() => viewer.setCircleLabelEnabled("c1", false)).not.toThrow();
+            expect(() =>
+                viewer.setCirclePointEnabled("c1", false),
+            ).not.toThrow();
+            expect(() =>
+                viewer.setCircleLineEnabled("c1", false),
+            ).not.toThrow();
+            expect(() =>
+                viewer.setCircleWallEnabled("c1", false),
+            ).not.toThrow();
+            expect(() =>
+                viewer.setCircleLabelEnabled("c1", false),
+            ).not.toThrow();
         });
 
         it("updateCircle で既存円の radius を変更できる", async () => {

@@ -9,14 +9,15 @@
  * 生成・破棄する（ターン制で発射頻度が低いためコストは問題にならず、
  * 物理状態のリセット漏れによるバグを避けられる）。
  */
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
+
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate";
-import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
-import type { Scene } from "@babylonjs/core/scene";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
+import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate";
+import type { Scene } from "@babylonjs/core/scene";
 
 export interface Projectile {
     mesh: Mesh;
@@ -125,7 +126,8 @@ export const createProjectilePool = (
         if (
             process.env.NODE_ENV !== "production" &&
             typeof window !== "undefined" &&
-            (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true
+            (window as unknown as { __ARTILLERY_DEBUG?: boolean })
+                .__ARTILLERY_DEBUG === true
         ) {
             const applied = aggregate.body.getLinearVelocity();
             console.debug(
@@ -141,7 +143,8 @@ export const createProjectilePool = (
         if (
             process.env.NODE_ENV !== "production" &&
             typeof window !== "undefined" &&
-            (window as unknown as { __ARTILLERY_DEBUG?: boolean }).__ARTILLERY_DEBUG === true
+            (window as unknown as { __ARTILLERY_DEBUG?: boolean })
+                .__ARTILLERY_DEBUG === true
         ) {
             const dx = projectile.mesh.position.x - projectile.launchPos.x;
             const dz = projectile.mesh.position.z - projectile.launchPos.z;

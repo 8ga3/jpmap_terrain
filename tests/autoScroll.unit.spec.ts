@@ -3,15 +3,15 @@
  *
  * デッドゾーン方式の自動スクロール判定・追従計算の純粋関数を検証する。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-    estimateViewExtent,
-    viewportOffset,
     computeAutoScroll,
-    projectToViewport,
     DEFAULT_DEADZONE_RATIO,
     DEFAULT_SCROLL_LERP,
+    estimateViewExtent,
+    projectToViewport,
+    viewportOffset,
 } from "../src/demos/avatar-controller/autoScroll";
 
 describe("estimateViewExtent", () => {
@@ -195,7 +195,8 @@ describe("computeAutoScroll", () => {
         });
         expect(result.scrolled).toBe(true);
         // クランプ後: カメラが移動した結果、アバターのビューポート比率が EDGE_LIMIT(0.95) に収まる
-        const newRy = ((baseParams.cameraLat + 200 / 111320) - result.lat) * 111320 / 100;
+        const newRy =
+            ((baseParams.cameraLat + 200 / 111320 - result.lat) * 111320) / 100;
         expect(Math.abs(newRy)).toBeCloseTo(0.95, 2);
     });
 
@@ -213,7 +214,8 @@ describe("computeAutoScroll", () => {
             viewExtentOverride: 100,
             scrollLerp: 0.1,
         });
-        const newRy = ((baseParams.cameraLat + 200 / 111320) - result.lat) * 111320 / 100;
+        const newRy =
+            ((baseParams.cameraLat + 200 / 111320 - result.lat) * 111320) / 100;
         expect(Math.abs(newRy)).toBeCloseTo(0.95, 2);
     });
 });

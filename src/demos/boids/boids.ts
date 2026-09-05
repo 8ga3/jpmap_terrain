@@ -314,7 +314,9 @@ export const updateFlock = (
     bounds: BoidsBounds,
     dt: number,
 ): BoidState[] => {
-    const updated = flock.map((boid) => updateBoid(boid, flock, params, bounds, dt));
+    const updated = flock.map((boid) =>
+        updateBoid(boid, flock, params, bounds, dt),
+    );
 
     // 簡易重なり解消: 近すぎるペアを互いに押し出す（1パス）
     const minDist = COLLISION_RADIUS * 2;
@@ -329,13 +331,25 @@ export const updateFlock = (
                 const ny = dy / d;
                 updated[i] = {
                     ...updated[i],
-                    x: Math.max(bounds.minX, Math.min(bounds.maxX, updated[i].x - nx * overlap)),
-                    y: Math.max(bounds.minY, Math.min(bounds.maxY, updated[i].y - ny * overlap)),
+                    x: Math.max(
+                        bounds.minX,
+                        Math.min(bounds.maxX, updated[i].x - nx * overlap),
+                    ),
+                    y: Math.max(
+                        bounds.minY,
+                        Math.min(bounds.maxY, updated[i].y - ny * overlap),
+                    ),
                 };
                 updated[j] = {
                     ...updated[j],
-                    x: Math.max(bounds.minX, Math.min(bounds.maxX, updated[j].x + nx * overlap)),
-                    y: Math.max(bounds.minY, Math.min(bounds.maxY, updated[j].y + ny * overlap)),
+                    x: Math.max(
+                        bounds.minX,
+                        Math.min(bounds.maxX, updated[j].x + nx * overlap),
+                    ),
+                    y: Math.max(
+                        bounds.minY,
+                        Math.min(bounds.maxY, updated[j].y + ny * overlap),
+                    ),
                 };
             }
         }

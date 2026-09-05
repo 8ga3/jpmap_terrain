@@ -52,7 +52,9 @@ const parseFloatOrNull = (value: string | null): number | null => {
  * 絞り込んで返す（`getElementsByTagName` と異なり子孫要素は含まない）。
  */
 const childrenByLocalName = (el: Element, localName: string): Element[] =>
-    Array.from(el.children).filter((child) => child.localName.toLowerCase() === localName);
+    Array.from(el.children).filter(
+        (child) => child.localName.toLowerCase() === localName,
+    );
 
 /** 要素直下の最初の `<ele>` テキストを標高値としてパースする。 */
 const readElevation = (el: Element): number | null => {

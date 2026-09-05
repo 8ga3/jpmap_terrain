@@ -46,7 +46,7 @@ const buildDemoCircles = (): readonly DemoCircleDef[] => [
         id: "yomiuri-terrain",
         label: "terrain (地表+50m, r=300m)",
         options: {
-            center: { lat: 35.6242, lon: 139.5100, altitude: 50 },
+            center: { lat: 35.6242, lon: 139.51, altitude: 50 },
             radius: 300,
             altitudeMode: "terrain",
             style: {
@@ -78,7 +78,7 @@ const buildDemoCircles = (): readonly DemoCircleDef[] => [
         id: "yomiuri-custom",
         label: "custom (segments=16, r=150m)",
         options: {
-            center: { lat: 35.6242, lon: 139.5200, altitude: 300 },
+            center: { lat: 35.6242, lon: 139.52, altitude: 300 },
             radius: 150,
             segments: 16,
             altitudeMode: "absolute",

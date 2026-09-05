@@ -4,11 +4,11 @@
 /**
  * `src/demos/timelapse/timelapseClock.ts` の純粋関数 unit test。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-    MS_PER_DAY,
     computeSimulatedDate,
+    MS_PER_DAY,
     parseStartDate,
     parseTimelapseQuery,
     sanitizeTimelapseOptions,

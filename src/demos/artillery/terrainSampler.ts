@@ -20,8 +20,8 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import {
     ecefToGeodeticToRef,
-    geodeticToEcefToRef,
     type Geodetic,
+    geodeticToEcefToRef,
 } from "../../terrain/geo/ecef";
 
 /** サンプラが必要とするステージ座標変換の最小インターフェース。 */

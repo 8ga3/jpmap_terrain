@@ -1,19 +1,18 @@
 /**
  * `dioramaOrientationController.ts` のunit test（実 NullEngine + TransformNode 使用）。
  */
-import { describe, it, expect, afterEach } from "vitest";
 
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
-import { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-
-import { createDioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
+import { Scene } from "@babylonjs/core/scene";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-    DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
-    DEFAULT_HEIGHT_SPEED_M_PER_SEC,
-    DEFAULT_HEIGHT_OFFSET_MIN_M,
     DEFAULT_HEIGHT_OFFSET_MAX_M,
+    DEFAULT_HEIGHT_OFFSET_MIN_M,
+    DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+    DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
 } from "../src/lib/internal/diorama/dioramaControllerMapping";
+import { createDioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
 
 const makeEngine = (): NullEngine =>
     new NullEngine({
@@ -64,25 +63,40 @@ describe("createDioramaOrientationController", () => {
         const oc = createDioramaOrientationController(node);
 
         oc.feedAxes(1, 0, 0, 1);
-        expect(oc.getRotationRad()).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
-        expect(node.rotation.y).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
+        expect(oc.getRotationRad()).toBeCloseTo(
+            DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+            10,
+        );
+        expect(node.rotation.y).toBeCloseTo(
+            DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+            10,
+        );
 
         oc.feedAxes(1, 0, 0, 1);
-        expect(oc.getRotationRad()).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC * 2, 10);
+        expect(oc.getRotationRad()).toBeCloseTo(
+            DEFAULT_ROTATION_SPEED_RAD_PER_SEC * 2,
+            10,
+        );
     });
 
     it("負の回転入力で逆方向へ累積する", () => {
         const { node } = makeNode();
         const oc = createDioramaOrientationController(node);
         oc.feedAxes(-1, 0, 0, 1);
-        expect(oc.getRotationRad()).toBeCloseTo(-DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
+        expect(oc.getRotationRad()).toBeCloseTo(
+            -DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+            10,
+        );
     });
 
     it("右トリガー入力でposition.yが上昇する", () => {
         const { node } = makeNode();
         const oc = createDioramaOrientationController(node);
         oc.feedAxes(0, 0, 1, 1);
-        expect(oc.getHeightOffsetM()).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+        expect(oc.getHeightOffsetM()).toBeCloseTo(
+            DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+            10,
+        );
         expect(node.position.y).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
     });
 
@@ -90,7 +104,10 @@ describe("createDioramaOrientationController", () => {
         const { node } = makeNode();
         const oc = createDioramaOrientationController(node);
         oc.feedAxes(0, 1, 0, 1);
-        expect(oc.getHeightOffsetM()).toBeCloseTo(-DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+        expect(oc.getHeightOffsetM()).toBeCloseTo(
+            -DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+            10,
+        );
     });
 
     it("高さオフセットは既定の下限・上限でクランプされる", () => {
@@ -109,8 +126,14 @@ describe("createDioramaOrientationController", () => {
         const { node } = makeNode();
         const oc = createDioramaOrientationController(node);
         oc.feedAxes(1, 0, 1, 1);
-        expect(oc.getRotationRad()).toBeCloseTo(DEFAULT_ROTATION_SPEED_RAD_PER_SEC, 10);
-        expect(oc.getHeightOffsetM()).toBeCloseTo(DEFAULT_HEIGHT_SPEED_M_PER_SEC, 10);
+        expect(oc.getRotationRad()).toBeCloseTo(
+            DEFAULT_ROTATION_SPEED_RAD_PER_SEC,
+            10,
+        );
+        expect(oc.getHeightOffsetM()).toBeCloseTo(
+            DEFAULT_HEIGHT_SPEED_M_PER_SEC,
+            10,
+        );
     });
 
     it("初期状態でノードの既存position.yが可動域外なら生成時にクランプする", () => {

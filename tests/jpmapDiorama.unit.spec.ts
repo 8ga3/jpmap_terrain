@@ -17,12 +17,23 @@
  * モックする。
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from "vitest";
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
-import type { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { DioramaTerrain, DioramaTerrainOptions } from "../src/terrain/diorama/dioramaTerrain";
+import type { Scene } from "@babylonjs/core/scene";
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    type Mock,
+    vi,
+} from "vitest";
 import type { JpmapDioramaOptions } from "../src/lib/types";
+import type {
+    DioramaTerrain,
+    DioramaTerrainOptions,
+} from "../src/terrain/diorama/dioramaTerrain";
 
 // `createBabylonEngine` は WebGPU/WebGL2 を要求するため、テストでは headless な
 // `NullEngine` を返すよう差し替える（`dioramaOrientationController.unit.spec.ts` 等、
@@ -42,7 +53,8 @@ const createEngineMock = vi.fn(async () => {
     return engine;
 });
 vi.mock("../src/lib/internal/engineFactory", () => ({
-    createBabylonEngine: (...args: unknown[]) => createEngineMock(...(args as [])),
+    createBabylonEngine: (...args: unknown[]) =>
+        createEngineMock(...(args as [])),
 }));
 
 // `createDioramaTerrain` は DEM/ラスタタイルの実ネットワーク取得・Mesh構築を伴うため
@@ -58,30 +70,40 @@ const fakeTerrains: Array<{
     setView: Mock;
     dispose: Mock;
 }> = [];
-const createDioramaTerrainMock = vi.fn(async (scene: Scene, options: DioramaTerrainOptions) => {
-    dioramaTerrainCalls.push(options);
-    const root = new TransformNode("fake-diorama-root", scene);
-    const setCenter = vi.fn(async () => {});
-    const setFootprintHalfSize = vi.fn(async () => {});
-    const setTileMode = vi.fn(async () => {});
-    const setView = vi.fn(async () => {});
-    const dispose = vi.fn(() => root.dispose());
-    const terrain = {
-        get mesh() {
-            return {} as never;
-        },
-        root,
-        setCenter,
-        setFootprintHalfSize,
-        setTileMode,
-        setView,
-        dispose,
-    } as unknown as DioramaTerrain;
-    fakeTerrains.push({ terrain, setCenter, setFootprintHalfSize, setTileMode, setView, dispose });
-    return terrain;
-});
+const createDioramaTerrainMock = vi.fn(
+    async (scene: Scene, options: DioramaTerrainOptions) => {
+        dioramaTerrainCalls.push(options);
+        const root = new TransformNode("fake-diorama-root", scene);
+        const setCenter = vi.fn(async () => {});
+        const setFootprintHalfSize = vi.fn(async () => {});
+        const setTileMode = vi.fn(async () => {});
+        const setView = vi.fn(async () => {});
+        const dispose = vi.fn(() => root.dispose());
+        const terrain = {
+            get mesh() {
+                return {} as never;
+            },
+            root,
+            setCenter,
+            setFootprintHalfSize,
+            setTileMode,
+            setView,
+            dispose,
+        } as unknown as DioramaTerrain;
+        fakeTerrains.push({
+            terrain,
+            setCenter,
+            setFootprintHalfSize,
+            setTileMode,
+            setView,
+            dispose,
+        });
+        return terrain;
+    },
+);
 vi.mock("../src/terrain/diorama/dioramaTerrain", () => ({
-    createDioramaTerrain: (...args: unknown[]) => createDioramaTerrainMock(...(args as [Scene, DioramaTerrainOptions])),
+    createDioramaTerrain: (...args: unknown[]) =>
+        createDioramaTerrainMock(...(args as [Scene, DioramaTerrainOptions])),
 }));
 
 // 内蔵タッチHUD/キーボード操作は DOM 生成・イベント配線のみのため、生成有無
@@ -107,7 +129,8 @@ const createHudMock = vi.fn(() => {
     };
 });
 vi.mock("../src/lib/internal/diorama/dioramaArControlHud", () => ({
-    createDioramaArControlHud: (...args: unknown[]) => createHudMock(...(args as [])),
+    createDioramaArControlHud: (...args: unknown[]) =>
+        createHudMock(...(args as [])),
 }));
 
 const touchControlsDisposeMock = vi.fn();
@@ -116,13 +139,15 @@ const setupTouchControlsMock = vi.fn(() => ({
     dispose: touchControlsDisposeMock,
 }));
 vi.mock("../src/lib/internal/diorama/dioramaTouchControls", () => ({
-    setupDioramaTouchControls: (...args: unknown[]) => setupTouchControlsMock(...(args as [])),
+    setupDioramaTouchControls: (...args: unknown[]) =>
+        setupTouchControlsMock(...(args as [])),
 }));
 
 const keyboardControlsDisposeMock = vi.fn();
 const setupKeyboardControlsMock = vi.fn(() => keyboardControlsDisposeMock);
 vi.mock("../src/lib/internal/diorama/dioramaKeyboardControls", () => ({
-    setupDioramaKeyboardControls: (...args: unknown[]) => setupKeyboardControlsMock(...(args as [])),
+    setupDioramaKeyboardControls: (...args: unknown[]) =>
+        setupKeyboardControlsMock(...(args as [])),
 }));
 
 // WebXR統合はjsdomに `navigator.xr` が無いため実体でも常に非対応扱いになるが、
@@ -165,8 +190,10 @@ const createArSessionControllerMock = vi.fn(() => {
 const attachArButtonMock = vi.fn(() => vi.fn());
 const isImmersiveArSupportedMock = vi.fn(async () => arSupported);
 vi.mock("../src/lib/internal/diorama/webXrArSession", () => ({
-    createDioramaArSessionController: (...args: unknown[]) => createArSessionControllerMock(...(args as [])),
-    attachDioramaArButton: (...args: unknown[]) => attachArButtonMock(...(args as [])),
+    createDioramaArSessionController: (...args: unknown[]) =>
+        createArSessionControllerMock(...(args as [])),
+    attachDioramaArButton: (...args: unknown[]) =>
+        attachArButtonMock(...(args as [])),
     isImmersiveArSupported: () => isImmersiveArSupportedMock(),
 }));
 
@@ -204,7 +231,10 @@ const createInstance = async (
     options: Partial<JpmapDioramaOptions> = {},
 ): Promise<Awaited<ReturnType<typeof JpmapDiorama.create>>> => {
     const mount = document.createElement("div");
-    const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER, ...options });
+    const instance = await JpmapDiorama.create(mount, {
+        center: DEFAULT_CENTER,
+        ...options,
+    });
     instances.push(instance);
     return instance;
 };
@@ -212,7 +242,9 @@ const createInstance = async (
 describe("JpmapDiorama.create", () => {
     it("mountElement が無い場合は TypeError を投げる", async () => {
         await expect(
-            JpmapDiorama.create(null as unknown as HTMLElement, { center: DEFAULT_CENTER }),
+            JpmapDiorama.create(null as unknown as HTMLElement, {
+                center: DEFAULT_CENTER,
+            }),
         ).rejects.toThrow(TypeError);
     });
 
@@ -226,13 +258,17 @@ describe("JpmapDiorama.create", () => {
     it("options.center が null の場合も TypeError を投げる", async () => {
         const mount = document.createElement("div");
         await expect(
-            JpmapDiorama.create(mount, { center: null } as unknown as JpmapDioramaOptions),
+            JpmapDiorama.create(mount, {
+                center: null,
+            } as unknown as JpmapDioramaOptions),
         ).rejects.toThrow(TypeError);
     });
 
     it("mountElement に canvas を追加する", async () => {
         const mount = document.createElement("div");
-        const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        const instance = await JpmapDiorama.create(mount, {
+            center: DEFAULT_CENTER,
+        });
         instances.push(instance);
         expect(mount.querySelector("canvas")).not.toBeNull();
     });
@@ -241,7 +277,9 @@ describe("JpmapDiorama.create", () => {
         const mount = document.createElement("div");
         expect(getComputedStyle(mount).position).toBe("static");
 
-        const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        const instance = await JpmapDiorama.create(mount, {
+            center: DEFAULT_CENTER,
+        });
         instances.push(instance);
 
         expect(mount.style.position).toBe("relative");
@@ -251,7 +289,9 @@ describe("JpmapDiorama.create", () => {
         const mount = document.createElement("div");
         mount.style.position = "absolute";
 
-        const instance = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        const instance = await JpmapDiorama.create(mount, {
+            center: DEFAULT_CENTER,
+        });
         instances.push(instance);
 
         expect(mount.style.position).toBe("absolute");
@@ -268,7 +308,12 @@ describe("JpmapDiorama.create", () => {
     });
 
     it("指定した値が createDioramaTerrain へ渡される", async () => {
-        await createInstance({ footprintHalfSizeM: 500, tableRadiusM: 0.5, tileMode: "photo", gridSegments: 16 });
+        await createInstance({
+            footprintHalfSizeM: 500,
+            tableRadiusM: 0.5,
+            tileMode: "photo",
+            gridSegments: 16,
+        });
         const opts = dioramaTerrainCalls[0];
         expect(opts.footprintHalfSizeM).toBe(500);
         expect(opts.tableRadiusM).toBe(0.5);
@@ -279,7 +324,9 @@ describe("JpmapDiorama.create", () => {
     it("options.centerオブジェクトを後から書き換えても、createDioramaTerrainへ渡した内部状態は変化しない", async () => {
         const mount = document.createElement("div");
         const mutableCenter = { lat: 10, lon: 20 };
-        const instance = await JpmapDiorama.create(mount, { center: mutableCenter });
+        const instance = await JpmapDiorama.create(mount, {
+            center: mutableCenter,
+        });
         instances.push(instance);
 
         mutableCenter.lat = 99;
@@ -330,7 +377,9 @@ describe("center / footprintHalfSizeM", () => {
     it("setCenterでterrain.setViewが呼ばれ、centerが更新される", async () => {
         const diorama = await createInstance();
         await diorama.setCenter(35.0, 139.0);
-        expect(fakeTerrains[0].setView).toHaveBeenCalledWith({ center: { lat: 35.0, lon: 139.0 } });
+        expect(fakeTerrains[0].setView).toHaveBeenCalledWith({
+            center: { lat: 35.0, lon: 139.0 },
+        });
         expect(diorama.center).toEqual({ lat: 35.0, lon: 139.0 });
     });
 
@@ -346,7 +395,10 @@ describe("center / footprintHalfSizeM", () => {
         const unsubscribe = diorama.onViewChange(listener);
 
         await diorama.setView({ footprintHalfSizeM: 600 });
-        expect(listener).toHaveBeenCalledWith({ center: DEFAULT_CENTER, footprintHalfSizeM: 600 });
+        expect(listener).toHaveBeenCalledWith({
+            center: DEFAULT_CENTER,
+            footprintHalfSizeM: 600,
+        });
 
         unsubscribe();
         await diorama.setView({ footprintHalfSizeM: 700 });
@@ -369,7 +421,10 @@ describe("center / footprintHalfSizeM", () => {
 
         await diorama.setView({ footprintHalfSizeM: 600 });
 
-        expect(receivedByFirst[0]).toEqual({ lat: -1, lon: DEFAULT_CENTER.lon });
+        expect(receivedByFirst[0]).toEqual({
+            lat: -1,
+            lon: DEFAULT_CENTER.lon,
+        });
         // 1つ目のリスナーが event.center を書き換えても、2つ目のリスナーへは
         // 影響しない（独立したスナップショットを受け取る）。
         expect(receivedBySecond[0]).toEqual(DEFAULT_CENTER);
@@ -473,7 +528,9 @@ describe("WebXR AR", () => {
 describe("dispose", () => {
     it("canvasを除去し、terrain/arController/touchControls/keyboardControlsを破棄する", async () => {
         const mount = document.createElement("div");
-        const diorama = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
+        const diorama = await JpmapDiorama.create(mount, {
+            center: DEFAULT_CENTER,
+        });
 
         diorama.dispose();
 
@@ -486,13 +543,19 @@ describe("dispose", () => {
 
     it("enableDefaultControls有効時、タッチHUDのDOM要素も破棄する（mountに残留しない）", async () => {
         const mount = document.createElement("div");
-        const diorama = await JpmapDiorama.create(mount, { center: DEFAULT_CENTER });
-        expect(mount.querySelector('[data-testid="diorama-touch-hud"]')).not.toBeNull();
+        const diorama = await JpmapDiorama.create(mount, {
+            center: DEFAULT_CENTER,
+        });
+        expect(
+            mount.querySelector('[data-testid="diorama-touch-hud"]'),
+        ).not.toBeNull();
 
         diorama.dispose();
 
         expect(hudDisposeMock).toHaveBeenCalledTimes(1);
-        expect(mount.querySelector('[data-testid="diorama-touch-hud"]')).toBeNull();
+        expect(
+            mount.querySelector('[data-testid="diorama-touch-hud"]'),
+        ).toBeNull();
     });
 
     it("複数回呼んでも例外を投げない（冪等性）", async () => {

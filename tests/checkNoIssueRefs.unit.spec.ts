@@ -1,6 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { collectAllViolations, findViolations, listTrackedFiles } from "../scripts/checkNoIssueRefs.mjs";
 import { execFileSync } from "node:child_process";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+    collectAllViolations,
+    findViolations,
+    listTrackedFiles,
+} from "../scripts/checkNoIssueRefs.mjs";
 
 vi.mock("node:child_process", () => ({
     execFileSync: vi.fn(),
@@ -10,11 +14,15 @@ describe("checkNoIssueRefs", () => {
     describe("findViolations", () => {
         it("Issue #NNN 形式の参照を検知する", () => {
             const violations = findViolations("// 補足説明（Issue #123）\n");
-            expect(violations).toEqual([{ line: 1, name: "issue-ref", text: "Issue #123" }]);
+            expect(violations).toEqual([
+                { line: 1, name: "issue-ref", text: "Issue #123" },
+            ]);
         });
 
         it("(#NNN) 形式の参照を検知する", () => {
-            const violations = findViolations('describe("foo (#456)", () => {});\n');
+            const violations = findViolations(
+                'describe("foo (#456)", () => {});\n',
+            );
             expect(violations).toEqual([
                 { line: 1, name: "paren-issue-ref", text: "(#456)" },
             ]);
@@ -54,17 +62,23 @@ describe("checkNoIssueRefs", () => {
 
         it("Phase N 形式の参照を検知する", () => {
             const violations = findViolations("// Phase 2 で対応予定\n");
-            expect(violations).toEqual([{ line: 1, name: "phase-ref", text: "Phase 2" }]);
+            expect(violations).toEqual([
+                { line: 1, name: "phase-ref", text: "Phase 2" },
+            ]);
         });
 
         it("PN-N 形式の参照を検知する", () => {
             const violations = findViolations("// P4-0 slice\n");
-            expect(violations).toEqual([{ line: 1, name: "phase-slice-code", text: "P4-0" }]);
+            expect(violations).toEqual([
+                { line: 1, name: "phase-slice-code", text: "P4-0" },
+            ]);
         });
 
         it("Slice N 形式の参照を検知する", () => {
             const violations = findViolations("// Slice 2a で実装済み\n");
-            expect(violations).toEqual([{ line: 1, name: "slice-ref", text: "Slice 2a" }]);
+            expect(violations).toEqual([
+                { line: 1, name: "slice-ref", text: "Slice 2a" },
+            ]);
         });
 
         it("複数行にまたがる違反を行番号付きで検知する", () => {
@@ -77,7 +91,9 @@ describe("checkNoIssueRefs", () => {
         });
 
         it("同一行に同種の参照が複数ある場合は全て検知する", () => {
-            const violations = findViolations("補足: Issue #1, Issue #2, Issue #3\n");
+            const violations = findViolations(
+                "補足: Issue #1, Issue #2, Issue #3\n",
+            );
             expect(violations).toEqual([
                 { line: 1, name: "issue-ref", text: "Issue #1" },
                 { line: 1, name: "issue-ref", text: "Issue #2" },
@@ -93,7 +109,9 @@ describe("checkNoIssueRefs", () => {
         });
 
         it("Markdownの節番号は誤検知しない", () => {
-            const violations = findViolations("#### 3.3.5 節の説明\n§3.3.9 を参照\n");
+            const violations = findViolations(
+                "#### 3.3.5 節の説明\n§3.3.9 を参照\n",
+            );
             expect(violations).toEqual([]);
         });
 
@@ -117,8 +135,18 @@ describe("checkNoIssueRefs", () => {
             };
             const violations = collectAllViolations(files, readFile);
             expect(violations).toEqual([
-                { file: "src/a.ts", line: 1, name: "issue-ref", text: "Issue #1" },
-                { file: "spec/b.md", line: 1, name: "phase-ref", text: "Phase 1" },
+                {
+                    file: "src/a.ts",
+                    line: 1,
+                    name: "issue-ref",
+                    text: "Issue #1",
+                },
+                {
+                    file: "spec/b.md",
+                    line: 1,
+                    name: "phase-ref",
+                    text: "Phase 1",
+                },
             ]);
         });
 
@@ -133,7 +161,9 @@ describe("checkNoIssueRefs", () => {
         });
 
         it("読み込みに失敗したファイルは読み飛ばし、警告を出す", () => {
-            const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+            const warnSpy = vi
+                .spyOn(console, "warn")
+                .mockImplementation(() => {});
             const files = ["src/broken.ts"];
             const readFile = () => {
                 throw new Error("ENOENT");
@@ -161,7 +191,9 @@ describe("checkNoIssueRefs", () => {
             vi.mocked(execFileSync).mockImplementation(() => {
                 throw new Error("not a git repository");
             });
-            expect(() => listTrackedFiles()).toThrow(/failed to list git-tracked files/);
+            expect(() => listTrackedFiles()).toThrow(
+                /failed to list git-tracked files/,
+            );
             expect(() => listTrackedFiles()).toThrow(/not a git repository/);
         });
     });

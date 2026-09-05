@@ -15,26 +15,25 @@
  * - アニメーション開始/停止トグル
  */
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Plane } from "@babylonjs/core/Maths/math.plane";
-
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import planeGlbUrl from "../../../assets/plane.glb";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
+import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
+import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
-import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
-import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
+import { circularOrbitHeading, circularOrbitPosition } from "../avatar/orbit";
+import { createFlightAudio, type FlightAudio } from "./flightAudio";
+import { type Afterburner, createGlobeAfterburner } from "./globeAfterburner";
 import { createRouteLine, type RouteLine } from "./routeLine";
 import { createWaypointManager, type WaypointManager } from "./waypoints";
-import { createFlightAudio, type FlightAudio } from "./flightAudio";
-import { createGlobeAfterburner, type Afterburner } from "./globeAfterburner";
-import planeGlbUrl from "../../../assets/plane.glb";
 
 /** PIP 用セカンダリ Viewer 設定 (別 Canvas + 別 Engine) */
 const PIP_WIDTH_FRACTION_DEFAULT = 0.2;
@@ -94,7 +93,8 @@ const FOLLOW_CAMERA_MAX_Z = 400000;
  * これが maxZ を超えると機体/地形が far clip で消える。0.9 の安全係数で余裕を持たせる。
  */
 const FOLLOW_CAMERA_RADIUS_MAX =
-    (FOLLOW_CAMERA_MAX_Z * 0.9) / Math.hypot(1, FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG);
+    (FOLLOW_CAMERA_MAX_Z * 0.9) /
+    Math.hypot(1, FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG);
 
 /** マウス操作感度 */
 const DRAG_ROT_DEG_PER_PX = 0.5;
@@ -153,9 +153,13 @@ const start = async (): Promise<void> => {
      * Follow モード進入直前の 3D/2D カメラ状態。Follow から 3D/2D へ戻る際に復元し、
      * 元のカメラ位置（注視点・高度・方位・俯角）を保つ（Follow 追従位置で上書きされるのを防ぐ）。
      */
-    let saved3dCamera:
-        | { lat: number; lon: number; altitude: number; azimuth: number; tilt: number }
-        | null = null;
+    let saved3dCamera: {
+        lat: number;
+        lon: number;
+        altitude: number;
+        azimuth: number;
+        tilt: number;
+    } | null = null;
     // globe Follow カメラ配置用の再利用スクラッチ（毎フレーム allocation を避ける）。
     const followTargetEcef = new Vector3();
     const followEastEcef = new Vector3();
@@ -196,7 +200,11 @@ const start = async (): Promise<void> => {
         altitudeMode: "absolute",
         altitude: altitudeM,
         rotation: { y: circularOrbitHeading(angleDeg) },
-        scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL },
+        scaling: {
+            x: MODEL_SCALE_NORMAL,
+            y: MODEL_SCALE_NORMAL,
+            z: MODEL_SCALE_NORMAL,
+        },
         gravity: false,
     });
 
@@ -264,7 +272,8 @@ const start = async (): Promise<void> => {
             const isMobile = window.matchMedia("(max-width: 640px)").matches;
             if (isMobile) {
                 const pipHeight =
-                    pipFrame.getBoundingClientRect().height || (pixelWidth * 3) / 4;
+                    pipFrame.getBoundingClientRect().height ||
+                    (pixelWidth * 3) / 4;
                 // モバイルでは PIP の真上へ持ち上げる（縦位置 = bottom を !important で確定）。
                 // 横位置(left)は PIP 左端に揃える意図だが、ここでは !important を付けず
                 // 既定値(12px)を再設定するに留める。coarse-pointer 端末では
@@ -272,10 +281,18 @@ const start = async (): Promise<void> => {
                 // PIP も左端付近にあるため 12/16px いずれでも「PIP の真上」を満たす。
                 // ＝横位置は coarse 補正へ委ね、縦位置のみ明示制御する方針。
                 mapToggleBtn.style.setProperty("left", "12px");
-                mapToggleBtn.style.setProperty("bottom", `${12 + pipHeight + 8}px`, "important");
+                mapToggleBtn.style.setProperty(
+                    "bottom",
+                    `${12 + pipHeight + 8}px`,
+                    "important",
+                );
             } else {
                 // PIP の右隣へ。bottom はライブラリ既定 (12px) に戻す。
-                mapToggleBtn.style.setProperty("left", `${12 + pixelWidth + 8}px`, "important");
+                mapToggleBtn.style.setProperty(
+                    "left",
+                    `${12 + pixelWidth + 8}px`,
+                    "important",
+                );
                 mapToggleBtn.style.setProperty("bottom", "12px");
             }
         }
@@ -340,7 +357,9 @@ const start = async (): Promise<void> => {
 
         const onPipPointerMove = (e: PointerEvent): void => {
             if (!resizing) return;
-            const canvas = viewer.__debugScene?.getEngine().getRenderingCanvas();
+            const canvas = viewer.__debugScene
+                ?.getEngine()
+                .getRenderingCanvas();
             if (!canvas) return;
             const dx = e.clientX - resizeStartX;
             const newPixelWidth = Math.max(50, resizeStartWidth + dx);
@@ -368,7 +387,10 @@ const start = async (): Promise<void> => {
 
         // クリーンアップ用に保存
         pipCleanups.push(() => {
-            pipResizeHandle.removeEventListener("pointerdown", onPipPointerDown);
+            pipResizeHandle.removeEventListener(
+                "pointerdown",
+                onPipPointerDown,
+            );
             document.removeEventListener("pointermove", onPipPointerMove);
             document.removeEventListener("pointerup", onPipPointerUp);
         });
@@ -385,11 +407,7 @@ const start = async (): Promise<void> => {
         const scene = viewer.__debugScene;
         if (!scene) return null;
 
-        const fc = new FreeCamera(
-            "follow-camera",
-            Vector3.Zero(),
-            scene,
-        );
+        const fc = new FreeCamera("follow-camera", Vector3.Zero(), scene);
         fc.minZ = 1;
         fc.maxZ = FOLLOW_CAMERA_MAX_Z;
         // 組み込み入力を無効化（カスタム操作で制御）
@@ -415,7 +433,12 @@ const start = async (): Promise<void> => {
             radiusM,
             angleDeg,
         );
-        geodeticToEcefToRef(planePos.lat, planePos.lon, altitudeM, followTargetEcef);
+        geodeticToEcefToRef(
+            planePos.lat,
+            planePos.lon,
+            altitudeM,
+            followTargetEcef,
+        );
         if (
             !geographicTangentBasisToRef(
                 followTargetEcef,
@@ -435,9 +458,18 @@ const start = async (): Promise<void> => {
         const c = Math.cos(camRotRad);
 
         followCamera.position.copyFrom(followTargetEcef);
-        followEastEcef.scaleAndAddToRef(followCamRadius * s, followCamera.position);
-        followNorthEcef.scaleAndAddToRef(followCamRadius * c, followCamera.position);
-        followUpEcef.scaleAndAddToRef(followCamHeightOffset, followCamera.position);
+        followEastEcef.scaleAndAddToRef(
+            followCamRadius * s,
+            followCamera.position,
+        );
+        followNorthEcef.scaleAndAddToRef(
+            followCamRadius * c,
+            followCamera.position,
+        );
+        followUpEcef.scaleAndAddToRef(
+            followCamHeightOffset,
+            followCamera.position,
+        );
         // 地心 up を上方向にして水平線のロールを防ぐ。
         followCamera.upVector.copyFrom(followUpEcef);
         followCamera.setTarget(followTargetEcef);
@@ -481,18 +513,26 @@ const start = async (): Promise<void> => {
         // ピンチ: 指を広げる（間隔増）= ズームイン = radius 減。
         const dDist = dist - followPinchPrevDist;
         if (dDist !== 0) {
-            followCamRadius = clampFollowCamRadius(followCamRadius - dDist * PINCH_RADIUS_M_PER_PX);
+            followCamRadius = clampFollowCamRadius(
+                followCamRadius - dDist * PINCH_RADIUS_M_PER_PX,
+            );
         }
         // 重心の左右移動 → 水平回転、上下移動 → 高度オフセット。
         const dCx = cx - followPinchPrevCx;
         const dCy = cy - followPinchPrevCy;
         if (dCx !== 0) {
-            followCamRotationOffset = ((followCamRotationOffset + dCx * DRAG_ROT_DEG_PER_PX) % 360 + 360) % 360;
+            followCamRotationOffset =
+                (((followCamRotationOffset + dCx * DRAG_ROT_DEG_PER_PX) % 360) +
+                    360) %
+                360;
         }
         const maxOffset = followCamRadius * FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG;
         followCamHeightOffset = Math.max(
             1,
-            Math.min(maxOffset, followCamHeightOffset + dCy * DRAG_HEIGHT_M_PER_PX),
+            Math.min(
+                maxOffset,
+                followCamHeightOffset + dCy * DRAG_HEIGHT_M_PER_PX,
+            ),
         );
 
         followPinchPrevDist = dist;
@@ -534,11 +574,20 @@ const start = async (): Promise<void> => {
         followLastY = e.clientY;
 
         // 左右ドラッグ → 水平回転
-        followCamRotationOffset = ((followCamRotationOffset + dx * DRAG_ROT_DEG_PER_PX) % 360 + 360) % 360;
+        followCamRotationOffset =
+            (((followCamRotationOffset + dx * DRAG_ROT_DEG_PER_PX) % 360) +
+                360) %
+            360;
 
         // 上下ドラッグ → 高度オフセット（上ドラッグで高く）
         const maxOffset = followCamRadius * FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG;
-        followCamHeightOffset = Math.max(1, Math.min(maxOffset, followCamHeightOffset + dy * DRAG_HEIGHT_M_PER_PX));
+        followCamHeightOffset = Math.max(
+            1,
+            Math.min(
+                maxOffset,
+                followCamHeightOffset + dy * DRAG_HEIGHT_M_PER_PX,
+            ),
+        );
 
         updateFollowCamDisplay();
         e.stopImmediatePropagation();
@@ -550,7 +599,10 @@ const start = async (): Promise<void> => {
                 recomputeFollowPinchRef();
             } else if (followTouches.size === 1) {
                 // 2本→1本: 残った指でジャンプせず単指ドラッグを継続する。
-                const p = followTouches.values().next().value as { x: number; y: number };
+                const p = followTouches.values().next().value as {
+                    x: number;
+                    y: number;
+                };
                 followDragging = true;
                 followLastX = p.x;
                 followLastY = p.y;
@@ -565,7 +617,9 @@ const start = async (): Promise<void> => {
     };
     const onFollowWheel = (e: WheelEvent): void => {
         if (!followCamera) return;
-        followCamRadius = clampFollowCamRadius(followCamRadius + e.deltaY * WHEEL_RADIUS_M_PER_DELTA);
+        followCamRadius = clampFollowCamRadius(
+            followCamRadius + e.deltaY * WHEEL_RADIUS_M_PER_DELTA,
+        );
         // radius 変更時に heightOffset が上限を超えないようクランプ
         const maxOffset = followCamRadius * FOLLOW_CAMERA_HEIGHT_OFFSET_MAX_MAG;
         followCamHeightOffset = Math.min(followCamHeightOffset, maxOffset);
@@ -578,11 +632,22 @@ const start = async (): Promise<void> => {
         const scene = viewer.__debugScene;
         const canvas = scene?.getEngine().getRenderingCanvas();
         if (!canvas) return;
-        canvas.addEventListener("pointerdown", onFollowPointerDown, { capture: true });
-        canvas.addEventListener("pointermove", onFollowPointerMove, { capture: true });
-        canvas.addEventListener("pointerup", onFollowPointerUp, { capture: true });
-        canvas.addEventListener("pointercancel", onFollowPointerUp, { capture: true });
-        canvas.addEventListener("wheel", onFollowWheel, { capture: true, passive: false });
+        canvas.addEventListener("pointerdown", onFollowPointerDown, {
+            capture: true,
+        });
+        canvas.addEventListener("pointermove", onFollowPointerMove, {
+            capture: true,
+        });
+        canvas.addEventListener("pointerup", onFollowPointerUp, {
+            capture: true,
+        });
+        canvas.addEventListener("pointercancel", onFollowPointerUp, {
+            capture: true,
+        });
+        canvas.addEventListener("wheel", onFollowWheel, {
+            capture: true,
+            passive: false,
+        });
     };
     const detachFollowPointerHandlers = (): void => {
         const scene = viewer.__debugScene;
@@ -590,10 +655,18 @@ const start = async (): Promise<void> => {
         followTouches.clear();
         followDragging = false;
         if (!canvas) return;
-        canvas.removeEventListener("pointerdown", onFollowPointerDown, { capture: true });
-        canvas.removeEventListener("pointermove", onFollowPointerMove, { capture: true });
-        canvas.removeEventListener("pointerup", onFollowPointerUp, { capture: true });
-        canvas.removeEventListener("pointercancel", onFollowPointerUp, { capture: true });
+        canvas.removeEventListener("pointerdown", onFollowPointerDown, {
+            capture: true,
+        });
+        canvas.removeEventListener("pointermove", onFollowPointerMove, {
+            capture: true,
+        });
+        canvas.removeEventListener("pointerup", onFollowPointerUp, {
+            capture: true,
+        });
+        canvas.removeEventListener("pointercancel", onFollowPointerUp, {
+            capture: true,
+        });
         canvas.removeEventListener("wheel", onFollowWheel, { capture: true });
     };
 
@@ -678,46 +751,91 @@ const start = async (): Promise<void> => {
     };
 
     // --- UI 要素の取得 ---
-    const centerLatDisplay = document.getElementById("center-lat") as HTMLSpanElement | null;
-    const centerLonDisplay = document.getElementById("center-lon") as HTMLSpanElement | null;
-    const radiusDisplay = document.getElementById("radius-value") as HTMLSpanElement | null;
-    const radiusSlider = document.getElementById("radius-slider") as HTMLInputElement | null;
-    const speedDisplay = document.getElementById("speed-value") as HTMLSpanElement | null;
-    const speedSlider = document.getElementById("speed-slider") as HTMLInputElement | null;
-    const altitudeDisplay = document.getElementById("altitude-value") as HTMLSpanElement | null;
-    const altitudeSlider = document.getElementById("altitude-slider") as HTMLInputElement | null;
-    const toggleBtn = document.getElementById("toggle-animation") as HTMLButtonElement | null;
-    const flyToBtn = document.getElementById("fly-to-center") as HTMLButtonElement | null;
-    const camera3dBtn = document.getElementById("camera-3d") as HTMLButtonElement | null;
-    const camera2dBtn = document.getElementById("camera-2d") as HTMLButtonElement | null;
-    const cameraFollowBtn = document.getElementById("camera-follow") as HTMLButtonElement | null;
-    const followCamInfo = document.getElementById("follow-cam-info") as HTMLDivElement | null;
-    const followRadiusDisplay = document.getElementById("follow-radius-value") as HTMLSpanElement | null;
-    const followHeightDisplay = document.getElementById("follow-height-value") as HTMLSpanElement | null;
-    const followLodBiasInput = document.getElementById("follow-lod-bias") as HTMLInputElement | null;
-    const followLodBiasDisplay = document.getElementById("follow-lod-bias-value") as HTMLSpanElement | null;
+    const centerLatDisplay = document.getElementById(
+        "center-lat",
+    ) as HTMLSpanElement | null;
+    const centerLonDisplay = document.getElementById(
+        "center-lon",
+    ) as HTMLSpanElement | null;
+    const radiusDisplay = document.getElementById(
+        "radius-value",
+    ) as HTMLSpanElement | null;
+    const radiusSlider = document.getElementById(
+        "radius-slider",
+    ) as HTMLInputElement | null;
+    const speedDisplay = document.getElementById(
+        "speed-value",
+    ) as HTMLSpanElement | null;
+    const speedSlider = document.getElementById(
+        "speed-slider",
+    ) as HTMLInputElement | null;
+    const altitudeDisplay = document.getElementById(
+        "altitude-value",
+    ) as HTMLSpanElement | null;
+    const altitudeSlider = document.getElementById(
+        "altitude-slider",
+    ) as HTMLInputElement | null;
+    const toggleBtn = document.getElementById(
+        "toggle-animation",
+    ) as HTMLButtonElement | null;
+    const flyToBtn = document.getElementById(
+        "fly-to-center",
+    ) as HTMLButtonElement | null;
+    const camera3dBtn = document.getElementById(
+        "camera-3d",
+    ) as HTMLButtonElement | null;
+    const camera2dBtn = document.getElementById(
+        "camera-2d",
+    ) as HTMLButtonElement | null;
+    const cameraFollowBtn = document.getElementById(
+        "camera-follow",
+    ) as HTMLButtonElement | null;
+    const followCamInfo = document.getElementById(
+        "follow-cam-info",
+    ) as HTMLDivElement | null;
+    const followRadiusDisplay = document.getElementById(
+        "follow-radius-value",
+    ) as HTMLSpanElement | null;
+    const followHeightDisplay = document.getElementById(
+        "follow-height-value",
+    ) as HTMLSpanElement | null;
+    const followLodBiasInput = document.getElementById(
+        "follow-lod-bias",
+    ) as HTMLInputElement | null;
+    const followLodBiasDisplay = document.getElementById(
+        "follow-lod-bias-value",
+    ) as HTMLSpanElement | null;
     // Follow モード時のタイル粒度調整 (0 = 通常, 大きいほど粗い)
-    let followLodBias = followLodBiasInput ? Number(followLodBiasInput.value) || 0 : 0;
+    let followLodBias = followLodBiasInput
+        ? Number(followLodBiasInput.value) || 0
+        : 0;
     followLodBiasInput?.addEventListener("input", () => {
         followLodBias = Number(followLodBiasInput.value) || 0;
-        if (followLodBiasDisplay) followLodBiasDisplay.textContent = String(followLodBias);
+        if (followLodBiasDisplay)
+            followLodBiasDisplay.textContent = String(followLodBias);
         // 即時反映: 次フレームの tile update で新しい bias が使われるが、
         // ユーザー体感を早めるため lastTileUpdateTime をリセットして即更新を促す
         lastTileUpdateTime = 0;
     });
 
     const showFollowCamInfo = (visible: boolean): void => {
-        if (followCamInfo) followCamInfo.style.display = visible ? "block" : "none";
+        if (followCamInfo)
+            followCamInfo.style.display = visible ? "block" : "none";
     };
     const updateFollowCamDisplay = (): void => {
-        if (followRadiusDisplay) followRadiusDisplay.textContent = followCamRadius.toFixed(1);
-        if (followHeightDisplay) followHeightDisplay.textContent = followCamHeightOffset.toFixed(1);
-        if (followLodBiasDisplay) followLodBiasDisplay.textContent = String(followLodBias);
+        if (followRadiusDisplay)
+            followRadiusDisplay.textContent = followCamRadius.toFixed(1);
+        if (followHeightDisplay)
+            followHeightDisplay.textContent = followCamHeightOffset.toFixed(1);
+        if (followLodBiasDisplay)
+            followLodBiasDisplay.textContent = String(followLodBias);
     };
 
     const updateDisplay = (): void => {
-        if (centerLatDisplay) centerLatDisplay.textContent = centerLat.toFixed(6);
-        if (centerLonDisplay) centerLonDisplay.textContent = centerLon.toFixed(6);
+        if (centerLatDisplay)
+            centerLatDisplay.textContent = centerLat.toFixed(6);
+        if (centerLonDisplay)
+            centerLonDisplay.textContent = centerLon.toFixed(6);
         if (radiusDisplay) radiusDisplay.textContent = `${radiusM}`;
         if (speedDisplay) speedDisplay.textContent = `${speedMps}`;
         if (altitudeDisplay) altitudeDisplay.textContent = `${altitudeM}`;
@@ -773,8 +891,12 @@ const start = async (): Promise<void> => {
     }
 
     // ウェイポイント / リボン 表示切替ボタン
-    const waypointToggle = document.getElementById("waypoint-toggle") as HTMLButtonElement | null;
-    const ribbonToggle = document.getElementById("ribbon-toggle") as HTMLButtonElement | null;
+    const waypointToggle = document.getElementById(
+        "waypoint-toggle",
+    ) as HTMLButtonElement | null;
+    const ribbonToggle = document.getElementById(
+        "ribbon-toggle",
+    ) as HTMLButtonElement | null;
     // トグルボタンの ON/OFF を視覚（active クラス）と支援技術（aria-pressed）の両方へ反映する。
     const setTogglePressed = (btn: HTMLButtonElement, on: boolean): void => {
         btn.classList.toggle("active", on);
@@ -803,7 +925,9 @@ const start = async (): Promise<void> => {
     }
 
     // アフターバーナー表示切替ボタン
-    const afterburnerToggle = document.getElementById("afterburner-toggle") as HTMLButtonElement | null;
+    const afterburnerToggle = document.getElementById(
+        "afterburner-toggle",
+    ) as HTMLButtonElement | null;
     if (afterburnerToggle) {
         setTogglePressed(afterburnerToggle, showAfterburner);
         afterburnerToggle.addEventListener("click", () => {
@@ -829,7 +953,10 @@ const start = async (): Promise<void> => {
     const updateCameraModeButtons = (): void => {
         camera3dBtn?.classList.toggle("active", currentCameraMode === "3d");
         camera2dBtn?.classList.toggle("active", currentCameraMode === "2d");
-        cameraFollowBtn?.classList.toggle("active", currentCameraMode === "follow");
+        cameraFollowBtn?.classList.toggle(
+            "active",
+            currentCameraMode === "follow",
+        );
     };
 
     const restore3dCamera = (): void => {
@@ -871,20 +998,38 @@ const start = async (): Promise<void> => {
         switch (mode) {
             case "3d":
                 viewer.viewMode = "3d";
-                viewer.updateModel(MODEL_ID, { scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL } });
+                viewer.updateModel(MODEL_ID, {
+                    scaling: {
+                        x: MODEL_SCALE_NORMAL,
+                        y: MODEL_SCALE_NORMAL,
+                        z: MODEL_SCALE_NORMAL,
+                    },
+                });
                 // Follow から戻ったときは保存しておいた 3D カメラ位置を復元する
                 // （deactivateFollowCamera が Follow 追従位置で上書きするため、その後に再設定）。
                 if (leavingFollow) restore3dCamera();
                 break;
             case "2d":
                 viewer.viewMode = "2d";
-                viewer.updateModel(MODEL_ID, { scaling: { x: MODEL_SCALE_NORMAL, y: MODEL_SCALE_NORMAL, z: MODEL_SCALE_NORMAL } });
+                viewer.updateModel(MODEL_ID, {
+                    scaling: {
+                        x: MODEL_SCALE_NORMAL,
+                        y: MODEL_SCALE_NORMAL,
+                        z: MODEL_SCALE_NORMAL,
+                    },
+                });
                 if (leavingFollow) restore3dCamera();
                 break;
             case "follow":
                 // Follow モードでは先に 3D に戻してから FollowCamera を起動
                 viewer.viewMode = "3d";
-                viewer.updateModel(MODEL_ID, { scaling: { x: MODEL_SCALE_FOLLOW, y: MODEL_SCALE_FOLLOW, z: MODEL_SCALE_FOLLOW } });
+                viewer.updateModel(MODEL_ID, {
+                    scaling: {
+                        x: MODEL_SCALE_FOLLOW,
+                        y: MODEL_SCALE_FOLLOW,
+                        z: MODEL_SCALE_FOLLOW,
+                    },
+                });
                 activateFollowCamera();
                 break;
         }
@@ -899,7 +1044,9 @@ const start = async (): Promise<void> => {
         camera2dBtn.addEventListener("click", () => switchCameraMode("2d"));
     }
     if (cameraFollowBtn) {
-        cameraFollowBtn.addEventListener("click", () => switchCameraMode("follow"));
+        cameraFollowBtn.addEventListener("click", () =>
+            switchCameraMode("follow"),
+        );
     }
 
     updateCameraModeButtons();
@@ -949,7 +1096,9 @@ const start = async (): Promise<void> => {
         if (!scene) return null;
         return (
             scene.getTransformNodeByName(`model-${MODEL_ID}`) ??
-            scene.transformNodes.find((n) => /^globe-model-\d+-root$/.test(n.name)) ??
+            scene.transformNodes.find((n) =>
+                /^globe-model-\d+-root$/.test(n.name),
+            ) ??
             null
         );
     };
@@ -968,7 +1117,10 @@ const start = async (): Promise<void> => {
 
     // --- 機体の発光ビーコン (3D/2D モードで見つけやすくする) ---
     // 機体マテリアルの emissiveColor を点滅させる。元の値を保持し、Follow では復元する。
-    type EmissiveTarget = { material: { emissiveColor: Color3 }; original: Color3 };
+    type EmissiveTarget = {
+        material: { emissiveColor: Color3 };
+        original: Color3;
+    };
     let planeEmissiveTargets: EmissiveTarget[] | null = null;
     const collectPlaneEmissive = (): void => {
         if (planeEmissiveTargets) return;
@@ -979,8 +1131,10 @@ const start = async (): Promise<void> => {
         const targets: EmissiveTarget[] = [];
         const seen = new Set<unknown>();
         for (const mesh of meshes) {
-            const material = mesh.material as unknown as { emissiveColor?: Color3 } | null;
-            if (!material || !material.emissiveColor || seen.has(material)) continue;
+            const material = mesh.material as unknown as {
+                emissiveColor?: Color3;
+            } | null;
+            if (!material?.emissiveColor || seen.has(material)) continue;
             seen.add(material);
             targets.push({
                 material: material as { emissiveColor: Color3 },
@@ -994,7 +1148,8 @@ const start = async (): Promise<void> => {
         if (!planeEmissiveTargets) return;
         if (currentCameraMode === "follow") {
             // Follow では機体を間近で見るため発光を解除し、元の見た目に戻す。
-            for (const t of planeEmissiveTargets) t.material.emissiveColor.copyFrom(t.original);
+            for (const t of planeEmissiveTargets)
+                t.material.emissiveColor.copyFrom(t.original);
             return;
         }
         // 約 1.5Hz で 0..1 を往復する点滅係数。
@@ -1059,9 +1214,13 @@ const start = async (): Promise<void> => {
                 Math.cos((pos.lat * Math.PI) / 180);
             const moved = Math.sqrt(dLat * dLat + dLon * dLon);
             const rotDelta = Math.abs(
-                ((followCamRotationOffset - lastRefreshRotationOffset + 540) % 360) - 180,
+                ((followCamRotationOffset - lastRefreshRotationOffset + 540) %
+                    360) -
+                    180,
             );
-            const heightDelta = Math.abs(followCamHeightOffset - lastRefreshHeightOffset);
+            const heightDelta = Math.abs(
+                followCamHeightOffset - lastRefreshHeightOffset,
+            );
             const radiusDelta = Math.abs(followCamRadius - lastRefreshRadius);
             const meaningful =
                 moved >= TILE_UPDATE_DISTANCE_M ||
@@ -1081,7 +1240,10 @@ const start = async (): Promise<void> => {
                 const projMat = followCamera.getProjectionMatrix();
                 const transform = Matrix.Identity();
                 viewMat.multiplyToRef(projMat, transform);
-                const rawPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+                const rawPlanes: Plane[] = Array.from(
+                    { length: 6 },
+                    () => new Plane(0, 0, 0, 0),
+                );
                 Frustum.GetPlanesToRef(transform, rawPlanes);
                 const frustumPlanes = rawPlanes.map((p) => ({
                     normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
@@ -1153,7 +1315,8 @@ const start = async (): Promise<void> => {
                 // followCamRotationOffset: 飛行機の進行方向に対するカメラのオフセット角度
                 // heading + rotationOffset がカメラの向いている方位
                 const headingDeg = circularOrbitHeading(angleDeg);
-                const camAzimuth = (headingDeg + followCamRotationOffset + 180) % 360;
+                const camAzimuth =
+                    (headingDeg + followCamRotationOffset + 180) % 360;
                 viewer.setExternalCompassDegrees(camAzimuth);
             }
         }
@@ -1210,7 +1373,6 @@ const start = async (): Promise<void> => {
             waypointManager = null;
         }
 
-
         // PIP セカンダリ Viewer 更新: 飛行機の腹部カメラを再現。
         // lib の lat/lon = ArcRotateCamera のターゲット (地面の注視点)。
         // belly カメラは飛行機位置にあり、heading 方向 + 俯角 tilt で地面を見るので、
@@ -1238,32 +1400,36 @@ const start = async (): Promise<void> => {
     rafId = requestAnimationFrame(tick);
 
     // ページ離脱時にアニメーションフレームをキャンセル + Viewer/PIP クリーンアップ
-    window.addEventListener("beforeunload", () => {
-        cancelAnimationFrame(rafId);
-        // メインシーンに紐づくリソースを先に解放する（シーン破棄前）。
-        if (routeLine) {
-            routeLine.dispose();
-        }
-        if (waypointManager) {
-            waypointManager.dispose();
-        }
-        if (flightAudio) {
-            flightAudio.dispose();
-        }
-        if (afterburner) {
-            afterburner.dispose();
-        }
-        // メイン Viewer を PIP（第2エンジン）より先に dispose してレンダーループを止める。
-        // メインエンジンの描画と PIP の dispose が競合すると Babylon 内部の UniformBuffer
-        // override が壊れる。
-        // 例: `TypeError: this._updateMatrixForUniformOverride is not a function`
-        // これを避けるため、この順序を守る。
-        viewer.dispose();
-        pipCleanups.forEach((fn) => fn());
-        if (pipViewer) {
-            pipViewer.dispose();
-        }
-    }, { once: true });
+    window.addEventListener(
+        "beforeunload",
+        () => {
+            cancelAnimationFrame(rafId);
+            // メインシーンに紐づくリソースを先に解放する（シーン破棄前）。
+            if (routeLine) {
+                routeLine.dispose();
+            }
+            if (waypointManager) {
+                waypointManager.dispose();
+            }
+            if (flightAudio) {
+                flightAudio.dispose();
+            }
+            if (afterburner) {
+                afterburner.dispose();
+            }
+            // メイン Viewer を PIP（第2エンジン）より先に dispose してレンダーループを止める。
+            // メインエンジンの描画と PIP の dispose が競合すると Babylon 内部の UniformBuffer
+            // override が壊れる。
+            // 例: `TypeError: this._updateMatrixForUniformOverride is not a function`
+            // これを避けるため、この順序を守る。
+            viewer.dispose();
+            pipCleanups.forEach((fn) => fn());
+            if (pipViewer) {
+                pipViewer.dispose();
+            }
+        },
+        { once: true },
+    );
 };
 
 start().catch((err) => {

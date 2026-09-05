@@ -15,41 +15,41 @@ import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { Scene } from "@babylonjs/core/scene";
 
 import type { DefaultSceneController } from "../scenes/sceneContract";
+import type { CircleManager } from "../terrain/circleManager";
+import type { MarkerManager } from "../terrain/markerManager";
+import type { ModelManager } from "../terrain/modelManager";
+import type { PolygonManager } from "../terrain/polygonManager";
 import { createBabylonEngine } from "./internal/engineFactory";
 import {
-    CameraChangeEvent,
-    CameraChangeListener,
-    FlyToOptions,
+    type CameraChangeEvent,
+    type CameraChangeListener,
+    type CircleHandle,
+    type CircleOptions,
+    type CircleUpdate,
+    type FlyToOptions,
     JPMAP_TERRAIN_DEFAULTS,
-    JpmapTerrainOptions,
-    MapType,
-    MapTypeChangeListener,
-    CircleHandle,
-    CircleOptions,
-    CircleUpdate,
-    MarkerHandle,
-    MarkerOptions,
-    MarkerUpdate,
-    ModelHandle,
-    ModelOptions,
-    ModelUpdate,
-    PolygonHandle,
-    PolygonOptions,
-    PolygonPointOptions,
-    PolygonPointPartial,
-    PolygonUpdate,
+    type JpmapTerrainOptions,
+    type MapType,
+    type MapTypeChangeListener,
+    type MarkerHandle,
+    type MarkerOptions,
+    type MarkerUpdate,
+    type ModelHandle,
+    type ModelOptions,
+    type ModelUpdate,
+    type PolygonHandle,
+    type PolygonOptions,
+    type PolygonPointClickListener,
+    type PolygonPointDragListener,
+    type PolygonPointHoverListener,
+    type PolygonPointOptions,
+    type PolygonPointPartial,
+    type PolygonUpdate,
     SUN_AUTO_UPDATE_INTERVAL_MS,
-    TerrainClickListener,
-    PolygonPointHoverListener,
-    PolygonPointClickListener,
-    PolygonPointDragListener,
-    ViewMode,
-    ViewModeChangeListener,
+    type TerrainClickListener,
+    type ViewMode,
+    type ViewModeChangeListener,
 } from "./types";
-import type { MarkerManager } from "../terrain/markerManager";
-import type { PolygonManager } from "../terrain/polygonManager";
-import type { CircleManager } from "../terrain/circleManager";
-import type { ModelManager } from "../terrain/modelManager";
 
 /**
  * jpmap-terrain ビューア。
@@ -141,7 +141,10 @@ export class JpmapTerrain {
     /** 3Dモデル管理。`onReady` で初期化される */
     private _modelManager: ModelManager | null = null;
 
-    private constructor(mountElement: HTMLElement, options: JpmapTerrainOptions) {
+    private constructor(
+        mountElement: HTMLElement,
+        options: JpmapTerrainOptions,
+    ) {
         this.mountElement = mountElement;
         this._lat = options.lat ?? JPMAP_TERRAIN_DEFAULTS.lat;
         this._lon = options.lon ?? JPMAP_TERRAIN_DEFAULTS.lon;
@@ -160,8 +163,7 @@ export class JpmapTerrain {
             options.autoSunPosition ?? JPMAP_TERRAIN_DEFAULTS.autoSunPosition;
         this._showSunShadows =
             options.showSunShadows ?? JPMAP_TERRAIN_DEFAULTS.showSunShadows;
-        this._enablePan =
-            options.enablePan ?? JPMAP_TERRAIN_DEFAULTS.enablePan;
+        this._enablePan = options.enablePan ?? JPMAP_TERRAIN_DEFAULTS.enablePan;
         this._enableKeyboardPan =
             options.enableKeyboardPan ??
             JPMAP_TERRAIN_DEFAULTS.enableKeyboardPan;
@@ -198,7 +200,9 @@ export class JpmapTerrain {
         options: JpmapTerrainOptions = {},
     ): Promise<JpmapTerrain> {
         if (!mountElement) {
-            throw new TypeError("JpmapTerrain.create: mountElement is required");
+            throw new TypeError(
+                "JpmapTerrain.create: mountElement is required",
+            );
         }
         const instance = new JpmapTerrain(mountElement, options);
         await instance.initAsync(options);
@@ -292,22 +296,13 @@ export class JpmapTerrain {
                 onReady: (controller) => {
                     this._controller = controller;
                     // 初期表示状態を controller に反映する
-                    controller.setUiVisibility(
-                        "compass",
-                        this._showCompass,
-                    );
+                    controller.setUiVisibility("compass", this._showCompass);
                     controller.setUiVisibility(
                         "zoomButtons",
                         this._showZoomButtons,
                     );
-                    controller.setUiVisibility(
-                        "locateMe",
-                        this._showLocateMe,
-                    );
-                    controller.setUiVisibility(
-                        "scaleBar",
-                        this._showScaleBar,
-                    );
+                    controller.setUiVisibility("locateMe", this._showLocateMe);
+                    controller.setUiVisibility("scaleBar", this._showScaleBar);
                     controller.setUiVisibility(
                         "mapToggle",
                         this._showMapToggle,
@@ -342,8 +337,7 @@ export class JpmapTerrain {
                     this._circleManager =
                         controller.getCircleManager?.() ?? null;
                     // 3Dモデル。globe 専用アダプタ経由。
-                    this._modelManager =
-                        controller.getModelManager?.() ?? null;
+                    this._modelManager = controller.getModelManager?.() ?? null;
                 },
             });
             this._scene = scene;
@@ -372,19 +366,35 @@ export class JpmapTerrain {
         } catch (error) {
             // 部分的に確保済みのリソースを解放してから再 throw
             if (this._circleManager) {
-                try { this._circleManager.dispose(); } catch { /* best-effort */ }
+                try {
+                    this._circleManager.dispose();
+                } catch {
+                    /* best-effort */
+                }
                 this._circleManager = null;
             }
             if (this._modelManager) {
-                try { this._modelManager.dispose(); } catch { /* best-effort */ }
+                try {
+                    this._modelManager.dispose();
+                } catch {
+                    /* best-effort */
+                }
                 this._modelManager = null;
             }
             if (this._polygonManager) {
-                try { this._polygonManager.dispose(); } catch { /* best-effort */ }
+                try {
+                    this._polygonManager.dispose();
+                } catch {
+                    /* best-effort */
+                }
                 this._polygonManager = null;
             }
             if (this._markerManager) {
-                try { this._markerManager.dispose(); } catch { /* best-effort */ }
+                try {
+                    this._markerManager.dispose();
+                } catch {
+                    /* best-effort */
+                }
                 this._markerManager = null;
             }
             this._disposeResizeHandling();
@@ -400,7 +410,10 @@ export class JpmapTerrain {
                 this.mountElement.removeChild(canvas);
             }
             if (this._onCanvasTouchMove) {
-                canvas.removeEventListener("touchmove", this._onCanvasTouchMove);
+                canvas.removeEventListener(
+                    "touchmove",
+                    this._onCanvasTouchMove,
+                );
                 this._onCanvasTouchMove = null;
             }
             if (this._onCanvasWheel) {
@@ -567,7 +580,7 @@ export class JpmapTerrain {
             typeof performance !== "undefined" && performance.now
                 ? performance.now()
                 : Date.now();
-        const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
+        const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
 
         return new Promise<void>((resolve) => {
             const step = (now: number): void => {
@@ -627,12 +640,21 @@ export class JpmapTerrain {
     public refreshTerrainWithExternalFrustum(
         lat: number,
         lon: number,
-        frustumPlanes: { normal: { x: number; y: number; z: number }; d: number }[],
+        frustumPlanes: {
+            normal: { x: number; y: number; z: number };
+            d: number;
+        }[],
         cameraPosition: { x: number; y: number; z: number },
         lodBias = 0,
     ): Promise<void> {
         return this._controller
-            ? this._controller.refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition, lodBias)
+            ? this._controller.refreshTerrainWithExternalFrustum(
+                  lat,
+                  lon,
+                  frustumPlanes,
+                  cameraPosition,
+                  lodBias,
+              )
             : Promise.resolve();
     }
 
@@ -785,7 +807,10 @@ export class JpmapTerrain {
             try {
                 listener(next);
             } catch (err) {
-                console.error("[JpmapTerrain] onViewModeChange listener threw:", err);
+                console.error(
+                    "[JpmapTerrain] onViewModeChange listener threw:",
+                    err,
+                );
             }
         }
     }
@@ -834,7 +859,10 @@ export class JpmapTerrain {
             try {
                 listener(next);
             } catch (err) {
-                console.error("[JpmapTerrain] onMapTypeChange listener threw:", err);
+                console.error(
+                    "[JpmapTerrain] onMapTypeChange listener threw:",
+                    err,
+                );
             }
         }
     }
@@ -916,9 +944,7 @@ export class JpmapTerrain {
      * カーソル位置の地形メッシュ交点を `lat` / `lon` / `groundAltitude` で通知する
      * （地形にヒットしなかった場合は `null`）。
      */
-    public onPolygonPointDrag(
-        listener: PolygonPointDragListener,
-    ): () => void {
+    public onPolygonPointDrag(listener: PolygonPointDragListener): () => void {
         if (this._disposed || !this._controller) {
             return () => {
                 /* no-op */
@@ -1105,7 +1131,10 @@ export class JpmapTerrain {
             try {
                 listener(snapshot);
             } catch (err) {
-                console.error("[JpmapTerrain] onCameraChange listener threw:", err);
+                console.error(
+                    "[JpmapTerrain] onCameraChange listener threw:",
+                    err,
+                );
             }
         }
     }
@@ -1458,7 +1487,10 @@ export class JpmapTerrain {
             try {
                 this._markerManager.dispose();
             } catch (err) {
-                console.error("[JpmapTerrain] markerManager.dispose threw:", err);
+                console.error(
+                    "[JpmapTerrain] markerManager.dispose threw:",
+                    err,
+                );
             }
             this._markerManager = null;
         }
@@ -1467,7 +1499,10 @@ export class JpmapTerrain {
             try {
                 this._polygonManager.dispose();
             } catch (err) {
-                console.error("[JpmapTerrain] polygonManager.dispose threw:", err);
+                console.error(
+                    "[JpmapTerrain] polygonManager.dispose threw:",
+                    err,
+                );
             }
             this._polygonManager = null;
         }
@@ -1476,7 +1511,10 @@ export class JpmapTerrain {
             try {
                 this._circleManager.dispose();
             } catch (err) {
-                console.error("[JpmapTerrain] circleManager.dispose threw:", err);
+                console.error(
+                    "[JpmapTerrain] circleManager.dispose threw:",
+                    err,
+                );
             }
             this._circleManager = null;
         }
@@ -1485,7 +1523,10 @@ export class JpmapTerrain {
             try {
                 this._modelManager.dispose();
             } catch (err) {
-                console.error("[JpmapTerrain] modelManager.dispose threw:", err);
+                console.error(
+                    "[JpmapTerrain] modelManager.dispose threw:",
+                    err,
+                );
             }
             this._modelManager = null;
         }
@@ -1510,7 +1551,10 @@ export class JpmapTerrain {
             this.mountElement.removeChild(this._canvas);
         }
         if (this._canvas && this._onCanvasTouchMove) {
-            this._canvas.removeEventListener("touchmove", this._onCanvasTouchMove);
+            this._canvas.removeEventListener(
+                "touchmove",
+                this._onCanvasTouchMove,
+            );
         }
         this._onCanvasTouchMove = null;
         if (this._canvas && this._onCanvasWheel) {

@@ -69,10 +69,18 @@ export const selectCoarseEdges = (
             // この細タイルが粗親の当該辺に接しているか（接していなければ別の粗タイルが隣接）。
             let onParentEdge: boolean;
             switch (dir) {
-                case "north": onParentEdge = subY === 0; break;
-                case "south": onParentEdge = subY === scale - 1; break;
-                case "west": onParentEdge = subX === 0; break;
-                case "east": onParentEdge = subX === scale - 1; break;
+                case "north":
+                    onParentEdge = subY === 0;
+                    break;
+                case "south":
+                    onParentEdge = subY === scale - 1;
+                    break;
+                case "west":
+                    onParentEdge = subX === 0;
+                    break;
+                case "east":
+                    onParentEdge = subX === scale - 1;
+                    break;
             }
             if (!onParentEdge) continue;
 
@@ -86,7 +94,13 @@ export const selectCoarseEdges = (
                 if (!isFailed(ck)) pending = true;
                 break;
             }
-            edges.push({ edge: dir, coarseElev: elev, coarseX: cx, coarseY: cy, scale });
+            edges.push({
+                edge: dir,
+                coarseElev: elev,
+                coarseX: cx,
+                coarseY: cy,
+                scale,
+            });
             break;
         }
     }

@@ -12,14 +12,13 @@
  * （dispose ガード・距離スケール・地形ドレープ）をそのまま享受する。
  */
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
-
+import type { AltitudeMode, PolygonStyleOptions } from "../../lib/types";
 import {
     createGlobePolygonManager,
     type GlobePolygonManager,
     type GlobePolygonManagerDeps,
 } from "./globePolygonManager";
 import { generateGeodesicRing } from "./overlayPlacement";
-import type { AltitudeMode, PolygonStyleOptions } from "../../lib/types";
 
 /** サークルの分割数の既定・範囲。 */
 const DEFAULT_SEGMENTS = 64;
@@ -95,14 +94,19 @@ export const createGlobeCircleManager = (
     let disposed = false;
 
     const add = (opts: GlobeCircleOptions): string => {
-        if (disposed) throw new Error("GlobeCircleManager.add: called after dispose");
+        if (disposed)
+            throw new Error("GlobeCircleManager.add: called after dispose");
         if (!(opts.radiusMeters > 0)) {
             throw new Error(
                 `GlobeCircleManager.add: radiusMeters must be > 0 (got ${opts.radiusMeters})`,
             );
         }
         const segments = opts.segments ?? DEFAULT_SEGMENTS;
-        if (!Number.isInteger(segments) || segments < MIN_SEGMENTS || segments > MAX_SEGMENTS) {
+        if (
+            !Number.isInteger(segments) ||
+            segments < MIN_SEGMENTS ||
+            segments > MAX_SEGMENTS
+        ) {
             throw new Error(
                 `GlobeCircleManager.add: segments must be an integer in [${MIN_SEGMENTS}, ${MAX_SEGMENTS}] (got ${segments})`,
             );
@@ -193,7 +197,8 @@ export const createGlobeCircleManager = (
         remove,
         setEnabled,
         setFlatten: (flat) => polygons.setFlatten(flat),
-        update: (cameraEcef, flatScale) => polygons.update(cameraEcef, flatScale),
+        update: (cameraEcef, flatScale) =>
+            polygons.update(cameraEcef, flatScale),
         dispose: () => {
             disposed = true;
             polygons.dispose();

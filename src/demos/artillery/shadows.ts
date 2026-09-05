@@ -20,10 +20,10 @@
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { Scene } from "@babylonjs/core/scene";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { Scene } from "@babylonjs/core/scene";
 
 import type { StageFrame } from "./stageFrame";
 
@@ -77,8 +77,7 @@ export const createArtilleryShadows = (
     const hemi = (scene.getLightByName("sky-light") ??
         scene.getLightByName("globe-hemi")) as HemisphericLight | null;
     const competingSun =
-        scene.getLightByName("sun-light") ??
-        scene.getLightByName("globe-sun");
+        scene.getLightByName("sun-light") ?? scene.getLightByName("globe-sun");
     // dispose 時にシーン側のライティングを汚染したまま残さないよう、
     // 変更前の intensity / 有効状態を保存しておき復元する。
     const prevHemiIntensity = hemi?.intensity ?? null;
@@ -114,9 +113,15 @@ export const createArtilleryShadows = (
     if (stageRoot && stage) {
         // ローカル方向 (0.12,-1,0.1) を ENU basis で ECEF へ写像（原点差分で方向化）。
         const originW = stage.localToWorld(Vector3.Zero(), new Vector3());
-        const tipW = stage.localToWorld(new Vector3(0.12, -1, 0.1), new Vector3());
+        const tipW = stage.localToWorld(
+            new Vector3(0.12, -1, 0.1),
+            new Vector3(),
+        );
         lightDir = tipW.subtract(originW).normalize();
-        lightPos = stage.localToWorld(new Vector3(0, LIGHT_HEIGHT, 0), new Vector3());
+        lightPos = stage.localToWorld(
+            new Vector3(0, LIGHT_HEIGHT, 0),
+            new Vector3(),
+        );
     } else {
         lightDir = new Vector3(0.12, -1, 0.1);
         lightPos = new Vector3(0, LIGHT_HEIGHT, 0);

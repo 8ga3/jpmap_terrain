@@ -51,7 +51,11 @@ const WALL_BOTTOM_COLOR_MULTIPLIER = 0.35;
 const BOTTOM_FACE_COLOR_MULTIPLIER = 1;
 
 /** 頂点カラー配列の該当インデックスへ乗算値（RGBA、アルファは常に1）を書き込む。 */
-const setVertexColor = (colors: Float32Array, index: number, multiplier: number): void => {
+const setVertexColor = (
+    colors: Float32Array,
+    index: number,
+    multiplier: number,
+): void => {
     colors[index * 4] = multiplier;
     colors[index * 4 + 1] = multiplier;
     colors[index * 4 + 2] = multiplier;

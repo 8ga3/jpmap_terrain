@@ -9,7 +9,7 @@
  * - formatAltitudeDelta: 符号付き整形と 0 m 周辺
  * - formatPointLabel / formatEdgeLabel: 改行区切りの文字列構造
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
     DEFAULT_DISTANCE_DEMO_MODE,
@@ -114,7 +114,11 @@ describe("formatAltitudeDelta", () => {
 
 describe("formatPointLabel", () => {
     it("3 行の lat / lon / altitude 文字列を返す", () => {
-        const out = formatPointLabel({ lat: 35.6812, lon: 139.7671, altitude: 12.6 });
+        const out = formatPointLabel({
+            lat: 35.6812,
+            lon: 139.7671,
+            altitude: 12.6,
+        });
         const lines = out.split("\n");
         expect(lines.length).toBe(3);
         expect(lines[0]).toBe("35.68120");

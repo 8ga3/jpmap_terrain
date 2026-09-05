@@ -13,14 +13,15 @@
  * - 半径・速度のスライダー操作
  * - アニメーション開始/停止トグル
  */
+
+import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { circularOrbitPosition, circularOrbitHeading } from "./orbit";
-import humanWalkGlbUrl from "../../../assets/human_walk.glb";
+import { circularOrbitHeading, circularOrbitPosition } from "./orbit";
 
 const DEMO_MOUNT_ID = "root";
 const MODEL_ID = "avatar";
@@ -101,18 +102,36 @@ const start = async (): Promise<void> => {
     let animationStarted = false;
 
     // --- UI 要素の取得 ---
-    const centerLatDisplay = document.getElementById("center-lat") as HTMLSpanElement | null;
-    const centerLonDisplay = document.getElementById("center-lon") as HTMLSpanElement | null;
-    const radiusDisplay = document.getElementById("radius-value") as HTMLSpanElement | null;
-    const radiusSlider = document.getElementById("radius-slider") as HTMLInputElement | null;
-    const speedDisplay = document.getElementById("speed-value") as HTMLSpanElement | null;
-    const speedSlider = document.getElementById("speed-slider") as HTMLInputElement | null;
-    const toggleBtn = document.getElementById("toggle-animation") as HTMLButtonElement | null;
-    const flyToBtn = document.getElementById("fly-to-center") as HTMLButtonElement | null;
+    const centerLatDisplay = document.getElementById(
+        "center-lat",
+    ) as HTMLSpanElement | null;
+    const centerLonDisplay = document.getElementById(
+        "center-lon",
+    ) as HTMLSpanElement | null;
+    const radiusDisplay = document.getElementById(
+        "radius-value",
+    ) as HTMLSpanElement | null;
+    const radiusSlider = document.getElementById(
+        "radius-slider",
+    ) as HTMLInputElement | null;
+    const speedDisplay = document.getElementById(
+        "speed-value",
+    ) as HTMLSpanElement | null;
+    const speedSlider = document.getElementById(
+        "speed-slider",
+    ) as HTMLInputElement | null;
+    const toggleBtn = document.getElementById(
+        "toggle-animation",
+    ) as HTMLButtonElement | null;
+    const flyToBtn = document.getElementById(
+        "fly-to-center",
+    ) as HTMLButtonElement | null;
 
     const updateDisplay = (): void => {
-        if (centerLatDisplay) centerLatDisplay.textContent = centerLat.toFixed(6);
-        if (centerLonDisplay) centerLonDisplay.textContent = centerLon.toFixed(6);
+        if (centerLatDisplay)
+            centerLatDisplay.textContent = centerLat.toFixed(6);
+        if (centerLonDisplay)
+            centerLonDisplay.textContent = centerLon.toFixed(6);
         if (radiusDisplay) radiusDisplay.textContent = `${radiusM}`;
         if (speedDisplay) speedDisplay.textContent = `${speedDegPerSec}`;
     };

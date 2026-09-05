@@ -13,8 +13,7 @@
  * ECEF 側の軸規約は `ecef.ts` / Babylon の `EcefFromLatLonAltToRef` と同一
  * （X→経度0, Y→東経90°, Z→北極）。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { DEG2RAD, geodeticToEcef } from "./ecef";
 
 /**
@@ -53,11 +52,7 @@ export const buildEnuFrame = (
     const cosLon = Math.cos(lon);
 
     const east = new Vector3(-sinLon, cosLon, 0);
-    const north = new Vector3(
-        -sinLat * cosLon,
-        -sinLat * sinLon,
-        cosLat,
-    );
+    const north = new Vector3(-sinLat * cosLon, -sinLat * sinLon, cosLat);
     const up = new Vector3(cosLat * cosLon, cosLat * sinLon, sinLat);
 
     return {
@@ -115,10 +110,22 @@ export const enuToEcefToRef = (
  */
 export const buildEnuWorldMatrix = (frame: EnuFrame): Matrix =>
     Matrix.FromValues(
-        frame.east.x, frame.east.y, frame.east.z, 0,
-        frame.up.x, frame.up.y, frame.up.z, 0,
-        frame.north.x, frame.north.y, frame.north.z, 0,
-        frame.originEcef.x, frame.originEcef.y, frame.originEcef.z, 1,
+        frame.east.x,
+        frame.east.y,
+        frame.east.z,
+        0,
+        frame.up.x,
+        frame.up.y,
+        frame.up.z,
+        0,
+        frame.north.x,
+        frame.north.y,
+        frame.north.z,
+        0,
+        frame.originEcef.x,
+        frame.originEcef.y,
+        frame.originEcef.z,
+        1,
     );
 export const enuVectorToEcefToRef = (
     frame: EnuFrame,

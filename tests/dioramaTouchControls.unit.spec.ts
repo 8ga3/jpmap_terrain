@@ -9,15 +9,16 @@
  * 同様に`getDirection`のみを使うため、指定した向き（headingDeg）を返す
  * 軽量なフェイクで代替する。
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
-import type { Scene } from "@babylonjs/core/scene";
+
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
+import type { Scene } from "@babylonjs/core/scene";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
 import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
 import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
-import type { DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
 import { setupDioramaTouchControls } from "../src/lib/internal/diorama/dioramaTouchControls";
+import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
 
 interface FakeScene {
     scene: Scene;
@@ -59,10 +60,11 @@ const makeCamera = (headingDeg = 0): ArcRotateCamera => {
     const right = { x: Math.cos(rad), z: -Math.sin(rad) };
     return {
         getDirection: (localAxis: Vector3): Vector3 =>
-            localAxis.z !== 0 ? new Vector3(forward.x, 0, forward.z) : new Vector3(right.x, 0, right.z),
+            localAxis.z !== 0
+                ? new Vector3(forward.x, 0, forward.z)
+                : new Vector3(right.x, 0, right.z),
     } as unknown as ArcRotateCamera;
 };
-
 
 const makeViewController = (): {
     vc: DioramaViewController;
@@ -90,9 +92,15 @@ const makeOrientationController = (): {
     return { oc, feedAxes };
 };
 
-const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
+const makeTileModeController = (): {
+    tc: DioramaTileModeController;
+    cycle: ReturnType<typeof vi.fn>;
+} => {
     const cycle = vi.fn();
-    const tc = { getTileMode: vi.fn(), cycle } as unknown as DioramaTileModeController;
+    const tc = {
+        getTileMode: vi.fn(),
+        cycle,
+    } as unknown as DioramaTileModeController;
     return { tc, cycle };
 };
 
@@ -139,10 +147,18 @@ describe("setupDioramaTouchControls", () => {
     it("HUDの軸が全て0ならfeedAxesは{x:0,y:0}・0で呼ばれる", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(16);
@@ -156,22 +172,44 @@ describe("setupDioramaTouchControls", () => {
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
-        const hud = makeHud({ getPanAxes: () => ({ x: 0.5, y: -0.5 }), getZoomAxis: () => -1 });
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const hud = makeHud({
+            getPanAxes: () => ({ x: 0.5, y: -0.5 }),
+            getZoomAxis: () => -1,
+        });
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(16);
 
-        expect(viewFeedAxes).toHaveBeenCalledWith({ x: 0.5, y: -0.5 }, -1, 0.016);
+        expect(viewFeedAxes).toHaveBeenCalledWith(
+            { x: 0.5, y: -0.5 },
+            -1,
+            0.016,
+        );
     });
 
     it("回転軸をそのままorientationControllerの第1引数へ反映する", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud({ getRotationAxis: () => 1 });
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(16);
@@ -182,17 +220,32 @@ describe("setupDioramaTouchControls", () => {
     it("高さ軸が正（上昇）ならrightTriggerValueへ、負（下降）ならleftTriggerValueへ変換する", () => {
         const { scene, tick } = createFakeScene();
         const { vc } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController();
         const { tc } = makeTileModeController();
 
         const hudUp = makeHud({ getHeightAxis: () => 1 });
-        const controlsUp = setupDioramaTouchControls(scene, makeCamera(), hudUp, vc, oc, tc);
+        const controlsUp = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hudUp,
+            vc,
+            oc,
+            tc,
+        );
         tick(16);
         expect(orientationFeedAxes).toHaveBeenLastCalledWith(0, 0, 1, 0.016);
         controlsUp.dispose();
 
         const hudDown = makeHud({ getHeightAxis: () => -1 });
-        const controlsDown = setupDioramaTouchControls(scene, makeCamera(), hudDown, vc, oc, tc);
+        const controlsDown = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hudDown,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controlsDown.dispose);
         tick(16);
         expect(orientationFeedAxes).toHaveBeenLastCalledWith(0, 1, 0, 0.016);
@@ -201,10 +254,18 @@ describe("setupDioramaTouchControls", () => {
     it("dtSecondsが0以下なら両方のfeedAxesを呼ばない", () => {
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(0);
@@ -219,7 +280,14 @@ describe("setupDioramaTouchControls", () => {
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         controls.setVisible(false);
@@ -234,7 +302,8 @@ describe("setupDioramaTouchControls", () => {
         // （押下中にAR突入したケース等）ため、非表示中は値を読み取り自体しないこと。
         const { scene, tick } = createFakeScene();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController();
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud({
             getPanAxes: () => ({ x: 1, y: 1 }),
@@ -242,7 +311,14 @@ describe("setupDioramaTouchControls", () => {
             getRotationAxis: () => 1,
             getHeightAxis: () => 1,
         });
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         controls.setVisible(false);
@@ -257,11 +333,9 @@ describe("setupDioramaTouchControls", () => {
         // {x:1,y:1}は大きさが1を超える対角入力のため、`computePanAxesFromDirectionalInput`
         // により大きさ1へ正規化される（本テストの主眼はfeedAxes呼び出しの有無であり、
         // 正規化自体は`dioramaControllerMapping.unit.spec.ts`で別途検証済み）。
-        const [panAxes, zoomAxis, dt] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
-            { x: number; y: number },
-            number,
-            number,
-        ];
+        const [panAxes, zoomAxis, dt] = viewFeedAxes.mock.calls[
+            viewFeedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }, number, number];
         expect(panAxes.x).toBeCloseTo(Math.SQRT1_2);
         expect(panAxes.y).toBeCloseTo(Math.SQRT1_2);
         expect(zoomAxis).toBe(1);
@@ -275,7 +349,14 @@ describe("setupDioramaTouchControls", () => {
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         controls.dispose();
         tick(16);
@@ -289,7 +370,14 @@ describe("setupDioramaTouchControls", () => {
         const { oc } = makeOrientationController();
         const { tc, cycle } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         hud.triggerTileModeCyclePress();
@@ -302,7 +390,14 @@ describe("setupDioramaTouchControls", () => {
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         // 本モジュールは`onExitArPress`を購読しないため、押下しても例外なく何も起きない。
@@ -315,7 +410,14 @@ describe("setupDioramaTouchControls", () => {
         const { oc } = makeOrientationController();
         const { tc, cycle } = makeTileModeController();
         const hud = makeHud();
-        const controls = setupDioramaTouchControls(scene, makeCamera(), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         controls.dispose();
         hud.triggerTileModeCyclePress();
@@ -329,12 +431,21 @@ describe("setupDioramaTouchControls", () => {
         const { tc } = makeTileModeController();
         // Gamepad規約: y=-1がジョイスティックを奥（前方向）へ倒した状態。
         const hud = makeHud({ getPanAxes: () => ({ x: 0, y: -1 }) });
-        const controls = setupDioramaTouchControls(scene, makeCamera(90), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(90),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(16);
 
-        const [panAxes] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = viewFeedAxes.mock.calls[
+            viewFeedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(panAxes.x).toBeCloseTo(1);
         expect(panAxes.y).toBeCloseTo(0);
     });
@@ -352,12 +463,21 @@ describe("setupDioramaTouchControls", () => {
         const { tc } = makeTileModeController();
         // Gamepad規約: y=-1がジョイスティックを奥（前方向）へ倒した状態。
         const hud = makeHud({ getPanAxes: () => ({ x: 0, y: -1 }) });
-        const controls = setupDioramaTouchControls(scene, makeCamera(0), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(0),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(16);
 
-        const [panAxes] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = viewFeedAxes.mock.calls[
+            viewFeedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         // 箱庭を90°回転させた分だけ補正され、見た目の「奥」は西(x=-1)へ移動する
         // （補正が無ければ従来通り{x:0,y:-1}になってしまう）。
         expect(panAxes.x).toBeCloseTo(-1);
@@ -370,11 +490,22 @@ describe("setupDioramaTouchControls", () => {
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud({ getPanAxes: () => ({ x: 0.5, y: -0.5 }) });
-        const controls = setupDioramaTouchControls(scene, makeCamera(0), hud, vc, oc, tc);
+        const controls = setupDioramaTouchControls(
+            scene,
+            makeCamera(0),
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         cleanups.push(controls.dispose);
 
         tick(16);
 
-        expect(viewFeedAxes).toHaveBeenCalledWith({ x: 0.5, y: -0.5 }, 0, 0.016);
+        expect(viewFeedAxes).toHaveBeenCalledWith(
+            { x: 0.5, y: -0.5 },
+            0,
+            0.016,
+        );
     });
 });

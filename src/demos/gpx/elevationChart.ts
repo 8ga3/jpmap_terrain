@@ -84,7 +84,8 @@ export const renderElevationChart = (
     const yFor = (ele: number): number =>
         PADDING_TOP + (1 - (ele - minEle) / (maxEle - minEle)) * plotH;
 
-    ctx.font = "10px -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif";
+    ctx.font =
+        "10px -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif";
     ctx.lineWidth = 1;
 
     // 標高の目盛り線・ラベル
@@ -105,12 +106,16 @@ export const renderElevationChart = (
     // 時間の目盛りラベル（JST）。パネル幅が狭い場合はラベル同士が重ならないよう分割数を減らす。
     const timeGridSteps = Math.max(
         MIN_TIME_GRID_STEPS,
-        Math.min(MAX_TIME_GRID_STEPS, Math.floor(plotW / MIN_TIME_LABEL_SPACING_PX)),
+        Math.min(
+            MAX_TIME_GRID_STEPS,
+            Math.floor(plotW / MIN_TIME_LABEL_SPACING_PX),
+        ),
     );
     for (let i = 0; i <= timeGridSteps; i++) {
         const t = minTime + ((maxTime - minTime) * i) / timeGridSteps;
         const x = xFor(t);
-        ctx.textAlign = i === 0 ? "left" : i === timeGridSteps ? "right" : "center";
+        ctx.textAlign =
+            i === 0 ? "left" : i === timeGridSteps ? "right" : "center";
         ctx.textBaseline = "top";
         ctx.fillText(formatJstTime(t), x, height - PADDING_BOTTOM + 4);
     }

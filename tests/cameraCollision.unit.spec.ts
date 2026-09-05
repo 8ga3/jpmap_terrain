@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { resolveTiltCollision, TILT_MAX_RADIUS_INCREASE_RATIO } from "../src/terrain/cameraCollision";
+import { describe, expect, it } from "vitest";
+import {
+    resolveTiltCollision,
+    TILT_MAX_RADIUS_INCREASE_RATIO,
+} from "../src/terrain/cameraCollision";
 
 describe("resolveTiltCollision", () => {
     const ratio = TILT_MAX_RADIUS_INCREASE_RATIO;

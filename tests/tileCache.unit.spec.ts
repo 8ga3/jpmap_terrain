@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createTileCache } from "../src/terrain/tileCache";
-import type { TileKey, TileCoord } from "../src/terrain/tileTypes";
+import type { TileCoord, TileKey } from "../src/terrain/tileTypes";
 
 const makeEntry = (zoom: number, x: number, y: number) => ({
     coord: { zoom, x, y } as TileCoord,

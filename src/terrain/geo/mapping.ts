@@ -11,7 +11,7 @@
  * NOTE: データ取得層 `gsiTile.ts`（`toTileXY` / `tileCenterLatLon`）はタイル整数座標
  * 単位の変換で温存対象。本モジュールはサブピクセル精度のグローバルピクセル変換を担う。
  */
-import { TILE_SIZE, clamp } from "../gsiTile";
+import { clamp, TILE_SIZE } from "../gsiTile";
 
 /**
  * Web メルカトルの緯度有効域[deg]。±この緯度で投影が ±無限大に発散するため、
@@ -83,9 +83,14 @@ export const latLonToPixel = (
     // 出力も [0, totalPixels] に収める。MERCATOR_MAX_LAT は丸め値のため、緯度上限ちょうどで
     // py が ±数 e-5 px だけ域外に出る。`gsiTile.toTileXY` が最終的にタイル整数を [0, n-1] へ
     // クランプするのと同じ定義域をピクセル粒度で保証する。
-    const px = clamp(((lonNormalized + 180) / 360) * totalPixels, 0, totalPixels);
+    const px = clamp(
+        ((lonNormalized + 180) / 360) * totalPixels,
+        0,
+        totalPixels,
+    );
     const py = clamp(
-        ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
+        ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) /
+            2) *
             totalPixels,
         0,
         totalPixels,

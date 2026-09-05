@@ -5,18 +5,19 @@
  * {@link DefaultSceneInitOptions} を提供する。
  * globe 単一バックエンド化に伴い、これらの共有シンボルを描画実装から切り離す。
  */
-import type { FrustumPlane } from "../terrain/visibleTiles";
+
 import type {
-    TerrainClickListener,
-    PolygonPointHoverListener,
     PolygonPointClickListener,
     PolygonPointDragListener,
+    PolygonPointHoverListener,
+    TerrainClickListener,
     ViewMode,
 } from "../lib/types";
-import type { MarkerManager } from "../terrain/markerManager";
-import type { PolygonManager } from "../terrain/polygonManager";
 import type { CircleManager } from "../terrain/circleManager";
+import type { MarkerManager } from "../terrain/markerManager";
 import type { ModelManager } from "../terrain/modelManager";
+import type { PolygonManager } from "../terrain/polygonManager";
+import type { FrustumPlane } from "../terrain/visibleTiles";
 
 /**
  * 外部からカメラ・位置を操作するためのコントローラ。
@@ -227,25 +228,19 @@ export interface DefaultSceneController {
      * ポリゴン頂点上の hover 通知を購読する。
      * リスナーは hover 開始/対象切替時にイベントを、hover 解除時に `null` を受け取る。
      */
-    subscribePolygonPointHover(
-        listener: PolygonPointHoverListener,
-    ): () => void;
+    subscribePolygonPointHover(listener: PolygonPointHoverListener): () => void;
     /**
      * ポリゴン頂点上の click 通知を購読する。
      * `pointerdown` → `pointerup` の移動量が
      * {@link POLYGON_POINT_DRAG_THRESHOLD_PX} 未満のときのみ発火する。
      */
-    subscribePolygonPointClick(
-        listener: PolygonPointClickListener,
-    ): () => void;
+    subscribePolygonPointClick(listener: PolygonPointClickListener): () => void;
     /** 頂点ドラッグ開始 */
     subscribePolygonPointDragStart(
         listener: PolygonPointDragListener,
     ): () => void;
     /** 頂点ドラッグ中（移動毎） */
-    subscribePolygonPointDrag(
-        listener: PolygonPointDragListener,
-    ): () => void;
+    subscribePolygonPointDrag(listener: PolygonPointDragListener): () => void;
     /** 頂点ドラッグ終了 */
     subscribePolygonPointDragEnd(
         listener: PolygonPointDragListener,

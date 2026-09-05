@@ -4,7 +4,7 @@
  * pagehide / popstate による中断遷移、onAbort コールバックの同期実行、
  * dispose 後の監視解除を検証する。
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createInitCancellation } from "../src/demos/artillery/initCancellation";
 
 describe("createInitCancellation", () => {

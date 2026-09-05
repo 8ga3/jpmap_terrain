@@ -11,9 +11,12 @@
  * - 頂点カラー: 側面壁は上端が下端より明るい（乗算値>1）、底面は一律1
  * - 頂点数不足（<3）は RangeError
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { buildDioramaSkirtGeometry, type DioramaSkirtRingPoint } from "../src/terrain/diorama/dioramaSkirt";
+import {
+    buildDioramaSkirtGeometry,
+    type DioramaSkirtRingPoint,
+} from "../src/terrain/diorama/dioramaSkirt";
 
 /** 半径1の正n角形リングを生成する（テスト用）。 */
 const makeRing = (n: number, y = 0): DioramaSkirtRingPoint[] =>
@@ -60,9 +63,15 @@ describe("buildDioramaSkirtGeometry", () => {
         for (let i = 0; i < n; i++) {
             const wallIdx = n + i;
             const rimIdx = 2 * n + i;
-            expect(geometry.positions[rimIdx * 3]).toBeCloseTo(geometry.positions[wallIdx * 3], 6);
+            expect(geometry.positions[rimIdx * 3]).toBeCloseTo(
+                geometry.positions[wallIdx * 3],
+                6,
+            );
             expect(geometry.positions[rimIdx * 3 + 1]).toBeCloseTo(baseY, 6);
-            expect(geometry.positions[rimIdx * 3 + 2]).toBeCloseTo(geometry.positions[wallIdx * 3 + 2], 6);
+            expect(geometry.positions[rimIdx * 3 + 2]).toBeCloseTo(
+                geometry.positions[wallIdx * 3 + 2],
+                6,
+            );
         }
     });
 
@@ -102,7 +111,8 @@ describe("buildDioramaSkirtGeometry", () => {
         const bottomCenterIndex = n * 3;
         const bottomIndices = geometry.indices.slice(n * 2 * 3);
         for (const idx of bottomIndices) {
-            const isRimOrCenter = idx === bottomCenterIndex || (idx >= 2 * n && idx < 3 * n);
+            const isRimOrCenter =
+                idx === bottomCenterIndex || (idx >= 2 * n && idx < 3 * n);
             expect(isRimOrCenter).toBe(true);
         }
     });
@@ -139,7 +149,9 @@ describe("buildDioramaSkirtGeometry", () => {
     });
 
     it("outerRing の点数が3未満はRangeError", () => {
-        expect(() => buildDioramaSkirtGeometry(makeRing(2), -1)).toThrow(RangeError);
+        expect(() => buildDioramaSkirtGeometry(makeRing(2), -1)).toThrow(
+            RangeError,
+        );
         expect(() => buildDioramaSkirtGeometry([], -1)).toThrow(RangeError);
     });
 
@@ -157,8 +169,14 @@ describe("buildDioramaSkirtGeometry", () => {
         for (let i = 0; i < n; i++) {
             expect(geometry.colors[i * 4]).toBeGreaterThan(1);
             // RGBは同じ値（無彩色の明暗変化のみ、色味は変えない）。
-            expect(geometry.colors[i * 4 + 1]).toBeCloseTo(geometry.colors[i * 4], 9);
-            expect(geometry.colors[i * 4 + 2]).toBeCloseTo(geometry.colors[i * 4], 9);
+            expect(geometry.colors[i * 4 + 1]).toBeCloseTo(
+                geometry.colors[i * 4],
+                9,
+            );
+            expect(geometry.colors[i * 4 + 2]).toBeCloseTo(
+                geometry.colors[i * 4],
+                9,
+            );
             expect(geometry.colors[i * 4 + 3]).toBeCloseTo(1, 9);
         }
     });
@@ -171,8 +189,14 @@ describe("buildDioramaSkirtGeometry", () => {
             expect(geometry.colors[i * 4]).toBeLessThan(1);
             expect(geometry.colors[i * 4]).toBeGreaterThan(0);
             // RGBは同じ値（無彩色の明暗変化のみ、色味は変えない）。
-            expect(geometry.colors[i * 4 + 1]).toBeCloseTo(geometry.colors[i * 4], 9);
-            expect(geometry.colors[i * 4 + 2]).toBeCloseTo(geometry.colors[i * 4], 9);
+            expect(geometry.colors[i * 4 + 1]).toBeCloseTo(
+                geometry.colors[i * 4],
+                9,
+            );
+            expect(geometry.colors[i * 4 + 2]).toBeCloseTo(
+                geometry.colors[i * 4],
+                9,
+            );
             expect(geometry.colors[i * 4 + 3]).toBeCloseTo(1, 9);
         }
     });

@@ -30,7 +30,8 @@ const JOYSTICK_OUTER_DIAMETER_PX = 96;
 const JOYSTICK_KNOB_DIAMETER_PX = 40;
 
 /** ジョイスティックのつまみが動ける最大半径[px]（外径の半分からつまみ半径を引いた値）。 */
-const JOYSTICK_MAX_KNOB_OFFSET_PX = (JOYSTICK_OUTER_DIAMETER_PX - JOYSTICK_KNOB_DIAMETER_PX) / 2;
+const JOYSTICK_MAX_KNOB_OFFSET_PX =
+    (JOYSTICK_OUTER_DIAMETER_PX - JOYSTICK_KNOB_DIAMETER_PX) / 2;
 
 export interface DioramaArControlHud {
     /** `dom-overlay` feature の `element` オプションに渡す実体。 */
@@ -127,7 +128,11 @@ const TILE_MODE_ICON_SVG = `
  * 仮想ジョイスティック（ドラッグでパン方向・強度を指定するGUI）を作成する。
  * つまみの中心からのドラッグ量を外径半径で正規化し、[-1,1] の2軸へ変換する。
  */
-const createJoystick = (): { element: HTMLElement; getAxes: () => StickAxes; dispose: () => void } => {
+const createJoystick = (): {
+    element: HTMLElement;
+    getAxes: () => StickAxes;
+    dispose: () => void;
+} => {
     const outer = document.createElement("div");
     Object.assign(outer.style, {
         position: "absolute",
@@ -182,7 +187,10 @@ const createJoystick = (): { element: HTMLElement; getAxes: () => StickAxes; dis
         }
         setKnobOffset(dx, dy);
         // 画面座標は下方向が正だが、スティック規約は前方向（上へドラッグ）が負値のyにする。
-        axes = { x: dx / JOYSTICK_MAX_KNOB_OFFSET_PX, y: dy / JOYSTICK_MAX_KNOB_OFFSET_PX };
+        axes = {
+            x: dx / JOYSTICK_MAX_KNOB_OFFSET_PX,
+            y: dy / JOYSTICK_MAX_KNOB_OFFSET_PX,
+        };
     };
 
     const onPointerDown = (event: PointerEvent): void => {
@@ -234,7 +242,8 @@ const bindHoldButton = (
     button: HTMLButtonElement,
     onActiveChange: (active: boolean) => void,
 ): Array<{ el: HTMLElement; type: string; fn: EventListener }> => {
-    const entries: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
+    const entries: Array<{ el: HTMLElement; type: string; fn: EventListener }> =
+        [];
     const bind = (el: HTMLElement, type: string, fn: EventListener): void => {
         el.addEventListener(type, fn);
         entries.push({ el, type, fn });
@@ -263,7 +272,8 @@ const bindHoldButton = (
     bind(button, "pointerup", onPointerEnd as EventListener);
     bind(button, "pointercancel", onPointerEnd as EventListener);
 
-    const isActivationKey = (key: string): boolean => key === "Enter" || key === " ";
+    const isActivationKey = (key: string): boolean =>
+        key === "Enter" || key === " ";
     const onKeyDown = ((event: KeyboardEvent) => {
         if (!isActivationKey(event.key)) return;
         // キーリピートで再入しても実害はないが、余分な処理を避けるため無視する。
@@ -350,7 +360,11 @@ const createHoldButtonGroup = (
     // （false化）される（詳細は上記`@remarks`参照）。
     const pendingPulses: boolean[] = buttons.map(() => false);
 
-    const listeners: Array<{ el: HTMLElement; type: string; fn: EventListener }> = [];
+    const listeners: Array<{
+        el: HTMLElement;
+        type: string;
+        fn: EventListener;
+    }> = [];
 
     buttons.forEach((spec, i) => {
         const button = document.createElement("button");
@@ -385,7 +399,9 @@ const createHoldButtonGroup = (
         element: container,
         getAxis,
         dispose: () => {
-            listeners.forEach(({ el, type, fn }) => el.removeEventListener(type, fn));
+            listeners.forEach(({ el, type, fn }) =>
+                el.removeEventListener(type, fn),
+            );
         },
     };
 };
@@ -395,7 +411,11 @@ const createHoldButtonGroup = (
  * （ジョイスティックと同様、継続的な入力として扱えるようにするため）。
  * 画面右下に配置する。
  */
-const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } =>
+const createZoomButtons = (): {
+    element: HTMLElement;
+    getAxis: () => number;
+    dispose: () => void;
+} =>
     // 「+」= ズームイン（フットプリント半径を縮める）= スティック規約の前方向 = 負の軸値。
     createHoldButtonGroup({ right: "16px", bottom: "16px" }, [
         { label: "+", ariaLabel: "ズームイン", axisValue: -1 },
@@ -406,7 +426,11 @@ const createZoomButtons = (): { element: HTMLElement; getAxis: () => number; dis
  * 箱庭回転ボタン（⟲/⟳）を作成する。画面右上（ARボタンの下）に配置し、
  * ARボタンや `back-link`（`public/diorama.html`）と重ならないようにする。
  */
-const createRotateButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } =>
+const createRotateButtons = (): {
+    element: HTMLElement;
+    getAxis: () => number;
+    dispose: () => void;
+} =>
     createHoldButtonGroup({ right: "16px", top: "64px" }, [
         { label: "⟲", ariaLabel: "反時計回りに回転", axisValue: -1 },
         { label: "⟳", ariaLabel: "時計回りに回転", axisValue: 1 },
@@ -416,7 +440,11 @@ const createRotateButtons = (): { element: HTMLElement; getAxis: () => number; d
  * 箱庭の設置高さ変更ボタン（▲/▼）を作成する。画面左上（`back-link` の下）に
  * 配置し、他のUI要素と重ならないようにする。
  */
-const createHeightButtons = (): { element: HTMLElement; getAxis: () => number; dispose: () => void } =>
+const createHeightButtons = (): {
+    element: HTMLElement;
+    getAxis: () => number;
+    dispose: () => void;
+} =>
     createHoldButtonGroup({ left: "16px", top: "56px" }, [
         { label: "▲", ariaLabel: "高さを上げる", axisValue: 1 },
         { label: "▼", ariaLabel: "高さを下げる", axisValue: -1 },
@@ -454,7 +482,11 @@ const createTapButton = (spec: {
      * （{@link createDioramaArControlHud}の`exitArEnabled`オプション参照）。
      */
     disabled?: boolean;
-}): { element: HTMLButtonElement; onPress: (callback: () => void) => () => void; dispose: () => void } => {
+}): {
+    element: HTMLButtonElement;
+    onPress: (callback: () => void) => () => void;
+    dispose: () => void;
+} => {
     const button = document.createElement("button");
     // フォーム内に配置された場合の既定`type="submit"`扱いを避ける
     // （本HUDはフォームを想定しないが、誤ったクリックでのフォーム送信を防ぐため明示する）。
@@ -580,7 +612,9 @@ const createTopCenterButtons = (
  *   終了すべきARセッションが存在しないため `false`（ボタンは`disabled`＋半透明表示
  *   になり、タップしても何も起きない）。
  */
-export const createDioramaArControlHud = (options: { exitArEnabled: boolean }): DioramaArControlHud => {
+export const createDioramaArControlHud = (options: {
+    exitArEnabled: boolean;
+}): DioramaArControlHud => {
     const root = document.createElement("div");
     Object.assign(root.style, {
         position: "absolute",
@@ -607,8 +641,10 @@ export const createDioramaArControlHud = (options: { exitArEnabled: boolean }): 
         getZoomAxis: () => zoomButtons.getAxis(),
         getRotationAxis: () => rotateButtons.getAxis(),
         getHeightAxis: () => heightButtons.getAxis(),
-        onTileModeCyclePress: (callback: () => void): (() => void) => topCenterButtons.tileModeButton.onPress(callback),
-        onExitArPress: (callback: () => void): (() => void) => topCenterButtons.exitArButton.onPress(callback),
+        onTileModeCyclePress: (callback: () => void): (() => void) =>
+            topCenterButtons.tileModeButton.onPress(callback),
+        onExitArPress: (callback: () => void): (() => void) =>
+            topCenterButtons.exitArButton.onPress(callback),
         dispose: () => {
             joystick.dispose();
             zoomButtons.dispose();

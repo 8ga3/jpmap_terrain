@@ -1,11 +1,16 @@
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { isSatisfied, parseToolVersion } from "../scripts/checkToolVersions.mjs";
+import { describe, expect, it } from "vitest";
+import {
+    isSatisfied,
+    parseToolVersion,
+} from "../scripts/checkToolVersions.mjs";
 
 describe("checkToolVersions", () => {
     describe("parseToolVersion", () => {
         it("指定ツールのバージョンを取り出す", () => {
-            expect(parseToolVersion("nodejs 24.18.0\n", "nodejs")).toBe("24.18.0");
+            expect(parseToolVersion("nodejs 24.18.0\n", "nodejs")).toBe(
+                "24.18.0",
+            );
         });
 
         it("複数ツールが列挙されていても対象ツールのみを取り出す", () => {
@@ -19,7 +24,9 @@ describe("checkToolVersions", () => {
         });
 
         it("複数バージョンが列挙されている場合は先頭を採用する", () => {
-            expect(parseToolVersion("nodejs 24.18.0 22.21.1\n", "nodejs")).toBe("24.18.0");
+            expect(parseToolVersion("nodejs 24.18.0 22.21.1\n", "nodejs")).toBe(
+                "24.18.0",
+            );
         });
 
         it("対象ツールの記述が無い場合は null を返す", () => {
@@ -40,7 +47,10 @@ describe("checkToolVersions", () => {
 
     // .tool-versions を書き換えたのにテストが素通りしないよう、実ファイルとの整合も検証する。
     it("リポジトリの .tool-versions に nodejs の指定が存在する", () => {
-        const content = readFileSync(new URL("../.tool-versions", import.meta.url), "utf8");
+        const content = readFileSync(
+            new URL("../.tool-versions", import.meta.url),
+            "utf8",
+        );
         expect(parseToolVersion(content, "nodejs")).toMatch(/^\d+\.\d+\.\d+$/);
     });
 });

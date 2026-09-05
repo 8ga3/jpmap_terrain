@@ -10,22 +10,22 @@
  */
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type {
+    CircleOptions,
     JpmapTerrainOptions,
     PolygonOptions,
-    CircleOptions,
 } from "../../lib/types";
 import { CIRCLE_RADIUS_MAX_M } from "../../lib/types";
 import {
     parseCameraStateFromUrl,
     parseMapTypeFromUrl,
 } from "../../terrain/urlState";
-import { parsePlan } from "./parsePlan";
 import type { ParsedPlan } from "./parsePlan";
+import { parsePlan } from "./parsePlan";
 import {
-    formatWaypointLabel,
-    formatWaypointEdgeLabel,
-    formatRallyPointLabel,
     formatHomePositionLabel,
+    formatRallyPointLabel,
+    formatWaypointEdgeLabel,
+    formatWaypointLabel,
 } from "./utils";
 
 const DEMO_MOUNT_ID = "root";
@@ -302,9 +302,15 @@ const start = async (): Promise<void> => {
     const layerVisible = { waypoints: true, geofence: true, rally: true };
 
     // ボタン要素
-    const btnWaypoints = document.getElementById(BTN_WAYPOINTS_ID) as HTMLButtonElement | null;
-    const btnGeofence = document.getElementById(BTN_GEOFENCE_ID) as HTMLButtonElement | null;
-    const btnRally = document.getElementById(BTN_RALLY_ID) as HTMLButtonElement | null;
+    const btnWaypoints = document.getElementById(
+        BTN_WAYPOINTS_ID,
+    ) as HTMLButtonElement | null;
+    const btnGeofence = document.getElementById(
+        BTN_GEOFENCE_ID,
+    ) as HTMLButtonElement | null;
+    const btnRally = document.getElementById(
+        BTN_RALLY_ID,
+    ) as HTMLButtonElement | null;
 
     // 2D/3D 視点モード切替はライブラリ内蔵ボタン（コンパス直下）を使用する。
 
@@ -325,19 +331,27 @@ const start = async (): Promise<void> => {
 
     const applyLayerVisibility = (): void => {
         if (currentIds.homeId) {
-            if (viewer.getPolygon(currentIds.homeId)) viewer.setPolygonEnabled(currentIds.homeId, layerVisible.waypoints);
+            if (viewer.getPolygon(currentIds.homeId))
+                viewer.setPolygonEnabled(
+                    currentIds.homeId,
+                    layerVisible.waypoints,
+                );
         }
         for (const id of currentIds.waypointIds) {
-            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.waypoints);
+            if (viewer.getPolygon(id))
+                viewer.setPolygonEnabled(id, layerVisible.waypoints);
         }
         for (const id of [...currentIds.geofencePolyIds]) {
-            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.geofence);
+            if (viewer.getPolygon(id))
+                viewer.setPolygonEnabled(id, layerVisible.geofence);
         }
         for (const id of currentIds.geofenceCircleIds) {
-            if (viewer.getCircle(id)) viewer.setCircleEnabled(id, layerVisible.geofence);
+            if (viewer.getCircle(id))
+                viewer.setCircleEnabled(id, layerVisible.geofence);
         }
         for (const id of currentIds.rallyIds) {
-            if (viewer.getPolygon(id)) viewer.setPolygonEnabled(id, layerVisible.rally);
+            if (viewer.getPolygon(id))
+                viewer.setPolygonEnabled(id, layerVisible.rally);
         }
     };
 

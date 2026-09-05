@@ -20,10 +20,10 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 
 import { TILE_SIZE, tileEdgeMeters } from "../gsiTile";
+import { type CoarseEdge, snapEdgeElevation } from "./crossLevel";
 import { geodeticToEcefToRef } from "./ecef";
-import { pixelToLatLon, totalPixelsForZoom } from "./mapping";
 import { sampleElevBilinear } from "./elevSample";
-import { snapEdgeElevation, type CoarseEdge } from "./crossLevel";
+import { pixelToLatLon, totalPixelsForZoom } from "./mapping";
 
 /** スカート深さの下限・上限 [m]、および辺長に対する係数。 */
 const SKIRT_MIN_DEPTH = 150;
@@ -151,7 +151,16 @@ export const buildGlobeTileMeshData = (
             const gly = (ty * TILE_SIZE + pyF) / geomScale - geomY * TILE_SIZE;
             let elev = sampleElevBilinear(geomElev, glx, gly);
             // クロスレベル: 境界辺なら粗タイル表面へ標高をスナップ（陰影シーム解消、z<=15 のみ）。
-            const snapped = snapEdgeElevation(edges, row, col, segments, tx, ty, pxF, pyF);
+            const snapped = snapEdgeElevation(
+                edges,
+                row,
+                col,
+                segments,
+                tx,
+                ty,
+                pxF,
+                pyF,
+            );
             if (snapped !== null) elev = snapped;
             // no-data（NaN）は海面(0m)に倒す。GSI 標高は海上・湖面・カバー外で NaN を返すことがあり、
             // そのまま使うと頂点座標が NaN になりメッシュが不可視＝タイルが欠ける。海域は
@@ -166,7 +175,11 @@ export const buildGlobeTileMeshData = (
             geodeticToEcefToRef(lat, lon, elev, ecef);
 
             // アンカー相対（小さな値）で格納する。
-            positions.push(ecef.x - anchor.x, ecef.y - anchor.y, ecef.z - anchor.z);
+            positions.push(
+                ecef.x - anchor.x,
+                ecef.y - anchor.y,
+                ecef.z - anchor.z,
+            );
 
             // UV: col→u（西→東）。地理院タイル画像は row=0（pyF=0）が北端。
             // Babylon の既定 Texture は invertY=true で、v=1 が画像上端（=北）、
@@ -194,7 +207,10 @@ export const buildGlobeTileMeshData = (
     // 深さはタイル辺長に比例（LOD 段差を吸収する程度）。粗タイルほど深く、上限あり。
     const skirtDepth = Math.min(
         SKIRT_MAX_DEPTH,
-        Math.max(SKIRT_MIN_DEPTH, tileEdgeMeters(center.lat, zoom) * SKIRT_DEPTH_RATIO),
+        Math.max(
+            SKIRT_MIN_DEPTH,
+            tileEdgeMeters(center.lat, zoom) * SKIRT_DEPTH_RATIO,
+        ),
     );
     const down = anchor.clone().normalize().scaleInPlace(-skirtDepth); // 地心方向（タイル内ほぼ一定）
     const skirtOf = new Map<number, number>();

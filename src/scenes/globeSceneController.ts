@@ -12,91 +12,87 @@
  * no-op もしくは明確な未対応エラーとする。
  */
 import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import type { Scene } from "@babylonjs/core/scene";
-
-import type { MapType } from "../terrain/gsiTile";
-import { JAPAN_BOUNDS } from "../terrain/gsiTile";
-import { geodeticToEcef, ecefToGeodetic } from "../terrain/geo/ecef";
-import { sunDirectionEcefToRef } from "../terrain/geo/sunDirectionEcef";
-import { computeSunPosition } from "../terrain/sunPosition";
-import { deriveSkyColor } from "../terrain/sunState";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
-import {
-    uiToYawPitch,
-    yawPitchToUi,
-} from "../terrain/geo/cameraMapping";
-import { assertLatLonInBounds } from "../terrain/overlayCoords";
-import { resolveIcon, resolveText } from "../terrain/marker";
-import {
-    createControlPanel,
-    pickScaleWithin,
-    formatScale,
-    showToast,
-} from "../terrain/controlPanel";
-import { createUiVisibilityController } from "../terrain/uiVisibility";
-import type { MarkerManager } from "../terrain/markerManager";
-import type { PolygonManager } from "../terrain/polygonManager";
-import type { CircleManager } from "../terrain/circleManager";
-import type { ModelManager } from "../terrain/modelManager";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Scene } from "@babylonjs/core/scene";
 import type {
+    AltitudeMode,
+    CircleCenterOptions,
+    CircleHandle,
+    CircleOptions,
+    CircleStyleOptions,
+    CircleUpdate,
     MarkerHandle,
-    MarkerOptions,
-    MarkerUpdate,
     MarkerIconOptions,
-    MarkerTextOptions,
     MarkerLineOptions,
+    MarkerOptions,
+    MarkerTextOptions,
+    MarkerUpdate,
+    ModelHandle,
+    ModelOptions,
+    ModelUpdate,
     PolygonHandle,
     PolygonOptions,
+    PolygonPointClickListener,
+    PolygonPointDragEvent,
+    PolygonPointDragListener,
+    PolygonPointHoverListener,
     PolygonPointOptions,
     PolygonPointPartial,
     PolygonStyleOptions,
     PolygonUpdate,
-    CircleHandle,
-    CircleOptions,
-    CircleUpdate,
-    CircleCenterOptions,
-    CircleStyleOptions,
-    AltitudeMode,
-    ModelHandle,
-    ModelOptions,
-    ModelUpdate,
-    PolygonPointHoverListener,
-    PolygonPointClickListener,
-    PolygonPointDragListener,
-    PolygonPointDragEvent,
     ViewMode,
 } from "../lib/types";
 import {
-    MARKER_DEFAULTS,
-    POLYGON_DEFAULTS,
-    resolvePolygonStyle,
     CIRCLE_DEFAULTS,
     CIRCLE_RADIUS_MAX_M,
-    CIRCLE_SEGMENTS_MIN,
     CIRCLE_SEGMENTS_MAX,
+    CIRCLE_SEGMENTS_MIN,
+    MARKER_DEFAULTS,
     MODEL_DEFAULTS,
+    POLYGON_DEFAULTS,
+    resolvePolygonStyle,
     SUN_FALLBACK_DATETIME_ISO,
 } from "../lib/types";
-import type { GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
-import type {
-    GlobePolygonManager,
-    GlobePolygonOptions,
-} from "../terrain/geo/globePolygonManager";
+import type { CircleManager } from "../terrain/circleManager";
+import {
+    createControlPanel,
+    formatScale,
+    pickScaleWithin,
+    showToast,
+} from "../terrain/controlPanel";
+import { uiToYawPitch, yawPitchToUi } from "../terrain/geo/cameraMapping";
+import { ecefToGeodetic, geodeticToEcef } from "../terrain/geo/ecef";
 import type {
     GlobeCircleManager,
     GlobeCircleOptions,
 } from "../terrain/geo/globeCircleManager";
+import type { GlobeMarkerManager } from "../terrain/geo/globeMarkerManager";
 import type { GlobeModelManager } from "../terrain/geo/globeModelManager";
+import type {
+    GlobePolygonManager,
+    GlobePolygonOptions,
+} from "../terrain/geo/globePolygonManager";
+import { sunDirectionEcefToRef } from "../terrain/geo/sunDirectionEcef";
+import type { MapType } from "../terrain/gsiTile";
+import { JAPAN_BOUNDS } from "../terrain/gsiTile";
+import { resolveIcon, resolveText } from "../terrain/marker";
+import type { MarkerManager } from "../terrain/markerManager";
+import type { ModelManager } from "../terrain/modelManager";
+import { assertLatLonInBounds } from "../terrain/overlayCoords";
+import type { PolygonManager } from "../terrain/polygonManager";
+import { computeSunPosition } from "../terrain/sunPosition";
+import { deriveSkyColor } from "../terrain/sunState";
+import { createUiVisibilityController } from "../terrain/uiVisibility";
+import {
+    type GlobePolygonPointDragEvent,
+    GlobeScene,
+    type GlobeSceneController,
+} from "./globe";
 import type {
     DefaultSceneController,
     DefaultSceneInitOptions,
 } from "./sceneContract";
-import {
-    GlobeScene,
-    type GlobeSceneController,
-    type GlobePolygonPointDragEvent,
-} from "./globe";
 
 /** globe のドラッグイベントを公開 {@link PolygonPointDragEvent} へ変換する。 */
 const toPublicDragEvent = (
@@ -185,7 +181,7 @@ export const createGlobeMarkerManagerAdapter = (
         // elevationResolved=false とする契約。呼び出し側がそれに合わせて override を渡せるようにし、
         // 通常は terrainElevAt!==null で best-effort 判定する（override は false 明示にも対応）。
         elevationResolved:
-            elevationResolvedOverride ?? (terrainElevAt(e.lat, e.lon) !== null),
+            elevationResolvedOverride ?? terrainElevAt(e.lat, e.lon) !== null,
     });
 
     const requireEntry = (id: string): AdapterEntry => {
@@ -249,11 +245,17 @@ export const createGlobeMarkerManagerAdapter = (
                 assertLatLonInBounds(lat, lon, ERROR_PREFIX);
             }
             const icon =
-                partial.icon !== undefined ? resolveIcon(partial.icon) : prev.icon;
+                partial.icon !== undefined
+                    ? resolveIcon(partial.icon)
+                    : prev.icon;
             const text =
-                partial.text !== undefined ? resolveText(partial.text) : prev.text;
+                partial.text !== undefined
+                    ? resolveText(partial.text)
+                    : prev.text;
             const line =
-                partial.line !== undefined ? resolveLine(partial.line) : prev.line;
+                partial.line !== undefined
+                    ? resolveLine(partial.line)
+                    : prev.line;
             const enabled = partial.enabled ?? prev.enabled;
             // globe マネージャは in-place 更新を持たないため作り直す。再 add（icon.url 検証等で
             // throw しうる）を先に行い、成功後に旧ノードを remove して内部状態の不整合を防ぐ
@@ -356,8 +358,14 @@ const validatePolygonPoints = (
     }
 };
 
-const toGlobePolygonOptions = (entry: PolygonAdapterEntry): GlobePolygonOptions => ({
-    points: entry.points.map((p) => ({ lat: p.lat, lon: p.lon, altitude: p.altitude })),
+const toGlobePolygonOptions = (
+    entry: PolygonAdapterEntry,
+): GlobePolygonOptions => ({
+    points: entry.points.map((p) => ({
+        lat: p.lat,
+        lon: p.lon,
+        altitude: p.altitude,
+    })),
     closed: entry.closed,
     altitudeMode: entry.altitudeMode,
     labels: entry.hasLabels ? entry.labels : undefined,
@@ -393,13 +401,18 @@ export const createGlobePolygonManagerAdapter = (
         if (disposed) throw new Error("PolygonManager has been disposed");
     };
 
-    const buildHandle = (id: string, e: PolygonAdapterEntry): PolygonHandle => ({
+    const buildHandle = (
+        id: string,
+        e: PolygonAdapterEntry,
+    ): PolygonHandle => ({
         id,
         points: e.points.map((p) => ({ ...p })),
         closed: e.closed,
         altitudeMode: e.altitudeMode,
         labels: e.hasLabels ? Object.freeze([...e.labels]) : undefined,
-        edgeLabels: e.hasEdgeLabels ? Object.freeze([...e.edgeLabels]) : undefined,
+        edgeLabels: e.hasEdgeLabels
+            ? Object.freeze([...e.edgeLabels])
+            : undefined,
         style: { ...e.style },
         enabled: e.enabled,
         pointsEnabled: e.pointsEnabled,
@@ -442,10 +455,18 @@ export const createGlobePolygonManagerAdapter = (
         return next;
     };
 
-    const createEntry = (options: PolygonOptions, globeId: string): PolygonAdapterEntry => {
+    const createEntry = (
+        options: PolygonOptions,
+        globeId: string,
+    ): PolygonAdapterEntry => {
         const closed = options.closed ?? POLYGON_DEFAULTS.closed;
-        const altitudeMode = options.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode;
-        validatePolygonPoints(options.points, altitudeMode, POLYGON_ERROR_PREFIX);
+        const altitudeMode =
+            options.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode;
+        validatePolygonPoints(
+            options.points,
+            altitudeMode,
+            POLYGON_ERROR_PREFIX,
+        );
         const points = options.points.map((p) => ({
             lat: p.lat,
             lon: p.lon,
@@ -468,10 +489,12 @@ export const createGlobePolygonManagerAdapter = (
             hasEdgeLabels: options.edgeLabels !== undefined,
             style: resolvePolygonStyle(options.style),
             enabled: options.enabled ?? POLYGON_DEFAULTS.enabled,
-            pointsEnabled: options.pointsEnabled ?? POLYGON_DEFAULTS.pointsEnabled,
+            pointsEnabled:
+                options.pointsEnabled ?? POLYGON_DEFAULTS.pointsEnabled,
             verticalsEnabled:
                 options.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled,
-            labelsEnabled: options.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled,
+            labelsEnabled:
+                options.labelsEnabled ?? POLYGON_DEFAULTS.labelsEnabled,
             wallsEnabled: options.wallsEnabled ?? POLYGON_DEFAULTS.wallsEnabled,
         };
     };
@@ -500,7 +523,9 @@ export const createGlobePolygonManagerAdapter = (
             const prev = requireEntry(id);
             const closed = partial.closed ?? prev.closed;
             const altitudeMode = partial.altitudeMode ?? prev.altitudeMode;
-            const points = (partial.points ?? prev.points).map((p) => ({ ...p }));
+            const points = (partial.points ?? prev.points).map((p) => ({
+                ...p,
+            }));
             validatePolygonPoints(
                 points,
                 altitudeMode,
@@ -517,7 +542,10 @@ export const createGlobePolygonManagerAdapter = (
                 ? points.map((_p, i) => partial.labels?.[i])
                 : points.map((_p, i) => prev.labels[i]);
             const edgeLabels = edgeLabelsProvided
-                ? Array.from({ length: eCount }, (_v, i) => partial.edgeLabels?.[i])
+                ? Array.from(
+                      { length: eCount },
+                      (_v, i) => partial.edgeLabels?.[i],
+                  )
                 : Array.from({ length: eCount }, (_v, i) => prev.edgeLabels[i]);
             const next: PolygonAdapterEntry = {
                 ...prev,
@@ -560,7 +588,9 @@ export const createGlobePolygonManagerAdapter = (
                 globeMgr.setContent(prev.globeId, {
                     points: next.points,
                     labels: next.hasLabels ? next.labels : undefined,
-                    edgeLabels: next.hasEdgeLabels ? next.edgeLabels : undefined,
+                    edgeLabels: next.hasEdgeLabels
+                        ? next.edgeLabels
+                        : undefined,
                 })
             ) {
                 next.globeId = prev.globeId;
@@ -615,10 +645,18 @@ export const createGlobePolygonManagerAdapter = (
             next.wallsEnabled = enabled;
             commitRebuild(id, prev, next);
         },
-        insertPoint(id: string, index: number, point: PolygonPointOptions): PolygonHandle {
+        insertPoint(
+            id: string,
+            index: number,
+            point: PolygonPointOptions,
+        ): PolygonHandle {
             assertNotDisposed();
             const prev = requireEntry(id);
-            if (!Number.isInteger(index) || index < 0 || index > prev.points.length) {
+            if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index > prev.points.length
+            ) {
                 throw new RangeError(
                     `JpmapTerrain.insertPolygonPoint[${id}]: index out of range (got ${index}, length=${prev.points.length})`,
                 );
@@ -632,13 +670,20 @@ export const createGlobePolygonManagerAdapter = (
             next.points.splice(index, 0, { ...point });
             next.labels.splice(index, 0, undefined);
             next.edgeLabels.splice(index, 0, undefined);
-            next.edgeLabels.length = polygonEdgeCount(next.points.length, next.closed);
+            next.edgeLabels.length = polygonEdgeCount(
+                next.points.length,
+                next.closed,
+            );
             return buildHandle(id, commitRebuild(id, prev, next));
         },
         removePoint(id: string, index: number): PolygonHandle {
             assertNotDisposed();
             const prev = requireEntry(id);
-            if (!Number.isInteger(index) || index < 0 || index >= prev.points.length) {
+            if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index >= prev.points.length
+            ) {
                 throw new RangeError(
                     `JpmapTerrain.removePolygonPoint[${id}]: index out of range (got ${index}, length=${prev.points.length})`,
                 );
@@ -652,9 +697,15 @@ export const createGlobePolygonManagerAdapter = (
             next.points.splice(index, 1);
             next.labels.splice(index, 1);
             if (next.edgeLabels.length > 0) {
-                next.edgeLabels.splice(Math.min(index, next.edgeLabels.length - 1), 1);
+                next.edgeLabels.splice(
+                    Math.min(index, next.edgeLabels.length - 1),
+                    1,
+                );
             }
-            next.edgeLabels.length = polygonEdgeCount(next.points.length, next.closed);
+            next.edgeLabels.length = polygonEdgeCount(
+                next.points.length,
+                next.closed,
+            );
             return buildHandle(id, commitRebuild(id, prev, next));
         },
         updatePoint(
@@ -664,7 +715,11 @@ export const createGlobePolygonManagerAdapter = (
         ): PolygonHandle {
             assertNotDisposed();
             const prev = requireEntry(id);
-            if (!Number.isInteger(index) || index < 0 || index >= prev.points.length) {
+            if (
+                !Number.isInteger(index) ||
+                index < 0 ||
+                index >= prev.points.length
+            ) {
                 throw new RangeError(
                     `JpmapTerrain.updatePolygonPoint[${id}]: index out of range (got ${index}, length=${prev.points.length})`,
                 );
@@ -692,7 +747,10 @@ export const createGlobePolygonManagerAdapter = (
             }
             return buildHandle(id, commitRebuild(id, prev, next));
         },
-        replacePoints(id: string, points: readonly PolygonPointOptions[]): PolygonHandle {
+        replacePoints(
+            id: string,
+            points: readonly PolygonPointOptions[],
+        ): PolygonHandle {
             assertNotDisposed();
             const prev = requireEntry(id);
             validatePolygonPoints(
@@ -751,7 +809,8 @@ const resolveCircleStyle = (
     wallOpacity: style?.wallOpacity ?? CIRCLE_DEFAULTS.style.wallOpacity,
     labelColor: style?.labelColor ?? CIRCLE_DEFAULTS.style.labelColor,
     labelBackgroundColor:
-        style?.labelBackgroundColor ?? CIRCLE_DEFAULTS.style.labelBackgroundColor,
+        style?.labelBackgroundColor ??
+        CIRCLE_DEFAULTS.style.labelBackgroundColor,
     labelFontSize: style?.labelFontSize ?? CIRCLE_DEFAULTS.style.labelFontSize,
 });
 
@@ -762,7 +821,8 @@ const formatCircleAutoLabel = (
     center: CircleCenterOptions,
     radius: number,
 ): string => {
-    const altText = center.altitude !== undefined ? center.altitude.toFixed(1) : "0.0";
+    const altText =
+        center.altitude !== undefined ? center.altitude.toFixed(1) : "0.0";
     return [
         `lat: ${center.lat.toFixed(6)}`,
         `lon: ${center.lon.toFixed(6)}`,
@@ -828,7 +888,11 @@ export const createGlobeCircleManagerAdapter = (
     ): void => {
         if (!center) throw new Error(`${prefix}: center is required`);
         assertLatLonInBounds(center.lat, center.lon, prefix);
-        if (!Number.isFinite(radius) || radius <= 0 || radius > CIRCLE_RADIUS_MAX_M) {
+        if (
+            !Number.isFinite(radius) ||
+            radius <= 0 ||
+            radius > CIRCLE_RADIUS_MAX_M
+        ) {
             throw new Error(
                 `${prefix}: radius must be in (0, ${CIRCLE_RADIUS_MAX_M}] m (got ${radius})`,
             );
@@ -844,7 +908,9 @@ export const createGlobeCircleManagerAdapter = (
             );
         }
         if (altitudeMode === "absolute" && center.altitude === undefined) {
-            throw new Error(`${prefix}: altitudeMode="absolute" requires center.altitude`);
+            throw new Error(
+                `${prefix}: altitudeMode="absolute" requires center.altitude`,
+            );
         }
     };
 
@@ -905,9 +971,12 @@ export const createGlobeCircleManagerAdapter = (
         add(id: string, options: CircleOptions): CircleHandle {
             assertNotDisposed();
             if (entries.has(id)) {
-                throw new Error(`${CIRCLE_ERROR_PREFIX}: id "${id}" already exists`);
+                throw new Error(
+                    `${CIRCLE_ERROR_PREFIX}: id "${id}" already exists`,
+                );
             }
-            const altitudeMode = options.altitudeMode ?? CIRCLE_DEFAULTS.altitudeMode;
+            const altitudeMode =
+                options.altitudeMode ?? CIRCLE_DEFAULTS.altitudeMode;
             validateOptions(
                 options.center,
                 options.radius,
@@ -935,10 +1004,12 @@ export const createGlobeCircleManagerAdapter = (
                 labelText,
                 style: resolveCircleStyle(options.style),
                 enabled: options.enabled ?? CIRCLE_DEFAULTS.enabled,
-                pointEnabled: options.pointEnabled ?? CIRCLE_DEFAULTS.pointEnabled,
+                pointEnabled:
+                    options.pointEnabled ?? CIRCLE_DEFAULTS.pointEnabled,
                 lineEnabled: options.lineEnabled ?? CIRCLE_DEFAULTS.lineEnabled,
                 wallEnabled: options.wallEnabled ?? CIRCLE_DEFAULTS.wallEnabled,
-                labelEnabled: options.labelEnabled ?? CIRCLE_DEFAULTS.labelEnabled,
+                labelEnabled:
+                    options.labelEnabled ?? CIRCLE_DEFAULTS.labelEnabled,
             };
             entry.globeId = globeMgr.add(toGlobeOptions(entry));
             entries.set(id, entry);
@@ -948,7 +1019,9 @@ export const createGlobeCircleManagerAdapter = (
             assertNotDisposed();
             const prev = requireEntry(id);
             const center =
-                partial.center !== undefined ? { ...partial.center } : { ...prev.center };
+                partial.center !== undefined
+                    ? { ...partial.center }
+                    : { ...prev.center };
             const radius = partial.radius ?? prev.radius;
             const segments = partial.segments ?? prev.segments;
             const altitudeMode = partial.altitudeMode ?? prev.altitudeMode;
@@ -1005,7 +1078,9 @@ export const createGlobeCircleManagerAdapter = (
         remove(id: string): void {
             const e = entries.get(id);
             if (!e) {
-                console.warn(`[jpmap-terrain] removeCircle: id "${id}" not found`);
+                console.warn(
+                    `[jpmap-terrain] removeCircle: id "${id}" not found`,
+                );
                 return;
             }
             globeMgr.remove(e.globeId);
@@ -1073,10 +1148,8 @@ export class GlobeSceneAdapter {
         options?: DefaultSceneInitOptions,
     ): Promise<Scene> => {
         const mapType = toGlobeMapType(options?.mapType);
-        const gc: GlobeSceneController = new GlobeScene().createSceneWithController(
-            engine,
-            canvas,
-            {
+        const gc: GlobeSceneController =
+            new GlobeScene().createSceneWithController(engine, canvas, {
                 lat: options?.lat,
                 lon: options?.lon,
                 radius: options?.altitude,
@@ -1088,10 +1161,14 @@ export class GlobeSceneAdapter {
                 viewMode: options?.viewMode,
                 zoomLevel: options?.zoomLevel,
                 onViewModeChange: options?.onViewModeChange,
-            },
-        );
+            });
 
-        const controller = createGlobeSceneController(gc, mapType, options, canvas);
+        const controller = createGlobeSceneController(
+            gc,
+            mapType,
+            options,
+            canvas,
+        );
         options?.onReady?.(controller);
 
         // JpmapTerrain.initAsync は初期フラッシュ防止のため canvas を visibility:hidden で
@@ -1134,7 +1211,8 @@ export const createGlobeModelManagerAdapter = (
 
     const requireGlobeId = (id: string, prefix: string): string => {
         const gid = ids.get(id);
-        if (gid === undefined) throw new Error(`${prefix}: id "${id}" not found`);
+        if (gid === undefined)
+            throw new Error(`${prefix}: id "${id}" not found`);
         return gid;
     };
 
@@ -1168,13 +1246,16 @@ export const createGlobeModelManagerAdapter = (
         add(id: string, options: ModelOptions): ModelHandle {
             assertNotDisposed();
             if (ids.has(id)) {
-                throw new Error(`${MODEL_ERROR_PREFIX}: id "${id}" already exists`);
+                throw new Error(
+                    `${MODEL_ERROR_PREFIX}: id "${id}" already exists`,
+                );
             }
             if (!options.url) {
                 throw new Error(`${MODEL_ERROR_PREFIX}: url is required`);
             }
             assertLatLonInBounds(options.lat, options.lon, MODEL_ERROR_PREFIX);
-            const altitudeMode = options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode;
+            const altitudeMode =
+                options.altitudeMode ?? MODEL_DEFAULTS.altitudeMode;
             if (altitudeMode === "absolute" && options.altitude === undefined) {
                 throw new Error(
                     `${MODEL_ERROR_PREFIX}: altitudeMode="absolute" requires altitude`,
@@ -1236,7 +1317,9 @@ export const createGlobeModelManagerAdapter = (
         remove(id: string): void {
             const gid = ids.get(id);
             if (gid === undefined) {
-                console.warn(`[jpmap-terrain] removeModel: id "${id}" not found`);
+                console.warn(
+                    `[jpmap-terrain] removeModel: id "${id}" not found`,
+                );
                 return;
             }
             globeMgr.remove(gid);
@@ -1282,7 +1365,8 @@ export const createGlobeModelManagerAdapter = (
             // planar と同契約: 未ロード時は警告せず no-op、名前不一致も静かに無視する。
             const state = globeMgr.get(gid);
             if (!state?.loaded) return;
-            if (name !== undefined && !state.animationNames.includes(name)) return;
+            if (name !== undefined && !state.animationNames.includes(name))
+                return;
             globeMgr.stopAnimation(gid, name);
         },
 
@@ -1370,7 +1454,8 @@ export const createGlobeSceneController = (
     const ensureDragEndBridge = (): void => {
         if (dragEndUnsub) return;
         dragEndUnsub = gc.subscribePolygonPointDragEnd((e) => {
-            const id = activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
+            const id =
+                activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
             const ev = toPublicDragEvent(e, id);
             for (const l of dragEndListeners.slice()) l(ev);
             // 全リスナー配送後にクリアし、次ジェスチャへ stale id を持ち越さない。
@@ -1410,7 +1495,9 @@ export const createGlobeSceneController = (
      */
     const setCenterLatLon = (latDeg: number, lonDeg: number): void => {
         const current = ecefToGeodetic(camera.center);
-        const altMeters = Number.isFinite(current.altMeters) ? current.altMeters : 0;
+        const altMeters = Number.isFinite(current.altMeters)
+            ? current.altMeters
+            : 0;
         camera.center = geodeticToEcef(latDeg, lonDeg, altMeters);
     };
 
@@ -1521,7 +1608,13 @@ export const createGlobeSceneController = (
         }
         // 太陽方向(ECEF, 地表→太陽)を求め、指向性ライトには符号反転(太陽→地表)を渡す。
         // sunLight.direction を in-place 更新し、高頻度呼び出し（timelapse）でのアロケーションを避ける。
-        sunDirectionEcefToRef(latDeg, lonDeg, altitudeDeg, azimuthDeg, scratchSunDir);
+        sunDirectionEcefToRef(
+            latDeg,
+            lonDeg,
+            altitudeDeg,
+            azimuthDeg,
+            scratchSunDir,
+        );
         gc.sunLight.direction.copyFrom(scratchSunDir).scaleInPlace(-1);
         // 明るさは時刻に依らず一定（昼夜の境界は指向性ライトの幾何で生じる。上記コメント参照）。
         // 注視点の昼夜でシーン全体を減光しないことで、地球の裏側の昼領域が一律に暗くなる不自然さを避ける。
@@ -1659,7 +1752,9 @@ export const createGlobeSceneController = (
             ui.mapToggle.textContent = m === "std" ? "写真" : "標準";
             ui.mapToggle.setAttribute(
                 "aria-label",
-                m === "std" ? "地図切替: 写真地図に変更" : "地図切替: 標準地図に変更",
+                m === "std"
+                    ? "地図切替: 写真地図に変更"
+                    : "地図切替: 標準地図に変更",
             );
         };
         updateMapToggleLabel(currentMapType);
@@ -1685,7 +1780,9 @@ export const createGlobeSceneController = (
             const containerRect = ui.scaleBar.container.getBoundingClientRect();
             // 行の右端（= 右下基準位置）。未測定時は右インセット 12px 相当で代替。
             const rowRight =
-                containerRect.width > 0 ? containerRect.right : viewportWidth - 12;
+                containerRect.width > 0
+                    ? containerRect.right
+                    : viewportWidth - 12;
             // 地図切替ボタンの右端。未測定時は left:12 + width:48 で代替。
             const toggleRight = toggleRect.width > 0 ? toggleRect.right : 60;
             // バー以外（地理院タイル + ラベル + gap 2 つ）の現在幅。
@@ -1736,8 +1833,10 @@ export const createGlobeSceneController = (
             const deg =
                 externalCompassDeg !== null
                     ? Math.round(externalCompassDeg * 10) / 10
-                    : Math.round(-yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg * 10) /
-                      10;
+                    : Math.round(
+                          -yawPitchToUi(camera.yaw, camera.pitch).azimuthDeg *
+                              10,
+                      ) / 10;
             if (deg !== prevCompassDeg) {
                 ui.compass.style.transform = `rotate(${deg}deg)`;
                 prevCompassDeg = deg;
@@ -1792,7 +1891,7 @@ export const createGlobeSceneController = (
                 // UI 破棄後はカメラを更新せず再スケジュールも止める。
                 if (uiDisposed) return;
                 const t = Math.min((now - startTime) / duration, 1);
-                const ease = 1 - Math.pow(1 - t, 3);
+                const ease = 1 - (1 - t) ** 3;
                 camera.yaw = startYaw + dYaw * ease;
                 camera.pitch = startPitch + (targetPitch - startPitch) * ease;
                 if (t < 1) requestAnimationFrame(animate);
@@ -1817,7 +1916,7 @@ export const createGlobeSceneController = (
                 // UI 破棄後は camera.radius を更新せず再スケジュールも止める。
                 if (uiDisposed) return;
                 const t = Math.min((now - startTime) / duration, 1);
-                const ease = 1 - Math.pow(1 - t, 3);
+                const ease = 1 - (1 - t) ** 3;
                 camera.radius = startR + (targetR - startR) * ease;
                 if (t < 1) requestAnimationFrame(animate);
             };
@@ -1976,12 +2075,18 @@ export const createGlobeSceneController = (
         // これにより外部カメラの実チルト・向きに基づく視錐台カリングが効くようになる。
         // 実タイルロードは onBeforeRender の syncTiles が次フレームで反映するため、
         // 本メソッドは同期更新のみ行い解決済み Promise を返す。
-        refreshTerrainWithExternalFrustum: (lat, lon, frustumPlanes, cameraPosition, lodBias) => {
+        refreshTerrainWithExternalFrustum: (
+            lat,
+            lon,
+            frustumPlanes,
+            cameraPosition,
+            lodBias,
+        ) => {
             if (!externalTileControl) return Promise.resolve();
             const elev = gc.tileManager.terrainElevAt(lat, lon) ?? 0;
             camera.center = geodeticToEcef(lat, lon, elev);
             const bias = typeof lodBias === "number" ? lodBias : 0;
-            camera.radius = FOLLOW_TILE_BASE_RADIUS_M * Math.pow(2, -bias);
+            camera.radius = FOLLOW_TILE_BASE_RADIUS_M * 2 ** -bias;
             externalFrustumCameraScratch.copyFromFloats(
                 cameraPosition.x,
                 cameraPosition.y,
@@ -2031,7 +2136,8 @@ export const createGlobeSceneController = (
 
         // 標高ダイレクト参照（O(1) バイリニア）。Artillery のコリジョン構築など
         // 高頻度サンプリングがレイキャストを避けて地表 Y を取得するために露出する。
-        terrainElevAt: (latDeg, lonDeg) => gc.tileManager.terrainElevAt(latDeg, lonDeg),
+        terrainElevAt: (latDeg, lonDeg) =>
+            gc.tileManager.terrainElevAt(latDeg, lonDeg),
 
         dispose: () => {
             gc.scene.onBeforeRenderObservable.remove(sunMeshObserver);
@@ -2082,7 +2188,9 @@ export const createGlobeSceneController = (
                     pointerEvent: e.pointerEvent,
                 }),
             ),
-        subscribePolygonPointDragStart: (listener: PolygonPointDragListener) => {
+        subscribePolygonPointDragStart: (
+            listener: PolygonPointDragListener,
+        ) => {
             dragStartListeners.push(listener);
             ensureDragEndBridge();
             if (!dragStartUnsub) {
@@ -2108,7 +2216,8 @@ export const createGlobeSceneController = (
             if (!dragUnsub) {
                 dragUnsub = gc.subscribePolygonPointDrag((e) => {
                     const id =
-                        activeDragPublicId ?? resolvePolygonPublicId(e.polygonId);
+                        activeDragPublicId ??
+                        resolvePolygonPublicId(e.polygonId);
                     activeDragPublicId = id;
                     const ev = toPublicDragEvent(e, id);
                     for (const l of dragListeners.slice()) l(ev);

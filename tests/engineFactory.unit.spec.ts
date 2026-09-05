@@ -11,7 +11,7 @@
  * Babylon.js Engine 実装は jsdom で動かないためモック化する。
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // --- モック実装 -------------------------------------------------------------
 const webgpuConstructor = vi.fn();
@@ -48,7 +48,9 @@ vi.mock("@babylonjs/core/Engines/engine", () => ({
 // WebGPU Extensions の dynamic import を中和
 vi.mock("@babylonjs/core/Engines/WebGPU/Extensions/", () => ({}));
 
-const { createBabylonEngine } = await import("../src/lib/internal/engineFactory");
+const { createBabylonEngine } = await import(
+    "../src/lib/internal/engineFactory"
+);
 
 describe("createBabylonEngine", () => {
     const canvas = (): HTMLCanvasElement => document.createElement("canvas");
@@ -113,14 +115,20 @@ describe("createBabylonEngine", () => {
     });
 
     it("WebGL2 生成時に reverse-Z 深度バッファを有効化する (地平線 z-fighting 対策)", async () => {
-        const engine = (await createBabylonEngine(canvas(), "webgl2")) as unknown as {
+        const engine = (await createBabylonEngine(
+            canvas(),
+            "webgl2",
+        )) as unknown as {
             useReverseDepthBuffer: boolean;
         };
         expect(engine.useReverseDepthBuffer).toBe(true);
     });
 
     it("WebGPU 生成時に reverse-Z 深度バッファを有効化する (地平線 z-fighting 対策)", async () => {
-        const engine = (await createBabylonEngine(canvas(), "webgpu")) as unknown as {
+        const engine = (await createBabylonEngine(
+            canvas(),
+            "webgpu",
+        )) as unknown as {
             useReverseDepthBuffer: boolean;
         };
         expect(engine.useReverseDepthBuffer).toBe(true);

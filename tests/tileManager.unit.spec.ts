@@ -3,7 +3,15 @@
  * Babylon.js 依存をモックし、TileManager のロジックを検証する。
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    type Mock,
+    vi,
+} from "vitest";
 
 const mockMeshInstance = () => ({
     material: {
@@ -26,13 +34,15 @@ vi.mock("@babylonjs/core/Meshes/Builders/groundBuilder", () => ({
 }));
 
 vi.mock("@babylonjs/core/Materials/standardMaterial", () => ({
-    StandardMaterial: vi.fn<(...args: unknown[]) => unknown>().mockImplementation(function () {
-        return {
-            specularColor: null,
-            diffuseTexture: null,
-            dispose: vi.fn(),
-        };
-    }),
+    StandardMaterial: vi
+        .fn<(...args: unknown[]) => unknown>()
+        .mockImplementation(function () {
+            return {
+                specularColor: null,
+                diffuseTexture: null,
+                dispose: vi.fn(),
+            };
+        }),
 }));
 
 const capturedTextureOnLoads: Array<() => void> = [];
@@ -43,8 +53,9 @@ afterEach(() => {
 });
 
 vi.mock("@babylonjs/core/Materials/Textures/texture", () => {
-    const TextureMock = vi.fn<(...args: unknown[]) => unknown>().mockImplementation(
-        function (...args: unknown[]) {
+    const TextureMock = vi
+        .fn<(...args: unknown[]) => unknown>()
+        .mockImplementation(function (...args: unknown[]) {
             const onLoad = args[5] as (() => void) | undefined;
             if (onLoad) capturedTextureOnLoads.push(onLoad);
             return {
@@ -54,8 +65,7 @@ vi.mock("@babylonjs/core/Materials/Textures/texture", () => {
                 uOffset: 0,
                 vOffset: 0,
             };
-        }
-    ) as Mock & { TRILINEAR_SAMPLINGMODE: number };
+        }) as Mock & { TRILINEAR_SAMPLINGMODE: number };
     TextureMock.TRILINEAR_SAMPLINGMODE = 3;
     return { Texture: TextureMock };
 });
@@ -81,15 +91,23 @@ vi.mock("@babylonjs/core/Buffers/buffer", () => ({
 
 vi.mock("@babylonjs/core/Maths/math.frustum", () => ({
     Frustum: {
-        GetPlanesToRef: vi.fn((_transform: unknown, planes: Array<{ normal: { x: number; y: number; z: number }; d: number }>) => {
-            // 事前に Plane インスタンスが入っている前提で上書き
-            for (let i = 0; i < 6; i++) {
-                planes[i].normal.x = 0;
-                planes[i].normal.y = 0;
-                planes[i].normal.z = 0;
-                planes[i].d = 1e9;
-            }
-        }),
+        GetPlanesToRef: vi.fn(
+            (
+                _transform: unknown,
+                planes: Array<{
+                    normal: { x: number; y: number; z: number };
+                    d: number;
+                }>,
+            ) => {
+                // 事前に Plane インスタンスが入っている前提で上書き
+                for (let i = 0; i < 6; i++) {
+                    planes[i].normal.x = 0;
+                    planes[i].normal.y = 0;
+                    planes[i].normal.z = 0;
+                    planes[i].d = 1e9;
+                }
+            },
+        ),
     },
 }));
 
@@ -108,7 +126,11 @@ vi.mock("@babylonjs/core/Maths/math.vector", () => {
             this.z = z;
         }
         subtract(other: Vector3Mock): Vector3Mock {
-            return new Vector3Mock(this.x - other.x, this.y - other.y, this.z - other.z);
+            return new Vector3Mock(
+                this.x - other.x,
+                this.y - other.y,
+                this.z - other.z,
+            );
         }
         length(): number {
             return Math.sqrt(this.x ** 2 + this.y ** 2 + this.z ** 2);
@@ -134,30 +156,34 @@ vi.mock("@babylonjs/core/Maths/math.vector", () => {
 });
 
 vi.mock("@babylonjs/core/Culling/ray", () => ({
-    Ray: vi.fn<(...args: unknown[]) => unknown>().mockImplementation(() => ({})),
+    Ray: vi
+        .fn<(...args: unknown[]) => unknown>()
+        .mockImplementation(() => ({})),
 }));
 
 vi.mock("@babylonjs/core/Maths/math.plane", () => ({
-    Plane: vi.fn<(...args: unknown[]) => unknown>().mockImplementation(function () {
-        return {
-            normal: { x: 0, y: 0, z: 0 },
-            d: 0,
-        };
-    }),
+    Plane: vi
+        .fn<(...args: unknown[]) => unknown>()
+        .mockImplementation(function () {
+            return {
+                normal: { x: 0, y: 0, z: 0 },
+                d: 0,
+            };
+        }),
 }));
 
 vi.mock("../src/terrain/gsiTile", () => ({
     TILE_SIZE: 256,
     clamp: vi.fn((v: number, min: number, max: number) =>
-        Math.min(Math.max(v, min), max)
+        Math.min(Math.max(v, min), max),
     ),
     toTileXY: vi.fn(() => ({ x: 14547, y: 6452 })),
     // zoom 非依存だと Quadtree が無限再帰しうるため、zoom 依存にする。
     tileEdgeMeters: vi.fn<(lat: number, zoom: number) => number>(
-        (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
+        (_lat, zoom) => 1000 * 2 ** (14 - zoom),
     ),
-    loadElevationTile: vi.fn(
-        () => Promise.resolve(new Float32Array(256 * 256))
+    loadElevationTile: vi.fn(() =>
+        Promise.resolve(new Float32Array(256 * 256)),
     ),
     isAllNaN: vi.fn((data: Float32Array) => {
         for (let i = 0; i < data.length; i++) {
@@ -173,17 +199,35 @@ vi.mock("../src/terrain/gsiTile", () => ({
     fillInvalidPixels: vi.fn(),
 }));
 
-const { createTileManager, extractSubTileElevation, computeTextureUvParams, extractOrthoStableFrustumPlanes } = await import("../src/terrain/tileManager");
+const {
+    createTileManager,
+    extractSubTileElevation,
+    computeTextureUvParams,
+    extractOrthoStableFrustumPlanes,
+} = await import("../src/terrain/tileManager");
 const gsiTileMock = await import("../src/terrain/gsiTile");
 
 const createMockCamera = () => {
     const observers: Array<() => void> = [];
     const makeTarget = (x = 0, y = 0, z = 0) => ({
-        x, y, z,
+        x,
+        y,
+        z,
         subtract(other: { x: number; y: number; z: number }) {
-            return { x: x - other.x, y: y - other.y, z: z - other.z,
-                length() { return Math.sqrt((x - other.x) ** 2 + (y - other.y) ** 2 + (z - other.z) ** 2); },
-                scaleInPlace() { return this; },
+            return {
+                x: x - other.x,
+                y: y - other.y,
+                z: z - other.z,
+                length() {
+                    return Math.sqrt(
+                        (x - other.x) ** 2 +
+                            (y - other.y) ** 2 +
+                            (z - other.z) ** 2,
+                    );
+                },
+                scaleInPlace() {
+                    return this;
+                },
             };
         },
     });
@@ -285,13 +329,13 @@ describe("createTileManager", () => {
         // attachCamera でオブザーバが追加される
         tm.attachCamera();
         expect(
-            (camera as any).onViewMatrixChangedObservable.add
+            (camera as any).onViewMatrixChangedObservable.add,
         ).toHaveBeenCalled();
 
         // detachCamera でオブザーバが削除される
         tm.detachCamera();
         expect(
-            (camera as any).onViewMatrixChangedObservable.remove
+            (camera as any).onViewMatrixChangedObservable.remove,
         ).toHaveBeenCalled();
     });
 });
@@ -313,17 +357,19 @@ describe("extractSubTileElevation", () => {
      */
     const tileSize = 4;
     const parent = new Float32Array([
-        0, 1, 2, 3,
-        4, 5, 6, 7,
-        8, 9, 10, 11,
-        12, 13, 14, 15,
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ]);
     const parentZoom = 14;
 
     it("zoom+1 子タイル(0,0)は親の左上領域のみ参照する", () => {
         // parentX = 100 → child (200, 200) → subX=0, subY=0
         const child = { zoom: 15, x: 200, y: 200 };
-        const result = extractSubTileElevation(parent, child, parentZoom, tileSize);
+        const result = extractSubTileElevation(
+            parent,
+            child,
+            parentZoom,
+            tileSize,
+        );
 
         expect(result.length).toBe(tileSize * tileSize);
         const values = new Set(result);
@@ -343,7 +389,12 @@ describe("extractSubTileElevation", () => {
     it("zoom+1 子タイル(1,1)は親の右下領域のみ参照する", () => {
         // parentX=100, parentY=100 → child (201,201) → subX=1, subY=1
         const child = { zoom: 15, x: 201, y: 201 };
-        const result = extractSubTileElevation(parent, child, parentZoom, tileSize);
+        const result = extractSubTileElevation(
+            parent,
+            child,
+            parentZoom,
+            tileSize,
+        );
 
         expect(result.length).toBe(tileSize * tileSize);
         const values = new Set(result);
@@ -363,7 +414,12 @@ describe("extractSubTileElevation", () => {
     it("zoom+1 子タイル(1,0)の境界ピクセルが左半分を参照しない", () => {
         // parentX=100 → child (201, 200) → subX=1, subY=0
         const child = { zoom: 15, x: 201, y: 200 };
-        const result = extractSubTileElevation(parent, child, parentZoom, tileSize);
+        const result = extractSubTileElevation(
+            parent,
+            child,
+            parentZoom,
+            tileSize,
+        );
 
         const values = new Set(result);
         // 右上 2×2 の値 {2,3,6,7} のみ含むこと
@@ -381,7 +437,12 @@ describe("extractSubTileElevation", () => {
         // tileSize=4, diff=2, scale=4, subSize=1
         // child (401, 401) → subX=1, subY=1 (parentX=100, shift=2: 401 - (401>>2)<<2 = 401-400=1)
         const child = { zoom: 16, x: 401, y: 401 };
-        const result = extractSubTileElevation(parent, child, parentZoom, tileSize);
+        const result = extractSubTileElevation(
+            parent,
+            child,
+            parentZoom,
+            tileSize,
+        );
 
         expect(result.length).toBe(tileSize * tileSize);
         // subSize=1, originX=1, originY=1 → 全ピクセルが parent[1*4+1]=5 を参照
@@ -393,7 +454,12 @@ describe("extractSubTileElevation", () => {
     it("zoom差2で右下端の子タイルが正しい値のみ参照する", () => {
         // child (403, 403) → subX=3, subY=3 (parentX=100<<2=400, 403-400=3)
         const child = { zoom: 16, x: 403, y: 403 };
-        const result = extractSubTileElevation(parent, child, parentZoom, tileSize);
+        const result = extractSubTileElevation(
+            parent,
+            child,
+            parentZoom,
+            tileSize,
+        );
 
         // subSize=1, originX=3, originY=3 → 全ピクセルが parent[3*4+3]=15 を参照
         const values = new Set(result);
@@ -432,11 +498,13 @@ describe("LOD連携", () => {
     });
 
     afterEach(() => {
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
     });
 
@@ -456,8 +524,9 @@ describe("LOD連携", () => {
         });
         await tmNear.setCenter(35.68, 139.77);
 
-        const zoomsNear = (gsiTileMock.textureUrl as Mock).mock.calls
-            .map((c) => (c as number[])[1]);
+        const zoomsNear = (gsiTileMock.textureUrl as Mock).mock.calls.map(
+            (c) => (c as number[])[1],
+        );
         tmNear.dispose();
 
         // 近景なので zoom14 タイルが少なくとも 1 枚はロードされる
@@ -482,8 +551,9 @@ describe("LOD連携", () => {
         });
         await tmFar.setCenter(35.68, 139.77);
 
-        const zoomsFar = (gsiTileMock.textureUrl as Mock).mock.calls
-            .map((c) => (c as number[])[1]);
+        const zoomsFar = (gsiTileMock.textureUrl as Mock).mock.calls.map(
+            (c) => (c as number[])[1],
+        );
         tmFar.dispose();
 
         expect(zoomsFar.length).toBeGreaterThan(0);
@@ -497,23 +567,27 @@ describe("LOD連携", () => {
  * ================================================================ */
 describe("標高ズーム段階フォールバック", () => {
     afterEach(() => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
     });
 
     it("最高zoomで失敗すると低いzoomにフォールバックする", async () => {
         // zoom 14 は失敗、zoom 13以下は成功
         const elevData13 = new Float32Array(256 * 256).fill(500);
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                if (zoom >= 14) return Promise.reject(new Error("not available"));
-                return Promise.resolve(elevData13);
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            if (zoom >= 14) return Promise.reject(new Error("not available"));
+            return Promise.resolve(elevData13);
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -532,15 +606,13 @@ describe("標高ズーム段階フォールバック", () => {
         expect(tm.activeTileCount).toBeGreaterThan(0);
         // zoom 13以下で loadElevationTile が呼ばれたことを確認
         const calls = (gsiTileMock.loadElevationTile as Mock).mock.calls;
-        const successZooms = calls.filter(
-            (c) => (c as number[])[0] < 14
-        );
+        const successZooms = calls.filter((c) => (c as number[])[0] < 14);
         expect(successZooms.length).toBeGreaterThan(0);
     });
 
     it("全zoomで失敗するとフラット標高（0m）でタイルが表示される", async () => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.reject(new Error("all fail"))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.reject(new Error("all fail")),
         );
 
         const camera = createMockCamera();
@@ -561,12 +633,14 @@ describe("標高ズーム段階フォールバック", () => {
 
     it("maxElevationZoomを超えるzoomでは標高フェッチを試みない", async () => {
         const fetchedZooms: number[] = [];
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                fetchedZooms.push(zoom);
-                return Promise.resolve(new Float32Array(256 * 256));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            fetchedZooms.push(zoom);
+            return Promise.resolve(new Float32Array(256 * 256));
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -587,13 +661,15 @@ describe("標高ズーム段階フォールバック", () => {
 
     it("minElevationZoomを下回るzoomでは標高フェッチを試みない", async () => {
         const fetchedZooms: number[] = [];
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                fetchedZooms.push(zoom);
-                // 全zoomで失敗させてフォールバックを最大まで試行させる
-                return Promise.reject(new Error("not available"));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            fetchedZooms.push(zoom);
+            // 全zoomで失敗させてフォールバックを最大まで試行させる
+            return Promise.reject(new Error("not available"));
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -619,12 +695,14 @@ describe("標高ズーム段階フォールバック", () => {
 
     it("minElevationZoom省略時はデフォルト値 max(minZoom, maxElevationZoom-4) が適用される", async () => {
         const fetchedZooms: number[] = [];
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                fetchedZooms.push(zoom);
-                return Promise.reject(new Error("not available"));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            fetchedZooms.push(zoom);
+            return Promise.reject(new Error("not available"));
+        });
 
         const camera = createMockCamera();
         // maxElevationZoom=14, minZoom=2 → デフォルト minElevationZoom = max(2, 14-4) = 10
@@ -758,8 +836,8 @@ describe("computeTextureUvParams", () => {
         const uv = computeTextureUvParams(16, 401, 402, 14);
         expect(uv.uScale).toBeCloseTo(0.25);
         expect(uv.vScale).toBeCloseTo(0.25);
-        expect(uv.uOffset).toBeCloseTo(0.25);  // 1/4
-        expect(uv.vOffset).toBeCloseTo(0.5);   // 2/4
+        expect(uv.uOffset).toBeCloseTo(0.25); // 1/4
+        expect(uv.vOffset).toBeCloseTo(0.5); // 2/4
     });
 });
 
@@ -768,25 +846,25 @@ describe("computeTextureUvParams", () => {
  * ================================================================ */
 describe("標高データ全NaNフォールバック", () => {
     afterEach(() => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
-        (gsiTileMock.tileEdgeMeters as Mock).mockImplementation(
-            () => 1000
-        );
+        (gsiTileMock.tileEdgeMeters as Mock).mockImplementation(() => 1000);
     });
 
     it("全NaN標高データを返すzoomから低zoomにフォールバックする", async () => {
         // zoom 14: 全NaN（throwされる想定）, zoom 13以下: 有効データ
         const validElev = new Float32Array(256 * 256).fill(300);
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                if (zoom >= 14) {
-                    return Promise.reject(new Error("All NaN tile"));
-                }
-                return Promise.resolve(validElev);
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            if (zoom >= 14) {
+                return Promise.reject(new Error("All NaN tile"));
             }
-        );
+            return Promise.resolve(validElev);
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -817,12 +895,10 @@ describe("標高データ全NaNフォールバック", () => {
  * ================================================================ */
 describe("queryElevationAtWorld", () => {
     afterEach(() => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
-        (gsiTileMock.tileEdgeMeters as Mock).mockImplementation(
-            () => 1000
-        );
+        (gsiTileMock.tileEdgeMeters as Mock).mockImplementation(() => 1000);
     });
 
     /**
@@ -854,8 +930,8 @@ describe("queryElevationAtWorld", () => {
 
     it("中心座標でキャッシュ済み標高値を返す", async () => {
         const elevData = new Float32Array(256 * 256).fill(100); // 全ピクセル 100m
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(elevData)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(elevData),
         );
 
         const camera = createNearCamera();
@@ -878,8 +954,8 @@ describe("queryElevationAtWorld", () => {
 
     it("heightScaleが標高値に反映される", async () => {
         const elevData = new Float32Array(256 * 256).fill(100);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(elevData)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(elevData),
         );
 
         const camera = createNearCamera();
@@ -901,8 +977,8 @@ describe("queryElevationAtWorld", () => {
 
     it("altitudeOffsetが標高値に反映される", async () => {
         const elevData = new Float32Array(256 * 256).fill(100);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(elevData)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(elevData),
         );
 
         const camera = createNearCamera();
@@ -924,8 +1000,8 @@ describe("queryElevationAtWorld", () => {
 
     it("heightScaleとaltitudeOffsetが同時に反映される", async () => {
         const elevData = new Float32Array(256 * 256).fill(100);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(elevData)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(elevData),
         );
 
         const camera = createNearCamera();
@@ -946,8 +1022,8 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("全zoomレベルでキャッシュ未ヒットの座標はnullを返す", async () => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
 
         const camera = createNearCamera();
@@ -972,20 +1048,24 @@ describe("queryElevationAtWorld", () => {
 
     it("zoomフォールバック: 高zoom標高取得失敗時は低zoomデータ抽出でアクティブタイルの標高を返す", async () => {
         // zoom依存の tileEdgeMeters: z14=1000, z13=2000
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
         const elevData13 = new Float32Array(256 * 256).fill(777);
         // elevData13 を全て 777 で埋めることで、zoom-13 から抽出した
         // zoom-14 タイルの全ピクセルが 777 になる。
         // wx=0,wz=0 → 中心ピクセル (127.5,127.5) のバイリニア補間結果 = 777。
 
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                if (zoom >= 14) return Promise.reject(new Error("not available"));
-                return Promise.resolve(elevData13);
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            if (zoom >= 14) return Promise.reject(new Error("not available"));
+            return Promise.resolve(elevData13);
+        });
 
         const camera = createNearCamera();
         const tm = createTileManager({
@@ -1013,8 +1093,8 @@ describe("queryElevationAtWorld", () => {
 
     it("NaNピクセルのみのタイル（海域等）でnullを返す", async () => {
         const nanData = new Float32Array(256 * 256).fill(NaN);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(nanData)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(nanData),
         );
 
         const camera = createNearCamera();
@@ -1036,9 +1116,11 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("NaNピクセル位置で低zoomへフォールバックし有効値を返す", async () => {
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
 
         // zoom14 クエリ対象タイル: 全NaN（海域想定）
         const nanData14 = new Float32Array(256 * 256).fill(NaN);
@@ -1047,19 +1129,21 @@ describe("queryElevationAtWorld", () => {
         const elevData13 = new Float32Array(256 * 256).fill(NaN);
         elevData13[64 * 256 + 64] = 42;
 
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom, x, y) => {
-                // クエリ対象の zoom14 タイル (14547,6453) は NaN で成功
-                if (zoom === 14 && x === 14547 && y === 6453) {
-                    return Promise.resolve(nanData14);
-                }
-                // その他の zoom14 タイルは失敗 → zoom13 キャッシュ生成を誘発
-                if (zoom >= 14) {
-                    return Promise.reject(new Error("not available"));
-                }
-                return Promise.resolve(elevData13);
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom, x, y) => {
+            // クエリ対象の zoom14 タイル (14547,6453) は NaN で成功
+            if (zoom === 14 && x === 14547 && y === 6453) {
+                return Promise.resolve(nanData14);
             }
-        );
+            // その他の zoom14 タイルは失敗 → zoom13 キャッシュ生成を誘発
+            if (zoom >= 14) {
+                return Promise.reject(new Error("not available"));
+            }
+            return Promise.resolve(elevData13);
+        });
 
         const camera = createNearCamera();
         const tm = createTileManager({
@@ -1083,25 +1167,29 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("全zoomレベルでNaNの場合nullを返す（フォールバック全滅）", async () => {
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
 
         const nanData = new Float32Array(256 * 256).fill(NaN);
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom, x, y) => {
-                // クエリ対象タイル (14547,6453) はNaNで成功
-                if (zoom === 14 && x === 14547 && y === 6453) {
-                    return Promise.resolve(new Float32Array(nanData));
-                }
-                // 他のzoom14は失敗 → zoom13キャッシュ生成を誘発（NaN）
-                if (zoom >= 14) {
-                    return Promise.reject(new Error("not available"));
-                }
-                // zoom13もNaN
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom, x, y) => {
+            // クエリ対象タイル (14547,6453) はNaNで成功
+            if (zoom === 14 && x === 14547 && y === 6453) {
                 return Promise.resolve(new Float32Array(nanData));
             }
-        );
+            // 他のzoom14は失敗 → zoom13キャッシュ生成を誘発（NaN）
+            if (zoom >= 14) {
+                return Promise.reject(new Error("not available"));
+            }
+            // zoom13もNaN
+            return Promise.resolve(new Float32Array(nanData));
+        });
 
         const camera = createNearCamera();
         const tm = createTileManager({
@@ -1123,9 +1211,11 @@ describe("queryElevationAtWorld", () => {
     });
 
     it("NaNフォールバック結果にheightScaleとaltitudeOffsetが反映される", async () => {
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
 
         // zoom14 クエリ対象: 全NaN
         const nanData14 = new Float32Array(256 * 256).fill(NaN);
@@ -1133,17 +1223,19 @@ describe("queryElevationAtWorld", () => {
         const elevData13 = new Float32Array(256 * 256).fill(NaN);
         elevData13[64 * 256 + 64] = 50;
 
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom, x, y) => {
-                if (zoom === 14 && x === 14547 && y === 6453) {
-                    return Promise.resolve(nanData14);
-                }
-                if (zoom >= 14) {
-                    return Promise.reject(new Error("not available"));
-                }
-                return Promise.resolve(elevData13);
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom, x, y) => {
+            if (zoom === 14 && x === 14547 && y === 6453) {
+                return Promise.resolve(nanData14);
             }
-        );
+            if (zoom >= 14) {
+                return Promise.reject(new Error("not available"));
+            }
+            return Promise.resolve(elevData13);
+        });
 
         const camera = createNearCamera();
         const tm = createTileManager({
@@ -1173,8 +1265,8 @@ describe("queryElevationAtWorld", () => {
         mixedData[127 * 256 + 128] = 88;
         mixedData[128 * 256 + 127] = 88;
         mixedData[128 * 256 + 128] = 88;
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(mixedData)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(mixedData),
         );
 
         const camera = createNearCamera();
@@ -1201,16 +1293,20 @@ describe("queryElevationAtWorld", () => {
         // zoom18 の標高データは zoom17 から extractSubTileElevation で抽出される。
         // 修正前: ループが maxElevationZoom(17) から始まるため activeTiles(zoom18) にヒットせず null。
         // 修正後: ループが zoom(18) から始まるため activeTiles(zoom18) にヒットして値を返す。
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
         const elevData = new Float32Array(256 * 256).fill(55);
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (zoom) => {
-                if (zoom >= 18) return Promise.reject(new Error("not available"));
-                return Promise.resolve(elevData);
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((zoom) => {
+            if (zoom >= 18) return Promise.reject(new Error("not available"));
+            return Promise.resolve(elevData);
+        });
 
         const camera = createNearCamera();
         // radius を小さくして zoom18 のタイルがロードされるようにする
@@ -1242,24 +1338,24 @@ describe("queryElevationAtWorld", () => {
  * ================================================================ */
 describe("Quadtree + SSE によるタイル選定", () => {
     afterEach(() => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
-        (gsiTileMock.tileEdgeMeters as Mock).mockImplementation(
-            () => 1000
-        );
+        (gsiTileMock.tileEdgeMeters as Mock).mockImplementation(() => 1000);
     });
 
     it("高標高地形ではカメラとの距離が縮まり SSE が増えて高zoomタイルが表示される", async () => {
         // zoom依存の tileEdgeMeters: z14=1000, z13=2000, z12=4000
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
 
         // 高標高（3776m）の標高データをロードさせる
         const highElev = new Float32Array(256 * 256).fill(3776);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(highElev)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(highElev),
         );
 
         const cameraHigh = createMockCamera();
@@ -1281,13 +1377,14 @@ describe("Quadtree + SSE によるタイル選定", () => {
         (gsiTileMock.textureUrl as Mock).mockClear();
         await tmHigh.setCenter(35.36, 138.73);
 
-        const zoomsHigh = (gsiTileMock.textureUrl as Mock).mock.calls
-            .map((c) => (c as number[])[1]);
+        const zoomsHigh = (gsiTileMock.textureUrl as Mock).mock.calls.map(
+            (c) => (c as number[])[1],
+        );
         const maxZoomHigh = zoomsHigh.length > 0 ? Math.max(...zoomsHigh) : 12;
 
         // 海面付近（標高0）では radius=8000 がそのまま使われ低zoom
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
 
         const cameraLow = createMockCamera();
@@ -1308,8 +1405,9 @@ describe("Quadtree + SSE によるタイル選定", () => {
         (gsiTileMock.textureUrl as Mock).mockClear();
         await tmLow.setCenter(35.68, 139.77);
 
-        const zoomsLow = (gsiTileMock.textureUrl as Mock).mock.calls
-            .map((c) => (c as number[])[1]);
+        const zoomsLow = (gsiTileMock.textureUrl as Mock).mock.calls.map(
+            (c) => (c as number[])[1],
+        );
         const maxZoomLow = zoomsLow.length > 0 ? Math.max(...zoomsLow) : 12;
 
         // 高標高時は低標高時より高zoomが選ばれる
@@ -1340,14 +1438,16 @@ describe("Quadtree + SSE によるタイル選定", () => {
     });
 
     it("AABB にカメラが埋没しても SSE の距離クランプで安定動作する", async () => {
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
 
         // 標高がradiusとほぼ同じ（radius-terrainY ≈ 0）でも下限でクランプされ安定
         const extremeElev = new Float32Array(256 * 256).fill(7999);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(extremeElev)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(extremeElev),
         );
 
         const camera = createMockCamera();
@@ -1372,13 +1472,15 @@ describe("Quadtree + SSE によるタイル選定", () => {
     });
 
     it("同じ radius・標高でチルト角を変えても SSE による採用 zoom が安定する", async () => {
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
 
         const highElev = new Float32Array(256 * 256).fill(3776);
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(highElev)
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(highElev),
         );
 
         const runWithBeta = async (beta: number): Promise<number> => {
@@ -1397,14 +1499,15 @@ describe("Quadtree + SSE によるタイル選定", () => {
             await tm.setCenter(35.36, 138.73);
             (gsiTileMock.textureUrl as Mock).mockClear();
             await tm.setCenter(35.36, 138.73);
-            const zooms = (gsiTileMock.textureUrl as Mock).mock.calls
-                .map((c) => (c as number[])[1]);
+            const zooms = (gsiTileMock.textureUrl as Mock).mock.calls.map(
+                (c) => (c as number[])[1],
+            );
             tm.dispose();
             return zooms.length > 0 ? Math.max(...zooms) : -1;
         };
 
-        const zoomVertical = await runWithBeta(0.01);          // ほぼ真下
-        const zoomMid = await runWithBeta(Math.PI / 3);        // 60°
+        const zoomVertical = await runWithBeta(0.01); // ほぼ真下
+        const zoomMid = await runWithBeta(Math.PI / 3); // 60°
         const zoomHorizontal = await runWithBeta(Math.PI / 2.1); // ほぼ水平
 
         // チルト角を変えても採用 zoom は同じ
@@ -1418,12 +1521,14 @@ describe("Quadtree + SSE によるタイル選定", () => {
  * ================================================================ */
 describe("refineAllNaNTiles", () => {
     afterEach(() => {
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
-        (gsiTileMock.tileEdgeMeters as Mock<(lat: number, zoom: number) => number>).mockImplementation(
-            (_lat, zoom) => 1000 * Math.pow(2, 14 - zoom)
-        );
+        (
+            gsiTileMock.tileEdgeMeters as Mock<
+                (lat: number, zoom: number) => number
+            >
+        ).mockImplementation((_lat, zoom) => 1000 * 2 ** (14 - zoom));
         (gsiTileMock.fillInvalidPixels as Mock).mockImplementation(() => {});
     });
 
@@ -1434,13 +1539,15 @@ describe("refineAllNaNTiles", () => {
         const nanData = new Float32Array(256 * 256).fill(NaN);
         const validData = new Float32Array(256 * 256).fill(500);
 
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (_zoom, x) => {
-                // x が center+1 以上のタイルを all-NaN にする
-                if (x > 14547) return Promise.resolve(new Float32Array(nanData));
-                return Promise.resolve(new Float32Array(validData));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((_zoom, x) => {
+            // x が center+1 以上のタイルを all-NaN にする
+            if (x > 14547) return Promise.resolve(new Float32Array(nanData));
+            return Promise.resolve(new Float32Array(validData));
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -1467,8 +1574,8 @@ describe("refineAllNaNTiles", () => {
         // 全タイルが all-NaN → refineAllNaNTiles は1イテレーションで停止
         const nanData = new Float32Array(256 * 256).fill(NaN);
 
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(nanData))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(nanData)),
         );
 
         const camera = createMockCamera();
@@ -1496,12 +1603,14 @@ describe("refineAllNaNTiles", () => {
         const nanData = new Float32Array(256 * 256).fill(NaN);
         const validData = new Float32Array(256 * 256).fill(200);
 
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (_zoom, x) => {
-                if (x >= 14548) return Promise.resolve(new Float32Array(nanData));
-                return Promise.resolve(new Float32Array(validData));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((_zoom, x) => {
+            if (x >= 14548) return Promise.resolve(new Float32Array(nanData));
+            return Promise.resolve(new Float32Array(validData));
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -1530,26 +1639,50 @@ describe("refineAllNaNTiles", () => {
         // useFilled=false だと A.elevation（右辺 NaN）を参照し B は解決不能
 
         // fillInvalidPixels を 1パス 4近傍補間に差し替え
-        (gsiTileMock.fillInvalidPixels as Mock<(data: Float32Array, width: number, height: number) => void>).mockImplementation(
-            (data, width, height) => {
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const i = y * width + x;
-                        if (!Number.isNaN(data[i]) && data[i] !== -100) continue;
-                        const neighbors: number[] = [];
-                        if (x > 0 && !Number.isNaN(data[i - 1]) && data[i - 1] !== -100) neighbors.push(data[i - 1]);
-                        if (x < width - 1 && !Number.isNaN(data[i + 1]) && data[i + 1] !== -100) neighbors.push(data[i + 1]);
-                        if (y > 0 && !Number.isNaN(data[i - width]) && data[i - width] !== -100) neighbors.push(data[i - width]);
-                        if (y < height - 1 && !Number.isNaN(data[i + width]) && data[i + width] !== -100) neighbors.push(data[i + width]);
-                        if (neighbors.length > 0) {
-                            data[i] = neighbors.reduce((a, b) => a + b, 0) / neighbors.length;
-                        } else {
-                            data[i] = -100;
-                        }
+        (
+            gsiTileMock.fillInvalidPixels as Mock<
+                (data: Float32Array, width: number, height: number) => void
+            >
+        ).mockImplementation((data, width, height) => {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const i = y * width + x;
+                    if (!Number.isNaN(data[i]) && data[i] !== -100) continue;
+                    const neighbors: number[] = [];
+                    if (
+                        x > 0 &&
+                        !Number.isNaN(data[i - 1]) &&
+                        data[i - 1] !== -100
+                    )
+                        neighbors.push(data[i - 1]);
+                    if (
+                        x < width - 1 &&
+                        !Number.isNaN(data[i + 1]) &&
+                        data[i + 1] !== -100
+                    )
+                        neighbors.push(data[i + 1]);
+                    if (
+                        y > 0 &&
+                        !Number.isNaN(data[i - width]) &&
+                        data[i - width] !== -100
+                    )
+                        neighbors.push(data[i - width]);
+                    if (
+                        y < height - 1 &&
+                        !Number.isNaN(data[i + width]) &&
+                        data[i + width] !== -100
+                    )
+                        neighbors.push(data[i + width]);
+                    if (neighbors.length > 0) {
+                        data[i] =
+                            neighbors.reduce((a, b) => a + b, 0) /
+                            neighbors.length;
+                    } else {
+                        data[i] = -100;
                     }
                 }
             }
-        );
+        });
 
         // 岸タイル: 右辺(col=255)だけ NaN
         const shoreData = new Float32Array(256 * 256).fill(300);
@@ -1558,12 +1691,14 @@ describe("refineAllNaNTiles", () => {
         // 湖タイル: 全 NaN
         const lakeData = new Float32Array(256 * 256).fill(NaN);
 
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (_zoom, x) => {
-                if (x <= 14547) return Promise.resolve(new Float32Array(shoreData));
-                return Promise.resolve(new Float32Array(lakeData));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((_zoom, x) => {
+            if (x <= 14547) return Promise.resolve(new Float32Array(shoreData));
+            return Promise.resolve(new Float32Array(lakeData));
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -1609,26 +1744,32 @@ describe("同zoom タイル間ステッチの対称性", () => {
         origCAF = globalThis.cancelAnimationFrame;
         rafQueue = [];
         let nextId = 1;
-        globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => { rafQueue.push(cb); return nextId++; }) as typeof requestAnimationFrame;
-        globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
+        globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+            rafQueue.push(cb);
+            return nextId++;
+        }) as typeof requestAnimationFrame;
+        globalThis.cancelAnimationFrame =
+            (() => {}) as typeof cancelAnimationFrame;
     });
     afterEach(() => {
         globalThis.requestAnimationFrame = origRAF;
         globalThis.cancelAnimationFrame = origCAF;
-        (gsiTileMock.loadElevationTile as Mock).mockImplementation(
-            () => Promise.resolve(new Float32Array(256 * 256))
+        (gsiTileMock.loadElevationTile as Mock).mockImplementation(() =>
+            Promise.resolve(new Float32Array(256 * 256)),
         );
     });
 
     it("隣接タイルの共有辺が raw 同士の平均で一致する（回帰テスト）", async () => {
         // Tile A (x<=14547) = 100m, Tile B (x>14547) = 200m
         // raw ステッチ後、共有辺は avg(100, 200) = 150 で両側一致すること
-        (gsiTileMock.loadElevationTile as Mock<(zoom: number, x: number, y: number) => Promise<Float32Array>>).mockImplementation(
-            (_zoom, x) => {
-                const val = x <= 14547 ? 100 : 200;
-                return Promise.resolve(new Float32Array(256 * 256).fill(val));
-            }
-        );
+        (
+            gsiTileMock.loadElevationTile as Mock<
+                (zoom: number, x: number, y: number) => Promise<Float32Array>
+            >
+        ).mockImplementation((_zoom, x) => {
+            const val = x <= 14547 ? 100 : 200;
+            return Promise.resolve(new Float32Array(256 * 256).fill(val));
+        });
 
         const camera = createMockCamera();
         const tm = createTileManager({
@@ -1658,10 +1799,10 @@ describe("同zoom タイル間ステッチの対称性", () => {
         // ステッチが機能していれば境界付近の値は 100〜200 の間に収まる。
         // ステッチなしの場合: tile A 右辺 = 100, tile B 左辺 = 200（不連続）
         // ステッチありの場合: 両辺ともステッチ値150が含まれ 100〜200 の中間に近づく
-        expect(aRightEdge!).toBeGreaterThan(100);  // 150 が混入して 100 より大きい
+        expect(aRightEdge!).toBeGreaterThan(100); // 150 が混入して 100 より大きい
         expect(aRightEdge!).toBeLessThanOrEqual(150);
         expect(bLeftEdge!).toBeGreaterThanOrEqual(100);
-        expect(bLeftEdge!).toBeLessThan(200);      // 150 が混入して 200 より小さい
+        expect(bLeftEdge!).toBeLessThan(200); // 150 が混入して 200 より小さい
 
         tm.dispose();
     });
@@ -1687,7 +1828,10 @@ describe("LOD遷移時の遅延解放", () => {
         expect(initialCount).toBeGreaterThan(0);
 
         // 中心タイル座標を変えて、旧タイルが不要になる状況を再現
-        (gsiTileMock.toTileXY as Mock).mockReturnValueOnce({ x: 14600, y: 6500 });
+        (gsiTileMock.toTileXY as Mock).mockReturnValueOnce({
+            x: 14600,
+            y: 6500,
+        });
         await tm.setCenter(36.0, 140.0);
         // 新しい中心でもタイル数が変わっていないこと（維持）
         expect(tm.activeTileCount).toBe(initialCount);
@@ -1710,7 +1854,10 @@ describe("LOD遷移時の遅延解放", () => {
         expect(tm.activeTileCount).toBeGreaterThan(0);
 
         // 中心タイル座標を変えて旧タイルを pendingRelease に移す
-        (gsiTileMock.toTileXY as Mock).mockReturnValueOnce({ x: 14600, y: 6500 });
+        (gsiTileMock.toTileXY as Mock).mockReturnValueOnce({
+            x: 14600,
+            y: 6500,
+        });
         await tm.setCenter(36.0, 140.0);
 
         // dispose が例外なく完了すること（タイマーのクリーンアップ含む）
@@ -1731,12 +1878,14 @@ describe("LOD遷移時の遅延解放", () => {
 
         await tm.setCenter(35.68, 139.77);
         const count1 = tm.activeTileCount;
-        const loadCallsBefore = (gsiTileMock.loadElevationTile as Mock).mock.calls.length;
+        const loadCallsBefore = (gsiTileMock.loadElevationTile as Mock).mock
+            .calls.length;
 
         // 同じ中心で再度呼び出し → 既に activeTiles にあるため再ロード不要
         await tm.setCenter(35.68, 139.77);
         const count2 = tm.activeTileCount;
-        const loadCallsAfter = (gsiTileMock.loadElevationTile as Mock).mock.calls.length;
+        const loadCallsAfter = (gsiTileMock.loadElevationTile as Mock).mock
+            .calls.length;
 
         expect(count2).toBe(count1);
         // loadElevationTile の呼び出し回数が増えていないこと（重複ロードなし）
@@ -1751,7 +1900,9 @@ describe("LOD遷移時の遅延解放", () => {
         // cameraHeight=0.1 → 距離 max(1,0.1)=1 → SSE 極大 → maxZoom=14 まで分割
         // rootSearchRadius: 0 で root を 1 タイルに限定し、maxTiles を超過しない決定的なテストにする。
         // 旧実装（即時解放）では pendingReleaseCount=0 になり、このテストは失敗する。
-        const cameraMock = createMockCamera() as { position: { x: number; y: number; z: number } };
+        const cameraMock = createMockCamera() as {
+            position: { x: number; y: number; z: number };
+        };
         const camera = cameraMock as never;
         const tm = createTileManager({
             scene: createMockScene() as never,
@@ -1793,7 +1944,9 @@ describe("LOD遷移時の遅延解放", () => {
         try {
             capturedTextureOnLoads.length = 0;
 
-            const cameraMock = createMockCamera() as { position: { x: number; y: number; z: number } };
+            const cameraMock = createMockCamera() as {
+                position: { x: number; y: number; z: number };
+            };
             const camera = cameraMock as never;
             const tm = createTileManager({
                 scene: createMockScene() as never,
@@ -1826,7 +1979,7 @@ describe("LOD遷移時の遅延解放", () => {
             // zoom=12 祖先タイルの Texture onLoad を手動発火
             // checkAndReleaseCoveredTiles が pendingRelease の zoom=14 タイル（子孫）を解放する
             const onLoadsToFire = [...capturedTextureOnLoads];
-            onLoadsToFire.forEach(cb => cb());
+            onLoadsToFire.forEach((cb) => cb());
 
             expect(tm.pendingReleaseCount).toBe(0);
 
@@ -1836,7 +1989,6 @@ describe("LOD遷移時の遅延解放", () => {
         }
     });
 });
-
 
 describe("extractOrthoStableFrustumPlanes", () => {
     const makeCamera = (

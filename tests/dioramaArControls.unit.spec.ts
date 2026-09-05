@@ -15,24 +15,24 @@
  * ことを検証する（`Scene`は`dioramaTouchControls.unit.spec.ts`と同じ軽量フェイク、
  * `WebXRDefaultExperience`は本ファイル既存の`makeXr`を使う）。
  */
-import { describe, it, expect, vi } from "vitest";
+
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
-import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
-import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
+import { describe, expect, it, vi } from "vitest";
 import type { DioramaArControlHud } from "../src/lib/internal/diorama/dioramaArControlHud";
-
 import {
-    trackControllerSticks,
-    trackControllerButtonPresses,
-    setupDioramaArControls,
-    clamp1,
-    clamp01,
     type ControllerStickState,
     type ControllerTriggerState,
+    clamp1,
+    clamp01,
+    setupDioramaArControls,
+    trackControllerButtonPresses,
+    trackControllerSticks,
 } from "../src/lib/internal/diorama/dioramaArControls";
+import type { DioramaOrientationController } from "../src/lib/internal/diorama/dioramaOrientationController";
+import type { DioramaTileModeController } from "../src/lib/internal/diorama/dioramaTileModeController";
+import type { DioramaViewController } from "../src/lib/internal/diorama/dioramaViewController";
 
 /** Babylon.js `Observable` の規約（add()がコールバックを返し、remove(observer)で解除）を模す。 */
 class FakeObservable<T> {
@@ -68,7 +68,9 @@ interface FakeMotionController {
     hasTrigger: boolean;
     thumbstick: FakeThumbstickComponent;
     trigger: FakeTriggerComponent;
-    getComponentOfType(type: string): FakeThumbstickComponent | FakeTriggerComponent | undefined;
+    getComponentOfType(
+        type: string,
+    ): FakeThumbstickComponent | FakeTriggerComponent | undefined;
     getComponent(id: string): FakeButtonComponent | undefined;
     getAllComponentsOfType(type: string): FakeButtonComponent[];
 }
@@ -86,7 +88,10 @@ const makeButtonComponent = (): FakeButtonComponent => ({
 });
 
 /** ボタンの押下状態変化（`WebXRControllerComponent.changes.pressed`相当）を発火する。 */
-const firePressedChange = (button: FakeButtonComponent, current: boolean): void => {
+const firePressedChange = (
+    button: FakeButtonComponent,
+    current: boolean,
+): void => {
     button.changes = { pressed: { current, previous: !current } };
     button.onButtonStateChangedObservable.notifyObservers(button);
 };
@@ -130,7 +135,6 @@ const makeMotionController = (opts: {
     };
 };
 
-
 interface FakeController {
     inputSource: { handedness: "left" | "right" };
     onMotionControllerInitObservable: FakeObservable<FakeMotionController>;
@@ -141,9 +145,14 @@ const makeController = (handedness: "left" | "right"): FakeController => ({
     onMotionControllerInitObservable: new FakeObservable(),
 });
 
-const fireTrigger = (motionController: FakeMotionController, value: number): void => {
+const fireTrigger = (
+    motionController: FakeMotionController,
+    value: number,
+): void => {
     motionController.trigger.value = value;
-    motionController.trigger.onButtonStateChangedObservable.notifyObservers(motionController.trigger);
+    motionController.trigger.onButtonStateChangedObservable.notifyObservers(
+        motionController.trigger,
+    );
 };
 
 /**
@@ -151,7 +160,10 @@ const fireTrigger = (motionController: FakeMotionController, value: number): voi
  * （`computeHorizontalDisplacement`）は `.position.x`/`.position.z` のみを
  * 参照するため、それ以外のプロパティは持たない軽量なフェイクで十分。
  */
-const makeFakeCamera = (position: { x: number; z: number }): { position: { x: number; y: number; z: number } } => ({
+const makeFakeCamera = (position: {
+    x: number;
+    z: number;
+}): { position: { x: number; y: number; z: number } } => ({
     position: { x: position.x, y: 0, z: position.z },
 });
 
@@ -160,7 +172,9 @@ const makeFakeCamera = (position: { x: number; z: number }): { position: { x: nu
  * `dioramaArControls.ts`は`.position.x`/`.position.z`のみを参照する。
  */
 const makeDioramaRoot = (position: { x: number; z: number }): TransformNode =>
-    ({ position: { x: position.x, y: 0, z: position.z } }) as unknown as TransformNode;
+    ({
+        position: { x: position.x, y: 0, z: position.z },
+    }) as unknown as TransformNode;
 
 /** テストで使う既定の卓上表示半径[m]（実アプリの`DEFAULT_TABLE_RADIUS_M`と同じ値）。 */
 const TEST_TABLE_RADIUS_M = 0.35;
@@ -172,7 +186,10 @@ const TEST_TABLE_RADIUS_M = 0.35;
  * パン方向の基準・デッドゾーンの判定自体を検証しないテスト（ボタン押下等）では
  * これで十分。
  */
-const makeDefaultPlacement = (): { dioramaRoot: TransformNode; tableRadiusM: number } => ({
+const makeDefaultPlacement = (): {
+    dioramaRoot: TransformNode;
+    tableRadiusM: number;
+} => ({
     dioramaRoot: makeDioramaRoot({ x: 0, z: 0.6 }),
     tableRadiusM: TEST_TABLE_RADIUS_M,
 });
@@ -203,7 +220,10 @@ const makeXr = (
     return { xr, addedObservable, removedObservable, exitXRAsync };
 };
 
-const zeroState = (): { sticks: ControllerStickState; triggers: ControllerTriggerState } => ({
+const zeroState = (): {
+    sticks: ControllerStickState;
+    triggers: ControllerTriggerState;
+} => ({
     sticks: { left: { x: 0, y: 0 }, right: { x: 0, y: 0 } },
     triggers: { left: 0, right: 0 },
 });
@@ -216,10 +236,17 @@ describe("trackControllerSticks", () => {
 
         trackControllerSticks(xr, sticks, triggers);
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0.5, y: -0.5 });
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0.5, y: -0.5 },
+        );
         fireTrigger(motionController, 0.8);
 
         expect(sticks.left).toEqual({ x: 0.5, y: -0.5 });
@@ -244,7 +271,9 @@ describe("trackControllerSticks", () => {
             initialAxes: { x: 1, y: 1 },
             initialTriggerValue: 1,
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         // 変化イベント（onAxisValueChangedObservable/onButtonStateChangedObservable）を
         // 一切発火させていない時点で、既にバインド時点の値が反映されていること。
@@ -263,10 +292,17 @@ describe("trackControllerSticks", () => {
 
         trackControllerSticks(xr, sticks, triggers);
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: NaN, y: 2 });
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: NaN, y: 2 },
+        );
         expect(sticks.left).toEqual({ x: 0, y: 1 });
 
         fireTrigger(motionController, NaN);
@@ -289,7 +325,9 @@ describe("trackControllerSticks", () => {
             initialAxes: { x: Infinity, y: -2 },
             initialTriggerValue: Infinity,
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         expect(sticks.right).toEqual({ x: 0, y: -1 });
         expect(triggers.right).toBe(0);
@@ -303,9 +341,16 @@ describe("trackControllerSticks", () => {
         trackControllerSticks(xr, sticks, triggers);
 
         // 1回目の初期化: thumbstick/trigger有り。入力を与えて非ゼロ値にする。
-        const motionController1 = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController1);
-        motionController1.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: 1 });
+        const motionController1 = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController1,
+        );
+        motionController1.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 1, y: 1 },
+        );
         fireTrigger(motionController1, 1);
         expect(sticks.right).toEqual({ x: 1, y: 1 });
         expect(triggers.right).toBe(1);
@@ -313,14 +358,21 @@ describe("trackControllerSticks", () => {
         // 2回目の初期化（差し替え）: thumbstick/trigger無しのモーションコントローラー。
         // リセットしないと、以後どのobserverからも更新されず sticks.right/triggers.right が
         // フルスティック/フルトリガー相当の値のまま残留し、回転/高さが暴走し続けてしまう。
-        const motionController2 = makeMotionController({ hasThumbstick: false, hasTrigger: false });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController2);
+        const motionController2 = makeMotionController({
+            hasThumbstick: false,
+            hasTrigger: false,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController2,
+        );
 
         expect(sticks.right).toEqual({ x: 0, y: 0 });
         expect(triggers.right).toBe(0);
 
         // 旧モーションコントローラーの購読は解除済みのため、旧observerへ通知しても反映されない。
-        motionController1.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: -1, y: -1 });
+        motionController1.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: -1, y: -1 },
+        );
         fireTrigger(motionController1, 1);
         expect(sticks.right).toEqual({ x: 0, y: 0 });
         expect(triggers.right).toBe(0);
@@ -333,9 +385,16 @@ describe("trackControllerSticks", () => {
 
         trackControllerSticks(xr, sticks, triggers);
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: 1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 1, y: 1 },
+        );
         fireTrigger(motionController, 1);
         expect(sticks.left).toEqual({ x: 1, y: 1 });
 
@@ -343,8 +402,14 @@ describe("trackControllerSticks", () => {
 
         expect(sticks.left).toEqual({ x: 0, y: 0 });
         expect(triggers.left).toBe(0);
-        expect(motionController.thumbstick.onAxisValueChangedObservable.observerCount).toBe(0);
-        expect(motionController.trigger.onButtonStateChangedObservable.observerCount).toBe(0);
+        expect(
+            motionController.thumbstick.onAxisValueChangedObservable
+                .observerCount,
+        ).toBe(0);
+        expect(
+            motionController.trigger.onButtonStateChangedObservable
+                .observerCount,
+        ).toBe(0);
     });
 
     it("返り値の登録解除関数を呼ぶと、追加/削除observerとコントローラーのobserverが解除される", () => {
@@ -354,18 +419,31 @@ describe("trackControllerSticks", () => {
 
         const untrack = trackControllerSticks(xr, sticks, triggers);
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         untrack();
 
         expect(addedObservable.observerCount).toBe(0);
         expect(removedObservable.observerCount).toBe(0);
-        expect(motionController.thumbstick.onAxisValueChangedObservable.observerCount).toBe(0);
-        expect(motionController.trigger.onButtonStateChangedObservable.observerCount).toBe(0);
+        expect(
+            motionController.thumbstick.onAxisValueChangedObservable
+                .observerCount,
+        ).toBe(0);
+        expect(
+            motionController.trigger.onButtonStateChangedObservable
+                .observerCount,
+        ).toBe(0);
 
         // 解除後に入力を発火しても状態は変化しない。
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: 1 });
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 1, y: 1 },
+        );
         expect(sticks.left).toEqual({ x: 0, y: 0 });
     });
 });
@@ -386,7 +464,9 @@ describe("trackControllerButtonPresses", () => {
             hasTrigger: false,
             namedButtons: { "a-button": aButton, "b-button": bButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         firePressedChange(aButton, true);
         expect(onPrimaryPress).toHaveBeenCalledTimes(1);
@@ -411,7 +491,9 @@ describe("trackControllerButtonPresses", () => {
             hasTrigger: false,
             namedButtons: { "x-button": xButton, "y-button": yButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         firePressedChange(xButton, true);
         expect(onPrimaryPress).toHaveBeenCalledTimes(1);
@@ -434,7 +516,9 @@ describe("trackControllerButtonPresses", () => {
             hasTrigger: false,
             namedButtons: { "a-button": aButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         firePressedChange(aButton, true);
         expect(onPrimaryPress).toHaveBeenCalledTimes(1);
@@ -457,7 +541,9 @@ describe("trackControllerButtonPresses", () => {
             hasTrigger: false,
             buttonList: [button0, button1],
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         firePressedChange(button0, true);
         expect(onPrimaryPress).toHaveBeenCalledTimes(1);
@@ -480,7 +566,9 @@ describe("trackControllerButtonPresses", () => {
             hasTrigger: false,
             namedButtons: { "a-button": aButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
         expect(aButton.onButtonStateChangedObservable.observerCount).toBe(1);
 
         removedObservable.notifyObservers(controller);
@@ -497,7 +585,11 @@ describe("trackControllerButtonPresses", () => {
         const onPrimaryPress = vi.fn();
         const onSecondaryPress = vi.fn();
 
-        const untrack = trackControllerButtonPresses(xr, onPrimaryPress, onSecondaryPress);
+        const untrack = trackControllerButtonPresses(
+            xr,
+            onPrimaryPress,
+            onSecondaryPress,
+        );
 
         const aButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -505,7 +597,9 @@ describe("trackControllerButtonPresses", () => {
             hasTrigger: false,
             namedButtons: { "a-button": aButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         untrack();
 
@@ -545,7 +639,10 @@ describe("setupDioramaArControls", () => {
         };
     };
 
-    const makeViewController = (): { vc: DioramaViewController; feedAxes: ReturnType<typeof vi.fn> } => {
+    const makeViewController = (): {
+        vc: DioramaViewController;
+        feedAxes: ReturnType<typeof vi.fn>;
+    } => {
         const feedAxes = vi.fn();
         const vc = {
             getCenter: vi.fn(),
@@ -557,7 +654,10 @@ describe("setupDioramaArControls", () => {
 
     const makeOrientationController = (
         rotationRad = 0,
-    ): { oc: DioramaOrientationController; feedAxes: ReturnType<typeof vi.fn> } => {
+    ): {
+        oc: DioramaOrientationController;
+        feedAxes: ReturnType<typeof vi.fn>;
+    } => {
         const feedAxes = vi.fn();
         const oc = {
             getRotationRad: () => rotationRad,
@@ -567,9 +667,15 @@ describe("setupDioramaArControls", () => {
         return { oc, feedAxes };
     };
 
-    const makeTileModeController = (): { tc: DioramaTileModeController; cycle: ReturnType<typeof vi.fn> } => {
+    const makeTileModeController = (): {
+        tc: DioramaTileModeController;
+        cycle: ReturnType<typeof vi.fn>;
+    } => {
         const cycle = vi.fn();
-        const tc = { getTileMode: vi.fn(), cycle } as unknown as DioramaTileModeController;
+        const tc = {
+            getTileMode: vi.fn(),
+            cycle,
+        } as unknown as DioramaTileModeController;
         return { tc, cycle };
     };
 
@@ -579,7 +685,9 @@ describe("setupDioramaArControls", () => {
         triggerTileModeCyclePress: () => void;
         triggerExitArPress: () => void;
     };
-    const makeHud = (overrides: { panAxes?: { x: number; y: number } } = {}): FakeHud => {
+    const makeHud = (
+        overrides: { panAxes?: { x: number; y: number } } = {},
+    ): FakeHud => {
         let tileModeCycleCallback: (() => void) | null = null;
         let exitArCallback: (() => void) | null = null;
         return {
@@ -616,7 +724,16 @@ describe("setupDioramaArControls", () => {
         const hud = makeHud();
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         hud.triggerTileModeCyclePress();
         expect(cycle).toHaveBeenCalledTimes(1);
@@ -634,7 +751,16 @@ describe("setupDioramaArControls", () => {
         const hud = makeHud();
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         hud.triggerExitArPress();
         expect(exitXRAsync).toHaveBeenCalledTimes(1);
@@ -647,15 +773,28 @@ describe("setupDioramaArControls", () => {
         const controller = makeController("right");
         const { xr } = makeXr([controller]);
         const rejection = new Error("exitXRAsync failed");
-        (xr.baseExperience.exitXRAsync as ReturnType<typeof vi.fn>).mockRejectedValueOnce(rejection);
+        (
+            xr.baseExperience.exitXRAsync as ReturnType<typeof vi.fn>
+        ).mockRejectedValueOnce(rejection);
         const { vc } = makeViewController();
         const { oc } = makeOrientationController();
         const { tc } = makeTileModeController();
         const hud = makeHud();
-        const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const consoleErrorSpy = vi
+            .spyOn(console, "error")
+            .mockImplementation(() => {});
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         hud.triggerExitArPress();
         await Promise.resolve();
@@ -680,7 +819,16 @@ describe("setupDioramaArControls", () => {
         const hud = makeHud();
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         const aButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -688,7 +836,9 @@ describe("setupDioramaArControls", () => {
             hasTrigger: false,
             namedButtons: { "a-button": aButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
         firePressedChange(aButton, true);
 
         expect(cycle).toHaveBeenCalledTimes(1);
@@ -706,7 +856,16 @@ describe("setupDioramaArControls", () => {
         const hud = makeHud();
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         const bButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -714,7 +873,9 @@ describe("setupDioramaArControls", () => {
             hasTrigger: false,
             namedButtons: { "b-button": bButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
         firePressedChange(bButton, true);
 
         expect(exitXRAsync).toHaveBeenCalledTimes(1);
@@ -732,7 +893,16 @@ describe("setupDioramaArControls", () => {
         const hud = makeHud();
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
         const aButton = makeButtonComponent();
         const motionController = makeMotionController({
@@ -740,7 +910,9 @@ describe("setupDioramaArControls", () => {
             hasTrigger: false,
             namedButtons: { "a-button": aButton },
         });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
 
         dispose();
 
@@ -764,18 +936,36 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
         // Gamepad規約: y=-1がスティックを奥（前方向）へ倒した状態。
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0, y: -1 },
+        );
 
         tick(16);
 
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
         expect(feedAxes).toHaveBeenCalled();
-        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(panAxes.x).toBeCloseTo(0);
         expect(panAxes.y).toBeCloseTo(-1);
 
@@ -793,16 +983,34 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0, y: -1 },
+        );
 
         tick(16);
 
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
-        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(panAxes.x).toBeCloseTo(1);
         expect(panAxes.y).toBeCloseTo(0);
 
@@ -823,16 +1031,34 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0, y: -1 },
+        );
 
         tick(16);
 
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
-        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(panAxes.x).toBeCloseTo(-1);
         expect(panAxes.y).toBeCloseTo(0);
 
@@ -850,11 +1076,22 @@ describe("setupDioramaArControls", () => {
         // ユーザーは箱庭の西側に立ち、HUDの仮想ジョイスティックを前方向へ倒す。
         const hud = makeHud({ panAxes: { x: 0, y: -1 } });
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         tick(16);
 
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
-        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(panAxes.x).toBeCloseTo(1);
         expect(panAxes.y).toBeCloseTo(0);
 
@@ -872,11 +1109,27 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 1, y: -1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 1, y: -1 },
+        );
 
         tick(16);
 
@@ -896,11 +1149,27 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0, y: -1 },
+        );
 
         tick(16);
         expect(feedAxes).toHaveBeenLastCalledWith({ x: 0, y: 0 }, 0, 0.016);
@@ -913,7 +1182,9 @@ describe("setupDioramaArControls", () => {
         // 0.4mを超えたのでデッドゾーンを抜け、パンが有効になる。
         dioramaRoot.position.z = 0.45;
         tick(16);
-        const [panAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [panAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(panAxes).not.toEqual({ x: 0, y: 0 });
 
         dispose();
@@ -934,20 +1205,40 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0, y: -1 },
+        );
 
         tick(16);
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
-        const [firstPanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [firstPanAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
 
         // 0.05rad(≈2.9°)は45°スナップ・5°ヒステリシスの範囲内の揺らぎのため、
         // 北(0°)のバケットに留まり続けpanAxesは変化しないはず。
         tick(16);
-        const [secondPanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [{ x: number; y: number }];
+        const [secondPanAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
 
         expect(firstPanAxes.x).toBeCloseTo(0);
         expect(firstPanAxes.y).toBeCloseTo(-1);
@@ -968,17 +1259,33 @@ describe("setupDioramaArControls", () => {
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, TEST_TABLE_RADIUS_M, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            TEST_TABLE_RADIUS_M,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0, y: -1 });
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0, y: -1 },
+        );
 
         tick(16);
         const feedAxes = vc.feedAxes as ReturnType<typeof vi.fn>;
-        const [beforeDeadZonePanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [
-            { x: number; y: number },
-        ];
+        const [beforeDeadZonePanAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         expect(beforeDeadZonePanAxes.x).toBeCloseTo(0);
         expect(beforeDeadZonePanAxes.y).toBeCloseTo(-1);
 
@@ -999,9 +1306,9 @@ describe("setupDioramaArControls", () => {
         dioramaRoot.position.z = distanceM * Math.cos(headingRad);
         tick(16);
 
-        const [afterDeadZonePanAxes] = feedAxes.mock.calls[feedAxes.mock.calls.length - 1] as [
-            { x: number; y: number },
-        ];
+        const [afterDeadZonePanAxes] = feedAxes.mock.calls[
+            feedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }];
         // 修正後は北への固着ではなく、最寄りバケットNE(45°)へ即座にスナップする。
         expect(afterDeadZonePanAxes.x).toBeCloseTo(Math.SQRT1_2);
         expect(afterDeadZonePanAxes.y).toBeCloseTo(-Math.SQRT1_2);
@@ -1015,32 +1322,45 @@ describe("setupDioramaArControls", () => {
         const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController(0);
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController(0);
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
         // 下方向(y=-0.9)への入力に、わずかな左右ドリフト(x=0.2)が混ざったケース。
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0.2, y: -0.9 });
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0.2, y: -0.9 },
+        );
 
         tick(16);
 
         // ズーム（viewController.feedAxesの第2引数）は発火するが、回転
         // （orientationController.feedAxesの第1引数）は0のまま（発火しない）。
-        const [, zoomAxisY] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
-            { x: number; y: number },
-            number,
-            number,
-        ];
+        const [, zoomAxisY] = viewFeedAxes.mock.calls[
+            viewFeedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }, number, number];
         expect(zoomAxisY).not.toBe(0);
-        const [rotationAxisX] = orientationFeedAxes.mock.calls[orientationFeedAxes.mock.calls.length - 1] as [
-            number,
-            number,
-            number,
-        ];
+        const [rotationAxisX] = orientationFeedAxes.mock.calls[
+            orientationFeedAxes.mock.calls.length - 1
+        ] as [number, number, number];
         expect(rotationAxisX).toBe(0);
 
         dispose();
@@ -1052,30 +1372,43 @@ describe("setupDioramaArControls", () => {
         const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController(0);
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController(0);
         const { tc } = makeTileModeController();
         const hud = makeHud();
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
 
-        const motionController = makeMotionController({ hasThumbstick: true, hasTrigger: true });
-        controller.onMotionControllerInitObservable.notifyObservers(motionController);
+        const motionController = makeMotionController({
+            hasThumbstick: true,
+            hasTrigger: true,
+        });
+        controller.onMotionControllerInitObservable.notifyObservers(
+            motionController,
+        );
         // 右方向(x=0.9)への入力に、わずかな上下ドリフト(y=0.2)が混ざったケース。
-        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers({ x: 0.9, y: 0.2 });
+        motionController.thumbstick.onAxisValueChangedObservable.notifyObservers(
+            { x: 0.9, y: 0.2 },
+        );
 
         tick(16);
 
-        const [, zoomAxisY] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
-            { x: number; y: number },
-            number,
-            number,
-        ];
+        const [, zoomAxisY] = viewFeedAxes.mock.calls[
+            viewFeedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }, number, number];
         expect(zoomAxisY).toBe(0);
-        const [rotationAxisX] = orientationFeedAxes.mock.calls[orientationFeedAxes.mock.calls.length - 1] as [
-            number,
-            number,
-            number,
-        ];
+        const [rotationAxisX] = orientationFeedAxes.mock.calls[
+            orientationFeedAxes.mock.calls.length - 1
+        ] as [number, number, number];
         expect(rotationAxisX).not.toBe(0);
 
         dispose();
@@ -1087,32 +1420,37 @@ describe("setupDioramaArControls", () => {
         const { xr } = makeXr([controller], { cameraPosition: { x: 0, z: 0 } });
         const { dioramaRoot, tableRadiusM } = makeDefaultPlacement();
         const { vc, feedAxes: viewFeedAxes } = makeViewController();
-        const { oc, feedAxes: orientationFeedAxes } = makeOrientationController(0);
+        const { oc, feedAxes: orientationFeedAxes } =
+            makeOrientationController(0);
         const { tc } = makeTileModeController();
         // 物理スティックの入力は無し。GUIのズームボタンのみ操作する。
         const hud = makeHud({});
         hud.getZoomAxis = () => 1;
 
-        const dispose = setupDioramaArControls(scene, xr, dioramaRoot, tableRadiusM, hud, vc, oc, tc);
+        const dispose = setupDioramaArControls(
+            scene,
+            xr,
+            dioramaRoot,
+            tableRadiusM,
+            hud,
+            vc,
+            oc,
+            tc,
+        );
         tick(16);
 
-        const [, zoomAxisY] = viewFeedAxes.mock.calls[viewFeedAxes.mock.calls.length - 1] as [
-            { x: number; y: number },
-            number,
-            number,
-        ];
+        const [, zoomAxisY] = viewFeedAxes.mock.calls[
+            viewFeedAxes.mock.calls.length - 1
+        ] as [{ x: number; y: number }, number, number];
         expect(zoomAxisY).toBe(1);
-        const [rotationAxisX] = orientationFeedAxes.mock.calls[orientationFeedAxes.mock.calls.length - 1] as [
-            number,
-            number,
-            number,
-        ];
+        const [rotationAxisX] = orientationFeedAxes.mock.calls[
+            orientationFeedAxes.mock.calls.length - 1
+        ] as [number, number, number];
         expect(rotationAxisX).toBe(0);
 
         dispose();
     });
 });
-
 
 describe("clamp1", () => {
     it("範囲内の値はそのまま返す", () => {

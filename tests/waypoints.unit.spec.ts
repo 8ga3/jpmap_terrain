@@ -7,25 +7,44 @@
  * ESM + vi.mock で完全にモジュールを分離して
  * 他テストとのキャッシュ衝突を回避する。
  */
-import { describe, it, expect, beforeAll, vi, Mock } from "vitest";
+
 import type { Scene } from "@babylonjs/core/scene";
+import { beforeAll, describe, expect, it, type Mock, vi } from "vitest";
 
 // ESM環境のモック: vi.mock を使い、動的 import でテスト対象を取得
 
 vi.mock("@babylonjs/core/Meshes/Builders/discBuilder", () => ({
     CreateDisc: vi.fn(() => {
-        const scaling = { x: 1, y: 1, z: 1, set(x: number, y: number, z: number) { this.x = x; this.y = y; this.z = z; } };
+        const scaling = {
+            x: 1,
+            y: 1,
+            z: 1,
+            set(x: number, y: number, z: number) {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            },
+        };
         return {
             material: null,
             isPickable: false,
             alwaysSelectAsActiveMesh: false,
             rotation: { x: 0, y: 0, z: 0 },
-            position: { x: 0, y: 0, z: 0, set: vi.fn(), copyFrom: vi.fn(), clone: vi.fn(() => ({ x: 0, y: 0, z: 0 })) },
+            position: {
+                x: 0,
+                y: 0,
+                z: 0,
+                set: vi.fn(),
+                copyFrom: vi.fn(),
+                clone: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            },
             visibility: 1,
             scaling,
             enabled: true,
             dispose: vi.fn(),
-            setEnabled(v: boolean) { this.enabled = v; },
+            setEnabled(v: boolean) {
+                this.enabled = v;
+            },
         };
     }),
 }));
@@ -36,7 +55,10 @@ vi.mock("@babylonjs/core/Meshes/mesh", () => ({
 
 vi.mock("@babylonjs/core/Materials/shaderMaterial", () => ({
     ShaderMaterial: vi.fn(() => ({
-        setFloat: vi.fn(), dispose: vi.fn(), backFaceCulling: false, alpha: 1,
+        setFloat: vi.fn(),
+        dispose: vi.fn(),
+        backFaceCulling: false,
+        alpha: 1,
     })),
 }));
 
@@ -46,12 +68,23 @@ vi.mock("@babylonjs/core/Materials/effect", () => ({
 
 vi.mock("@babylonjs/core/Particles/particleSystem", () => ({
     ParticleSystem: vi.fn(() => ({
-        particleTexture: null, emitter: null,
-        minEmitBox: null, maxEmitBox: null,
-        color1: null, color2: null, colorDead: null,
-        minSize: 0, maxSize: 0, minLifeTime: 0, maxLifeTime: 0,
-        minEmitPower: 0, maxEmitPower: 0, emitRate: 0,
-        gravity: null, targetStopDuration: 0, disposeOnStop: false,
+        particleTexture: null,
+        emitter: null,
+        minEmitBox: null,
+        maxEmitBox: null,
+        color1: null,
+        color2: null,
+        colorDead: null,
+        minSize: 0,
+        maxSize: 0,
+        minLifeTime: 0,
+        maxLifeTime: 0,
+        minEmitPower: 0,
+        maxEmitPower: 0,
+        emitRate: 0,
+        gravity: null,
+        targetStopDuration: 0,
+        disposeOnStop: false,
         start: vi.fn(),
     })),
 }));
@@ -65,7 +98,10 @@ vi.mock("@babylonjs/core/Maths/math.vector", () => ({
         return { x, y, z };
     }),
     Quaternion: vi.fn(function () {
-        return { copyFrom: vi.fn(), clone: vi.fn(() => ({ _quat: true, copyFrom: vi.fn() })) };
+        return {
+            copyFrom: vi.fn(),
+            clone: vi.fn(() => ({ _quat: true, copyFrom: vi.fn() })),
+        };
     }),
 }));
 
@@ -84,7 +120,10 @@ vi.mock("@babylonjs/core/Materials/Textures/texture", () => ({
 
 vi.mock("../src/demos/flight/waypointShader", () => ({
     createWaypointMaterial: vi.fn(() => ({
-        setFloat: vi.fn(), dispose: vi.fn(), backFaceCulling: false, alpha: 1,
+        setFloat: vi.fn(),
+        dispose: vi.fn(),
+        backFaceCulling: false,
+        alpha: 1,
     })),
     updateWaypointMaterialTime: vi.fn(),
 }));
@@ -93,16 +132,17 @@ vi.mock("../src/demos/flight/waypointEffect", () => ({
     createPassEffect: vi.fn(),
 }));
 
-const createMockScene = (): Scene => ({
-    getTransformNodeByName: vi.fn((): unknown => ({
-        getChildMeshes: vi.fn(() => [
-            {
-                computeWorldMatrix: vi.fn(),
-                absolutePosition: { x: 0, y: 100, z: 0 },
-            },
-        ]),
-    })),
-}) as unknown as Scene;
+const createMockScene = (): Scene =>
+    ({
+        getTransformNodeByName: vi.fn((): unknown => ({
+            getChildMeshes: vi.fn(() => [
+                {
+                    computeWorldMatrix: vi.fn(),
+                    absolutePosition: { x: 0, y: 100, z: 0 },
+                },
+            ]),
+        })),
+    }) as unknown as Scene;
 
 describe("createWaypointManager", () => {
     let createWaypointManager: typeof import("../src/demos/flight/waypoints").createWaypointManager;
@@ -114,14 +154,20 @@ describe("createWaypointManager", () => {
         const waypoints = await import("../src/demos/flight/waypoints");
         createWaypointManager = waypoints.createWaypointManager;
 
-        const discModule = await import("@babylonjs/core/Meshes/Builders/discBuilder");
+        const discModule = await import(
+            "@babylonjs/core/Meshes/Builders/discBuilder"
+        );
         CreateDiscMock = discModule.CreateDisc as unknown as Mock;
 
         const ecefModule = await import("../src/terrain/geo/ecef");
-        geodeticToEcefToRefMock = ecefModule.geodeticToEcefToRef as unknown as Mock;
+        geodeticToEcefToRefMock =
+            ecefModule.geodeticToEcefToRef as unknown as Mock;
 
-        const overlayModule = await import("../src/terrain/geo/overlayPlacement");
-        surfaceOrientationToRefMock = overlayModule.surfaceOrientationToRef as unknown as Mock;
+        const overlayModule = await import(
+            "../src/terrain/geo/overlayPlacement"
+        );
+        surfaceOrientationToRefMock =
+            overlayModule.surfaceOrientationToRef as unknown as Mock;
     });
 
     it("creates a WaypointManager with update/reset/dispose", () => {

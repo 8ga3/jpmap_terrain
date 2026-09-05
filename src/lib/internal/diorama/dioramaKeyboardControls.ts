@@ -57,15 +57,19 @@
  * ブラウザ標準のショートカット（例: Ctrl+R = ページ再読み込み）を奪わないよう、
  * 素通しにする。
  */
-import type { Scene } from "@babylonjs/core/scene";
+
 import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-
-import type { DioramaViewController } from "./dioramaViewController";
+import type { Scene } from "@babylonjs/core/scene";
+import {
+    computePanAxesFromDirectionalInput,
+    rotateHorizontalUnitVector,
+    type StickAxes,
+} from "./dioramaControllerMapping";
+import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
 import type { DioramaOrientationController } from "./dioramaOrientationController";
 import type { DioramaTileModeController } from "./dioramaTileModeController";
-import { computePanAxesFromDirectionalInput, rotateHorizontalUnitVector, type StickAxes } from "./dioramaControllerMapping";
-import { getHorizontalDirectionUnit } from "./dioramaHorizontalDirection";
+import type { DioramaViewController } from "./dioramaViewController";
 
 /** 前進（画面奥へ）・後退・左・右（いずれもカメラ視点基準）のキー割り当て。 */
 const PAN_FORWARD_CODES = new Set(["KeyW"]);
@@ -97,7 +101,10 @@ const HANDLED_CODES = new Set<string>([
     ...TILE_MODE_CYCLE_CODES,
 ]);
 
-const anyPressed = (pressed: ReadonlySet<string>, codes: ReadonlySet<string>): boolean => {
+const anyPressed = (
+    pressed: ReadonlySet<string>,
+    codes: ReadonlySet<string>,
+): boolean => {
     for (const code of codes) {
         if (pressed.has(code)) return true;
     }
@@ -182,9 +189,20 @@ export const setupDioramaKeyboardControls = (
             // （Q/Eキー）も差し引き、地理座標系基準の前方向・右方向へ補正する
             // （冒頭のコメント参照）。
             const rotationRad = orientationController.getRotationRad();
-            const forward = rotateHorizontalUnitVector(getHorizontalDirectionUnit(camera, localForwardAxis), -rotationRad);
-            const right = rotateHorizontalUnitVector(getHorizontalDirectionUnit(camera, localRightAxis), -rotationRad);
-            panAxes = computePanAxesFromDirectionalInput(rawForward, rawRight, forward, right);
+            const forward = rotateHorizontalUnitVector(
+                getHorizontalDirectionUnit(camera, localForwardAxis),
+                -rotationRad,
+            );
+            const right = rotateHorizontalUnitVector(
+                getHorizontalDirectionUnit(camera, localRightAxis),
+                -rotationRad,
+            );
+            panAxes = computePanAxesFromDirectionalInput(
+                rawForward,
+                rawRight,
+                forward,
+                right,
+            );
         }
 
         let zoomAxisY = 0;
@@ -200,7 +218,12 @@ export const setupDioramaKeyboardControls = (
         // トリガー押下量[0,1]の等価入力として、押されていれば1、そうでなければ0を渡す。
         const leftTriggerValue = anyPressed(pressed, HEIGHT_DOWN_CODES) ? 1 : 0;
         const rightTriggerValue = anyPressed(pressed, HEIGHT_UP_CODES) ? 1 : 0;
-        orientationController.feedAxes(rotationAxisX, leftTriggerValue, rightTriggerValue, dtSeconds);
+        orientationController.feedAxes(
+            rotationAxisX,
+            leftTriggerValue,
+            rightTriggerValue,
+            dtSeconds,
+        );
     });
 
     return (): void => {

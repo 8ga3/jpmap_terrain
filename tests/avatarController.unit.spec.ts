@@ -3,14 +3,14 @@
  *
  * 入力ベクトル合成・デッドゾーン・移動・方位計算の純粋関数を検証する。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
     applyDeadzone,
     combineInputs,
     keyboardVector,
-    moveVectorMagnitude,
     movementHeading,
+    moveVectorMagnitude,
     rotateByAzimuth,
     stepPosition,
 } from "../src/demos/avatar-controller/movement";
@@ -37,7 +37,9 @@ describe("keyboardVector", () => {
     });
 
     it("矢印キーと WASD を同時押しでも (1,1) 以下にクランプ", () => {
-        const v = keyboardVector(new Set(["ArrowUp", "KeyW", "ArrowRight", "KeyD"]));
+        const v = keyboardVector(
+            new Set(["ArrowUp", "KeyW", "ArrowRight", "KeyD"]),
+        );
         expect(v).toEqual({ vx: 1, vy: 1 });
     });
 
@@ -48,7 +50,10 @@ describe("keyboardVector", () => {
 
 describe("applyDeadzone", () => {
     it("デッドゾーン未満は (0,0)", () => {
-        expect(applyDeadzone({ vx: 0.05, vy: 0 }, 0.1)).toEqual({ vx: 0, vy: 0 });
+        expect(applyDeadzone({ vx: 0.05, vy: 0 }, 0.1)).toEqual({
+            vx: 0,
+            vy: 0,
+        });
     });
 
     it("デッドゾーン超過時は (|v|-dz)/(1-dz) で再スケール", () => {

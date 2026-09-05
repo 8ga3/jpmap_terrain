@@ -8,7 +8,7 @@
  * Babylon の重い描画モジュール（GlowLayer/StandardMaterial/CreateRibbon 等）は
  * vi.mock で分離する（純関数は Vector3/Color4 などの math のみ実体を使う）。
  */
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@babylonjs/core/Layers/glowLayer", () => ({
     GlowLayer: class {},
@@ -20,6 +20,7 @@ vi.mock("@babylonjs/core/Meshes/Builders/ribbonBuilder", () => ({
     CreateRibbon: vi.fn(),
 }));
 vi.mock("@babylonjs/core/Meshes/mesh", () => ({
+    // biome-ignore lint/complexity/noStaticOnlyClass: Babylon.js の Mesh クラス形状（static 定数）を模したモック
     Mesh: class {
         static DOUBLESIDE = 2;
     },
@@ -82,7 +83,15 @@ describe("computeEngineEcefToRef", () => {
     it("全成分が有限値である", () => {
         const left = new Vector3();
         const right = new Vector3();
-        computeEngineEcefToRef(TOKYO.lat, TOKYO.lon, 1500, 1000, 123, left, right);
+        computeEngineEcefToRef(
+            TOKYO.lat,
+            TOKYO.lon,
+            1500,
+            1000,
+            123,
+            left,
+            right,
+        );
         for (const v of [left, right]) {
             expect(Number.isFinite(v.x)).toBe(true);
             expect(Number.isFinite(v.y)).toBe(true);
@@ -109,7 +118,13 @@ describe("buildTrailRibbonLocal", () => {
         const left = Array.from({ length: n }, () => new Vector3());
         const right = Array.from({ length: n }, () => new Vector3());
 
-        const written = buildTrailRibbonLocal(history, anchor, 0.6, left, right);
+        const written = buildTrailRibbonLocal(
+            history,
+            anchor,
+            0.6,
+            left,
+            right,
+        );
         expect(written).toBe(n);
 
         // 先端(i=n-1): ローカル中心 ≈ 原点、左右間隔 ≈ 2×halfWidth(1.2m)

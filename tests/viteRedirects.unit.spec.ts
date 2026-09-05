@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
     buildStaticRedirectsFile,
-    demoAtPathRewrites,
     DEMO_NAMES,
+    demoAtPathRewrites,
     STATIC_REDIRECTS_FILENAME,
 } from "../vite.rewrites";
 

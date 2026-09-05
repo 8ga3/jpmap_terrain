@@ -8,19 +8,18 @@
  * グリッド原点ジャンプの影響も受けない。
  */
 
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
-
-import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
-import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
+import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
+import { circularOrbitHeading, circularOrbitPosition } from "../avatar/orbit";
 
 // ─── 型 ─────────────────────────────────────────────────
 /**
@@ -97,7 +96,12 @@ export const computeEngineEcefToRef = (
     const east = scratch?.east ?? new Vector3();
     const north = scratch?.north ?? new Vector3();
 
-    const planePos = circularOrbitPosition(centerLat, centerLon, radiusM, angleDeg);
+    const planePos = circularOrbitPosition(
+        centerLat,
+        centerLon,
+        radiusM,
+        angleDeg,
+    );
     geodeticToEcefToRef(planePos.lat, planePos.lon, altitudeM, plane);
     if (!geographicTangentBasisToRef(plane, east, north)) return false;
 
@@ -121,9 +125,12 @@ export const computeEngineEcefToRef = (
     const rz = east.z * cosH - north.z * sinH;
 
     // 共通オフセット（上方 + 後方）
-    const baseX = plane.x + ux * ENGINE_VERTICAL_OFFSET_M - fx * ENGINE_REAR_OFFSET_M;
-    const baseY = plane.y + uy * ENGINE_VERTICAL_OFFSET_M - fy * ENGINE_REAR_OFFSET_M;
-    const baseZ = plane.z + uz * ENGINE_VERTICAL_OFFSET_M - fz * ENGINE_REAR_OFFSET_M;
+    const baseX =
+        plane.x + ux * ENGINE_VERTICAL_OFFSET_M - fx * ENGINE_REAR_OFFSET_M;
+    const baseY =
+        plane.y + uy * ENGINE_VERTICAL_OFFSET_M - fy * ENGINE_REAR_OFFSET_M;
+    const baseZ =
+        plane.z + uz * ENGINE_VERTICAL_OFFSET_M - fz * ENGINE_REAR_OFFSET_M;
 
     leftRef.set(
         baseX - rx * ENGINE_LATERAL_OFFSET_M,
@@ -251,7 +258,11 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
     const curLeft = new Vector3();
     const curRight = new Vector3();
     const anchor = new Vector3();
-    const scratch = { plane: new Vector3(), east: new Vector3(), north: new Vector3() };
+    const scratch = {
+        plane: new Vector3(),
+        east: new Vector3(),
+        north: new Vector3(),
+    };
 
     const makeRibbon = (name: string): TrailRibbon => {
         const left: Vector3[] = [];
@@ -267,11 +278,7 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
         // 実現する。DOUBLESIDE は頂点を複製して総頂点数を 2 倍にするため、固定長の頂点カラー
         // バッファ (SAMPLE_COUNT * 2 頂点ぶん) と齟齬が生じ、複製側が未着色（白）のまま
         // additive 合成され、炎が白飛びして正しく表示されない。
-        const mesh = CreateRibbon(
-            name,
-            { pathArray, updatable: true },
-            scene,
-        );
+        const mesh = CreateRibbon(name, { pathArray, updatable: true }, scene);
         mesh.material = material;
         mesh.isPickable = false;
         mesh.alwaysSelectAsActiveMesh = true;
@@ -299,10 +306,15 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
     const start = (): void => {
         if (disposed || running) return;
         disposeMeshes();
-        glow = new GlowLayer("globe-afterburner-glow", scene, { blurKernelSize: 64 });
+        glow = new GlowLayer("globe-afterburner-glow", scene, {
+            blurKernelSize: 64,
+        });
         glow.intensity = 1.5;
         // [0]=左エンジン, [1]=右エンジン
-        ribbons = [makeRibbon("globe-afterburner-left"), makeRibbon("globe-afterburner-right")];
+        ribbons = [
+            makeRibbon("globe-afterburner-left"),
+            makeRibbon("globe-afterburner-right"),
+        ];
         for (const r of ribbons) glow.addIncludedOnlyMesh(r.mesh);
         glow.isEnabled = visible;
         running = true;
@@ -329,14 +341,25 @@ export const createGlobeAfterburner = (scene: Scene): Afterburner => {
             for (let i = 0; i < n; i++) r.history[i].copyFrom(current);
         } else {
             // 1フレーム分シフトして末尾（先端）に現在位置を追加
-            for (let i = 0; i < n - 1; i++) r.history[i].copyFrom(r.history[i + 1]);
+            for (let i = 0; i < n - 1; i++)
+                r.history[i].copyFrom(r.history[i + 1]);
             r.history[n - 1].copyFrom(current);
         }
 
-        buildTrailRibbonLocal(r.history, anchor, HALF_WIDTH_HEAD_M, r.pathArray[0], r.pathArray[1]);
+        buildTrailRibbonLocal(
+            r.history,
+            anchor,
+            HALF_WIDTH_HEAD_M,
+            r.pathArray[0],
+            r.pathArray[1],
+        );
         r.mesh.position.copyFrom(anchor);
 
-        CreateRibbon(r.mesh.name, { pathArray: r.pathArray, updatable: true, instance: r.mesh });
+        CreateRibbon(r.mesh.name, {
+            pathArray: r.pathArray,
+            updatable: true,
+            instance: r.mesh,
+        });
 
         // 頂点カラーは t = i/(n-1)（頂点インデックス）のみに依存しフレーム間で不変なので、
         // 初回のみ計算・アップロードする（毎フレームの allocation と GPU 転送を避ける）。

@@ -6,13 +6,13 @@
  * `globeMarkerManager` がこれらを再利用してマーカーを表示する（座標系非依存）。
  */
 
-import type { Scene } from "@babylonjs/core/scene";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Scene } from "@babylonjs/core/scene";
 
 import {
     MARKER_DEFAULTS,
@@ -129,9 +129,12 @@ export const createIconTextMesh = (
 
     const dpr =
         typeof globalThis !== "undefined" &&
-        typeof (globalThis as { devicePixelRatio?: number }).devicePixelRatio ===
-            "number"
-            ? Math.max((globalThis as { devicePixelRatio: number }).devicePixelRatio, 1)
+        typeof (globalThis as { devicePixelRatio?: number })
+            .devicePixelRatio === "number"
+            ? Math.max(
+                  (globalThis as { devicePixelRatio: number }).devicePixelRatio,
+                  1,
+              )
             : 1;
 
     // テキスト領域サイズ (px)
@@ -168,7 +171,9 @@ export const createIconTextMesh = (
         // アイコンが下に並ぶ場合は底側パディングを半分に詰めて寄せる。
         textBottomPadPx = icon ? innerPad * 0.5 : innerPad;
         textWidthPx = Math.ceil((maxLineWidth + innerPad * 2) * dpr);
-        textHeightPx = Math.ceil((totalTextHeightPx + innerPad + textBottomPadPx) * dpr);
+        textHeightPx = Math.ceil(
+            (totalTextHeightPx + innerPad + textBottomPadPx) * dpr,
+        );
     }
 
     // アイコン領域サイズ (px)。icon.width/height は world m なので dpr 換算で px にする。
@@ -222,7 +227,11 @@ export const createIconTextMesh = (
         ctx2d.lineWidth = strokePx * 2 * dpr;
         ctx2d.strokeStyle = "#ffffff";
         for (let i = 0; i < lines.length; i++) {
-            ctx2d.strokeText(lines[i], centerX, startY + i * lineHeightPx * dpr);
+            ctx2d.strokeText(
+                lines[i],
+                centerX,
+                startY + i * lineHeightPx * dpr,
+            );
         }
         ctx2d.fillStyle = text.color;
         for (let i = 0; i < lines.length; i++) {

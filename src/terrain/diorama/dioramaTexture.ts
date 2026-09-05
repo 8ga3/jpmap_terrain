@@ -26,12 +26,12 @@
  *    （合成用canvasは `{ alpha: false }` で生成し、アルファ起因の透過リスクを
  *    設計上排除している）。
  */
-import type { Scene } from "@babylonjs/core/scene";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
 
-import { TILE_SIZE, toTileXY, textureUrl, type MapType } from "../gsiTile";
-import { totalPixelsForZoom, latLonToPixel } from "../geo/mapping";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import type { Scene } from "@babylonjs/core/scene";
+import { latLonToPixel, totalPixelsForZoom } from "../geo/mapping";
+import { type MapType, TILE_SIZE, textureUrl, toTileXY } from "../gsiTile";
 import { measureAsync } from "./dioramaPerfLog";
 
 /** テクスチャ取得対象の1点（lat/lon のみを要求。他フィールドは無視）。 */
@@ -76,7 +76,9 @@ export interface DioramaTextureLayout {
 /** ズームレベルが0以上の整数であることを検証する（非整数/負数はtoTileXY/totalPixelsForZoomを不正な計算に導くため）。 */
 const assertValidZoom = (zoom: number): void => {
     if (!(Number.isInteger(zoom) && zoom >= 0)) {
-        throw new RangeError(`zoom must be a non-negative integer (got ${zoom})`);
+        throw new RangeError(
+            `zoom must be a non-negative integer (got ${zoom})`,
+        );
     }
 };
 
@@ -89,7 +91,9 @@ const assertValidZoom = (zoom: number): void => {
 const assertFinitePoints = (points: readonly DioramaTexturePoint[]): void => {
     for (const p of points) {
         if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) {
-            throw new RangeError(`point.lat/lon must be finite (got lat=${p.lat}, lon=${p.lon})`);
+            throw new RangeError(
+                `point.lat/lon must be finite (got lat=${p.lat}, lon=${p.lon})`,
+            );
         }
     }
 };
@@ -133,7 +137,10 @@ export const computeDioramaTextureLayout = (
 
     const tilesX = maxTileX - minTileX + 1;
     const tilesY = maxTileY - minTileY + 1;
-    if (tilesX > MAX_MOSAIC_TILES_PER_AXIS || tilesY > MAX_MOSAIC_TILES_PER_AXIS) {
+    if (
+        tilesX > MAX_MOSAIC_TILES_PER_AXIS ||
+        tilesY > MAX_MOSAIC_TILES_PER_AXIS
+    ) {
         throw new RangeError(
             `mosaic tile span too large (${tilesX}x${tilesY} tiles, max ${MAX_MOSAIC_TILES_PER_AXIS} per axis); ` +
                 "points may span the antimeridian (±180°) or footprintHalfSizeM/zoom is too large for this zoom level",
@@ -160,7 +167,11 @@ export const computeDioramaTextureLayout = (
     const mosaicHeightPx = (maxTileY - minTileY + 1) * TILE_SIZE;
 
     const uvs: DioramaUv[] = points.map((p) => {
-        const { px: globalPx, py: globalPy } = latLonToPixel(p.lat, p.lon, totalPixels);
+        const { px: globalPx, py: globalPy } = latLonToPixel(
+            p.lat,
+            p.lon,
+            totalPixels,
+        );
         const localPx = globalPx - minTileX * TILE_SIZE;
         const localPy = globalPy - minTileY * TILE_SIZE;
         return {
@@ -179,7 +190,9 @@ const FETCH_TIMEOUT_MS = 15000;
 
 /** ラスタタイル画像を `ImageBitmap` として取得する（`gsiTile.loadImageData` と同じ fetch+blob 方式）。 */
 const loadTileBitmap = async (url: string): Promise<ImageBitmap> => {
-    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetch(url, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) throw new Error(`Tile fetch failed (${res.status}): ${url}`);
     const blob = await res.blob();
     return createImageBitmap(blob);
@@ -216,36 +229,56 @@ export const buildDioramaMosaicTexture = async (
     // アルファ値の混入という観点からは設計上排除できる。
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) {
-        throw new Error("[jpmap-terrain diorama] failed to acquire 2D context for texture mosaic canvas");
+        throw new Error(
+            "[jpmap-terrain diorama] failed to acquire 2D context for texture mosaic canvas",
+        );
     }
 
     // 実機（Meta Quest 3）でのみ顕在化する遅延調査用の計測: タイル取得（ネットワーク）+
     // canvas合成の合計時間。タイルは並列フェッチのため、この時間はほぼネットワーク往復
     // （最も遅いタイル）が支配的。
-    await measureAsync(`tiles-fetch-compose (${layout.tiles.length} tiles)`, () =>
-        Promise.all(
-            layout.tiles.map(async (tile) => {
-                const url = textureUrl(mapType, layout.zoom, tile.x, tile.y);
-                // `drawImage` が失敗した場合でも `bitmap.close()` を確実に実行するため、
-                // `bitmap` を try スコープ外の変数で保持し、`finally` でクローズする
-                // （`try`ブロック内で完結させると、`loadTileBitmap`成功後に`drawImage`が
-                // 失敗したケースで`close()`が呼ばれずImageBitmapがリークする）。
-                let bitmap: ImageBitmap | undefined;
-                try {
-                    bitmap = await loadTileBitmap(url);
-                    ctx.drawImage(bitmap, tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
-                } catch (err) {
-                    console.error(
-                        `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}, filling with fallback color:`,
-                        err,
+    await measureAsync(
+        `tiles-fetch-compose (${layout.tiles.length} tiles)`,
+        () =>
+            Promise.all(
+                layout.tiles.map(async (tile) => {
+                    const url = textureUrl(
+                        mapType,
+                        layout.zoom,
+                        tile.x,
+                        tile.y,
                     );
-                    ctx.fillStyle = FALLBACK_TILE_COLOR;
-                    ctx.fillRect(tile.offsetX, tile.offsetY, TILE_SIZE, TILE_SIZE);
-                } finally {
-                    bitmap?.close();
-                }
-            }),
-        ),
+                    // `drawImage` が失敗した場合でも `bitmap.close()` を確実に実行するため、
+                    // `bitmap` を try スコープ外の変数で保持し、`finally` でクローズする
+                    // （`try`ブロック内で完結させると、`loadTileBitmap`成功後に`drawImage`が
+                    // 失敗したケースで`close()`が呼ばれずImageBitmapがリークする）。
+                    let bitmap: ImageBitmap | undefined;
+                    try {
+                        bitmap = await loadTileBitmap(url);
+                        ctx.drawImage(
+                            bitmap,
+                            tile.offsetX,
+                            tile.offsetY,
+                            TILE_SIZE,
+                            TILE_SIZE,
+                        );
+                    } catch (err) {
+                        console.error(
+                            `[jpmap-terrain diorama] failed to load texture tile z${layout.zoom}/${tile.x}/${tile.y}, filling with fallback color:`,
+                            err,
+                        );
+                        ctx.fillStyle = FALLBACK_TILE_COLOR;
+                        ctx.fillRect(
+                            tile.offsetX,
+                            tile.offsetY,
+                            TILE_SIZE,
+                            TILE_SIZE,
+                        );
+                    } finally {
+                        bitmap?.close();
+                    }
+                }),
+            ),
     );
 
     // 遅延調査用の計測: canvasから生ピクセルデータを読み戻し（同期処理）、
@@ -273,4 +306,3 @@ export const buildDioramaMosaicTexture = async (
         return texture;
     });
 };
-

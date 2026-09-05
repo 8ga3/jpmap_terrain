@@ -68,7 +68,10 @@ export const computeCameraControl = (
         const rawDelta = -dz.vy * TILT_SPEED_DPS * dtSec;
         const newTilt = currentTilt + rawDelta;
         // クランプ
-        const clampedTilt = Math.max(TILT_MIN_DEG, Math.min(TILT_MAX_DEG, newTilt));
+        const clampedTilt = Math.max(
+            TILT_MIN_DEG,
+            Math.min(TILT_MAX_DEG, newTilt),
+        );
         deltaTilt = clampedTilt - currentTilt;
     }
 

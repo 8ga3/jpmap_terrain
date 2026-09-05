@@ -1,50 +1,54 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-    parseLatLonFromUrl,
-    parseCameraStateFromUrl,
-    toAtPath,
-    createUrlUpdater,
+    CAMERA_URL_DEFAULTS,
+    CAMERA_URL_LIMITS,
     clampAltitude,
     clampTilt,
     clampZoomLevel,
-    normalizeAzimuth,
+    createUrlUpdater,
     extractDemoPathPrefix,
-    radiusToZoomLevel,
-    zoomLevelToRadius,
-    CAMERA_URL_DEFAULTS,
-    CAMERA_URL_LIMITS,
     MAP_TYPE_QUERY_KEY,
+    normalizeAzimuth,
+    parseCameraStateFromUrl,
+    parseLatLonFromUrl,
     parseMapTypeFromUrl,
-    withMapTypeInUrl,
-    updateMapTypeInUrl,
-    VIEW_MODE_QUERY_KEY,
     parseViewModeFromUrl,
-    withViewModeInUrl,
+    radiusToZoomLevel,
+    toAtPath,
+    updateMapTypeInUrl,
     updateViewModeInUrl,
+    VIEW_MODE_QUERY_KEY,
+    withMapTypeInUrl,
+    withViewModeInUrl,
+    zoomLevelToRadius,
 } from "../src/terrain/urlState";
 
 describe("urlState", () => {
     describe("parseLatLonFromUrl", () => {
         it("パス内の @lat,lon をパースできる", () => {
-            const result = parseLatLonFromUrl("http://localhost/@35.681236,139.767125");
+            const result = parseLatLonFromUrl(
+                "http://localhost/@35.681236,139.767125",
+            );
             expect(result).toEqual({ lat: 35.681236, lon: 139.767125 });
         });
 
         it("クエリパラメータ付きのパスをパースできる", () => {
             const result = parseLatLonFromUrl(
-                "http://localhost/@35.681236,139.767125?engine=webgl"
+                "http://localhost/@35.681236,139.767125?engine=webgl",
             );
             expect(result).toEqual({ lat: 35.681236, lon: 139.767125 });
         });
 
         it("クエリパラメータ ?lat=&lon= をフォールバックでパースできる", () => {
-            const result = parseLatLonFromUrl("http://localhost/?lat=35.681236&lon=139.767125");
+            const result = parseLatLonFromUrl(
+                "http://localhost/?lat=35.681236&lon=139.767125",
+            );
             expect(result).toEqual({ lat: 35.681236, lon: 139.767125 });
         });
 
         it("@lat,lon がクエリより優先される", () => {
             const result = parseLatLonFromUrl(
-                "http://localhost/@35.0,139.0?lat=36.0&lon=140.0"
+                "http://localhost/@35.0,139.0?lat=36.0&lon=140.0",
             );
             expect(result).toEqual({ lat: 35.0, lon: 139.0 });
         });
@@ -82,7 +86,9 @@ describe("urlState", () => {
         });
 
         it("lon のみ指定の場合は null を返す", () => {
-            expect(parseLatLonFromUrl("http://localhost/?lon=139.0")).toBeNull();
+            expect(
+                parseLatLonFromUrl("http://localhost/?lon=139.0"),
+            ).toBeNull();
         });
 
         it("userinfo 内の @ を座標として誤検出しない", () => {
@@ -90,11 +96,15 @@ describe("urlState", () => {
         });
 
         it("クエリ値内の @lat,lon を座標として誤検出しない", () => {
-            expect(parseLatLonFromUrl("http://localhost/?ref=@35.0,139.0")).toBeNull();
+            expect(
+                parseLatLonFromUrl("http://localhost/?ref=@35.0,139.0"),
+            ).toBeNull();
         });
 
         it("ハッシュ内の @lat,lon をパースできる", () => {
-            const result = parseLatLonFromUrl("http://localhost/#/@35.681236,139.767125");
+            const result = parseLatLonFromUrl(
+                "http://localhost/#/@35.681236,139.767125",
+            );
             expect(result).toEqual({ lat: 35.681236, lon: 139.767125 });
         });
     });
@@ -124,7 +134,9 @@ describe("urlState", () => {
             const lat = 35.681236;
             const lon = 139.767125;
             const path = toAtPath(lat, lon);
-            const parsed = parseLatLonFromUrl(`http://localhost${path}?engine=webgl`);
+            const parsed = parseLatLonFromUrl(
+                `http://localhost${path}?engine=webgl`,
+            );
             expect(parsed).toEqual({ lat, lon });
         });
     });
@@ -135,8 +147,13 @@ describe("urlState", () => {
 
         beforeEach(() => {
             vi.useFakeTimers();
-            globalThis.history = { replaceState: vi.fn() } as unknown as History;
-            globalThis.location = { pathname: "/", search: "" } as unknown as Location;
+            globalThis.history = {
+                replaceState: vi.fn(),
+            } as unknown as History;
+            globalThis.location = {
+                pathname: "/",
+                search: "",
+            } as unknown as Location;
         });
 
         afterEach(() => {
@@ -163,12 +180,15 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/@35.681236,139.767125,2000,0.00,45.00"
+                "/@35.681236,139.767125,2000,0.00,45.00",
             );
         });
 
         it("既存のクエリパラメータが保持される", () => {
-            globalThis.location = { pathname: "/", search: "?engine=webgl" } as unknown as Location;
+            globalThis.location = {
+                pathname: "/",
+                search: "?engine=webgl",
+            } as unknown as Location;
             const updater = createUrlUpdater(200);
             updater({
                 lat: 35.681236,
@@ -183,7 +203,7 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/@35.681236,139.767125,2000,0.00,45.00?engine=webgl"
+                "/@35.681236,139.767125,2000,0.00,45.00?engine=webgl",
             );
         });
 
@@ -204,7 +224,7 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/@37.000000,141.000000,2000,0.00,45.00"
+                "/@37.000000,141.000000,2000,0.00,45.00",
             );
         });
 
@@ -223,12 +243,15 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/@35.681236,139.767125,1500,90.00,60.00"
+                "/@35.681236,139.767125,1500,90.00,60.00",
             );
         });
 
         it("pathname にデモ識別子（/viewer）が含まれる場合は保持される", () => {
-            globalThis.location = { pathname: "/viewer", search: "" } as unknown as Location;
+            globalThis.location = {
+                pathname: "/viewer",
+                search: "",
+            } as unknown as Location;
             const updater = createUrlUpdater(200);
             updater({
                 lat: 35.681236,
@@ -241,12 +264,15 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/viewer/@35.681236,139.767125,2000,0.00,45.00"
+                "/viewer/@35.681236,139.767125,2000,0.00,45.00",
             );
         });
 
         it("pathname に `.html` 付きデモ識別子がある場合は剥がして書き戻す", () => {
-            globalThis.location = { pathname: "/viewer.html", search: "" } as unknown as Location;
+            globalThis.location = {
+                pathname: "/viewer.html",
+                search: "",
+            } as unknown as Location;
             const updater = createUrlUpdater(200);
             updater({
                 lat: 35.0,
@@ -259,7 +285,7 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/viewer/@35.000000,139.000000,2000,0.00,45.00"
+                "/viewer/@35.000000,139.000000,2000,0.00,45.00",
             );
         });
 
@@ -280,7 +306,7 @@ describe("urlState", () => {
             expect(history.replaceState).toHaveBeenCalledWith(
                 null,
                 "",
-                "/timelapse/@35.000000,139.000000,1500,90.00,60.00?speed=60"
+                "/timelapse/@35.000000,139.000000,1500,90.00,60.00?speed=60",
             );
         });
     });
@@ -299,18 +325,22 @@ describe("urlState", () => {
         });
 
         it("`/timelapse/@lat,lon,...` は `/timelapse` を返す", () => {
-            expect(extractDemoPathPrefix("/timelapse/@35.0,139.0,1500,0,45")).toBe("/timelapse");
+            expect(
+                extractDemoPathPrefix("/timelapse/@35.0,139.0,1500,0,45"),
+            ).toBe("/timelapse");
         });
 
         it("`/viewer.html@lat,lon` も `.html` を剥がして `/viewer` を返す", () => {
-            expect(extractDemoPathPrefix("/viewer.html@35.0,139.0")).toBe("/viewer");
+            expect(extractDemoPathPrefix("/viewer.html@35.0,139.0")).toBe(
+                "/viewer",
+            );
         });
     });
 
     describe("parseCameraStateFromUrl", () => {
         it("5要素（lat,lon,alt,az,tilt）をパースできる", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/@35.681236,139.767125,1500,90,60"
+                "http://localhost/@35.681236,139.767125,1500,90,60",
             );
             expect(result).toEqual({
                 lat: 35.681236,
@@ -323,7 +353,7 @@ describe("urlState", () => {
 
         it("4要素（tilt 欠損）はデフォルトの tilt で補完される", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/@35.681236,139.767125,1500,90"
+                "http://localhost/@35.681236,139.767125,1500,90",
             );
             expect(result).toEqual({
                 lat: 35.681236,
@@ -336,7 +366,7 @@ describe("urlState", () => {
 
         it("3要素（azimuth/tilt 欠損）はデフォルトで補完される", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/@35.681236,139.767125,1500"
+                "http://localhost/@35.681236,139.767125,1500",
             );
             expect(result).toEqual({
                 lat: 35.681236,
@@ -349,7 +379,7 @@ describe("urlState", () => {
 
         it("2要素（lat,lon のみ）はカメラ姿勢デフォルトで補完される", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/@35.681236,139.767125"
+                "http://localhost/@35.681236,139.767125",
             );
             expect(result).toEqual({
                 lat: 35.681236,
@@ -362,7 +392,7 @@ describe("urlState", () => {
 
         it("クエリフォールバック (?lat=&lon=) もカメラ姿勢デフォルトで補完される", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/?lat=35.681236&lon=139.767125"
+                "http://localhost/?lat=35.681236&lon=139.767125",
             );
             expect(result).toEqual({
                 lat: 35.681236,
@@ -375,41 +405,41 @@ describe("urlState", () => {
 
         it("altitude が範囲外の場合はクランプして整数化される", () => {
             const tooHigh = parseCameraStateFromUrl(
-                `http://localhost/@35.0,139.0,${CAMERA_URL_LIMITS.altitude.max + 1},0,45`
+                `http://localhost/@35.0,139.0,${CAMERA_URL_LIMITS.altitude.max + 1},0,45`,
             );
             expect(tooHigh!.altitude).toBe(CAMERA_URL_LIMITS.altitude.max);
 
             const tooLow = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,10,0,45"
+                "http://localhost/@35.0,139.0,10,0,45",
             );
             expect(tooLow!.altitude).toBe(CAMERA_URL_LIMITS.altitude.min);
 
             const fractional = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,1234.7,0,45"
+                "http://localhost/@35.0,139.0,1234.7,0,45",
             );
             expect(fractional!.altitude).toBe(1235);
         });
 
         it("tilt が範囲外の場合はクランプされる", () => {
             const tooHigh = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,2000,0,90"
+                "http://localhost/@35.0,139.0,2000,0,90",
             );
             expect(tooHigh!.tilt).toBe(CAMERA_URL_LIMITS.tilt.max);
 
             const tooLow = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,2000,0,0"
+                "http://localhost/@35.0,139.0,2000,0,0",
             );
             expect(tooLow!.tilt).toBe(CAMERA_URL_LIMITS.tilt.min);
         });
 
         it("azimuth は [0, 360) に正規化される", () => {
             const r720 = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,2000,720,45"
+                "http://localhost/@35.0,139.0,2000,720,45",
             );
             expect(r720!.azimuth).toBe(0);
 
             const rNeg = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,2000,-90,45"
+                "http://localhost/@35.0,139.0,2000,-90,45",
             );
             expect(rNeg!.azimuth).toBe(270);
         });
@@ -417,7 +447,7 @@ describe("urlState", () => {
         it("数値以外の altitude/azimuth/tilt が入っても regex 不一致でデフォルト経由で補完される", () => {
             // regex は数値以外にマッチしないため、最初の数値2要素のみがマッチする想定。
             const result = parseCameraStateFromUrl(
-                "http://localhost/@35.0,139.0,abc,def,ghi"
+                "http://localhost/@35.0,139.0,abc,def,ghi",
             );
             // regex 全体は @lat,lon までしかマッチしないため atMatch[3..5] は undefined
             // → altitude/azimuth/tilt はデフォルト補完される。
@@ -433,7 +463,7 @@ describe("urlState", () => {
         // globe（全球）では JAPAN_BOUNDS でクランプせず全球の緯度経度を許容する。
         it("日本域外の緯度経度をクランプしない", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68"
+                "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68",
             );
             expect(result).not.toBeNull();
             expect(result!.lat).toBeCloseTo(17.316969, 6);
@@ -442,7 +472,7 @@ describe("urlState", () => {
 
         it("全球範囲外は WORLD_BOUNDS でクランプされる", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@-120.0,200.0"
+                "http://localhost/viewer/@-120.0,200.0",
             );
             expect(result).not.toBeNull();
             expect(result!.lat).toBe(-90);
@@ -451,7 +481,7 @@ describe("urlState", () => {
 
         it("WORLD_BOUNDS 内の緯度経度はそのまま返す", () => {
             const noEngine = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148"
+                "http://localhost/viewer/@17.316969,38.639148",
             );
             expect(noEngine).not.toBeNull();
             expect(noEngine!.lat).toBeCloseTo(17.316969, 6);
@@ -461,7 +491,7 @@ describe("urlState", () => {
         // 未知クエリ（撤去済みのバックエンド指定等）はクランプ範囲に影響しない。
         it("未知クエリが付いてもクランプ範囲は全球のまま", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/viewer/@17.316969,38.639148?foo=bar"
+                "http://localhost/viewer/@17.316969,38.639148?foo=bar",
             );
             expect(result).not.toBeNull();
             expect(result!.lat).toBeCloseTo(17.316969, 6);
@@ -473,7 +503,7 @@ describe("urlState", () => {
         it("clampAltitude は範囲外をクランプし整数化する", () => {
             expect(clampAltitude(0)).toBe(CAMERA_URL_LIMITS.altitude.min);
             expect(clampAltitude(CAMERA_URL_LIMITS.altitude.max + 1)).toBe(
-                CAMERA_URL_LIMITS.altitude.max
+                CAMERA_URL_LIMITS.altitude.max,
             );
             expect(clampAltitude(1234.7)).toBe(1235);
         });
@@ -495,13 +525,13 @@ describe("urlState", () => {
     describe("toAtPath オーバーロード", () => {
         it("数値2引数は 2要素を返す", () => {
             expect(toAtPath(35.681236, 139.767125)).toBe(
-                "/@35.681236,139.767125"
+                "/@35.681236,139.767125",
             );
         });
 
         it("LatLon のみのオブジェクトは 2要素を返す", () => {
             expect(toAtPath({ lat: 35.681236, lon: 139.767125 })).toBe(
-                "/@35.681236,139.767125"
+                "/@35.681236,139.767125",
             );
         });
 
@@ -513,45 +543,49 @@ describe("urlState", () => {
                     altitude: 1500,
                     azimuth: 90,
                     tilt: 60,
-                })
+                }),
             ).toBe("/@35.681236,139.767125,1500,90.00,60.00");
         });
 
         it("一部のみ指定された場合も他はデフォルトで補完して 5要素を返す", () => {
-            expect(
-                toAtPath({ lat: 35.0, lon: 139.0, altitude: 3000 })
-            ).toBe("/@35.000000,139.000000,3000,0.00,45.00");
+            expect(toAtPath({ lat: 35.0, lon: 139.0, altitude: 3000 })).toBe(
+                "/@35.000000,139.000000,3000,0.00,45.00",
+            );
         });
     });
 
     describe("parseMapTypeFromUrl", () => {
         it("?mapType=standard を読み取る", () => {
-            expect(parseMapTypeFromUrl("http://localhost/?mapType=standard")).toBe(
-                "standard"
-            );
+            expect(
+                parseMapTypeFromUrl("http://localhost/?mapType=standard"),
+            ).toBe("standard");
         });
 
         it("?mapType=photo を読み取る", () => {
             expect(parseMapTypeFromUrl("http://localhost/?mapType=photo")).toBe(
-                "photo"
+                "photo",
             );
         });
 
         it("大小文字混在も許容して小文字へ正規化する", () => {
             expect(parseMapTypeFromUrl("http://localhost/?mapType=Photo")).toBe(
-                "photo"
+                "photo",
             );
-            expect(parseMapTypeFromUrl("http://localhost/?mapType=STANDARD")).toBe(
-                "standard"
-            );
+            expect(
+                parseMapTypeFromUrl("http://localhost/?mapType=STANDARD"),
+            ).toBe("standard");
         });
 
         it("空値は null を返す", () => {
-            expect(parseMapTypeFromUrl("http://localhost/?mapType=")).toBeNull();
+            expect(
+                parseMapTypeFromUrl("http://localhost/?mapType="),
+            ).toBeNull();
         });
 
         it("不正値は null を返す", () => {
-            expect(parseMapTypeFromUrl("http://localhost/?mapType=satellite")).toBeNull();
+            expect(
+                parseMapTypeFromUrl("http://localhost/?mapType=satellite"),
+            ).toBeNull();
         });
 
         it("欠落は null を返す", () => {
@@ -571,7 +605,7 @@ describe("urlState", () => {
         it("既存クエリ (engine 等) を保持して mapType を追記する", () => {
             const result = withMapTypeInUrl(
                 "http://localhost/?engine=webgl",
-                "photo"
+                "photo",
             );
             expect(result).toBe("/?engine=webgl&mapType=photo");
         });
@@ -579,7 +613,7 @@ describe("urlState", () => {
         it("ハッシュを保持する", () => {
             const result = withMapTypeInUrl(
                 "http://localhost/path#section",
-                "standard"
+                "standard",
             );
             expect(result).toBe("/path?mapType=standard#section");
         });
@@ -587,7 +621,7 @@ describe("urlState", () => {
         it("既存の mapType は上書きする", () => {
             const result = withMapTypeInUrl(
                 "http://localhost/?mapType=standard",
-                "photo"
+                "photo",
             );
             expect(result).toBe("/?mapType=photo");
         });
@@ -595,7 +629,7 @@ describe("urlState", () => {
         it("パス（@lat,lon 形式含む）を保持する", () => {
             const result = withMapTypeInUrl(
                 "http://localhost/@35.681236,139.767125",
-                "photo"
+                "photo",
             );
             expect(result).toBe("/@35.681236,139.767125?mapType=photo");
         });
@@ -607,10 +641,12 @@ describe("urlState", () => {
             (value) => {
                 const next = withMapTypeInUrl(
                     "http://localhost/?engine=webgl",
-                    value
+                    value,
                 );
-                expect(parseMapTypeFromUrl(`http://localhost${next}`)).toBe(value);
-            }
+                expect(parseMapTypeFromUrl(`http://localhost${next}`)).toBe(
+                    value,
+                );
+            },
         );
     });
 
@@ -653,7 +689,7 @@ describe("urlState", () => {
             expect(replaceSpy).toHaveBeenCalledWith(
                 null,
                 "",
-                "/?mapType=photo"
+                "/?mapType=photo",
             );
         });
 
@@ -667,7 +703,7 @@ describe("urlState", () => {
     describe("既存 parseCameraStateFromUrl への mapType の影響なし", () => {
         it("?mapType=photo が混入してもカメラ状態は解析される", () => {
             const result = parseCameraStateFromUrl(
-                "http://localhost/@35.681236,139.767125,1500,90,60?mapType=photo"
+                "http://localhost/@35.681236,139.767125,1500,90,60?mapType=photo",
             );
             expect(result).toEqual({
                 lat: 35.681236,
@@ -741,7 +777,8 @@ describe("urlState", () => {
                 if (originalWindow === undefined) {
                     delete (globalThis as { window?: unknown }).window;
                 } else {
-                    (globalThis as { window?: unknown }).window = originalWindow;
+                    (globalThis as { window?: unknown }).window =
+                        originalWindow;
                 }
             }
         });

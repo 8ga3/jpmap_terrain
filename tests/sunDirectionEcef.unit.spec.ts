@@ -4,7 +4,7 @@
  * 太陽の地平座標(azimuth/altitude)@観測点(lat/lon) を、右手系 ECEF
  * （X→経度0 / Y→東経90° / Z→北極）の太陽方向単位ベクトルへ変換する関数の代表値を固定する。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { sunDirectionEcef } from "../src/terrain/geo/sunDirectionEcef";
 
 const expectVecClose = (

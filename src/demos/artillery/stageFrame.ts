@@ -19,8 +19,9 @@
  * 地形タイルは stageRoot 配下ではない）、物理は projectile / collider が同一の
  * 鏡映ワールドを共有して自己整合するため、描画側の面反転補正は不要と判断した。
  */
+
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core/scene";
 
 import { buildEnuFrame, buildEnuWorldMatrix } from "../../terrain/geo/enu";

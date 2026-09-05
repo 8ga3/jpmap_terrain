@@ -28,8 +28,7 @@ export const haversineDistanceMeters = (
     const sinDLat = Math.sin(dLat / 2);
     const sinDLon = Math.sin(dLon / 2);
     const h =
-        sinDLat * sinDLat +
-        Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+        sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
     // 浮動小数誤差で h が 1 を僅かに超えると Math.sqrt(1 - h) が NaN に
     // なり得る（ほぼ対蹠点）。安定のため [0, 1] にクランプする。
     const hClamped = Math.min(1, Math.max(0, h));

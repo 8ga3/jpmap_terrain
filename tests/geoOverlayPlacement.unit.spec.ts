@@ -7,22 +7,21 @@
  * - computeOverlayPointDiameter: 距離比例・上限クランプ（地形貫通抑制）
  */
 
-import { describe, it, expect } from "vitest";
-
-import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { describe, expect, it } from "vitest";
 
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 import {
-    groundPlacementToRef,
+    buildDrapedPolygonPaths,
     computeOverlayDistanceScale,
     computeOverlayDistanceScaleFromDistance,
     computeOverlayLineHeight,
     computeOverlayPointDiameter,
     computeScreenUpToRef,
-    buildDrapedPolygonPaths,
     generateGeodesicRing,
-    surfaceOrientationToRef,
+    groundPlacementToRef,
     OVERLAY_REF_DISTANCE_M,
+    surfaceOrientationToRef,
 } from "../src/terrain/geo/overlayPlacement";
 
 describe("groundPlacementToRef", () => {
@@ -75,32 +74,43 @@ describe("computeOverlayDistanceScale", () => {
         // ref=0 / 負値 → 既定 OVERLAY_REF_DISTANCE_M 扱いで scale=1（Infinity にならない）。
         expect(computeOverlayDistanceScale(cam, pos, 0)).toBeCloseTo(1, 9);
         expect(computeOverlayDistanceScale(cam, pos, -100)).toBeCloseTo(1, 9);
-        expect(Number.isFinite(computeOverlayDistanceScale(cam, pos, 0))).toBe(true);
+        expect(Number.isFinite(computeOverlayDistanceScale(cam, pos, 0))).toBe(
+            true,
+        );
     });
 });
 
 describe("computeOverlayDistanceScaleFromDistance", () => {
     it("距離からスケールを算出（基準で1・2倍で2・下限0.1）", () => {
-        expect(computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M)).toBeCloseTo(1, 9);
-        expect(computeOverlayDistanceScaleFromDistance(2 * OVERLAY_REF_DISTANCE_M)).toBeCloseTo(2, 9);
+        expect(
+            computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M),
+        ).toBeCloseTo(1, 9);
+        expect(
+            computeOverlayDistanceScaleFromDistance(2 * OVERLAY_REF_DISTANCE_M),
+        ).toBeCloseTo(2, 9);
         expect(computeOverlayDistanceScaleFromDistance(1)).toBe(0.1);
     });
     it("computeOverlayDistanceScale と一致する", () => {
         const cam = new Vector3(0, 0, 0);
         const pos = new Vector3(3 * OVERLAY_REF_DISTANCE_M, 0, 0);
-        expect(computeOverlayDistanceScaleFromDistance(Vector3.Distance(cam, pos))).toBeCloseTo(
-            computeOverlayDistanceScale(cam, pos),
-            9,
-        );
+        expect(
+            computeOverlayDistanceScaleFromDistance(Vector3.Distance(cam, pos)),
+        ).toBeCloseTo(computeOverlayDistanceScale(cam, pos), 9);
     });
     it("refDistanceM<=0 は既定値フォールバック", () => {
-        expect(computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M, 0)).toBeCloseTo(1, 9);
+        expect(
+            computeOverlayDistanceScaleFromDistance(OVERLAY_REF_DISTANCE_M, 0),
+        ).toBeCloseTo(1, 9);
     });
     it("minScale=0（2D 正射用）は下限なしで純比例（埋もれ・成長を防ぐ）", () => {
         // 既定（minScale=0.1）では下限に張り付くが、0 指定では距離に純比例する。
         expect(computeOverlayDistanceScaleFromDistance(1)).toBe(0.1);
         expect(
-            computeOverlayDistanceScaleFromDistance(1, OVERLAY_REF_DISTANCE_M, 0),
+            computeOverlayDistanceScaleFromDistance(
+                1,
+                OVERLAY_REF_DISTANCE_M,
+                0,
+            ),
         ).toBeCloseTo(1 / OVERLAY_REF_DISTANCE_M, 12);
         // computeOverlayDistanceScale 経由でも minScale が伝播する。
         const cam = new Vector3(0, 0, 0);
@@ -151,7 +161,10 @@ describe("buildDrapedPolygonPaths", () => {
         for (let i = 0; i < 3; i++) {
             // top は bottom より地心距離が標高ぶん大きい。
             expect(top[i].length()).toBeGreaterThan(bottom[i].length());
-            expect(top[i].length() - bottom[i].length()).toBeCloseTo(elevs[i], 0);
+            expect(top[i].length() - bottom[i].length()).toBeCloseTo(
+                elevs[i],
+                0,
+            );
             // bottom は楕円体面の既知点と一致。
             const b = geodeticToEcef(pts[i].lat, pts[i].lon, 0);
             expect(Vector3.Distance(bottom[i], b)).toBeLessThan(1e-3);
@@ -196,10 +209,18 @@ describe("generateGeodesicRing", () => {
     });
 
     it("radius<=0・非整数/3未満 segments は throw", () => {
-        expect(() => generateGeodesicRing(35, 139, 0, 8)).toThrow(/radiusMeters/);
-        expect(() => generateGeodesicRing(35, 139, -1, 8)).toThrow(/radiusMeters/);
-        expect(() => generateGeodesicRing(35, 139, 5000, 2)).toThrow(/segments/);
-        expect(() => generateGeodesicRing(35, 139, 5000, 8.5)).toThrow(/segments/);
+        expect(() => generateGeodesicRing(35, 139, 0, 8)).toThrow(
+            /radiusMeters/,
+        );
+        expect(() => generateGeodesicRing(35, 139, -1, 8)).toThrow(
+            /radiusMeters/,
+        );
+        expect(() => generateGeodesicRing(35, 139, 5000, 2)).toThrow(
+            /segments/,
+        );
+        expect(() => generateGeodesicRing(35, 139, 5000, 8.5)).toThrow(
+            /segments/,
+        );
     });
 });
 
@@ -257,9 +278,9 @@ describe("computeScreenUpToRef", () => {
     it("点とカメラが一致するときは false（ref 不変）", () => {
         const p = new Vector3(1, 2, 3);
         const ref = new Vector3(9, 9, 9);
-        expect(computeScreenUpToRef(p.clone(), new Vector3(0, 1, 0), p, ref)).toBe(
-            false,
-        );
+        expect(
+            computeScreenUpToRef(p.clone(), new Vector3(0, 1, 0), p, ref),
+        ).toBe(false);
         expect(ref.x).toBe(9);
     });
 

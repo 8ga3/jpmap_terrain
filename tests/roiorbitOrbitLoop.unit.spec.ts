@@ -5,7 +5,7 @@
  * - headingForRoiOrbit: ROI 中心を向く方位角（コンパス UI 同期用）
  * - advanceRoiOrbit: 周回ステートマシンの進行・1周期での剰余・フレームスキップ耐性
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
     advanceRoiOrbit,
@@ -50,9 +50,18 @@ describe("cameraPositionForRoiOrbit", () => {
     });
 
     it("角速度が0以下の異常値では角度0（初期位置）に固定される", () => {
-        const invalidConfig: RoiOrbitConfig = { ...CONFIG, angularSpeedDegPerSec: 0 };
-        const position = cameraPositionForRoiOrbit({ elapsedMs: 50_000 }, invalidConfig);
-        const initial = cameraPositionForRoiOrbit({ elapsedMs: 0 }, invalidConfig);
+        const invalidConfig: RoiOrbitConfig = {
+            ...CONFIG,
+            angularSpeedDegPerSec: 0,
+        };
+        const position = cameraPositionForRoiOrbit(
+            { elapsedMs: 50_000 },
+            invalidConfig,
+        );
+        const initial = cameraPositionForRoiOrbit(
+            { elapsedMs: 0 },
+            invalidConfig,
+        );
         expect(position).toEqual(initial);
     });
 });
@@ -96,14 +105,20 @@ describe("advanceRoiOrbit", () => {
     });
 
     it("角速度が0以下の異常値でも無限ループ・NaNにならない", () => {
-        const invalidConfig: RoiOrbitConfig = { ...CONFIG, angularSpeedDegPerSec: 0 };
+        const invalidConfig: RoiOrbitConfig = {
+            ...CONFIG,
+            angularSpeedDegPerSec: 0,
+        };
         const state: RoiOrbitState = { elapsedMs: 0 };
         const next = advanceRoiOrbit(state, 999_999, invalidConfig);
         expect(Number.isFinite(next.elapsedMs)).toBe(true);
     });
 
     it("角速度が0以下の異常値では周期が定まらないため状態を更新せず固定する", () => {
-        const invalidConfig: RoiOrbitConfig = { ...CONFIG, angularSpeedDegPerSec: 0 };
+        const invalidConfig: RoiOrbitConfig = {
+            ...CONFIG,
+            angularSpeedDegPerSec: 0,
+        };
         const state: RoiOrbitState = { elapsedMs: 12_345 };
         const next = advanceRoiOrbit(state, 999_999, invalidConfig);
         expect(next).toEqual(state);

@@ -7,7 +7,7 @@
  * とは独立（並行構築）で、`GeospatialCamera` を直接 import しない（Babylon の実行時
  * オブジェクトに依存させず、DOM/WebGL 環境が無くても実行できるようにするため）。
  */
-import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import { DEG2RAD, geodeticToEcefToRef } from "./ecef";
 
@@ -107,7 +107,8 @@ export const computeOverlayLineHeight = (distanceM: number): number => {
 export const computeOverlayPointDiameter = (
     baseDiameterM: number,
     distScale: number,
-): number => Math.min(POINT_DIAMETER_MAX_M, Math.max(baseDiameterM, 0.001) * distScale);
+): number =>
+    Math.min(POINT_DIAMETER_MAX_M, Math.max(baseDiameterM, 0.001) * distScale);
 
 // computeScreenUpToRef のスクラッチ（毎フレーム・点数ぶん呼ばれるため割り当て回避）。
 const _suToCam = new Vector3();
@@ -201,7 +202,9 @@ export const generateGeodesicRing = (
 ): LatLonPoint[] => {
     // 公開 API のため自身で検証して呼び出し側のバグを早期検出する（JSDoc の「segments 個の点」を保証）。
     if (!(radiusMeters > 0)) {
-        throw new Error(`generateGeodesicRing: radiusMeters must be > 0 (got ${radiusMeters})`);
+        throw new Error(
+            `generateGeodesicRing: radiusMeters must be > 0 (got ${radiusMeters})`,
+        );
     }
     if (!Number.isInteger(segments) || segments < 3) {
         throw new Error(
@@ -209,7 +212,8 @@ export const generateGeodesicRing = (
         );
     }
     const latRad = (centerLat * Math.PI) / 180;
-    const metersPerDegLon = METERS_PER_DEGREE_LAT * Math.max(1e-6, Math.cos(latRad));
+    const metersPerDegLon =
+        METERS_PER_DEGREE_LAT * Math.max(1e-6, Math.cos(latRad));
     const ring: LatLonPoint[] = [];
     for (let i = 0; i < segments; i++) {
         const theta = (i / segments) * 2 * Math.PI;
@@ -262,7 +266,12 @@ export const writeDrapedPolygonPathsToRef = (
     bottomRef: Vector3[],
 ): void => {
     for (let i = 0; i < points.length; i++) {
-        geodeticToEcefToRef(points[i].lat, points[i].lon, elevs[i] ?? 0, topRef[i]);
+        geodeticToEcefToRef(
+            points[i].lat,
+            points[i].lon,
+            elevs[i] ?? 0,
+            topRef[i],
+        );
         geodeticToEcefToRef(points[i].lat, points[i].lon, 0, bottomRef[i]);
     }
     if (closed && points.length >= 2) {

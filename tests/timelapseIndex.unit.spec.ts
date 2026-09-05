@@ -9,8 +9,12 @@
  *   - 部分指定 (@lat,lon や ?lat=&lon=): lat/lon/altitude のみ（azimuth/tilt は返さない）
  *   - 完全指定 (@lat,lon,altitude,azimuth,tilt): 全フィールドを返す
  */
-import { describe, it, expect } from "vitest";
-import { resolveCameraInit, resolveEngine, resolveShowSunShadows } from "../src/demos/timelapse/index";
+import { describe, expect, it } from "vitest";
+import {
+    resolveCameraInit,
+    resolveEngine,
+    resolveShowSunShadows,
+} from "../src/demos/timelapse/index";
 
 describe("resolveCameraInit", () => {
     it("URL 未指定は空オブジェクトを返す", () => {
@@ -18,7 +22,9 @@ describe("resolveCameraInit", () => {
     });
 
     it("@lat,lon のみ指定: lat/lon/altitude を返し azimuth/tilt は含まない", () => {
-        const result = resolveCameraInit("http://localhost/timelapse/@35.681236,139.767125");
+        const result = resolveCameraInit(
+            "http://localhost/timelapse/@35.681236,139.767125",
+        );
         expect(result.lat).toBeCloseTo(35.681236, 4);
         expect(result.lon).toBeCloseTo(139.767125, 4);
         expect(result.altitude).toBeDefined();
@@ -27,7 +33,9 @@ describe("resolveCameraInit", () => {
     });
 
     it("@lat,lon,altitude のみ指定: azimuth/tilt は含まない", () => {
-        const result = resolveCameraInit("http://localhost/timelapse/@35.681236,139.767125,5000");
+        const result = resolveCameraInit(
+            "http://localhost/timelapse/@35.681236,139.767125,5000",
+        );
         expect(result.altitude).toBe(5000);
         expect(result).not.toHaveProperty("azimuth");
         expect(result).not.toHaveProperty("tilt");

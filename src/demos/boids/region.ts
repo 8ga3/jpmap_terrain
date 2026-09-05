@@ -41,9 +41,7 @@ export const regionCorners = (
     const dLat = halfH / ((Math.PI / 180) * EARTH_RADIUS_M);
     const cosLat = Math.cos((region.centerLat * Math.PI) / 180);
     const dLon =
-        cosLat !== 0
-            ? halfW / ((Math.PI / 180) * EARTH_RADIUS_M * cosLat)
-            : 0;
+        cosLat !== 0 ? halfW / ((Math.PI / 180) * EARTH_RADIUS_M * cosLat) : 0;
 
     return [
         { lat: region.centerLat - dLat, lon: region.centerLon - dLon },
@@ -81,9 +79,7 @@ export const localToGeo = (
     const dLat = y / ((Math.PI / 180) * EARTH_RADIUS_M);
     const cosLat = Math.cos((region.centerLat * Math.PI) / 180);
     const dLon =
-        cosLat !== 0
-            ? x / ((Math.PI / 180) * EARTH_RADIUS_M * cosLat)
-            : 0;
+        cosLat !== 0 ? x / ((Math.PI / 180) * EARTH_RADIUS_M * cosLat) : 0;
     return {
         lat: region.centerLat + dLat,
         lon: region.centerLon + dLon,

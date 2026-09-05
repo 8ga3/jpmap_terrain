@@ -3,25 +3,25 @@
  *
  * 弾道計算 (ballistics.ts) とゲームロジック (gameLogic.ts) の純粋関数テスト。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-    degToRad,
-    radToDeg,
-    computeLaunchVector,
-    powderToSpeed,
-    haversineDistance,
     bearing,
+    computeLaunchVector,
+    degToRad,
+    haversineDistance,
     MAX_SPEED,
     MIN_SPEED,
+    powderToSpeed,
+    radToDeg,
 } from "../src/demos/artillery/ballistics";
 import {
-    createInitialState,
-    nextTurn,
     addScore,
-    isHit,
-    opponent,
-    HIT_RADIUS,
     type CannonState,
+    createInitialState,
+    HIT_RADIUS,
+    isHit,
+    nextTurn,
+    opponent,
 } from "../src/demos/artillery/gameLogic";
 
 describe("ballistics", () => {
@@ -109,7 +109,7 @@ describe("ballistics", () => {
         });
 
         it("Tokyo to Osaka is ~400km", () => {
-            const d = haversineDistance(35.68, 139.77, 34.69, 135.50);
+            const d = haversineDistance(35.68, 139.77, 34.69, 135.5);
             expect(d).toBeGreaterThan(380000);
             expect(d).toBeLessThan(420000);
         });
@@ -181,7 +181,10 @@ describe("gameLogic", () => {
             expect(next.turn).toBe("blue");
         });
         it("toggles turn from blue to red", () => {
-            const state = { ...createInitialState(redCannon, blueCannon), turn: "blue" as const };
+            const state = {
+                ...createInitialState(redCannon, blueCannon),
+                turn: "blue" as const,
+            };
             const next = nextTurn(state);
             expect(next.turn).toBe("red");
         });

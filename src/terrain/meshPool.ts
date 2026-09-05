@@ -1,10 +1,10 @@
 /** 地形メッシュのオブジェクトプール */
 
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { Scene } from "@babylonjs/core/scene";
-import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Scene } from "@babylonjs/core/scene";
 
 /**
  * 太陽影描画のための caster / receiver 設定フック。
@@ -59,7 +59,7 @@ export const createMeshPool = (opts: MeshPoolOptions): MeshPool => {
                 subdivisions,
                 updatable: true,
             },
-            scene
+            scene,
         );
         const mat = new StandardMaterial(`tile-mat-${id}`, scene);
         mat.specularColor = Color3.Black();

@@ -7,12 +7,20 @@
  * - スケールバー幅は変化時のみ更新する
  * - dispose 後はズーム/コンパスのアニメーション（rAF）が camera を更新せず再スケジュールしない
  */
-import { describe, it, expect, beforeEach, afterEach, vi, Mock } from "vitest";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
 
-import { createGlobeSceneController } from "../src/scenes/globeSceneController";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    type Mock,
+    vi,
+} from "vitest";
 import type { GlobeSceneController } from "../src/scenes/globe";
+import { createGlobeSceneController } from "../src/scenes/globeSceneController";
 import { geodeticToEcef } from "../src/terrain/geo/ecef";
 
 interface ObservableStub<T> {
@@ -75,7 +83,11 @@ const makeGcWithScene = (
         getViewMode: () => mockViewMode,
         // applyViewModeLighting / applyGlobeSunState（2D→3D 復帰時に呼ばれる）が参照する
         // 最小スタブ。direction/position は in-place 更新されるため実体（Vector3/Color3）を渡す。
-        sunLight: { setEnabled: vi.fn(), intensity: 0, direction: new Vector3() },
+        sunLight: {
+            setEnabled: vi.fn(),
+            intensity: 0,
+            direction: new Vector3(),
+        },
         hemiLight: { intensity: 0 },
         sunMesh: {
             setEnabled: vi.fn(),
@@ -178,7 +190,12 @@ describe("globe UI コントロールパネル配線", () => {
     it("dispose 後はズームアニメーションが camera.radius を更新せず再スケジュールしない", () => {
         const camera = makeCamera();
         const { gc } = makeGcWithScene(camera);
-        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const c = createGlobeSceneController(
+            gc,
+            "std",
+            undefined,
+            makeCanvas(),
+        );
         rafCallbacks = []; // 生成時 fire 由来をクリア
 
         const zoomIn = document.querySelector(
@@ -208,7 +225,12 @@ describe("globe UI コントロールパネル配線", () => {
         camera.yaw = 1.0;
         camera.pitch = 0.5;
         const { gc } = makeGcWithScene(camera);
-        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const c = createGlobeSceneController(
+            gc,
+            "std",
+            undefined,
+            makeCanvas(),
+        );
         rafCallbacks = [];
 
         const compass = document.querySelector(".cp-compass") as HTMLElement;
@@ -238,13 +260,21 @@ describe("globe UI コントロールパネル配線", () => {
         let errorCb: ((e: unknown) => void) | null = null;
         // @ts-expect-error jsdom には geolocation が無いため最小スタブを差し込む。
         navigator.geolocation = {
-            getCurrentPosition: (s: (p: unknown) => void, e: (e: unknown) => void) => {
+            getCurrentPosition: (
+                s: (p: unknown) => void,
+                e: (e: unknown) => void,
+            ) => {
                 successCb = s;
                 errorCb = e;
             },
         };
 
-        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const c = createGlobeSceneController(
+            gc,
+            "std",
+            undefined,
+            makeCanvas(),
+        );
         const locateMe = document.querySelector(
             '[aria-label="現在地を表示"]',
         ) as HTMLElement;
@@ -297,7 +327,12 @@ describe("globe 視点切替ボタン 2D/3D", () => {
     it("外部 API setViewMode はラベルも同期する", () => {
         const camera = makeCamera();
         const { gc } = makeGcWithScene(camera);
-        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const c = createGlobeSceneController(
+            gc,
+            "std",
+            undefined,
+            makeCanvas(),
+        );
         const btn = document.querySelector(
             '[aria-label="視点切替: 2D に変更"]',
         ) as HTMLButtonElement;
@@ -312,15 +347,18 @@ describe("globe 視点切替ボタン 2D/3D", () => {
         const { gc, onBeforeRender } = makeGcWithScene(camera);
         const sunLight = (gc as unknown as { sunLight: { setEnabled: Mock } })
             .sunLight;
-        const hemiLight = (gc as unknown as { hemiLight: { intensity: number } })
-            .hemiLight;
+        const hemiLight = (
+            gc as unknown as { hemiLight: { intensity: number } }
+        ).hemiLight;
         const sunMesh = (
             gc as unknown as {
                 sunMesh: { setEnabled: Mock; position: { x: number } };
             }
         ).sunMesh;
         const sunLightFull = (
-            gc as unknown as { sunLight: { direction: { length: () => number } } }
+            gc as unknown as {
+                sunLight: { direction: { length: () => number } };
+            }
         ).sunLight;
         createGlobeSceneController(gc, "std", undefined, makeCanvas());
 
@@ -352,7 +390,12 @@ describe("globe external frustum / tile camera 配線", () => {
         const camera = makeCamera();
         camera.yaw = 0.5;
         const { gc, onBeforeRender } = makeGcWithScene(camera);
-        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const c = createGlobeSceneController(
+            gc,
+            "std",
+            undefined,
+            makeCanvas(),
+        );
 
         const compass = document.querySelector(".cp-compass") as HTMLElement;
         expect(compass).not.toBeNull();
@@ -371,7 +414,12 @@ describe("globe external frustum / tile camera 配線", () => {
     it("refreshTerrainWithExternalFrustum: detach 中のみ center/radius を上書きする", async () => {
         const camera = makeCamera();
         const { gc } = makeGcWithScene(camera);
-        const c = createGlobeSceneController(gc, "std", undefined, makeCanvas());
+        const c = createGlobeSceneController(
+            gc,
+            "std",
+            undefined,
+            makeCanvas(),
+        );
 
         const planes = [
             { normal: { x: 0, y: 0, z: 1 }, d: 0 },

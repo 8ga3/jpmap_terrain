@@ -8,11 +8,7 @@
  * `importLoaderForUrl` は座標系非依存のため globe 実装（`globeModelManager`）から再利用する。
  */
 
-import type {
-    ModelHandle,
-    ModelOptions,
-    ModelUpdate,
-} from "../lib/types";
+import type { ModelHandle, ModelOptions, ModelUpdate } from "../lib/types";
 
 export interface ModelManager {
     add(id: string, options: ModelOptions): ModelHandle;
@@ -47,7 +43,8 @@ export const importLoaderForUrl = async (url: string): Promise<void> => {
     // クエリ文字列・フラグメントを除去してから拡張子を取得
     const pathname = url.split("?")[0].split("#")[0];
     const dotIndex = pathname.lastIndexOf(".");
-    const ext = dotIndex !== -1 ? pathname.substring(dotIndex).toLowerCase() : "";
+    const ext =
+        dotIndex !== -1 ? pathname.substring(dotIndex).toLowerCase() : "";
 
     switch (ext) {
         case ".glb":

@@ -26,7 +26,10 @@ import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { EngineType, JpmapTerrainOptions } from "../../lib/types";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
-import { lockCameraInput, lockControlPanelExceptPhoto } from "../shared/lockControls";
+import {
+    lockCameraInput,
+    lockControlPanelExceptPhoto,
+} from "../shared/lockControls";
 import {
     advanceRoiOrbit,
     cameraPositionForRoiOrbit,
@@ -72,15 +75,20 @@ const resolveEngine = (search: string): EngineType | undefined => {
 // スクラッチ用（GC 回避のため使い回す）。ROI 中心は周回中不変のため一度だけ計算する。
 const targetEcef = new Vector3();
 const cameraEcef = new Vector3();
-const rawFrustumPlanes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+const rawFrustumPlanes: Plane[] = Array.from(
+    { length: 6 },
+    () => new Plane(0, 0, 0, 0),
+);
 const frustumViewOnly = new Matrix();
 const frustumTransform = new Matrix();
 // refreshTerrainWithExternalFrustum への引数バッファ（呼び出し先の setExternalFrustum が
 // 即座に永続バッファへコピーするため、同じ参照を毎回 in-place 更新して再利用してよい契約
 // になっている。globe.ts の computeCameraFrustumPlanes と同方針で map() による配列＋
 // オブジェクト再生成を避ける）。
-const frustumPlanesResult: { normal: { x: number; y: number; z: number }; d: number }[] =
-    Array.from({ length: 6 }, () => ({ normal: { x: 0, y: 0, z: 0 }, d: 0 }));
+const frustumPlanesResult: {
+    normal: { x: number; y: number; z: number };
+    d: number;
+}[] = Array.from({ length: 6 }, () => ({ normal: { x: 0, y: 0, z: 0 }, d: 0 }));
 const cameraPositionResult = { x: 0, y: 0, z: 0 };
 
 /**
@@ -88,7 +96,11 @@ const cameraPositionResult = { x: 0, y: 0, z: 0 };
  * 位置は真の ECEF 絶対座標で設定し、`setTarget` で常に ROI 中心を向かせる
  * （方位角・チルトは Babylon 側の自動計算に任せ、本デモでは算出しない）。
  */
-const updateOrbitCameraPose = (orbitCamera: FreeCamera, lat: number, lon: number): void => {
+const updateOrbitCameraPose = (
+    orbitCamera: FreeCamera,
+    lat: number,
+    lon: number,
+): void => {
     // 高度は ORBIT_CONFIG.cameraAltitudeM を正本として参照する（CAMERA_ALTITUDE_M 定数との
     // 二重管理を避ける）。
     geodeticToEcefToRef(lat, lon, ORBIT_CONFIG.cameraAltitudeM, cameraEcef);
@@ -105,7 +117,10 @@ const updateOrbitCameraPose = (orbitCamera: FreeCamera, lat: number, lon: number
  * スキップして多重発火を防ぐ（flight デモの Follow モードと同方針。角速度が一定の
  * ため、flight のような「意味のある変化」判定は不要で固定間隔の間引きのみで足りる）。
  */
-const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamera) => {
+const createTileRefreshScheduler = (
+    viewer: JpmapTerrain,
+    orbitCamera: FreeCamera,
+) => {
     let lastRefreshMs = 0;
     let inFlight = false;
 
@@ -114,7 +129,8 @@ const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamer
     // 選定でカメラ直下点と注視点がほぼ一致してしまい、視線方向が定まらず遠景タイルの
     // 選定に穴が生じる。
     return (nowMs: number, centerLat: number, centerLon: number): void => {
-        if (inFlight || nowMs - lastRefreshMs < TILE_REFRESH_INTERVAL_MS) return;
+        if (inFlight || nowMs - lastRefreshMs < TILE_REFRESH_INTERVAL_MS)
+            return;
         lastRefreshMs = nowMs;
 
         // 外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま
@@ -122,7 +138,10 @@ const createTileRefreshScheduler = (viewer: JpmapTerrain, orbitCamera: FreeCamer
         // 「camera 相対（回転のみ）」の行列で frustum 平面を作る（spec/terrain-api.md 3.3.14.2 参照）。
         frustumViewOnly.copyFrom(orbitCamera.getViewMatrix());
         frustumViewOnly.setRowFromFloats(3, 0, 0, 0, 1);
-        frustumViewOnly.multiplyToRef(orbitCamera.getProjectionMatrix(), frustumTransform);
+        frustumViewOnly.multiplyToRef(
+            orbitCamera.getProjectionMatrix(),
+            frustumTransform,
+        );
         Frustum.GetPlanesToRef(frustumTransform, rawFrustumPlanes);
         for (let i = 0; i < 6; i++) {
             const src = rawFrustumPlanes[i];
@@ -164,7 +183,9 @@ const runRoiOrbit = (viewer: JpmapTerrain, orbitCamera: FreeCamera): void => {
 
         const { lat, lon } = cameraPositionForRoiOrbit(state, ORBIT_CONFIG);
         updateOrbitCameraPose(orbitCamera, lat, lon);
-        viewer.setExternalCompassDegrees(headingForRoiOrbit(state, ORBIT_CONFIG));
+        viewer.setExternalCompassDegrees(
+            headingForRoiOrbit(state, ORBIT_CONFIG),
+        );
         // タイル LOD の「注視点」には周回カメラ自身の直下地点ではなく ROI 中心
         // （FUJI_SUMMIT、実際にカメラが向いている地点）を渡す。カメラ自身の直下地点を渡すと
         // 地形タイル選定側で「カメラ直下点≒注視点」となり視線方向が定まらず、周回に伴って
@@ -183,7 +204,10 @@ const start = async (): Promise<void> => {
         throw new Error(`#${DEMO_MOUNT_ID} mount element not found`);
     }
     const engine = resolveEngine(location.search);
-    const initialPosition = cameraPositionForRoiOrbit({ elapsedMs: 0 }, ORBIT_CONFIG);
+    const initialPosition = cameraPositionForRoiOrbit(
+        { elapsedMs: 0 },
+        ORBIT_CONFIG,
+    );
     const opts: JpmapTerrainOptions = {
         ...(engine ? { engine } : {}),
         lat: initialPosition.lat,
@@ -203,14 +227,27 @@ const start = async (): Promise<void> => {
     }
 
     // ROI 中心（山頂）の ECEF 絶対位置は周回中不変のため、ここで一度だけ計算する。
-    geodeticToEcefToRef(FUJI_SUMMIT.lat, FUJI_SUMMIT.lon, FUJI_SUMMIT_ALTITUDE_M, targetEcef);
+    geodeticToEcefToRef(
+        FUJI_SUMMIT.lat,
+        FUJI_SUMMIT.lon,
+        FUJI_SUMMIT_ALTITUDE_M,
+        targetEcef,
+    );
 
-    const orbitCamera = new FreeCamera("roiorbit-camera", Vector3.Zero(), scene);
+    const orbitCamera = new FreeCamera(
+        "roiorbit-camera",
+        Vector3.Zero(),
+        scene,
+    );
     orbitCamera.minZ = 1;
     orbitCamera.maxZ = ORBIT_CAMERA_MAX_Z;
     // 組み込み入力を無効化（本デモは自動演出のみで、ユーザー操作を受け付けない）。
     orbitCamera.inputs.clear();
-    updateOrbitCameraPose(orbitCamera, initialPosition.lat, initialPosition.lon);
+    updateOrbitCameraPose(
+        orbitCamera,
+        initialPosition.lat,
+        initialPosition.lon,
+    );
 
     // 内蔵 terrain camera の自動タイル更新を停止し、周回カメラの frustum で明示的に更新する。
     viewer.detachTileCamera();

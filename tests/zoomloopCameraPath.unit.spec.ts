@@ -8,17 +8,17 @@
  * - advanceZoomLoop / cameraFrameForState: ループステートマシンの往復・静止・
  *   フレームスキップ耐性
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
     advanceZoomLoop,
+    type CameraEndpoint,
     cameraFrameForState,
     computeCameraFrame,
     easeInOutCubic,
     interpolateAltitude,
     interpolateOrientation,
     interpolatePosition,
-    type CameraEndpoint,
     type ZoomLoopConfig,
     type ZoomLoopState,
 } from "../src/demos/zoomloop/cameraPath";
@@ -76,7 +76,9 @@ describe("interpolatePosition", () => {
     it("extraTurnsを指定すると途中経過（t=0.5）が周回無しの場合と異なる経路になる", () => {
         const midWithoutTurns = interpolatePosition(start, end, 0.5, 0);
         const midWithTurns = interpolatePosition(start, end, 0.5, 1);
-        expect(Math.abs(midWithTurns.lat - midWithoutTurns.lat)).toBeGreaterThan(1);
+        expect(
+            Math.abs(midWithTurns.lat - midWithoutTurns.lat),
+        ).toBeGreaterThan(1);
     });
 });
 
@@ -112,7 +114,7 @@ describe("interpolateOrientation", () => {
         const end = { azimuth: 359.83, tilt: 41.13 };
         const mid = interpolateOrientation(start, end, 0.5);
         // 0°からの角距離（[-180,180]換算）で判定する。
-        const diffFromZero = ((mid.azimuth + 180) % 360 + 360) % 360 - 180;
+        const diffFromZero = ((((mid.azimuth + 180) % 360) + 360) % 360) - 180;
         expect(Math.abs(diffFromZero)).toBeLessThan(5);
     });
 
@@ -157,8 +159,20 @@ describe("computeCameraFrame", () => {
         const holdAltitude = 100_000;
 
         it("ズームアウト（上昇）：しきい値高度に達するまで位置はstartに固定される", () => {
-            const start: CameraEndpoint = { lat: 0, lon: 0, altitude: LOW_ALTITUDE, azimuth: 0, tilt: 0 };
-            const end: CameraEndpoint = { lat: 30, lon: 30, altitude: HIGH_ALTITUDE, azimuth: 0, tilt: 0 };
+            const start: CameraEndpoint = {
+                lat: 0,
+                lon: 0,
+                altitude: LOW_ALTITUDE,
+                azimuth: 0,
+                tilt: 0,
+            };
+            const end: CameraEndpoint = {
+                lat: 30,
+                lon: 30,
+                altitude: HIGH_ALTITUDE,
+                azimuth: 0,
+                tilt: 0,
+            };
             // しきい値高度に達する前（低progress）は位置が動いていないはず。
             const before = computeCameraFrame(start, end, 0.1, 0, holdAltitude);
             expect(before.lat).toBeCloseTo(start.lat, 6);
@@ -170,8 +184,20 @@ describe("computeCameraFrame", () => {
         });
 
         it("ズームイン（下降）：開始直後から位置が動き、しきい値高度を下回ったらendに固定される", () => {
-            const start: CameraEndpoint = { lat: 0, lon: 0, altitude: HIGH_ALTITUDE, azimuth: 0, tilt: 0 };
-            const end: CameraEndpoint = { lat: 30, lon: 30, altitude: LOW_ALTITUDE, azimuth: 0, tilt: 0 };
+            const start: CameraEndpoint = {
+                lat: 0,
+                lon: 0,
+                altitude: HIGH_ALTITUDE,
+                azimuth: 0,
+                tilt: 0,
+            };
+            const end: CameraEndpoint = {
+                lat: 30,
+                lon: 30,
+                altitude: LOW_ALTITUDE,
+                azimuth: 0,
+                tilt: 0,
+            };
             // 開始直後（低progress）でも位置移動が始まっているはず（startに固定されない）。
             const early = computeCameraFrame(start, end, 0.05, 0, holdAltitude);
             expect(Math.abs(early.lat - start.lat)).toBeGreaterThan(0.01);
@@ -192,12 +218,18 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
     };
 
     it("初期状態(holdZoomIn)ではzoomIn端点のフレームを返す", () => {
-        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const state: ZoomLoopState = {
+            phase: "holdZoomIn",
+            elapsedInPhaseMs: 0,
+        };
         expect(cameraFrameForState(state, config)).toEqual(ZOOM_IN);
     });
 
     it("holdDurationMs経過でtoZoomOutへ遷移する", () => {
-        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const state: ZoomLoopState = {
+            phase: "holdZoomIn",
+            elapsedInPhaseMs: 0,
+        };
         const next = advanceZoomLoop(state, 3_000, config);
         expect(next.phase).toBe("toZoomOut");
         expect(next.elapsedInPhaseMs).toBeCloseTo(0, 6);
@@ -221,7 +253,10 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
     });
 
     it("大きなdeltaMs（タブ非アクティブ等）でも複数フェーズを正しく跨いで進む", () => {
-        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const state: ZoomLoopState = {
+            phase: "holdZoomIn",
+            elapsedInPhaseMs: 0,
+        };
         // hold(3s) + move(60s) + hold(3s) + move(30s, 半分) = 96s 経過
         const next = advanceZoomLoop(state, 96_000, config);
         expect(next.phase).toBe("toZoomIn");
@@ -229,9 +264,11 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
     });
 
     it("MAX_ITER(1000)を超える周期数分の巨大なdeltaMsでも正しい位相に収束する（周期での剰余最適化）", () => {
-        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
-        const cycleMs =
-            config.holdDurationMs * 2 + config.moveDurationMs * 2; // 126_000ms
+        const state: ZoomLoopState = {
+            phase: "holdZoomIn",
+            elapsedInPhaseMs: 0,
+        };
+        const cycleMs = config.holdDurationMs * 2 + config.moveDurationMs * 2; // 126_000ms
         // 1周期 = 4フェーズなので、MAX_ITER=1000 の素朴な実装では 250 周期分
         // （1000 フェーズ遷移）までしか進められない。10,000 周期分 + 96s の
         // 端数を与え、剰余最適化が無いと辿り着けない位相まで正しく進むことを確認する。
@@ -252,7 +289,10 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
 
     it("holdDurationMs=0の場合、deltaMs=0でも静止フェーズを即座にスキップする", () => {
         const zeroHoldConfig: ZoomLoopConfig = { ...config, holdDurationMs: 0 };
-        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const state: ZoomLoopState = {
+            phase: "holdZoomIn",
+            elapsedInPhaseMs: 0,
+        };
         const next = advanceZoomLoop(state, 0, zeroHoldConfig);
         expect(next.phase).toBe("toZoomOut");
         expect(next.elapsedInPhaseMs).toBe(0);
@@ -264,7 +304,10 @@ describe("advanceZoomLoop / cameraFrameForState", () => {
             moveDurationMs: 0,
             holdDurationMs: 0,
         };
-        const state: ZoomLoopState = { phase: "holdZoomIn", elapsedInPhaseMs: 0 };
+        const state: ZoomLoopState = {
+            phase: "holdZoomIn",
+            elapsedInPhaseMs: 0,
+        };
         expect(() => advanceZoomLoop(state, 0, allZeroConfig)).not.toThrow();
         const next = advanceZoomLoop(state, 0, allZeroConfig);
         expect(next.elapsedInPhaseMs).toBe(0);

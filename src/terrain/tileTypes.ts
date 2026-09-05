@@ -18,13 +18,12 @@ export const toTileKey = (coord: TileCoord): TileKey =>
  * タイルY軸は南向き、Babylon.js Z軸は北向きのため符号を反転。
  */
 /** -0 を +0 に正規化する（NaN はそのまま伝播） */
-const normalizeNegZero = (v: number): number =>
-    Object.is(v, -0) ? 0 : v;
+const normalizeNegZero = (v: number): number => (Object.is(v, -0) ? 0 : v);
 
 export const tileOffsetToWorld = (
     dx: number,
     dy: number,
-    tileSize: number
+    tileSize: number,
 ): { wx: number; wz: number } => ({
     wx: dx * tileSize,
     wz: normalizeNegZero(-(dy * tileSize)),
@@ -34,16 +33,16 @@ export const tileOffsetToWorld = (
 export const worldToTileOffset = (
     wx: number,
     wz: number,
-    tileSize: number
+    tileSize: number,
 ): { dx: number; dy: number } => ({
     dx: Math.round(wx / tileSize),
-    dy: normalizeNegZero(-(Math.round(wz / tileSize))),
+    dy: normalizeNegZero(-Math.round(wz / tileSize)),
 });
 
 /** タイル座標を別の zoom レベルに変換 */
 export const convertTileZoom = (
     coord: TileCoord,
-    targetZoom: number
+    targetZoom: number,
 ): TileCoord => {
     const diff = coord.zoom - targetZoom;
     if (diff > 0) {
@@ -67,10 +66,7 @@ export const convertTileZoom = (
 };
 
 /** 高zoom タイルが低zoom タイルに含まれるか判定 */
-export const isChildOf = (
-    child: TileCoord,
-    parent: TileCoord
-): boolean => {
+export const isChildOf = (child: TileCoord, parent: TileCoord): boolean => {
     if (child.zoom <= parent.zoom) return false;
     const parentOfChild = convertTileZoom(child, parent.zoom);
     return parentOfChild.x === parent.x && parentOfChild.y === parent.y;
@@ -82,7 +78,7 @@ export const isChildOf = (
  */
 export const computeSubTileOffset = (
     baseCenter: TileCoord,
-    targetZoom: number
+    targetZoom: number,
 ): { fracX: number; fracY: number } => {
     const diff = baseCenter.zoom - targetZoom;
     if (diff <= 0) return { fracX: 0, fracY: 0 };

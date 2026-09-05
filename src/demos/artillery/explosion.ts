@@ -4,10 +4,11 @@
  * ParticleSystem を複数レイヤー（閃光・火球・煙・火花・衝撃波リング）で
  * 重ねて、命中時に派手な爆発演出を行う。
  */
-import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
+
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import type { Scene } from "@babylonjs/core/scene";
 
 /** 既定の丸いパーティクルテクスチャ（白い円・PNG base64）。 */

@@ -5,9 +5,9 @@
  * スタブ化し、ロード完了→接地・起立、ロード前は配置しない、dispose 中のロード結果破棄、
  * CRUD / dispose 後ガードを検証する（Vector3/Quaternion/overlayPlacement は実物）。
  */
-import { vi } from "vitest";
 
-import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { type Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { vi } from "vitest";
 
 interface StubNode {
     name: string;
@@ -41,14 +41,23 @@ vi.mock("@babylonjs/core/Meshes/transformNode", () => ({
 }));
 
 // ImportMeshAsync は解決を手動制御できる deferred にする。
-type StubAg = { name?: string; stop: () => void; play?: (loop?: boolean) => void; dispose: () => void };
+type StubAg = {
+    name?: string;
+    stop: () => void;
+    play?: (loop?: boolean) => void;
+    dispose: () => void;
+};
 let resolveImport:
-    | ((meshes: { parent: unknown; dispose: () => void }[], ags?: StubAg[]) => void)
+    | ((
+          meshes: { parent: unknown; dispose: () => void }[],
+          ags?: StubAg[],
+      ) => void)
     | null = null;
 const importMeshAsync = vi.fn(
     () =>
         new Promise((res) => {
-            resolveImport = (meshes, ags = []) => res({ meshes, animationGroups: ags });
+            resolveImport = (meshes, ags = []) =>
+                res({ meshes, animationGroups: ags });
         }),
 );
 vi.mock("@babylonjs/core/Loading/sceneLoader", () => ({
@@ -61,12 +70,18 @@ vi.mock("@babylonjs/loaders/glTF/glTFFileLoader", () => ({
 const importLoaderForUrl = vi.fn(async () => {});
 vi.mock("../src/terrain/modelManager", () => ({ importLoaderForUrl }));
 
-const { createGlobeModelManager } = await import("../src/terrain/geo/globeModelManager");
-const { GLTFLoaderAnimationStartMode } = await import("@babylonjs/loaders/glTF/glTFFileLoader");
+const { createGlobeModelManager } = await import(
+    "../src/terrain/geo/globeModelManager"
+);
+const { GLTFLoaderAnimationStartMode } = await import(
+    "@babylonjs/loaders/glTF/glTFFileLoader"
+);
 const { describe, it, expect, beforeEach } = await import("vitest");
 
 const makeManager = () => {
-    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(() => 1000);
+    const terrainElevAt: (lat: number, lon: number) => number | null = vi.fn(
+        () => 1000,
+    );
     const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
     return { mgr, terrainElevAt };
 };
@@ -91,7 +106,12 @@ beforeEach(() => {
 describe("add / load", () => {
     it("add で root を生成し、ロード完了後に接地・起立する", async () => {
         const { mgr } = makeManager();
-        mgr.add({ url: "x.glb", lat: 35, lon: 139, scaling: { x: 10, y: 10, z: 10 } });
+        mgr.add({
+            url: "x.glb",
+            lat: 35,
+            lon: 139,
+            scaling: { x: 10, y: 10, z: 10 },
+        });
         expect(createdRoots.length).toBe(1);
         await completeLoad();
         const root = createdRoots[0];
@@ -141,7 +161,9 @@ describe("ライフサイクル", () => {
         const { mgr } = makeManager();
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         expect(() => mgr.remove("nope")).not.toThrow();
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('id "nope" not found'));
+        expect(warn).toHaveBeenCalledWith(
+            expect.stringContaining('id "nope" not found'),
+        );
         warn.mockRestore();
         expect(() => mgr.setEnabled("nope", false)).toThrow(/not found/);
     });
@@ -149,7 +171,9 @@ describe("ライフサイクル", () => {
     it("dispose 後の add/setEnabled/update は throw、二重 dispose は安全", () => {
         const { mgr } = makeManager();
         mgr.dispose();
-        expect(() => mgr.add({ url: "x.glb", lat: 35, lon: 139 })).toThrow(/after dispose/);
+        expect(() => mgr.add({ url: "x.glb", lat: 35, lon: 139 })).toThrow(
+            /after dispose/,
+        );
         expect(() => mgr.setEnabled("x", true)).toThrow(/after dispose/);
         expect(() => mgr.tick()).toThrow(/after dispose/);
         expect(() => mgr.dispose()).not.toThrow();
@@ -161,7 +185,12 @@ describe("in-place update / get / list", () => {
         const { mgr } = makeManager();
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await completeLoad();
-        mgr.update(id, { lat: 36, lon: 140, altitude: 5, scaling: { x: 2, y: 2, z: 2 } });
+        mgr.update(id, {
+            lat: 36,
+            lon: 140,
+            altitude: 5,
+            scaling: { x: 2, y: 2, z: 2 },
+        });
         const s = mgr.get(id);
         expect(s).not.toBeNull();
         expect(s?.lat).toBe(36);
@@ -193,7 +222,10 @@ describe("in-place update / get / list", () => {
 describe("altitude / 接地", () => {
     it("absolute モードは地形標高に依らず配置し elevationResolved=true", async () => {
         const terrainElevAt = vi.fn(() => null as number | null);
-        const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
+        const mgr = createGlobeModelManager({
+            scene: {} as never,
+            terrainElevAt,
+        });
         const id = mgr.add({
             url: "x.glb",
             lat: 35,
@@ -208,7 +240,10 @@ describe("altitude / 接地", () => {
 
     it("terrain+gravity で標高未解決のあいだは非表示（elevationResolved=false）", async () => {
         const terrainElevAt = vi.fn(() => null as number | null);
-        const mgr = createGlobeModelManager({ scene: {} as never, terrainElevAt });
+        const mgr = createGlobeModelManager({
+            scene: {} as never,
+            terrainElevAt,
+        });
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await completeLoad();
         expect(mgr.get(id)?.elevationResolved).toBe(false);
@@ -218,11 +253,16 @@ describe("altitude / 接地", () => {
     it('add で altitudeMode="absolute" かつ altitude 未指定は throw する', () => {
         const { mgr } = makeManager();
         expect(() =>
-            mgr.add({ url: "x.glb", lat: 35, lon: 139, altitudeMode: "absolute" }),
+            mgr.add({
+                url: "x.glb",
+                lat: 35,
+                lon: 139,
+                altitudeMode: "absolute",
+            }),
         ).toThrow(/requires altitude/);
     });
 
-    it('update で absolute へ切替時に altitude 未指定は throw する', async () => {
+    it("update で absolute へ切替時に altitude 未指定は throw する", async () => {
         const { mgr } = makeManager();
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await completeLoad();
@@ -230,7 +270,9 @@ describe("altitude / 接地", () => {
             /requires explicit altitude/,
         );
         // altitude を同時に指定すれば切替できる。
-        expect(() => mgr.update(id, { altitudeMode: "absolute", altitude: 50 })).not.toThrow();
+        expect(() =>
+            mgr.update(id, { altitudeMode: "absolute", altitude: 50 }),
+        ).not.toThrow();
         expect(mgr.get(id)?.altitudeMode).toBe("absolute");
     });
 });
@@ -247,7 +289,10 @@ describe("拡張子別の pluginOptions（GLTFLoaderAnimationStartMode の動的
                 expect.anything(),
                 {
                     pluginOptions: {
-                        gltf: { animationStartMode: GLTFLoaderAnimationStartMode.NONE },
+                        gltf: {
+                            animationStartMode:
+                                GLTFLoaderAnimationStartMode.NONE,
+                        },
                     },
                 },
             );
@@ -274,7 +319,12 @@ describe("animation", () => {
         const { mgr } = makeManager();
         const id = mgr.add({ url: "x.glb", lat: 35, lon: 139 });
         await new Promise((r) => setTimeout(r, 0));
-        const ag = { name: "walk", stop: vi.fn(), play: vi.fn(), dispose: vi.fn() };
+        const ag = {
+            name: "walk",
+            stop: vi.fn(),
+            play: vi.fn(),
+            dispose: vi.fn(),
+        };
         const mesh = { parent: null as unknown, dispose: vi.fn() };
         resolveImport?.([mesh], [ag as unknown as StubAg]);
         await new Promise((r) => setTimeout(r, 0));

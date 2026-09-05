@@ -7,16 +7,17 @@
  * - buildDioramaGridIndices の三角形数・頂点インデックス範囲・法線が上向き（+Y）
  * - extractGridPerimeterIndices の外周点数・巡回順（時計回り）
  */
-import { describe, it, expect } from "vitest";
+
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { describe, expect, it } from "vitest";
 
 import {
+    buildDioramaGridIndices,
+    buildDioramaGridPoints,
+    type DioramaGridOptions,
+    extractGridPerimeterIndices,
     metersPerDegreeAt,
     offsetToLatLon,
-    buildDioramaGridPoints,
-    buildDioramaGridIndices,
-    extractGridPerimeterIndices,
-    type DioramaGridOptions,
 } from "../src/terrain/diorama/dioramaGrid";
 
 const TOKYO = { lat: 35.681236, lon: 139.767125 };
@@ -80,7 +81,9 @@ describe("offsetToLatLon", () => {
     });
 
     it("極付近を中心にするとRangeError（ゼロ除算を未然に防ぐ）", () => {
-        expect(() => offsetToLatLon({ lat: 89, lon: 0 }, 100, 0)).toThrow(RangeError);
+        expect(() => offsetToLatLon({ lat: 89, lon: 0 }, 100, 0)).toThrow(
+            RangeError,
+        );
     });
 });
 
@@ -105,7 +108,11 @@ describe("buildDioramaGridPoints", () => {
 
     it("北西端(row=0,col=0)はx=-footprintHalfSizeM,z=+footprintHalfSizeM", () => {
         const footprintHalfSizeM = 900;
-        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const points = buildDioramaGridPoints(
+            TOKYO,
+            footprintHalfSizeM,
+            options,
+        );
         const nw = points[0];
         expect(nw.x).toBeCloseTo(-footprintHalfSizeM, 6);
         expect(nw.z).toBeCloseTo(footprintHalfSizeM, 6);
@@ -113,7 +120,11 @@ describe("buildDioramaGridPoints", () => {
 
     it("北東端(row=0,col=gridSegments)はx=+footprintHalfSizeM,z=+footprintHalfSizeM", () => {
         const footprintHalfSizeM = 900;
-        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const points = buildDioramaGridPoints(
+            TOKYO,
+            footprintHalfSizeM,
+            options,
+        );
         const ne = points[options.gridSegments];
         expect(ne.x).toBeCloseTo(footprintHalfSizeM, 6);
         expect(ne.z).toBeCloseTo(footprintHalfSizeM, 6);
@@ -121,7 +132,11 @@ describe("buildDioramaGridPoints", () => {
 
     it("南西端(row=gridSegments,col=0)はx=-footprintHalfSizeM,z=-footprintHalfSizeM", () => {
         const footprintHalfSizeM = 900;
-        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const points = buildDioramaGridPoints(
+            TOKYO,
+            footprintHalfSizeM,
+            options,
+        );
         const sw = points[options.gridSegments * (options.gridSegments + 1)];
         expect(sw.x).toBeCloseTo(-footprintHalfSizeM, 6);
         expect(sw.z).toBeCloseTo(-footprintHalfSizeM, 6);
@@ -129,7 +144,11 @@ describe("buildDioramaGridPoints", () => {
 
     it("南東端(row=gridSegments,col=gridSegments)はx=+footprintHalfSizeM,z=-footprintHalfSizeM", () => {
         const footprintHalfSizeM = 900;
-        const points = buildDioramaGridPoints(TOKYO, footprintHalfSizeM, options);
+        const points = buildDioramaGridPoints(
+            TOKYO,
+            footprintHalfSizeM,
+            options,
+        );
         const se = points[points.length - 1];
         expect(se.x).toBeCloseTo(footprintHalfSizeM, 6);
         expect(se.z).toBeCloseTo(-footprintHalfSizeM, 6);
@@ -146,29 +165,45 @@ describe("buildDioramaGridPoints", () => {
     });
 
     it("極付近を中心にするとRangeError（ゼロ除算を未然に防ぐ）", () => {
-        expect(() => buildDioramaGridPoints({ lat: 89, lon: 0 }, 500, options)).toThrow(RangeError);
+        expect(() =>
+            buildDioramaGridPoints({ lat: 89, lon: 0 }, 500, options),
+        ).toThrow(RangeError);
     });
 
     it("gridSegments < 1 は RangeError", () => {
-        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: 0 })).toThrow(RangeError);
+        expect(() =>
+            buildDioramaGridPoints(TOKYO, 500, { gridSegments: 0 }),
+        ).toThrow(RangeError);
     });
 
     it("footprintHalfSizeM <= 0 は RangeError", () => {
-        expect(() => buildDioramaGridPoints(TOKYO, 0, options)).toThrow(RangeError);
-        expect(() => buildDioramaGridPoints(TOKYO, -10, options)).toThrow(RangeError);
+        expect(() => buildDioramaGridPoints(TOKYO, 0, options)).toThrow(
+            RangeError,
+        );
+        expect(() => buildDioramaGridPoints(TOKYO, -10, options)).toThrow(
+            RangeError,
+        );
     });
 
     it("gridSegments が非整数は RangeError", () => {
-        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: 4.5 })).toThrow(RangeError);
+        expect(() =>
+            buildDioramaGridPoints(TOKYO, 500, { gridSegments: 4.5 }),
+        ).toThrow(RangeError);
     });
 
     it("gridSegments が NaN/Infinity は RangeError", () => {
-        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: NaN })).toThrow(RangeError);
-        expect(() => buildDioramaGridPoints(TOKYO, 500, { gridSegments: Infinity })).toThrow(RangeError);
+        expect(() =>
+            buildDioramaGridPoints(TOKYO, 500, { gridSegments: NaN }),
+        ).toThrow(RangeError);
+        expect(() =>
+            buildDioramaGridPoints(TOKYO, 500, { gridSegments: Infinity }),
+        ).toThrow(RangeError);
     });
 
     it("footprintHalfSizeM が Infinity は RangeError", () => {
-        expect(() => buildDioramaGridPoints(TOKYO, Infinity, options)).toThrow(RangeError);
+        expect(() => buildDioramaGridPoints(TOKYO, Infinity, options)).toThrow(
+            RangeError,
+        );
     });
 });
 
@@ -180,9 +215,15 @@ describe("buildDioramaGridIndices", () => {
     });
 
     it("gridSegments が非整数/NaN/Infinityは RangeError", () => {
-        expect(() => buildDioramaGridIndices({ gridSegments: 4.5 })).toThrow(RangeError);
-        expect(() => buildDioramaGridIndices({ gridSegments: NaN })).toThrow(RangeError);
-        expect(() => buildDioramaGridIndices({ gridSegments: Infinity })).toThrow(RangeError);
+        expect(() => buildDioramaGridIndices({ gridSegments: 4.5 })).toThrow(
+            RangeError,
+        );
+        expect(() => buildDioramaGridIndices({ gridSegments: NaN })).toThrow(
+            RangeError,
+        );
+        expect(() =>
+            buildDioramaGridIndices({ gridSegments: Infinity }),
+        ).toThrow(RangeError);
     });
 
     it("インデックスの最大値は点数-1を超えない", () => {
@@ -225,7 +266,9 @@ describe("extractGridPerimeterIndices", () => {
         const perimeter = extractGridPerimeterIndices(options);
         expect(perimeter[0]).toBe(0);
         expect(perimeter[1]).toBe(1);
-        expect(perimeter[options.gridSegments - 1]).toBe(options.gridSegments - 1);
+        expect(perimeter[options.gridSegments - 1]).toBe(
+            options.gridSegments - 1,
+        );
     });
 
     it("北辺の次は東辺（北東端から南東端へ向かう）", () => {
@@ -235,7 +278,9 @@ describe("extractGridPerimeterIndices", () => {
         // 北辺(gridSegments点)の直後が北東端(row=0,col=gridSegments)。
         expect(perimeter[options.gridSegments]).toBe(options.gridSegments);
         // 東辺の最後の手前は南隣（row=gridSegments-1,col=gridSegments）。
-        expect(perimeter[options.gridSegments * 2 - 1]).toBe((options.gridSegments - 1) * vertsPerSide + options.gridSegments);
+        expect(perimeter[options.gridSegments * 2 - 1]).toBe(
+            (options.gridSegments - 1) * vertsPerSide + options.gridSegments,
+        );
     });
 
     it("全ての点が外周（row=0またはrow=gridSegments、col=0またはcol=gridSegments）にある", () => {
@@ -245,14 +290,24 @@ describe("extractGridPerimeterIndices", () => {
         for (const idx of perimeter) {
             const row = Math.floor(idx / vertsPerSide);
             const col = idx % vertsPerSide;
-            const onBorder = row === 0 || row === options.gridSegments || col === 0 || col === options.gridSegments;
+            const onBorder =
+                row === 0 ||
+                row === options.gridSegments ||
+                col === 0 ||
+                col === options.gridSegments;
             expect(onBorder).toBe(true);
         }
     });
 
     it("gridSegments が非整数/NaN/Infinityは RangeError", () => {
-        expect(() => extractGridPerimeterIndices({ gridSegments: 4.5 })).toThrow(RangeError);
-        expect(() => extractGridPerimeterIndices({ gridSegments: NaN })).toThrow(RangeError);
-        expect(() => extractGridPerimeterIndices({ gridSegments: Infinity })).toThrow(RangeError);
+        expect(() =>
+            extractGridPerimeterIndices({ gridSegments: 4.5 }),
+        ).toThrow(RangeError);
+        expect(() =>
+            extractGridPerimeterIndices({ gridSegments: NaN }),
+        ).toThrow(RangeError);
+        expect(() =>
+            extractGridPerimeterIndices({ gridSegments: Infinity }),
+        ).toThrow(RangeError);
     });
 });

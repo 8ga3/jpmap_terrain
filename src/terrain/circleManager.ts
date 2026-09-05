@@ -6,11 +6,7 @@
  * `globeSceneController` のアダプタがこの契約を実装する。
  */
 
-import type {
-    CircleHandle,
-    CircleOptions,
-    CircleUpdate,
-} from "../lib/types";
+import type { CircleHandle, CircleOptions, CircleUpdate } from "../lib/types";
 
 export interface CircleManager {
     add(id: string, options: CircleOptions): CircleHandle;

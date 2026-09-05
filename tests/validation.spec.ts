@@ -1,4 +1,4 @@
-import { test, expect } from "./tileCache.fixture";
+import { expect, test } from "./tileCache.fixture";
 
 /**
  * VR テストを時刻依存から切り離すための固定クエリ。
@@ -27,7 +27,10 @@ async function waitForFrames(
             new Promise((resolve) => {
                 let count = 0;
                 const tick = (): void => {
-                    if (++count >= n) return resolve(true);
+                    if (++count >= n) {
+                        resolve(true);
+                        return;
+                    }
                     requestAnimationFrame(tick);
                 };
                 requestAnimationFrame(tick);
@@ -103,12 +106,12 @@ for (const scene of scenes) {
             sceneUrl.searchParams.set("engine", engine.param);
             applyDeterministicSunQuery(sceneUrl);
             await page.goto(
-                `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`
+                `${sceneUrl.pathname}${sceneUrl.search}${sceneUrl.hash}`,
             );
             if (scene.waitForTerrainStable) {
                 await page.waitForFunction(
-                    () => (window as any).scene && (window as any).scene.isReady(),
-                    { timeout: 30000 }
+                    () => (window as any).scene?.isReady(),
+                    { timeout: 30000 },
                 );
                 await waitForTerrainStable(page);
             }
@@ -117,17 +120,16 @@ for (const scene of scenes) {
                     const raf = window.requestAnimationFrame;
                     (window as any).renderCount = 0;
                     window.requestAnimationFrame = (
-                        cb: FrameRequestCallback
+                        cb: FrameRequestCallback,
                     ) => {
                         (window as any).renderCount++;
                         return raf(cb);
                     };
                 });
             }
-            await page.waitForFunction(
-                () => (window as any).scene && (window as any).scene.isReady(),
-                { timeout: 5000 }
-            );
+            await page.waitForFunction(() => (window as any).scene?.isReady(), {
+                timeout: 5000,
+            });
             // reset render count
             await page.evaluate(() => {
                 (window as any).renderCount = 0;
@@ -152,7 +154,7 @@ for (const scene of scenes) {
 /** シーン準備の共通ヘルパー */
 async function waitForScene(
     page: import("@playwright/test").Page,
-    engine: string
+    engine: string,
 ) {
     const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
     sceneUrl.searchParams.set("engine", engine);
@@ -160,16 +162,17 @@ async function waitForScene(
     await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
         timeout: 120000,
     });
-    await page.waitForFunction(
-        () => (window as any).scene && (window as any).scene.isReady(),
-        { timeout: 30000 }
-    );
+    await page.waitForFunction(() => (window as any).scene?.isReady(), {
+        timeout: 30000,
+    });
     // タイル読み込み + 連鎖リフレッシュ安定待ち
     await waitForTerrainStable(page);
 }
 
 for (const engine of engines) {
-    test(`Map toggle button with ${engine.name}`, async ({ page }, testInfo) => {
+    test(`Map toggle button with ${engine.name}`, async ({
+        page,
+    }, testInfo) => {
         await waitForScene(page, engine.param);
 
         // 地図切替ボタンをクリック（標準 → 写真）
@@ -180,7 +183,7 @@ for (const engine of engines) {
 
         // ARIAラベルが切り替わるのを待ち、操作反映を確定
         await expect(
-            page.getByRole("button", { name: "地図切替: 標準地図に変更" })
+            page.getByRole("button", { name: "地図切替: 標準地図に変更" }),
         ).toBeVisible({ timeout: 10000 });
 
         // テクスチャ再読み込み + 描画安定待ち
@@ -193,7 +196,9 @@ for (const engine of engines) {
         expect(testInfo.errors).toHaveLength(0);
     });
 
-    test(`Compass reset button with ${engine.name}`, async ({ page }, testInfo) => {
+    test(`Compass reset button with ${engine.name}`, async ({
+        page,
+    }, testInfo) => {
         await waitForScene(page, engine.param);
 
         // 方位磁針ボタンをクリック（北向きリセット）
@@ -212,10 +217,13 @@ for (const engine of engines) {
                     return false;
                 }
                 // yaw を [-π, π] に正規化して 0 との差を見る。
-                const yawNorm = Math.atan2(Math.sin(cam.yaw), Math.cos(cam.yaw));
+                const yawNorm = Math.atan2(
+                    Math.sin(cam.yaw),
+                    Math.cos(cam.yaw),
+                );
                 return Math.abs(yawNorm) < 0.01 && Math.abs(cam.pitch) < 0.02;
             },
-            { timeout: 5000 }
+            { timeout: 5000 },
         );
 
         // リセット後はトップダウン化で地形タイルが再構成されるため、描画安定を待つ。
@@ -260,10 +268,9 @@ async function waitForSceneWithSkybox(
     await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
         timeout: 120000,
     });
-    await page.waitForFunction(
-        () => (window as any).scene && (window as any).scene.isReady(),
-        { timeout: 30000 }
-    );
+    await page.waitForFunction(() => (window as any).scene?.isReady(), {
+        timeout: 30000,
+    });
     await page.waitForLoadState("networkidle", { timeout: 30000 });
 
     // チルトを大きめ（SKYBOX_TILT_DEG = 75°）に倒して画面上部に空を映す。
@@ -284,18 +291,16 @@ for (const engine of engines) {
         await expect(page).toHaveScreenshot({
             timeout: 30000,
             // チルト最大時はカメラ-地形衝突の収束差でタイルが1-2px シフトするため閾値を緩和
-            maxDiffPixelRatio: 0.10,
+            maxDiffPixelRatio: 0.1,
         });
         expect(testInfo.errors).toHaveLength(0);
     });
 
-    test(`Skybox at night with ${engine.name}`, async ({
-        page,
-    }, testInfo) => {
+    test(`Skybox at night with ${engine.name}`, async ({ page }, testInfo) => {
         await waitForSceneWithSkybox(page, engine.param, NIGHT_DATETIME);
         await expect(page).toHaveScreenshot({
             timeout: 30000,
-            maxDiffPixelRatio: 0.10,
+            maxDiffPixelRatio: 0.1,
         });
         expect(testInfo.errors).toHaveLength(0);
     });
@@ -305,7 +310,10 @@ for (const engine of engines) {
     }, testInfo) => {
         // 東京の夜明け（2025-04-25 JST 05:13）に東向きでカメラを構え、太陽メッシュが画面内に映ることを検証する。
         // パス `/@lat,lon` ではなく `?lat=&lon=` クエリ形式を採用（dev サーバの SPA rewrite と両立させる）。
-        const sceneUrl = new URL("/viewer.html?scene=default", "http://localhost");
+        const sceneUrl = new URL(
+            "/viewer.html?scene=default",
+            "http://localhost",
+        );
         sceneUrl.searchParams.set("engine", engine.param);
         sceneUrl.searchParams.set("lat", String(SUNRISE_LAT));
         sceneUrl.searchParams.set("lon", String(SUNRISE_LON));
@@ -314,10 +322,9 @@ for (const engine of engines) {
         await page.goto(`${sceneUrl.pathname}${sceneUrl.search}`, {
             timeout: 120000,
         });
-        await page.waitForFunction(
-            () => (window as any).scene && (window as any).scene.isReady(),
-            { timeout: 30000 },
-        );
+        await page.waitForFunction(() => (window as any).scene?.isReady(), {
+            timeout: 30000,
+        });
         await page.waitForLoadState("networkidle", { timeout: 30000 });
 
         // 東向き + チルト最大で地平線+空を画面内に収める
@@ -335,7 +342,7 @@ for (const engine of engines) {
 
         await expect(page).toHaveScreenshot({
             timeout: 30000,
-            maxDiffPixelRatio: 0.10,
+            maxDiffPixelRatio: 0.1,
         });
         expect(testInfo.errors).toHaveLength(0);
     });
@@ -358,17 +365,16 @@ async function waitForPolygonScene(
     await page.goto(`${url.pathname}${url.search}`, { timeout: 120000 });
     await page.waitForFunction(
         () =>
-            (window as unknown as { scene?: { isReady: () => boolean } }).scene
-                ?.isReady?.() ?? false,
+            (
+                window as unknown as { scene?: { isReady: () => boolean } }
+            ).scene?.isReady?.() ?? false,
         { timeout: 15000 },
     );
     // 初回タイルロード + 連鎖リフレッシュ安定待ち
     await waitForTerrainStable(page);
 }
 
-test("Polygon point edit (initial) with WebGL2", async ({
-    page,
-}, testInfo) => {
+test("Polygon point edit (initial) with WebGL2", async ({ page }, testInfo) => {
     await waitForPolygonScene(page);
     await expect(page).toHaveScreenshot({
         timeout: 30000,
@@ -413,8 +419,8 @@ test("Polygon point edit (after all edits) with WebGL2", async ({
         viewer.removePolygonPoint(id, 0);
         viewer.updatePolygonPoint(id, 0, { altitude: 700 });
         viewer.replacePolygonPoints(id, [
-            { lat: 35.6240, lon: 139.5198, altitude: 550 },
-            { lat: 35.6250, lon: 139.5198, altitude: 550 },
+            { lat: 35.624, lon: 139.5198, altitude: 550 },
+            { lat: 35.625, lon: 139.5198, altitude: 550 },
             { lat: 35.6245, lon: 139.5215, altitude: 650 },
         ]);
     }, POLYGON_EDIT_TARGET_ID);
@@ -442,8 +448,9 @@ async function waitForCircleScene(
     await page.goto(`${url.pathname}${url.search}`, { timeout: 120000 });
     await page.waitForFunction(
         () =>
-            (window as unknown as { scene?: { isReady: () => boolean } }).scene
-                ?.isReady?.() ?? false,
+            (
+                window as unknown as { scene?: { isReady: () => boolean } }
+            ).scene?.isReady?.() ?? false,
         { timeout: 15000 },
     );
     // 初回タイルロード + 連鎖リフレッシュ安定待ち
@@ -467,10 +474,7 @@ test("Circle demo (after updateCircle) with WebGL2", async ({
     // updateCircle で半径を変更し、再描画後のスナップショットを取得する
     await page.evaluate(() => {
         type ViewerLike = {
-            updateCircle: (
-                id: string,
-                opts: { radius?: number },
-            ) => unknown;
+            updateCircle: (id: string, opts: { radius?: number }) => unknown;
         };
         const viewer = (window as unknown as { viewer: ViewerLike }).viewer;
         viewer.updateCircle("yomiuri-terrain", { radius: 600 });

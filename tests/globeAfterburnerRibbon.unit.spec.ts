@@ -8,11 +8,12 @@
  * 純関数テストは globeAfterburner.unit.spec.ts が Babylon をモックして担当するため、
  * 実描画モジュールを使うこのテストは別ファイルに分離する。
  */
-import { describe, it, expect, afterEach } from "vitest";
+
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
 import { Scene } from "@babylonjs/core/scene";
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createGlobeAfterburner } from "../src/demos/flight/globeAfterburner";
 
@@ -53,7 +54,10 @@ describe("globeAfterburner - トレイルの頂点カラーバッファ整合性
         ab.update(ctx);
         ab.update({ ...ctx, angleDeg: 33 });
 
-        for (const name of ["globe-afterburner-left", "globe-afterburner-right"]) {
+        for (const name of [
+            "globe-afterburner-left",
+            "globe-afterburner-right",
+        ]) {
             const mesh = scene.getMeshByName(name);
             expect(mesh).not.toBeNull();
             const totalVertices = mesh!.getTotalVertices();

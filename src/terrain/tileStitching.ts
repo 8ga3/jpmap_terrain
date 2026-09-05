@@ -91,7 +91,8 @@ export const stitchTileEdges = (
         const values: number[] = [target[0]];
         if (neighbors.top) values.push(neighbors.top[last * tileSize]);
         if (neighbors.left) values.push(neighbors.left[last]);
-        if (neighbors.topLeft) values.push(neighbors.topLeft[last * tileSize + last]);
+        if (neighbors.topLeft)
+            values.push(neighbors.topLeft[last * tileSize + last]);
         const avg = nanMean(values);
         if (!Number.isNaN(avg)) target[0] = avg;
     }
@@ -101,7 +102,8 @@ export const stitchTileEdges = (
         const values: number[] = [target[last]];
         if (neighbors.top) values.push(neighbors.top[last * tileSize + last]);
         if (neighbors.right) values.push(neighbors.right[0]);
-        if (neighbors.topRight) values.push(neighbors.topRight[last * tileSize]);
+        if (neighbors.topRight)
+            values.push(neighbors.topRight[last * tileSize]);
         const avg = nanMean(values);
         if (!Number.isNaN(avg)) target[last] = avg;
     }
@@ -174,7 +176,8 @@ export const selectCoarseEdgeNeighbors = (
     ];
     for (const d of dirs) {
         // 同 zoom 隣接が実画面に出ていればクロスレベル不要
-        if (isSameZoomVisible({ zoom: z, x: x + d.ndx, y: y + d.ndy })) continue;
+        if (isSameZoomVisible({ zoom: z, x: x + d.ndx, y: y + d.ndy }))
+            continue;
 
         // 粗 zoom を z-1 から minZoom まで降順で探索（細かい粗 zoom を優先）
         for (let zp = z - 1; zp >= minZoom; zp--) {
@@ -184,16 +187,28 @@ export const selectCoarseEdgeNeighbors = (
             const subY = y & (scale - 1);
             let onParentEdge: boolean;
             switch (d.dir) {
-                case "top": onParentEdge = subY === 0; break;
-                case "bottom": onParentEdge = subY === scale - 1; break;
-                case "left": onParentEdge = subX === 0; break;
-                case "right": onParentEdge = subX === scale - 1; break;
+                case "top":
+                    onParentEdge = subY === 0;
+                    break;
+                case "bottom":
+                    onParentEdge = subY === scale - 1;
+                    break;
+                case "left":
+                    onParentEdge = subX === 0;
+                    break;
+                case "right":
+                    onParentEdge = subX === scale - 1;
+                    break;
             }
             if (!onParentEdge) continue;
 
             const px = x >> diff;
             const py = y >> diff;
-            const src = lookupCoarse({ zoom: zp, x: px + d.ndx, y: py + d.ndy });
+            const src = lookupCoarse({
+                zoom: zp,
+                x: px + d.ndx,
+                y: py + d.ndy,
+            });
             if (!src) continue;
             if (src.wasAllNaN && !src.unblocked) continue;
             result.push({

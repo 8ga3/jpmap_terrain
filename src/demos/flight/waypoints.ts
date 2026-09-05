@@ -6,16 +6,18 @@
  * メッシュをプールとして再利用するため create/dispose のオーバーヘッドがない。
  */
 
-import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
-
-import { circularOrbitPosition, circularOrbitHeading } from "../avatar/orbit";
-import { createWaypointMaterial, updateWaypointMaterialTime } from "./waypointShader";
-import { createPassEffect } from "./waypointEffect";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { surfaceOrientationToRef } from "../../terrain/geo/overlayPlacement";
+import { circularOrbitHeading, circularOrbitPosition } from "../avatar/orbit";
+import { createPassEffect } from "./waypointEffect";
+import {
+    createWaypointMaterial,
+    updateWaypointMaterialTime,
+} from "./waypointShader";
 
 // ─── 定数 ────────────────────────────────────────────────
 /**
@@ -75,22 +77,29 @@ const metersToDeg = (meters: number, radiusM: number): number =>
  * fwdDeg = (angle2 - angle1 + 360) % 360 が 180° 未満なら前方。
  */
 const isAhead = (angle1Deg: number, angle2Deg: number): boolean => {
-    const fwd = ((angle2Deg - angle1Deg) % 360 + 360) % 360;
+    const fwd = (((angle2Deg - angle1Deg) % 360) + 360) % 360;
     return fwd < 180;
 };
 
 /**
  * 2角度間の弧長距離 (m) を返す。最短弧。
  */
-const arcDistance = (angle1Deg: number, angle2Deg: number, radiusM: number): number => {
-    let diff = ((angle2Deg - angle1Deg) % 360 + 360) % 360;
+const arcDistance = (
+    angle1Deg: number,
+    angle2Deg: number,
+    radiusM: number,
+): number => {
+    let diff = (((angle2Deg - angle1Deg) % 360) + 360) % 360;
     if (diff > 180) diff = 360 - diff;
-    return (diff * Math.PI / 180) * radiusM;
+    return ((diff * Math.PI) / 180) * radiusM;
 };
 
 // ─── メイン ──────────────────────────────────────────────
 
-export const createWaypointManager = (scene: Scene, options?: WaypointManagerOptions): WaypointManager => {
+export const createWaypointManager = (
+    scene: Scene,
+    options?: WaypointManagerOptions,
+): WaypointManager => {
     let waypoints: WaypointState[] = [];
     let materials: ReturnType<typeof createWaypointMaterial>[] = [];
     let lastTime = 0;
@@ -119,7 +128,13 @@ export const createWaypointManager = (scene: Scene, options?: WaypointManagerOpt
     /** 半径から使用するウェイポイント数を算出 */
     const computeCount = (radiusM: number): number => {
         const circumference = 2 * Math.PI * radiusM;
-        return Math.max(1, Math.min(MAX_WAYPOINT_COUNT, Math.floor(circumference / WAYPOINT_SPACING_M)));
+        return Math.max(
+            1,
+            Math.min(
+                MAX_WAYPOINT_COUNT,
+                Math.floor(circumference / WAYPOINT_SPACING_M),
+            ),
+        );
     };
 
     /** メッシュの Y 回転をウェイポイント角度に合わせて更新 */
@@ -217,9 +232,17 @@ export const createWaypointManager = (scene: Scene, options?: WaypointManagerOpt
                 // 地表接線（ENU）基底で「立たせる」。mesh.position は translation のため
                 // floating origin リベースが効き、リング法線が進行方向を向く。
                 const wpGeo = circularOrbitPosition(
-                    ctx.centerLat, ctx.centerLon, ctx.radiusM, wp.angleDeg,
+                    ctx.centerLat,
+                    ctx.centerLon,
+                    ctx.radiusM,
+                    wp.angleDeg,
                 );
-                geodeticToEcefToRef(wpGeo.lat, wpGeo.lon, ctx.altitudeM, gWpEcef);
+                geodeticToEcefToRef(
+                    wpGeo.lat,
+                    wpGeo.lon,
+                    ctx.altitudeM,
+                    gWpEcef,
+                );
                 wp.mesh.position.copyFrom(gWpEcef);
                 const heading = circularOrbitHeading(wp.angleDeg);
                 if (surfaceOrientationToRef(gWpEcef, heading, gWpQuat)) {

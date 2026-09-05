@@ -3,14 +3,14 @@
  *
  * 右ジョイスティックによるカメラ制御（azimuth/tilt）の純粋関数をテストする。
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
-    computeCameraControl,
     AZIMUTH_SPEED_DPS,
-    TILT_SPEED_DPS,
-    TILT_MIN_DEG,
+    computeCameraControl,
     TILT_MAX_DEG,
+    TILT_MIN_DEG,
+    TILT_SPEED_DPS,
 } from "../src/demos/avatar-controller/cameraControl";
 
 describe("computeCameraControl", () => {
@@ -48,12 +48,7 @@ describe("computeCameraControl", () => {
         });
 
         it("2D モードでも azimuth は操作可能", () => {
-            const result = computeCameraControl(
-                { vx: 1, vy: 0 },
-                1.0,
-                true,
-                0,
-            );
+            const result = computeCameraControl({ vx: 1, vy: 0 }, 1.0, true, 0);
             expect(result.deltaAzimuth).not.toBe(0);
         });
     });

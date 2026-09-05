@@ -166,10 +166,16 @@ const linkifyAttribution = (text: string): string => {
     let result = "";
     let lastIndex = 0;
 
-    for (let match = urlPattern.exec(text); match !== null; match = urlPattern.exec(text)) {
+    for (
+        let match = urlPattern.exec(text);
+        match !== null;
+        match = urlPattern.exec(text)
+    ) {
         const raw = match[0];
         const trailing = raw.match(/[).,）、。]+$/);
-        const url = trailing ? raw.slice(0, raw.length - trailing[0].length) : raw;
+        const url = trailing
+            ? raw.slice(0, raw.length - trailing[0].length)
+            : raw;
         const suffix = trailing ? trailing[0] : "";
 
         result += escapeHtml(text.slice(lastIndex, match.index));
@@ -199,14 +205,14 @@ export const buildPortalHtml = (
     attributions: readonly string[] = ATTRIBUTIONS,
 ): string =>
     [
-        '<h1>jpmap_terrain デモ</h1>',
+        "<h1>jpmap_terrain デモ</h1>",
         '<p class="lead">地理院タイルの標高データを使った 3D 地形可視化のデモ集です。今後デモを順次追加していきます。</p>',
         `<ul class="demos">${demos.map(renderCard).join("")}</ul>`,
-        '<footer>',
+        "<footer>",
         renderAttributions(attributions),
         '<p class="source">Source: <a href="https://github.com/8ga3/jpmap_terrain">github.com/8ga3/jpmap_terrain</a></p>',
         `<p class="version">v${escapeHtml(__APP_VERSION__)}</p>`,
-        '</footer>',
+        "</footer>",
     ].join("");
 
 const start = (): void => {

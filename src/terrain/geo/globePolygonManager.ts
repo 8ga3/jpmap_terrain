@@ -8,32 +8,32 @@
  * ドラッグ編集中のチラつきを防ぐ。点数不一致など in-place 不可の場合は false を返し、
  * アダプタが再生成へフォールバックする。
  */
-import type { Scene } from "@babylonjs/core/scene";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
-import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
-import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
+
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Scene } from "@babylonjs/core/scene";
+import {
+    type AltitudeMode,
+    POLYGON_DEFAULTS,
+    type PolygonStyleOptions,
+    resolvePolygonStyle,
+} from "../../lib/types";
 import {
     computeOverlayDistanceScale,
     computeOverlayPointDiameter,
     computeScreenUpToRef,
     drapedPolygonPathLength,
-    writeDrapedPolygonPathsToRef,
     type LatLonPoint,
+    writeDrapedPolygonPathsToRef,
 } from "./overlayPlacement";
-import {
-    POLYGON_DEFAULTS,
-    resolvePolygonStyle,
-    type AltitudeMode,
-    type PolygonStyleOptions,
-} from "../../lib/types";
 
 /**
  * 頂点球・垂線・壁・線（アウトライン）・ラベルは全て地表メッシュ（既定グループ 0）と同グループ
@@ -253,21 +253,31 @@ const createMaterial = (
     return mat;
 };
 
-
 const labelDpr = (): number =>
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { devicePixelRatio?: number }).devicePixelRatio === "number"
-        ? Math.max((globalThis as { devicePixelRatio: number }).devicePixelRatio, 1)
+    typeof (globalThis as { devicePixelRatio?: number }).devicePixelRatio ===
+        "number"
+        ? Math.max(
+              (globalThis as { devicePixelRatio: number }).devicePixelRatio,
+              1,
+          )
         : 1;
 
 // 文字幅計測用 probe テクスチャをシーン単位でキャッシュし、ラベル再描画（ドラッグ中の動的ラベルは
 // テキスト変化のたびに呼ばれる）での DynamicTexture 確保/破棄コストを抑える。シーン dispose 時に
 // テクスチャも破棄されるため WeakMap で保持し、明示破棄は不要。
 const probeTextureByScene = new WeakMap<Scene, DynamicTexture>();
-const getProbeContext = (scene: Scene): ReturnType<DynamicTexture["getContext"]> => {
+const getProbeContext = (
+    scene: Scene,
+): ReturnType<DynamicTexture["getContext"]> => {
     let probe = probeTextureByScene.get(scene);
     if (!probe) {
-        probe = new DynamicTexture("polygon-label-probe", { width: 16, height: 16 }, scene, false);
+        probe = new DynamicTexture(
+            "polygon-label-probe",
+            { width: 16, height: 16 },
+            scene,
+            false,
+        );
         probeTextureByScene.set(scene, probe);
     }
     return probe.getContext();
@@ -286,12 +296,20 @@ interface LabelTextLayoutMetrics {
  * `style.labelFontSize` からラベル計測・描画の双方で使う指標を導出する。
  * `computeLabelDims`（計測）と `paintLabel`（描画）で同一の値が必要なため共通化する。
  */
-const computeLabelTextLayoutMetrics = (style: ResolvedStyle): LabelTextLayoutMetrics => {
+const computeLabelTextLayoutMetrics = (
+    style: ResolvedStyle,
+): LabelTextLayoutMetrics => {
     const fontSize = Math.max(style.labelFontSize, 1);
     const padPx = Math.round(fontSize * 0.1);
     const strokePx = Math.max(2, Math.round(fontSize * 0.12));
     const lineHeightPx = fontSize * 1.2;
-    return { fontSize, padPx, strokePx, lineHeightPx, innerPad: padPx + strokePx };
+    return {
+        fontSize,
+        padPx,
+        strokePx,
+        lineHeightPx,
+        innerPad: padPx + strokePx,
+    };
 };
 
 const computeLabelDims = (
@@ -301,12 +319,16 @@ const computeLabelDims = (
     dpr: number,
 ): { dtWidth: number; dtHeight: number } => {
     const lines = text.split("\n");
-    const { fontSize, lineHeightPx, innerPad } = computeLabelTextLayoutMetrics(style);
+    const { fontSize, lineHeightPx, innerPad } =
+        computeLabelTextLayoutMetrics(style);
     const probeCtx = getProbeContext(scene);
     probeCtx.font = `${fontSize}px sans-serif`;
     let maxLineWidth = 0;
     for (const line of lines) {
-        maxLineWidth = Math.max(maxLineWidth, probeCtx.measureText(line || " ").width);
+        maxLineWidth = Math.max(
+            maxLineWidth,
+            probeCtx.measureText(line || " ").width,
+        );
     }
 
     const innerW = maxLineWidth + innerPad * 2;
@@ -336,10 +358,14 @@ const paintLabel = (
     dpr: number,
 ): void => {
     const lines = text.split("\n");
-    const { fontSize, strokePx, lineHeightPx, innerPad } = computeLabelTextLayoutMetrics(style);
+    const { fontSize, strokePx, lineHeightPx, innerPad } =
+        computeLabelTextLayoutMetrics(style);
     const ctx = texture.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, dtWidth, dtHeight);
-    if (style.labelBackgroundColor && style.labelBackgroundColor !== "transparent") {
+    if (
+        style.labelBackgroundColor &&
+        style.labelBackgroundColor !== "transparent"
+    ) {
         ctx.fillStyle = style.labelBackgroundColor;
         ctx.fillRect(0, 0, dtWidth, dtHeight);
     }
@@ -403,7 +429,16 @@ const createLabelMesh = (
     material.emissiveColor = Color3.White();
     material.diffuseTexture = texture;
     mesh.material = material;
-    return { mesh, material, texture, widthWorld, heightWorld, text, dtWidth, dtHeight };
+    return {
+        mesh,
+        material,
+        texture,
+        widthWorld,
+        heightWorld,
+        text,
+        dtWidth,
+        dtHeight,
+    };
 };
 
 /**
@@ -471,7 +506,8 @@ export const createGlobePolygonManager = (
                 if (terrain !== null) node.elevs[i] = terrain;
             }
         } else if (node.topAltitudeMeters != null) {
-            for (let i = 0; i < node.elevs.length; i++) node.elevs[i] = node.topAltitudeMeters;
+            for (let i = 0; i < node.elevs.length; i++)
+                node.elevs[i] = node.topAltitudeMeters;
         } else if (node.altitudeMode === "absolute") {
             for (let i = 0; i < node.points.length; i++) {
                 node.elevs[i] = node.points[i].altitude ?? 0;
@@ -511,16 +547,24 @@ export const createGlobePolygonManager = (
             if (entry) entry.mesh.setEnabled(visible && node.pointsEnabled);
         }
         for (const entry of node.dropMeshes) {
-            if (entry) entry.mesh.setEnabled(visible && node.verticalsEnabled && !flat);
+            if (entry)
+                entry.mesh.setEnabled(
+                    visible && node.verticalsEnabled && !flat,
+                );
         }
         for (const entry of node.pointLabels) {
             if (entry) entry.mesh.setEnabled(visible && node.labelsEnabled);
         }
         for (const entry of node.edgeLabels) {
-            if (entry) entry.mesh.setEnabled(visible && node.labelsEnabled && hasEdges);
+            if (entry)
+                entry.mesh.setEnabled(
+                    visible && node.labelsEnabled && hasEdges,
+                );
         }
         node.lineMesh.setEnabled(visible && hasEdges && node.lineEnabled);
-        node.wallMesh.setEnabled(visible && hasEdges && node.wallsEnabled && !flat);
+        node.wallMesh.setEnabled(
+            visible && hasEdges && node.wallsEnabled && !flat,
+        );
     };
 
     const placeNode = (
@@ -561,10 +605,14 @@ export const createGlobePolygonManager = (
         // ズームに依らず画面上の見かけ大きさを一定に保つ（line/label も同様にスケールするため
         // 相対比が保たれ、ズームインで点がラインに埋もれない）。ただし上限クランプあり
         // （地形と同じ深度で描画されるため、無制限に拡大すると遠距離で地形を貫通してしまう）。
-        const pointWorldDiameter = computeOverlayPointDiameter(node.style.pointDiameter, distScale);
+        const pointWorldDiameter = computeOverlayPointDiameter(
+            node.style.pointDiameter,
+            distScale,
+        );
         const pointRadius = pointWorldDiameter * 0.5;
         node.pointWorldRadius = pointRadius;
-        const labelGap = node.style.labelFontSize * distScale * LABEL_GAP_FONT_RATIO;
+        const labelGap =
+            node.style.labelFontSize * distScale * LABEL_GAP_FONT_RATIO;
         // floating origin 精度対策: tube/ribbon（line/wall/drop）の頂点は原点相対のローカル座標で
         // 作り、原点を mesh.position に載せてリベースさせる。原点は top[0]（真の ECEF）。
         // 差分は JS float64 で計算してから float32 頂点バッファへ落とすため、最大ズームでも精度を保つ。
@@ -580,7 +628,8 @@ export const createGlobePolygonManager = (
             const top = node.top[i];
             const bottom = node.bottom[i];
             top.subtractToRef(bottom, scratchUp);
-            if (scratchUp.lengthSquared() < 1e-12) top.normalizeToRef(scratchUp);
+            if (scratchUp.lengthSquared() < 1e-12)
+                top.normalizeToRef(scratchUp);
             else scratchUp.normalize();
 
             const point = node.pointMeshes[i];
@@ -598,7 +647,9 @@ export const createGlobePolygonManager = (
                     {
                         path: [node.relTop[i], node.relBottom[i]],
                         // 垂線も distScale を掛けて画面上の太さを一定に保つ。
-                        radius: Math.max(node.style.dropLineWidth, 0.001) * distScale,
+                        radius:
+                            Math.max(node.style.dropLineWidth, 0.001) *
+                            distScale,
                         instance: drop.mesh,
                     },
                     scene,
@@ -613,13 +664,20 @@ export const createGlobePolygonManager = (
                 // 2D トップダウン（視線=地心 up）では地心 up オフセットだと点に重なるため screen up を使う。
                 // screen up が特異な場合のみ地心 up（scratchUp）へフォールバックする。
                 const dir =
-                    camPos && camUp && computeScreenUpToRef(camPos, camUp, top, scratchScreenUp)
+                    camPos &&
+                    camUp &&
+                    computeScreenUpToRef(camPos, camUp, top, scratchScreenUp)
                         ? scratchScreenUp
                         : scratchUp;
-                const offset = pointRadius + label.heightWorld * distScale * 0.5 + labelGap;
+                const offset =
+                    pointRadius +
+                    label.heightWorld * distScale * 0.5 +
+                    labelGap;
                 label.mesh.position
                     .copyFrom(top)
-                    .addInPlace(scratchLabelOffset.copyFrom(dir).scaleInPlace(offset));
+                    .addInPlace(
+                        scratchLabelOffset.copyFrom(dir).scaleInPlace(offset),
+                    );
             }
         }
 
@@ -657,7 +715,10 @@ export const createGlobePolygonManager = (
             if (node.wallsEnabled && !flat) {
                 node.wallMesh = CreateRibbon(
                     `${node.id}-wall`,
-                    { pathArray: [node.relTop, node.relBottom], instance: node.wallMesh },
+                    {
+                        pathArray: [node.relTop, node.relBottom],
+                        instance: node.wallMesh,
+                    },
                     scene,
                 );
                 node.wallMesh.position.copyFrom(scratchOrigin);
@@ -684,7 +745,12 @@ export const createGlobePolygonManager = (
                 const edgeDir =
                     camPos &&
                     camUp &&
-                    computeScreenUpToRef(camPos, camUp, scratchMid, scratchScreenUp)
+                    computeScreenUpToRef(
+                        camPos,
+                        camUp,
+                        scratchMid,
+                        scratchScreenUp,
+                    )
                         ? scratchScreenUp
                         : scratchEdgeUp;
                 const edgeOffset =
@@ -693,16 +759,23 @@ export const createGlobePolygonManager = (
                     labelGap;
                 label.mesh.position
                     .copyFrom(scratchMid)
-                    .addInPlace(scratchLabelOffset.copyFrom(edgeDir).scaleInPlace(edgeOffset));
+                    .addInPlace(
+                        scratchLabelOffset
+                            .copyFrom(edgeDir)
+                            .scaleInPlace(edgeOffset),
+                    );
             }
         }
         applyVisibility(node);
     };
 
     const add = (opts: GlobePolygonOptions): string => {
-        if (disposed) throw new Error("GlobePolygonManager.add: called after dispose");
+        if (disposed)
+            throw new Error("GlobePolygonManager.add: called after dispose");
         if (!opts.points || opts.points.length < 1) {
-            throw new Error("GlobePolygonManager.add: points requires at least 1 vertex");
+            throw new Error(
+                "GlobePolygonManager.add: points requires at least 1 vertex",
+            );
         }
         const id = `globe-polygon-${seq++}`;
         const closed = opts.closed ?? POLYGON_DEFAULTS.closed;
@@ -711,7 +784,10 @@ export const createGlobePolygonManager = (
                 ? "absolute"
                 : (opts.altitudeMode ?? POLYGON_DEFAULTS.altitudeMode);
         const style = resolveStyle(opts.style);
-        const pathLen = Math.max(2, drapedPolygonPathLength(opts.points.length, closed));
+        const pathLen = Math.max(
+            2,
+            drapedPolygonPathLength(opts.points.length, closed),
+        );
         const pointsEnabled = opts.pointsEnabled ?? true;
         const verticalsEnabled =
             opts.verticalsEnabled ?? POLYGON_DEFAULTS.verticalsEnabled;
@@ -760,7 +836,9 @@ export const createGlobePolygonManager = (
         });
         const pointLabels = opts.points.map((_p, i) => {
             const text = opts.labels?.[i];
-            return text == null ? null : createLabelMesh(scene, id, i, text, style, "label");
+            return text == null
+                ? null
+                : createLabelMesh(scene, id, i, text, style, "label");
         });
         const eCount = edgeCount(opts.points.length, closed);
         const edgeLabels = Array.from({ length: eCount }, (_v, i) => {
@@ -794,7 +872,10 @@ export const createGlobePolygonManager = (
         const wallMesh = CreateRibbon(
             `${id}-wall`,
             {
-                pathArray: [placeholderPath(opts.points.length, closed), placeholderPath(opts.points.length, closed)],
+                pathArray: [
+                    placeholderPath(opts.points.length, closed),
+                    placeholderPath(opts.points.length, closed),
+                ],
                 updatable: true,
                 sideOrientation: Mesh.DOUBLESIDE,
             },
@@ -813,7 +894,11 @@ export const createGlobePolygonManager = (
 
         const node: GlobePolygonNode = {
             id,
-            points: opts.points.map((p) => ({ lat: p.lat, lon: p.lon, altitude: p.altitude })),
+            points: opts.points.map((p) => ({
+                lat: p.lat,
+                lon: p.lon,
+                altitude: p.altitude,
+            })),
             closed,
             altitudeMode,
             topAltitudeMeters: opts.topAltitudeMeters,
@@ -881,15 +966,24 @@ export const createGlobePolygonManager = (
     };
 
     const setEnabled = (id: string, enabled: boolean): void => {
-        if (disposed) throw new Error("GlobePolygonManager.setEnabled: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobePolygonManager.setEnabled: called after dispose",
+            );
         const node = nodes.get(id);
-        if (!node) throw new Error(`GlobePolygonManager.setEnabled: id "${id}" not found`);
+        if (!node)
+            throw new Error(
+                `GlobePolygonManager.setEnabled: id "${id}" not found`,
+            );
         node.enabled = enabled;
         applyVisibility(node);
     };
 
     const setFlatten = (next: boolean): void => {
-        if (disposed) throw new Error("GlobePolygonManager.setFlatten: called after dispose");
+        if (disposed)
+            throw new Error(
+                "GlobePolygonManager.setFlatten: called after dispose",
+            );
         if (next === flat) return;
         flat = next;
         if (flat) {
@@ -910,7 +1004,8 @@ export const createGlobePolygonManager = (
     };
 
     const update = (cameraEcef?: Vector3, flatScale?: number): void => {
-        if (disposed) throw new Error("GlobePolygonManager.update: called after dispose");
+        if (disposed)
+            throw new Error("GlobePolygonManager.update: called after dispose");
         lastCameraEcef = cameraEcef;
         lastFlatScale = flatScale;
         for (const node of nodes.values()) {
@@ -948,8 +1043,14 @@ export const createGlobePolygonManager = (
         return createLabelMesh(scene, id, index, desired, style, prefix);
     };
 
-    const setContent = (id: string, content: GlobePolygonContentUpdate): boolean => {
-        if (disposed) throw new Error("GlobePolygonManager.setContent: called after dispose");
+    const setContent = (
+        id: string,
+        content: GlobePolygonContentUpdate,
+    ): boolean => {
+        if (disposed)
+            throw new Error(
+                "GlobePolygonManager.setContent: called after dispose",
+            );
         const node = nodes.get(id);
         if (!node) return false;
         // 点数（＝辺数の前提）が変わる場合は in-place 不可。呼び出し側で remove/add する。
@@ -1000,7 +1101,11 @@ export const createGlobePolygonManager = (
             return 0;
         }
         for (const node of nodes.values()) {
-            if (!node.enabled || !node.elevationResolved || !node.pointsEnabled) {
+            if (
+                !node.enabled ||
+                !node.elevationResolved ||
+                !node.pointsEnabled
+            ) {
                 continue;
             }
             // closed の重複末尾点（top[points.length]）は対象外。点メッシュ数ぶんのみ。
@@ -1011,7 +1116,14 @@ export const createGlobePolygonManager = (
                 // 既存スロットを再利用し、無ければ 1 度だけ生成する（割り当て抑制）。
                 let slot = out[n];
                 if (!slot) {
-                    slot = { polygonId: "", index: 0, x: 0, y: 0, z: 0, radius: 0 };
+                    slot = {
+                        polygonId: "",
+                        index: 0,
+                        x: 0,
+                        y: 0,
+                        z: 0,
+                        radius: 0,
+                    };
                     out[n] = slot;
                 }
                 slot.polygonId = node.id;
@@ -1032,5 +1144,14 @@ export const createGlobePolygonManager = (
         for (const id of [...nodes.keys()]) remove(id);
     };
 
-    return { add, remove, setEnabled, setFlatten, update, setContent, getPickablePoints, dispose };
+    return {
+        add,
+        remove,
+        setEnabled,
+        setFlatten,
+        update,
+        setContent,
+        getPickablePoints,
+        dispose,
+    };
 };

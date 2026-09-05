@@ -1,4 +1,4 @@
-import { test, expect } from "./tileCache.fixture";
+import { expect, test } from "./tileCache.fixture";
 
 /**
  * `/viewer/@...` および `/timelapse/@...` のデモ識別子付きパスで
@@ -22,7 +22,9 @@ const targets: { name: string; url: string }[] = [
 ];
 
 for (const target of targets) {
-    test(`${target.name} loads scripts and renders canvas`, async ({ page }) => {
+    test(`${target.name} loads scripts and renders canvas`, async ({
+        page,
+    }) => {
         const failedJs: string[] = [];
         // `/js/` チャンクの取得状況を追跡する。タイル取得が継続して
         // `networkidle` に到達しない環境でも、スクリプト読み込みの完了だけを
@@ -32,7 +34,8 @@ for (const target of targets) {
             if (request.url().includes("/js/")) pendingJs++;
         });
         const onJsSettled = (request: { url(): string }) => {
-            if (request.url().includes("/js/")) pendingJs = Math.max(0, pendingJs - 1);
+            if (request.url().includes("/js/"))
+                pendingJs = Math.max(0, pendingJs - 1);
         };
         page.on("requestfinished", onJsSettled);
         page.on("requestfailed", (request) => {
@@ -40,7 +43,9 @@ for (const target of targets) {
             // ネットワーク切断/abort 等で response が発火しないケース（requestfailed）も
             // 取りこぼさず失敗として記録する（/js/ ロード成功検証への忠実性）。
             if (request.url().includes("/js/")) {
-                failedJs.push(`${request.url()} (requestfailed: ${request.failure()?.errorText ?? "unknown"})`);
+                failedJs.push(
+                    `${request.url()} (requestfailed: ${request.failure()?.errorText ?? "unknown"})`,
+                );
             }
         });
         page.on("response", (response) => {
@@ -77,7 +82,10 @@ for (const target of targets) {
         // `networkidle` ではなく、`/js/` チャンクの取得が完了する（in-flight が
         // 0 に収束する）ことを待つ。
         await expect
-            .poll(() => pendingJs, { timeout: 60000, intervals: [250, 500, 1000] })
+            .poll(() => pendingJs, {
+                timeout: 60000,
+                intervals: [250, 500, 1000],
+            })
             .toBe(0);
 
         expect(failedJs).toEqual([]);

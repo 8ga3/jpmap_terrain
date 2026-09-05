@@ -18,13 +18,14 @@
  * まで次を発行しない「完了待ち合流」方式で、rebuildキューへの際限ない
  * バックログ蓄積を防ぐ（固定間隔タイマー方式で実機に生じた応答遅延不具合の教訓）。
  */
-import type { DioramaTerrain } from "../../../terrain/diorama/dioramaTerrain";
+
 import type { DioramaCenter } from "../../../terrain/diorama/dioramaGrid";
 import { offsetToLatLon } from "../../../terrain/diorama/dioramaGrid";
+import type { DioramaTerrain } from "../../../terrain/diorama/dioramaTerrain";
 import {
+    clampFootprintHalfSizeM,
     computeDioramaPanMetersFromStick,
     computeFootprintHalfSizeFactorFromStick,
-    clampFootprintHalfSizeM,
     type StickAxes,
 } from "./dioramaControllerMapping";
 
@@ -47,13 +48,18 @@ export interface DioramaViewController {
      * そのまま呼び出し元へ伝える（`feedAxes` 経由の継続入力と異なり、明示的な
      * 単発呼び出しのためエラーを握りつぶさない）。
      */
-    setView(patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void>;
+    setView(patch: {
+        center?: DioramaCenter;
+        footprintHalfSizeM?: number;
+    }): Promise<void>;
     /**
      * 中心・フットプリント半辺長が確定（`feedAxes`・`setView` いずれの経路でも）
      * した後に呼ばれるリスナーを登録する（`JpmapDiorama.onViewChange` が使う）。
      * @returns 購読解除関数。
      */
-    onChange(listener: (center: DioramaCenter, footprintHalfSizeM: number) => void): () => void;
+    onChange(
+        listener: (center: DioramaCenter, footprintHalfSizeM: number) => void,
+    ): () => void;
 }
 
 /**
@@ -67,7 +73,9 @@ export const createDioramaViewController = (
     initialFootprintHalfSizeM: number,
 ): DioramaViewController => {
     let currentCenter = { ...initialCenter };
-    let currentFootprintHalfSizeM = clampFootprintHalfSizeM(initialFootprintHalfSizeM);
+    let currentFootprintHalfSizeM = clampFootprintHalfSizeM(
+        initialFootprintHalfSizeM,
+    );
     let lastAppliedFootprintHalfSizeM = currentFootprintHalfSizeM;
 
     let pendingEastM = 0;
@@ -80,7 +88,9 @@ export const createDioramaViewController = (
      */
     let inFlight: Promise<void> | null = null;
 
-    const changeListeners: Array<(center: DioramaCenter, footprintHalfSizeM: number) => void> = [];
+    const changeListeners: Array<
+        (center: DioramaCenter, footprintHalfSizeM: number) => void
+    > = [];
     const notifyChange = (): void => {
         for (const listener of changeListeners.slice()) {
             try {
@@ -90,7 +100,10 @@ export const createDioramaViewController = (
                 // コピーを渡す。
                 listener({ ...currentCenter }, currentFootprintHalfSizeM);
             } catch (err) {
-                console.error("[jpmap-terrain diorama] onChange listener threw:", err);
+                console.error(
+                    "[jpmap-terrain diorama] onChange listener threw:",
+                    err,
+                );
             }
         }
     };
@@ -101,7 +114,10 @@ export const createDioramaViewController = (
      * 成功/失敗ハンドラを付与できる（`inFlight` 自体は排他制御専用で、
      * reject をそのまま伝播させても他の `.then()` の実行を妨げない）。
      */
-    const startSetView = (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
+    const startSetView = (patch: {
+        center?: DioramaCenter;
+        footprintHalfSizeM?: number;
+    }): Promise<void> => {
         const request = dioramaTerrain.setView(patch);
         inFlight = request.then(
             () => undefined,
@@ -116,10 +132,12 @@ export const createDioramaViewController = (
     const flush = (): void => {
         if (inFlight) return;
         const hasPan = pendingEastM !== 0 || pendingNorthM !== 0;
-        const hasZoom = currentFootprintHalfSizeM !== lastAppliedFootprintHalfSizeM;
+        const hasZoom =
+            currentFootprintHalfSizeM !== lastAppliedFootprintHalfSizeM;
         if (!hasPan && !hasZoom) return;
 
-        const patch: { center?: DioramaCenter; footprintHalfSizeM?: number } = {};
+        const patch: { center?: DioramaCenter; footprintHalfSizeM?: number } =
+            {};
         // `setView` が失敗した場合に取りこぼさず次回へ再送できるよう、
         // 楽観的な状態確定（currentCenter/lastAppliedFootprintHalfSizeM の更新）は
         // 成功時のみ行う。送信予定分は一旦 pending から差し引いておき、
@@ -144,7 +162,8 @@ export const createDioramaViewController = (
         startSetView(patch).then(
             () => {
                 if (nextCenter !== undefined) currentCenter = nextCenter;
-                if (sentFootprintHalfSizeM !== undefined) lastAppliedFootprintHalfSizeM = sentFootprintHalfSizeM;
+                if (sentFootprintHalfSizeM !== undefined)
+                    lastAppliedFootprintHalfSizeM = sentFootprintHalfSizeM;
                 notifyChange();
             },
             (err: unknown) => {
@@ -163,29 +182,51 @@ export const createDioramaViewController = (
         // 契約と不整合）ため、コピーを返す。
         getCenter: () => ({ ...currentCenter }),
         getFootprintHalfSizeM: () => currentFootprintHalfSizeM,
-        feedAxes: (panAxes: StickAxes, zoomAxisY: number, dtSeconds: number): void => {
+        feedAxes: (
+            panAxes: StickAxes,
+            zoomAxisY: number,
+            dtSeconds: number,
+        ): void => {
             if (!(dtSeconds > 0)) return;
 
-            const { eastM, northM } = computeDioramaPanMetersFromStick(panAxes, dtSeconds, currentFootprintHalfSizeM);
+            const { eastM, northM } = computeDioramaPanMetersFromStick(
+                panAxes,
+                dtSeconds,
+                currentFootprintHalfSizeM,
+            );
             pendingEastM += eastM;
             pendingNorthM += northM;
 
-            const factor = computeFootprintHalfSizeFactorFromStick(zoomAxisY, dtSeconds);
+            const factor = computeFootprintHalfSizeFactorFromStick(
+                zoomAxisY,
+                dtSeconds,
+            );
             if (factor !== 1) {
-                currentFootprintHalfSizeM = clampFootprintHalfSizeM(currentFootprintHalfSizeM * factor);
+                currentFootprintHalfSizeM = clampFootprintHalfSizeM(
+                    currentFootprintHalfSizeM * factor,
+                );
             }
 
             flush();
         },
-        setView: async (patch: { center?: DioramaCenter; footprintHalfSizeM?: number }): Promise<void> => {
-            const resolvedPatch: { center?: DioramaCenter; footprintHalfSizeM?: number } = {};
+        setView: async (patch: {
+            center?: DioramaCenter;
+            footprintHalfSizeM?: number;
+        }): Promise<void> => {
+            const resolvedPatch: {
+                center?: DioramaCenter;
+                footprintHalfSizeM?: number;
+            } = {};
             // 呼び出し元が渡した `patch.center` オブジェクトをそのまま内部状態
             // （`currentCenter`）へ保持すると、呼び出し元が後から同じオブジェクトを
             // 書き換えた場合に内部状態が意図せず変化してしまう（`getCenter()` の
             // 「読み取り専用スナップショット」契約とも不整合）。コピーして保持する。
-            if (patch.center !== undefined) resolvedPatch.center = { ...patch.center };
+            if (patch.center !== undefined)
+                resolvedPatch.center = { ...patch.center };
             if (patch.footprintHalfSizeM !== undefined) {
-                resolvedPatch.footprintHalfSizeM = clampFootprintHalfSizeM(patch.footprintHalfSizeM);
+                resolvedPatch.footprintHalfSizeM = clampFootprintHalfSizeM(
+                    patch.footprintHalfSizeM,
+                );
             }
             // `flush()` 由来のrebuildが進行中であれば、まずその完了を待ってから
             // 自分のリクエストを発行する（`inFlight` を共有した直列化。冒頭コメント参照）。
@@ -193,14 +234,21 @@ export const createDioramaViewController = (
                 await inFlight;
             }
             await startSetView(resolvedPatch);
-            if (resolvedPatch.center !== undefined) currentCenter = resolvedPatch.center;
+            if (resolvedPatch.center !== undefined)
+                currentCenter = resolvedPatch.center;
             if (resolvedPatch.footprintHalfSizeM !== undefined) {
                 currentFootprintHalfSizeM = resolvedPatch.footprintHalfSizeM;
-                lastAppliedFootprintHalfSizeM = resolvedPatch.footprintHalfSizeM;
+                lastAppliedFootprintHalfSizeM =
+                    resolvedPatch.footprintHalfSizeM;
             }
             notifyChange();
         },
-        onChange: (listener: (center: DioramaCenter, footprintHalfSizeM: number) => void): (() => void) => {
+        onChange: (
+            listener: (
+                center: DioramaCenter,
+                footprintHalfSizeM: number,
+            ) => void,
+        ): (() => void) => {
             changeListeners.push(listener);
             let removed = false;
             return (): void => {

@@ -8,25 +8,24 @@
  * - 地平線カリング: しきい値を上げると裏側タイルが除外され件数が減る
  */
 
-import { describe, it, expect } from "vitest";
-import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
 import { ComputeLookAtFromYawPitchToRef } from "@babylonjs/core/Cameras/geospatialCamera";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum";
 import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
-
-import { tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
-import { geodeticToEcef, ecefToGeodetic } from "../src/terrain/geo/ecef";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { describe, expect, it } from "vitest";
+import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
 import { geographicTangentBasisToRef } from "../src/terrain/geo/cameraMapping";
+import { ecefToGeodetic, geodeticToEcef } from "../src/terrain/geo/ecef";
 import {
+    type GlobeLodOptions,
     selectGlobeRootTiles,
     selectGlobeTiles,
     tileKey,
     viewForwardFromFrustumPlanes,
     viewForwardFromFrustumPlanesToRef,
-    type GlobeLodOptions,
 } from "../src/terrain/geo/globeLod";
-import { GLOBE_SCENE_DEFAULTS } from "../src/scenes/globe";
+import { tileCenterLatLon, toTileXY } from "../src/terrain/gsiTile";
 import type { FrustumPlane } from "../src/terrain/visibleTiles";
 
 const CENTER_LAT = 35.3606;
@@ -62,7 +61,9 @@ describe("tileKey", () => {
 
 describe("selectGlobeTiles", () => {
     it("maxZoom < minZoom は空配列", () => {
-        const tiles = selectGlobeTiles(baseOpts(60000, { minZoom: 15, maxZoom: 11 }));
+        const tiles = selectGlobeTiles(
+            baseOpts(60000, { minZoom: 15, maxZoom: 11 }),
+        );
         expect(tiles).toEqual([]);
     });
 
@@ -82,7 +83,11 @@ describe("selectGlobeTiles", () => {
 
     it("遠いカメラは root(minZoom) で受容される", () => {
         const tiles = selectGlobeTiles(
-            baseOpts(5_000_000, { minZoom: 11, maxZoom: 15, rootSearchRadius: 1 }),
+            baseOpts(5_000_000, {
+                minZoom: 11,
+                maxZoom: 15,
+                rootSearchRadius: 1,
+            }),
         );
         expect(tiles.length).toBeGreaterThan(0);
         const maxZ = Math.max(...tiles.map((t) => t.zoom));
@@ -130,9 +135,13 @@ describe("selectGlobeTiles", () => {
     });
 
     it("結果はカメラ距離の昇順", () => {
-        const tiles = selectGlobeTiles(baseOpts(50000, { rootSearchRadius: 3 }));
+        const tiles = selectGlobeTiles(
+            baseOpts(50000, { rootSearchRadius: 3 }),
+        );
         for (let i = 1; i < tiles.length; i++) {
-            expect(tiles[i].distance).toBeGreaterThanOrEqual(tiles[i - 1].distance);
+            expect(tiles[i].distance).toBeGreaterThanOrEqual(
+                tiles[i - 1].distance,
+            );
         }
     });
 
@@ -162,10 +171,13 @@ describe("selectGlobeTiles", () => {
     describe("視錐台カリング（frustumPlanes）", () => {
         // 「normal·p + d < 0 なら外側」の判定式を使い、ECEF スケール(~6.4e6)を無視できる
         // 巨大な d で「常に外側」「常に内側」の半空間を作る（実カメラ幾何は使わず判定式のみ検証）。
-        const ALWAYS_OUTSIDE: FrustumPlane[] = Array.from({ length: 6 }, () => ({
-            normal: { x: 1, y: 0, z: 0 },
-            d: -1e15,
-        }));
+        const ALWAYS_OUTSIDE: FrustumPlane[] = Array.from(
+            { length: 6 },
+            () => ({
+                normal: { x: 1, y: 0, z: 0 },
+                d: -1e15,
+            }),
+        );
         const ALWAYS_INSIDE: FrustumPlane[] = Array.from({ length: 6 }, () => ({
             normal: { x: 1, y: 0, z: 0 },
             d: 1e15,
@@ -181,7 +193,9 @@ describe("selectGlobeTiles", () => {
             const withFrustum = selectGlobeTiles(
                 baseOpts(60000, { maxZoom: 11, frustumPlanes: ALWAYS_OUTSIDE }),
             );
-            const withoutFrustum = selectGlobeTiles(baseOpts(60000, { maxZoom: 11 }));
+            const withoutFrustum = selectGlobeTiles(
+                baseOpts(60000, { maxZoom: 11 }),
+            );
             expect(withFrustum).toEqual(withoutFrustum);
         });
 
@@ -192,7 +206,9 @@ describe("selectGlobeTiles", () => {
             const withFrustum = selectGlobeTiles(
                 baseOpts(3000, { maxZoom: 15, frustumPlanes: ALWAYS_OUTSIDE }),
             );
-            const withoutFrustum = selectGlobeTiles(baseOpts(3000, { maxZoom: 15 }));
+            const withoutFrustum = selectGlobeTiles(
+                baseOpts(3000, { maxZoom: 15 }),
+            );
             // 分割が起きる近距離では、免除されない子タイルが視錐台外と判定され除外される
             // （centerのpinned安全網はminZoomのみに効くため、より深いzoomの精細化には及ばない）。
             expect(withFrustum.length).toBeLessThan(withoutFrustum.length);
@@ -201,10 +217,15 @@ describe("selectGlobeTiles", () => {
         it("pinnedPoints指定地点も、視錐台が全タイル外側でも最粗rootが残る", () => {
             const pinned = { lat: 40, lon: 140 };
             const tiles = selectGlobeTiles(
-                baseOpts(60000, { frustumPlanes: ALWAYS_OUTSIDE, pinnedPoints: [pinned] }),
+                baseOpts(60000, {
+                    frustumPlanes: ALWAYS_OUTSIDE,
+                    pinnedPoints: [pinned],
+                }),
             );
             const p = toTileXY(pinned.lat, pinned.lon, 11);
-            expect(tiles.some((t) => t.zoom === 11 && t.x === p.x && t.y === p.y)).toBe(true);
+            expect(
+                tiles.some((t) => t.zoom === 11 && t.x === p.x && t.y === p.y),
+            ).toBe(true);
         });
 
         it("日本テクスチャ域外の pinnedPoints も、視錐台が全タイル外側で最粗rootが残る（WORLD_TEXTURE_MAX_ZOOM丸め分岐, レビュー指摘）", () => {
@@ -226,7 +247,10 @@ describe("selectGlobeTiles", () => {
             const dz = 11 - 8; // WORLD_TEXTURE_MAX_ZOOM=8 への丸め。
             expect(
                 tiles.some(
-                    (t) => t.zoom === 8 && t.x === pMin.x >> dz && t.y === pMin.y >> dz,
+                    (t) =>
+                        t.zoom === 8 &&
+                        t.x === pMin.x >> dz &&
+                        t.y === pMin.y >> dz,
                 ),
             ).toBe(true);
         });
@@ -240,7 +264,9 @@ describe("selectGlobeTiles", () => {
         });
 
         it("frustumPlanes 省略時は視錐台カリングを行わない（後方互換）", () => {
-            const tiles = selectGlobeTiles(baseOpts(60000, { frustumPlanes: undefined }));
+            const tiles = selectGlobeTiles(
+                baseOpts(60000, { frustumPlanes: undefined }),
+            );
             expect(tiles.length).toBeGreaterThan(0);
         });
     });
@@ -257,9 +283,14 @@ describe("selectGlobeTiles", () => {
                 rootZoomFloor: 2,
             });
             const withoutFloor = selectGlobeTiles(opts);
-            const withFloor = selectGlobeTiles({ ...opts, textureQualityFloorZoom: 9 });
+            const withFloor = selectGlobeTiles({
+                ...opts,
+                textureQualityFloorZoom: 9,
+            });
             // 指定なしでは floor(z2) まで粗化しうる一方、指定時は z9 未満が一切現れない。
-            expect(Math.min(...withFloor.map((t) => t.zoom))).toBeGreaterThanOrEqual(9);
+            expect(
+                Math.min(...withFloor.map((t) => t.zoom)),
+            ).toBeGreaterThanOrEqual(9);
             expect(withFloor.every((t) => t.zoom >= 9)).toBe(true);
             // 後方互換: 未指定時の挙動そのものは変えない（同一 opts で再現できる）。
             expect(selectGlobeTiles(opts)).toEqual(withoutFloor);
@@ -277,7 +308,9 @@ describe("selectGlobeTiles", () => {
                 }),
             );
             // 全球モードは effectively rootZoomFloor(=2) の一様種付けのまま、z9 へは上げない。
-            expect(Math.min(...tiles.map((t) => t.zoom))).toBeLessThanOrEqual(3);
+            expect(Math.min(...tiles.map((t) => t.zoom))).toBeLessThanOrEqual(
+                3,
+            );
         });
     });
 
@@ -419,7 +452,9 @@ describe("selectGlobeTiles", () => {
             ] as const) {
                 const opts = highTiltOpts(tilt, radius);
                 const tiles = selectGlobeTiles(opts);
-                expect(tiles.length).toBeLessThanOrEqual(GLOBE_SCENE_DEFAULTS.maxTiles);
+                expect(tiles.length).toBeLessThanOrEqual(
+                    GLOBE_SCENE_DEFAULTS.maxTiles,
+                );
             }
         });
     });
@@ -429,7 +464,12 @@ describe("selectGlobeTiles", () => {
         // 覆い切れないため全球モード（floorZoom 一様種付け＋タイルサイズ考慮の地平線カリング）に切替。
         const alt = 15_000_000;
         const tiles = selectGlobeTiles(
-            baseOpts(alt, { maxZoom: 18, rootZoomFloor: 2, maxTiles: 384, maxRootTiles: 384 }),
+            baseOpts(alt, {
+                maxZoom: 18,
+                rootZoomFloor: 2,
+                maxTiles: 384,
+                maxRootTiles: 384,
+            }),
         );
         // 少数の粗タイルで足りる（z5 を ~200 枚並べる旧挙動ではない）。
         expect(tiles.length).toBeLessThanOrEqual(40);
@@ -450,7 +490,8 @@ describe("selectGlobeTiles", () => {
                 const th = az * DEG;
                 const lat1 = CENTER_LAT * DEG;
                 const lat2 = Math.asin(
-                    Math.sin(lat1) * Math.cos(ang) + Math.cos(lat1) * Math.sin(ang) * Math.cos(th),
+                    Math.sin(lat1) * Math.cos(ang) +
+                        Math.cos(lat1) * Math.sin(ang) * Math.cos(th),
                 );
                 const lon2 =
                     CENTER_LON * DEG +
@@ -473,7 +514,9 @@ describe("selectGlobeTiles", () => {
             maxZoom: 15,
         } as const;
         const noFloor = selectGlobeTiles(baseOpts(60000, common)); // rootZoomFloor 既定=minZoom
-        const withFloor = selectGlobeTiles(baseOpts(60000, { ...common, rootZoomFloor: 8 }));
+        const withFloor = selectGlobeTiles(
+            baseOpts(60000, { ...common, rootZoomFloor: 8 }),
+        );
         const maxDist = (ts: { distance: number }[]) =>
             ts.reduce((m, t) => Math.max(m, t.distance), 0);
         // 距離適応ルートレベルにより、同じ maxTiles 予算でより遠くの地表まで被覆できる。
@@ -532,10 +575,16 @@ describe("selectGlobeTiles", () => {
         // 近景は細かい（高 zoom が残る）かつ遠景は粗い（zoom に十分な幅）。潰れると数枚の粗
         // タイルのみになり max が小さくなる。
         expect(Math.max(...zooms)).toBeGreaterThanOrEqual(13);
-        expect(Math.max(...zooms) - Math.min(...zooms)).toBeGreaterThanOrEqual(3);
+        expect(Math.max(...zooms) - Math.min(...zooms)).toBeGreaterThanOrEqual(
+            3,
+        );
         // 近傍（カメラ直下付近）に細かいタイルが存在する。
         const nearFine = tiles.some(
-            (t) => t.zoom >= 13 && Math.abs(tileCenterLatLon(t.x, t.y, t.zoom).lat - (CENTER_LAT - 1)) < 0.3,
+            (t) =>
+                t.zoom >= 13 &&
+                Math.abs(
+                    tileCenterLatLon(t.x, t.y, t.zoom).lat - (CENTER_LAT - 1),
+                ) < 0.3,
         );
         expect(nearFine).toBe(true);
     });
@@ -560,7 +609,10 @@ describe("selectGlobeTiles", () => {
         const horizonKm = (R * Math.acos(R / (R + alt))) / 1000;
         // 北端タイルの nadir からの地表距離が地平線の 8 割以上（grazing で奥まで到達）。
         const maxNorthKm = Math.max(
-            ...tiles.map((t) => (tileCenterLatLon(t.x, t.y, t.zoom).lat - nadirLat) * 111),
+            ...tiles.map(
+                (t) =>
+                    (tileCenterLatLon(t.x, t.y, t.zoom).lat - nadirLat) * 111,
+            ),
         );
         expect(maxNorthKm).toBeGreaterThan(horizonKm * 0.8);
     });
@@ -597,7 +649,13 @@ describe("selectGlobeTiles", () => {
         const radius = 11000;
         const lookAt = new Vector3();
         const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, 0);
-        ComputeLookAtFromYawPitchToRef(az * DEG, tilt * DEG, centerEcef, true, lookAt);
+        ComputeLookAtFromYawPitchToRef(
+            az * DEG,
+            tilt * DEG,
+            centerEcef,
+            true,
+            lookAt,
+        );
         const cameraEcef = centerEcef.clone().subtract(lookAt.scale(radius));
         const camGeo = ecefToGeodetic(cameraEcef);
         const tiles = selectGlobeTiles(
@@ -621,7 +679,8 @@ describe("selectGlobeTiles", () => {
         for (let arc = 10000; arc <= 120000; arc += 5000) {
             const dlt = arc / R;
             const lat2 = Math.asin(
-                Math.sin(lat1) * Math.cos(dlt) + Math.cos(lat1) * Math.sin(dlt) * Math.cos(theta),
+                Math.sin(lat1) * Math.cos(dlt) +
+                    Math.cos(lat1) * Math.sin(dlt) * Math.cos(theta),
             );
             const lon2 =
                 lon1 +
@@ -666,10 +725,21 @@ describe("selectGlobeTiles", () => {
         const R = 6371000;
 
         /** 注視点(REPRO 地点)標高 elev・radius・tilt・az から repro カメラ ECEF を組む。 */
-        const reproCamera = (elev: number, radius: number, tiltDeg: number, azDeg: number): Vector3 => {
+        const reproCamera = (
+            elev: number,
+            radius: number,
+            tiltDeg: number,
+            azDeg: number,
+        ): Vector3 => {
             const centerEcef = geodeticToEcef(REPRO_LAT, REPRO_LON, elev);
             const lookAt = new Vector3();
-            ComputeLookAtFromYawPitchToRef(azDeg * DEG, tiltDeg * DEG, centerEcef, true, lookAt);
+            ComputeLookAtFromYawPitchToRef(
+                azDeg * DEG,
+                tiltDeg * DEG,
+                centerEcef,
+                true,
+                lookAt,
+            );
             return centerEcef.clone().subtract(lookAt.scale(radius));
         };
 
@@ -704,7 +774,8 @@ describe("selectGlobeTiles", () => {
             for (let arc = 0; arc <= horizonArc * 0.9; arc += 1000) {
                 const dlt = arc / R;
                 const lat2 = Math.asin(
-                    Math.sin(lat1) * Math.cos(dlt) + Math.cos(lat1) * Math.sin(dlt) * Math.cos(theta),
+                    Math.sin(lat1) * Math.cos(dlt) +
+                        Math.cos(lat1) * Math.sin(dlt) * Math.cos(theta),
                 );
                 const lon2 =
                     lon1 +
@@ -712,8 +783,10 @@ describe("selectGlobeTiles", () => {
                         Math.sin(theta) * Math.sin(dlt) * Math.cos(lat1),
                         Math.cos(dlt) - Math.sin(lat1) * Math.sin(lat2),
                     );
-                if (covered(tiles, lat2 / DEG, lon2 / DEG)) lastCoveredKm = arc / 1000;
-                else if (firstGapKm < 0 && lastCoveredKm >= 0) firstGapKm = arc / 1000;
+                if (covered(tiles, lat2 / DEG, lon2 / DEG))
+                    lastCoveredKm = arc / 1000;
+                else if (firstGapKm < 0 && lastCoveredKm >= 0)
+                    firstGapKm = arc / 1000;
             }
             return { lastCoveredKm, firstGapKm, horizonKm: horizonArc / 1000 };
         };
@@ -740,14 +813,18 @@ describe("selectGlobeTiles", () => {
                 maxRootTiles: GLOBE_SCENE_DEFAULTS.maxRootTiles,
                 horizonDotThreshold: GLOBE_SCENE_DEFAULTS.horizonDotThreshold,
                 rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
-                textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
+                textureQualityFloorZoom:
+                    GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
                 referenceAltitude: elev,
             });
         };
 
         it("sseThreshold=384（本番値）で地平線側までベースレイヤ露出の穴がない", () => {
             const opts = reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold);
-            const { lastCoveredKm, firstGapKm, horizonKm } = coverageAlongView(opts, az);
+            const { lastCoveredKm, firstGapKm, horizonKm } = coverageAlongView(
+                opts,
+                az,
+            );
             // 被覆開始後に穴がない（修正前は近景で予算を食い切り最遠が捨てられ数 km 先で穴あき）。
             expect(firstGapKm).toBe(-1);
             // 視線方向の地表が可視遠方（地平線の 7 割超）まで連続被覆される。
@@ -755,17 +832,29 @@ describe("selectGlobeTiles", () => {
         });
 
         it("予算超過時も maxTiles を超えない（粗化統合で枚数を抑える）", () => {
-            const tiles = selectGlobeTiles(reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold));
-            expect(tiles.length).toBeLessThanOrEqual(GLOBE_SCENE_DEFAULTS.maxTiles);
+            const tiles = selectGlobeTiles(
+                reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold),
+            );
+            expect(tiles.length).toBeLessThanOrEqual(
+                GLOBE_SCENE_DEFAULTS.maxTiles,
+            );
         });
 
         it("粗化統合後も quadtree カットが崩れない（祖先-子孫の二重被覆がない）", () => {
-            const tiles = selectGlobeTiles(reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold));
+            const tiles = selectGlobeTiles(
+                reproOpts(GLOBE_SCENE_DEFAULTS.sseThreshold),
+            );
             const keys = new Set(tiles.map((t) => tileKey(t.zoom, t.x, t.y)));
             for (const t of tiles) {
-                for (let z = t.zoom - 1; z >= GLOBE_SCENE_DEFAULTS.rootZoomFloor; z--) {
+                for (
+                    let z = t.zoom - 1;
+                    z >= GLOBE_SCENE_DEFAULTS.rootZoomFloor;
+                    z--
+                ) {
                     const dz = t.zoom - z;
-                    expect(keys.has(tileKey(z, t.x >> dz, t.y >> dz))).toBe(false);
+                    expect(keys.has(tileKey(z, t.x >> dz, t.y >> dz))).toBe(
+                        false,
+                    );
                 }
             }
         });
@@ -847,12 +936,17 @@ describe("selectGlobeRootTiles", () => {
 
     it("高高度ほど root ズームが粗くなる（高度適応）", () => {
         const low = selectGlobeRootTiles(
-            baseRoot(geodeticToEcef(CENTER_LAT, CENTER_LON, 60000), { rootZoomFloor: 5 }),
+            baseRoot(geodeticToEcef(CENTER_LAT, CENTER_LON, 60000), {
+                rootZoomFloor: 5,
+            }),
         );
         const high = selectGlobeRootTiles(
-            baseRoot(geodeticToEcef(CENTER_LAT, CENTER_LON, 600000), { rootZoomFloor: 5 }),
+            baseRoot(geodeticToEcef(CENTER_LAT, CENTER_LON, 600000), {
+                rootZoomFloor: 5,
+            }),
         );
-        const maxZoomOf = (s: { zoom: number }[]) => Math.max(...s.map((x) => x.zoom));
+        const maxZoomOf = (s: { zoom: number }[]) =>
+            Math.max(...s.map((x) => x.zoom));
         // 高高度（600km）の最細 root ズームは低高度（60km）より粗い。
         expect(maxZoomOf(high)).toBeLessThan(maxZoomOf(low));
         // 高高度でも中心は被覆される。
@@ -883,7 +977,9 @@ describe("selectGlobeRootTiles", () => {
     it("予算が小さくても nadir と center を最優先で被覆する", () => {
         const nadirLat = CENTER_LAT - 0.8;
         const seeds = selectGlobeRootTiles(
-            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), { maxRootTiles: 2 }),
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), {
+                maxRootTiles: 2,
+            }),
         );
         expect(seeds.length).toBeLessThanOrEqual(2);
         expect(isCovered(seeds, nadirLat, CENTER_LON)).toBe(true);
@@ -893,7 +989,9 @@ describe("selectGlobeRootTiles", () => {
     it("budget=1 では nadir を優先する", () => {
         const nadirLat = CENTER_LAT - 0.8;
         const seeds = selectGlobeRootTiles(
-            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), { maxRootTiles: 1 }),
+            baseRoot(geodeticToEcef(nadirLat, CENTER_LON, 60000), {
+                maxRootTiles: 1,
+            }),
         );
         expect(seeds).toHaveLength(1);
         expect(isCovered(seeds, nadirLat, CENTER_LON)).toBe(true);
@@ -1025,14 +1123,25 @@ describe("selectGlobeRootTiles", () => {
         // グレージング視点（tilt70°）でカメラを山頂相当高度へ持ち上げて配置する。
         const centerEcef = geodeticToEcef(CENTER_LAT, CENTER_LON, E);
         const lookAt = new Vector3();
-        ComputeLookAtFromYawPitchToRef(20 * DEG, 70 * DEG, centerEcef, true, lookAt);
+        ComputeLookAtFromYawPitchToRef(
+            20 * DEG,
+            70 * DEG,
+            centerEcef,
+            true,
+            lookAt,
+        );
         const cam = centerEcef.clone().subtract(lookAt.scale(7919));
         const nadir = ecefToGeodetic(cam);
-        const reach = (seeds: { x: number; y: number; zoom: number }[]): number => {
+        const reach = (
+            seeds: { x: number; y: number; zoom: number }[],
+        ): number => {
             let max = 0;
             for (const s of seeds) {
                 const c = tileCenterLatLon(s.x, s.y, s.zoom);
-                const d = Math.hypot(c.lat - nadir.latDeg, c.lon - nadir.lonDeg);
+                const d = Math.hypot(
+                    c.lat - nadir.latDeg,
+                    c.lon - nadir.lonDeg,
+                );
                 if (d > max) max = d;
             }
             return max;
@@ -1040,20 +1149,32 @@ describe("selectGlobeRootTiles", () => {
         // 注視点を実標高で評価（正）→ tilt が水平寄りに正しく出て前方到達距離が伸びる。
         const withElev = reach(
             selectGlobeRootTiles(
-                baseRoot(cam, { referenceAltitude: E, rootZoomFloor: 2, maxRootTiles: 384 }),
+                baseRoot(cam, {
+                    referenceAltitude: E,
+                    rootZoomFloor: 2,
+                    maxRootTiles: 384,
+                }),
             ),
         );
         // 注視点を海面(0m)で評価（旧バグ）→ camera→center が急下向きと誤算出され tilt 過小→到達距離短縮。
         const flat = reach(
             selectGlobeRootTiles(
-                baseRoot(cam, { referenceAltitude: 0, rootZoomFloor: 2, maxRootTiles: 384 }),
+                baseRoot(cam, {
+                    referenceAltitude: 0,
+                    rootZoomFloor: 2,
+                    maxRootTiles: 384,
+                }),
             ),
         );
         expect(withElev).toBeGreaterThan(flat * 1.5);
         // 負値（海面下）は 0 へ丸め、referenceAltitude=0 と同一挙動（後方互換・異常値ガード）。
         const negative = reach(
             selectGlobeRootTiles(
-                baseRoot(cam, { referenceAltitude: -100, rootZoomFloor: 2, maxRootTiles: 384 }),
+                baseRoot(cam, {
+                    referenceAltitude: -100,
+                    rootZoomFloor: 2,
+                    maxRootTiles: 384,
+                }),
             ),
         );
         expect(negative).toBe(flat);
@@ -1130,7 +1251,10 @@ describe("viewForwardFromFrustumPlanes", () => {
         const projMat = Matrix.PerspectiveFovLH(V_FOV, ASPECT, 1, 400000);
         const transform = Matrix.Identity();
         viewMat.multiplyToRef(projMat, transform);
-        const raw: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        const raw: Plane[] = Array.from(
+            { length: 6 },
+            () => new Plane(0, 0, 0, 0),
+        );
         Frustum.GetPlanesToRef(transform, raw);
         return raw.map((p) => ({
             normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
@@ -1153,7 +1277,11 @@ describe("viewForwardFromFrustumPlanes", () => {
     it("戻り値は単位ベクトル", () => {
         const eye = geodeticToEcef(CENTER_LAT, CENTER_LON, 5000);
         const target = geodeticToEcef(CENTER_LAT + 0.1, CENTER_LON + 0.03, 0);
-        const planes = cameraRelativePlanes(eye, target, eye.clone().normalize());
+        const planes = cameraRelativePlanes(
+            eye,
+            target,
+            eye.clone().normalize(),
+        );
         const fwd = viewForwardFromFrustumPlanes(planes) as Vector3;
         expect(fwd.length()).toBeCloseTo(1, 6);
     });
@@ -1161,7 +1289,9 @@ describe("viewForwardFromFrustumPlanes", () => {
     it("平面数が6でなければ null", () => {
         expect(viewForwardFromFrustumPlanes([])).toBeNull();
         expect(
-            viewForwardFromFrustumPlanes([{ normal: { x: 1, y: 0, z: 0 }, d: 0 }]),
+            viewForwardFromFrustumPlanes([
+                { normal: { x: 1, y: 0, z: 0 }, d: 0 },
+            ]),
         ).toBeNull();
     });
 
@@ -1176,7 +1306,11 @@ describe("viewForwardFromFrustumPlanes", () => {
     it("ToRef 版は ref に書き込み true を返す／退化時は false で ref 未変更（アロケーション回避）", () => {
         const eye = geodeticToEcef(CENTER_LAT, CENTER_LON, 3000);
         const target = geodeticToEcef(CENTER_LAT + 0.05, CENTER_LON, 2000);
-        const planes = cameraRelativePlanes(eye, target, eye.clone().normalize());
+        const planes = cameraRelativePlanes(
+            eye,
+            target,
+            eye.clone().normalize(),
+        );
         const ref = new Vector3(1, 2, 3);
         expect(viewForwardFromFrustumPlanesToRef(planes, ref)).toBe(true);
         expect(ref.length()).toBeCloseTo(1, 6);
@@ -1208,20 +1342,25 @@ describe("Follow mode 前方到達距離補正（viewForward）", () => {
         geographicTangentBasisToRef(plane, east, north);
         const up = plane.clone().normalize();
         // rot=180° → sin=0, cos=-1 → 真北飛行の真後ろ（南）へ radius。
-        const eye = plane
-            .add(north.scale(-radiusM))
-            .add(up.scale(heightM));
+        const eye = plane.add(north.scale(-radiusM)).add(up.scale(heightM));
         return { eye, target: plane.clone(), up };
     };
 
     /** flight/index.ts と同手順の camera 相対視錐台平面。 */
-    const followPlanes = (eye: Vector3, target: Vector3, up: Vector3): FrustumPlane[] => {
+    const followPlanes = (
+        eye: Vector3,
+        target: Vector3,
+        up: Vector3,
+    ): FrustumPlane[] => {
         const viewMat = Matrix.LookAtLH(eye, target, up);
         viewMat.setRowFromFloats(3, 0, 0, 0, 1);
         const projMat = Matrix.PerspectiveFovLH(V_FOV, ASPECT, 1, 400000);
         const transform = Matrix.Identity();
         viewMat.multiplyToRef(projMat, transform);
-        const raw: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+        const raw: Plane[] = Array.from(
+            { length: 6 },
+            () => new Plane(0, 0, 0, 0),
+        );
         Frustum.GetPlanesToRef(transform, raw);
         return raw.map((p) => ({
             normal: { x: p.normal.x, y: p.normal.y, z: p.normal.z },
@@ -1254,7 +1393,8 @@ describe("Follow mode 前方到達距離補正（viewForward）", () => {
             referenceAltitude: 0,
             rootZoomFloor: GLOBE_SCENE_DEFAULTS.rootZoomFloor,
             frustumPlanes: planes,
-            textureQualityFloorZoom: GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
+            textureQualityFloorZoom:
+                GLOBE_SCENE_DEFAULTS.textureQualityFloorZoom,
             viewForward: vf,
         };
     };
@@ -1265,9 +1405,17 @@ describe("Follow mode 前方到達距離補正（viewForward）", () => {
         const cam = opts.cameraEcef;
         const inFrustum = (lat: number, lon: number): boolean => {
             const p = geodeticToEcef(lat, lon, 0);
-            const rx = p.x - cam.x, ry = p.y - cam.y, rz = p.z - cam.z;
+            const rx = p.x - cam.x,
+                ry = p.y - cam.y,
+                rz = p.z - cam.z;
             for (const pl of opts.frustumPlanes ?? []) {
-                if (pl.normal.x * rx + pl.normal.y * ry + pl.normal.z * rz + pl.d < 0) {
+                if (
+                    pl.normal.x * rx +
+                        pl.normal.y * ry +
+                        pl.normal.z * rz +
+                        pl.d <
+                    0
+                ) {
                     return false;
                 }
             }
@@ -1307,7 +1455,9 @@ describe("Follow mode 前方到達距離補正（viewForward）", () => {
             expect(fixed.firstHoleKm).toBe(-1); // 穴なし。
             expect(fixed.lastCoveredKm).toBeGreaterThan(fixed.horizonKm * 0.7);
             // タイル数は maxTiles 予算内（暴発しない）。
-            expect(fixed.tiles.length).toBeLessThanOrEqual(GLOBE_SCENE_DEFAULTS.maxTiles);
+            expect(fixed.tiles.length).toBeLessThanOrEqual(
+                GLOBE_SCENE_DEFAULTS.maxTiles,
+            );
         });
     }
 
@@ -1363,7 +1513,10 @@ describe("Follow mode 前方到達距離補正（viewForward）", () => {
             rootZoomFloor: 5,
         } as const;
         const seedsBase = selectGlobeRootTiles(common);
-        const seedsZero = selectGlobeRootTiles({ ...common, viewForward: new Vector3(0, 0, 0) });
+        const seedsZero = selectGlobeRootTiles({
+            ...common,
+            viewForward: new Vector3(0, 0, 0),
+        });
         expect(seedsZero).toEqual(seedsBase);
     });
 });

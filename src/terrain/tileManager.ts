@@ -1,35 +1,52 @@
 /** タイルのライフサイクルを統合管理する TileManager */
 
-import { Scene } from "@babylonjs/core/scene";
-import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Matrix } from "@babylonjs/core/Maths/math.vector";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Camera } from "@babylonjs/core/Cameras/camera";
-
-import { TileCoord, TileKey, toTileKey, tileOffsetToWorld, convertTileZoom, computeSubTileOffset } from "./tileTypes";
-import { computeQuadtreeTiles, FrustumPlane, LodTileEntry } from "./visibleTiles";
-import { createTileCache, TileCache } from "./tileCache";
-import { createMeshPool, MeshPool, ShadowHooks } from "./meshPool";
+import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum";
+import { Plane } from "@babylonjs/core/Maths/math.plane";
+import { Matrix } from "@babylonjs/core/Maths/math.vector";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Scene } from "@babylonjs/core/scene";
 import {
-    TILE_SIZE,
-    toTileXY,
-    tileEdgeMeters,
-    loadElevationTile,
-    textureUrl,
-    MapType,
+    createElevationWorkerPool,
+    type ElevationWorkerPool,
+} from "./elevationWorkerPool";
+import {
     fillInvalidPixels,
     isAllNaN,
     isInvalidElev,
+    loadElevationTile,
+    type MapType,
     NO_DATA_SENTINEL,
+    TILE_SIZE,
+    textureUrl,
+    tileEdgeMeters,
+    toTileXY,
 } from "./gsiTile";
-import { stitchTileEdges, stitchTileEdgesCrossLevel, selectCoarseEdgeNeighbors } from "./tileStitching";
+import { createMeshPool, type MeshPool, type ShadowHooks } from "./meshPool";
+import { createTileCache, type TileCache } from "./tileCache";
 import type { CoarseEdgeNeighbor, CoarseTileSource } from "./tileStitching";
-import { createElevationWorkerPool, type ElevationWorkerPool } from "./elevationWorkerPool";
+import {
+    selectCoarseEdgeNeighbors,
+    stitchTileEdges,
+    stitchTileEdgesCrossLevel,
+} from "./tileStitching";
+import {
+    computeSubTileOffset,
+    convertTileZoom,
+    type TileCoord,
+    type TileKey,
+    tileOffsetToWorld,
+    toTileKey,
+} from "./tileTypes";
+import {
+    computeQuadtreeTiles,
+    type FrustumPlane,
+    type LodTileEntry,
+} from "./visibleTiles";
 
 export interface TileManagerOptions {
     scene: Scene;
@@ -198,13 +215,13 @@ export const extractSubTileElevation = (
                 tileSize - 1,
                 tileSize > 1
                     ? Math.round(originX + (x / (tileSize - 1)) * (subSize - 1))
-                    : Math.round(originX)
+                    : Math.round(originX),
             );
             const srcY = Math.min(
                 tileSize - 1,
                 tileSize > 1
                     ? Math.round(originY + (y / (tileSize - 1)) * (subSize - 1))
-                    : Math.round(originY)
+                    : Math.round(originY),
             );
             result[y * tileSize + x] = parentElev[srcY * tileSize + srcX];
         }
@@ -226,7 +243,10 @@ const extractFrustumPlanes = (camera: ArcRotateCamera): FrustumPlane[] => {
     camera
         .getViewMatrix()
         .multiplyToRef(camera.getProjectionMatrix(), transform);
-    const planes: Plane[] = Array.from({ length: 6 }, () => new Plane(0, 0, 0, 0));
+    const planes: Plane[] = Array.from(
+        { length: 6 },
+        () => new Plane(0, 0, 0, 0),
+    );
     Frustum.GetPlanesToRef(transform, planes);
 
     return planes.map((p) => ({
@@ -316,7 +336,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
     const minZoom = minZoomOpt ?? Math.max(0, zoom - 2);
     const maxElevationZoom = maxElevationZoomOpt ?? zoom;
-    const minElevationZoom = minElevationZoomOpt ?? Math.max(minZoom, maxElevationZoom - 4);
+    const minElevationZoom =
+        minElevationZoomOpt ?? Math.max(minZoom, maxElevationZoom - 4);
 
     const cache: TileCache = createTileCache(cacheCapacity);
     const meshPool: MeshPool = createMeshPool({
@@ -339,27 +360,43 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const pendingAncestorIndex = new Map<TileKey, Set<TileKey>>();
 
     /** pendingRelease に登録し、祖先インデックスも更新する */
-    const addPendingRelease = (key: TileKey, entry: PendingReleaseTile): void => {
+    const addPendingRelease = (
+        key: TileKey,
+        entry: PendingReleaseTile,
+    ): void => {
         pendingRelease.set(key, entry);
         // 祖先キーをインデックスに追加
         for (let az = entry.coord.zoom - 1; az >= minZoom; az--) {
             const diff = entry.coord.zoom - az;
-            const ak = toTileKey({ zoom: az, x: entry.coord.x >> diff, y: entry.coord.y >> diff });
+            const ak = toTileKey({
+                zoom: az,
+                x: entry.coord.x >> diff,
+                y: entry.coord.y >> diff,
+            });
             let s = pendingAncestorIndex.get(ak);
-            if (!s) { s = new Set(); pendingAncestorIndex.set(ak, s); }
+            if (!s) {
+                s = new Set();
+                pendingAncestorIndex.set(ak, s);
+            }
             s.add(key);
         }
     };
 
     /** pendingRelease から削除し、祖先インデックスも更新する */
-    const removePendingRelease = (key: TileKey): PendingReleaseTile | undefined => {
+    const removePendingRelease = (
+        key: TileKey,
+    ): PendingReleaseTile | undefined => {
         const entry = pendingRelease.get(key);
         if (!entry) return undefined;
         pendingRelease.delete(key);
         // 祖先キーをインデックスから削除
         for (let az = entry.coord.zoom - 1; az >= minZoom; az--) {
             const diff = entry.coord.zoom - az;
-            const ak = toTileKey({ zoom: az, x: entry.coord.x >> diff, y: entry.coord.y >> diff });
+            const ak = toTileKey({
+                zoom: az,
+                x: entry.coord.x >> diff,
+                y: entry.coord.y >> diff,
+            });
             const s = pendingAncestorIndex.get(ak);
             if (s) {
                 s.delete(key);
@@ -426,7 +463,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const loading = loadingCount;
         if (loading > 0) {
             statusCallback(
-                `表示中 ${active}/${maxTiles} タイル (読込中: ${loading})`
+                `表示中 ${active}/${maxTiles} タイル (読込中: ${loading})`,
             );
         } else {
             statusCallback(`表示中 ${active}/${maxTiles} タイル`);
@@ -453,7 +490,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const diff = cz - baseZoom;
             const cx = Number(parts[1]);
             const cy = Number(parts[2]);
-            if ((cx >> diff) === baseX && (cy >> diff) === baseY) {
+            if (cx >> diff === baseX && cy >> diff === baseY) {
                 toRemove.push(dk);
             }
         }
@@ -476,11 +513,19 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // ただしテクスチャ未 ready の mesh を setEnabled(true) すると null bind /
         // 描画穴の原因になるため、hiddenChildTiles から外すだけにとどめ、
         // テクスチャ onLoad 側で setEnabled(true) されるに委ねる。
-        revealActiveDescendants(pending.coord.zoom, pending.coord.x, pending.coord.y, false);
+        revealActiveDescendants(
+            pending.coord.zoom,
+            pending.coord.x,
+            pending.coord.y,
+            false,
+        );
         // delete ではなく increment して in-flight コールバックを確実に無効化する。
         // delete 後に同 mesh がプールから再利用されると texReqId が 1 から再開し、
         // 残留していた古い onLoad（同じく texReqId=1）と衝突して誤テクスチャが適用される。
-        textureRequestIds.set(pending.mesh, (textureRequestIds.get(pending.mesh) ?? 0) + 1);
+        textureRequestIds.set(
+            pending.mesh,
+            (textureRequestIds.get(pending.mesh) ?? 0) + 1,
+        );
         meshPool.release(pending.mesh);
         removePendingRelease(key);
         // 解放した粗タイルにスナップしていた可能性のある隣接細 active タイルを
@@ -512,7 +557,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      *   - currentVisibleKeys に存在しない → 子へ降りて判定
      * 最深 (targetZoom) まで降りて visibleKeys に無ければ frustum 外 → カバー不要。
      */
-    const isAreaCovered = (areaZoom: number, ax: number, ay: number, targetZoom: number): boolean => {
+    const isAreaCovered = (
+        areaZoom: number,
+        ax: number,
+        ay: number,
+        targetZoom: number,
+    ): boolean => {
         const areaKey = toTileKey({ zoom: areaZoom, x: ax, y: ay });
         const active = activeTiles.get(areaKey);
         if (active) {
@@ -542,7 +592,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * 指定した矩形領域内の hiddenChildTiles を全て表示状態にする。
      * hiddenChildTiles を1回走査して該当領域の子孫だけを処理する（O(hiddenChildTiles)）。
      */
-    const enableDescendants = (areaZoom: number, ax: number, ay: number): void => {
+    const enableDescendants = (
+        areaZoom: number,
+        ax: number,
+        ay: number,
+    ): void => {
         revealActiveDescendants(areaZoom, ax, ay, true);
     };
 
@@ -567,7 +621,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // 祖先（Case 1 候補：新タイルが pending の子孫）
             for (let az = loadedCoord.zoom - 1; az >= minZoom; az--) {
                 const diff = loadedCoord.zoom - az;
-                const ak = toTileKey({ zoom: az, x: loadedCoord.x >> diff, y: loadedCoord.y >> diff });
+                const ak = toTileKey({
+                    zoom: az,
+                    x: loadedCoord.x >> diff,
+                    y: loadedCoord.y >> diff,
+                });
                 if (pendingRelease.has(ak)) cands.add(ak);
             }
             // 子孫（Case 2 候補：新タイルが pending の祖先）
@@ -594,9 +652,21 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 if (isAreaCovered(coord.zoom, coord.x, coord.y, zoom)) {
                     // 子孫タイルを一斉に表示してから親を解放
                     enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2);
-                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2);
-                    enableDescendants(coord.zoom + 1, coord.x * 2, coord.y * 2 + 1);
-                    enableDescendants(coord.zoom + 1, coord.x * 2 + 1, coord.y * 2 + 1);
+                    enableDescendants(
+                        coord.zoom + 1,
+                        coord.x * 2 + 1,
+                        coord.y * 2,
+                    );
+                    enableDescendants(
+                        coord.zoom + 1,
+                        coord.x * 2,
+                        coord.y * 2 + 1,
+                    );
+                    enableDescendants(
+                        coord.zoom + 1,
+                        coord.x * 2 + 1,
+                        coord.y * 2 + 1,
+                    );
                     releasePendingTile(key);
                     continue;
                 }
@@ -609,7 +679,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 const diff = coord.zoom - az;
                 const ancestorX = coord.x >> diff;
                 const ancestorY = coord.y >> diff;
-                const ancestorTile = activeTiles.get(toTileKey({ zoom: az, x: ancestorX, y: ancestorY }));
+                const ancestorTile = activeTiles.get(
+                    toTileKey({ zoom: az, x: ancestorX, y: ancestorY }),
+                );
                 if (ancestorTile && isMeshTextureReady(ancestorTile.mesh)) {
                     ancestorFound = true;
                     break;
@@ -632,7 +704,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const loadTile = async (
         coord: TileCoord,
         tileSize: number,
-        rid: number
+        rid: number,
     ): Promise<void> => {
         const key = toTileKey(coord);
         if (activeTiles.has(key) || !currentCenter) return;
@@ -650,7 +722,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 let elevData: Float32Array | null = null;
                 let actualElevZoom = elevZoom;
 
-                for (let tryZoom = elevZoom; tryZoom >= minElevationZoom; tryZoom--) {
+                for (
+                    let tryZoom = elevZoom;
+                    tryZoom >= minElevationZoom;
+                    tryZoom--
+                ) {
                     const tryCoord = convertTileZoom(coord, tryZoom);
                     const tryKey = toTileKey(tryCoord);
 
@@ -666,7 +742,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         elevData = await loadElevationTile(
                             tryCoord.zoom,
                             tryCoord.x,
-                            tryCoord.y
+                            tryCoord.y,
                         );
                         if (rid !== requestId) return;
                         // 成功した標高データをキャッシュ
@@ -694,7 +770,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 let elevation: Float32Array;
                 if (actualElevZoom < coord.zoom) {
                     elevation = extractSubTileElevation(
-                        elevData, coord, actualElevZoom, TILE_SIZE
+                        elevData,
+                        coord,
+                        actualElevZoom,
+                        TILE_SIZE,
                     );
                 } else {
                     elevation = elevData;
@@ -721,7 +800,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
                 // 中心タイルからのオフセット（サブタイルオフセット補正込み）でスケーリング・配置
                 const center = convertTileZoom(currentCenter, coord.zoom);
-                const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+                const { fracX, fracY } = computeSubTileOffset(
+                    currentCenter,
+                    coord.zoom,
+                );
                 applyTileTransform(mesh, coord, tileSize, center, fracX, fracY);
 
                 // テクスチャを先に適用（Worker 待ちの applyStitchedElevation と無関係に
@@ -735,7 +817,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     const diff = coord.zoom - az;
                     const ancestorX = coord.x >> diff;
                     const ancestorY = coord.y >> diff;
-                    if (pendingRelease.has(toTileKey({ zoom: az, x: ancestorX, y: ancestorY }))) {
+                    if (
+                        pendingRelease.has(
+                            toTileKey({ zoom: az, x: ancestorX, y: ancestorY }),
+                        )
+                    ) {
                         isHiddenChild = true;
                         break;
                     }
@@ -752,7 +838,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     // 失敗時: hiddenChildTiles / textureRequestIds をクリーンアップし
                     // mesh をプールへ戻す（状態残留によるリーク防止）
                     hiddenChildTiles.delete(key);
-                    textureRequestIds.set(mesh, (textureRequestIds.get(mesh) ?? 0) + 1);
+                    textureRequestIds.set(
+                        mesh,
+                        (textureRequestIds.get(mesh) ?? 0) + 1,
+                    );
                     meshPool.release(mesh);
                     throw applyErr;
                 }
@@ -780,7 +869,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         } catch (e) {
             if (rid !== requestId) return;
             statusCallback?.(
-                `タイル読込失敗 ${key}: ${e instanceof Error ? e.message : String(e)}`
+                `タイル読込失敗 ${key}: ${e instanceof Error ? e.message : String(e)}`,
             );
         } finally {
             loadingCount--;
@@ -800,7 +889,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // キャッシュから標高データを取得し再適用（ステッチ＋NaN埋め）
             const entry = cache.get(key);
             if (entry) {
-                promises.push(applyStitchedElevation(tile.mesh, entry.elevation, tile.coord));
+                promises.push(
+                    applyStitchedElevation(
+                        tile.mesh,
+                        entry.elevation,
+                        tile.coord,
+                    ),
+                );
             }
         }
         if (promises.length > 0) await Promise.all(promises);
@@ -825,7 +920,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             tile.tileSize = tileSize;
 
             const center = convertTileZoom(currentCenter, coord.zoom);
-            const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+            const { fracX, fracY } = computeSubTileOffset(
+                currentCenter,
+                coord.zoom,
+            );
             applyTileTransform(mesh, coord, tileSize, center, fracX, fracY);
         }
         // pendingRelease タイルも同じ座標系に再配置する（位置ずれ防止）
@@ -842,7 +940,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             pending.tileSize = tileSize;
 
             const center = convertTileZoom(currentCenter, coord.zoom);
-            const { fracX, fracY } = computeSubTileOffset(currentCenter, coord.zoom);
+            const { fracX, fracY } = computeSubTileOffset(
+                currentCenter,
+                coord.zoom,
+            );
             applyTileTransform(mesh, coord, tileSize, center, fracX, fracY);
         }
     };
@@ -862,14 +963,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     // 即時 resolve にして直列化のみ維持する。
     const isTestEnv =
         typeof process !== "undefined" &&
-        typeof (process as { env?: Record<string, string | undefined> }).env !== "undefined" &&
-        (process as { env: Record<string, string | undefined> }).env.VITEST === "true";
+        typeof (process as { env?: Record<string, string | undefined> }).env !==
+            "undefined" &&
+        (process as { env: Record<string, string | undefined> }).env.VITEST ===
+            "true";
     // Babylon の onAfterRenderObservable に同期して、現在フレームの
-     // 描画完了後にタイル sync を再開する。これにより
-     // 「飛行機の位置反映 → render → タイル sync」の順番が保証され、
-     // sync 処理が描画途中に割り込んでフレームを乱すことが無くなる。
-     // sync 自体が 1 フレーム超過する場合でも、直前の render は
-     // 正しい飛行機位置で完了しているため、ちらつきとして見えない。
+    // 描画完了後にタイル sync を再開する。これにより
+    // 「飛行機の位置反映 → render → タイル sync」の順番が保証され、
+    // sync 処理が描画途中に割り込んでフレームを乱すことが無くなる。
+    // sync 自体が 1 フレーム超過する場合でも、直前の render は
+    // 正しい飛行機位置で完了しているため、ちらつきとして見えない。
     const yieldToFrame = (): Promise<void> => {
         if (isTestEnv) return Promise.resolve();
         return new Promise<void>((resolve) => {
@@ -898,7 +1001,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const acquireApplySlot = async (): Promise<() => void> => {
         const prev = applyChain;
         let release!: () => void;
-        const slot = new Promise<void>((r) => { release = r; });
+        const slot = new Promise<void>((r) => {
+            release = r;
+        });
         applyChain = prev.then(() => slot);
         await prev;
         // Follow モードのみフレーム境界 yield でスパイクを分散する。
@@ -934,8 +1039,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const concurrency = isTestEnv
                 ? Math.min(maxConcurrent, entries.length)
                 : followMode
-                    ? Math.min(maxConcurrent, FOLLOW_FRIENDLY_CONCURRENT, entries.length)
-                    : Math.min(maxConcurrent, entries.length);
+                  ? Math.min(
+                        maxConcurrent,
+                        FOLLOW_FRIENDLY_CONCURRENT,
+                        entries.length,
+                    )
+                  : Math.min(maxConcurrent, entries.length);
             const next = async (): Promise<void> => {
                 while (idx < entries.length && rid === requestId) {
                     const { coord, tileSize } = entries[idx++];
@@ -943,7 +1052,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     if (rid !== requestId) return;
                     // Follow モードでは次のタイル投入前にフレーム境界で 1 回 yield する
                     // → fetch 完了の同時揃いによるスパイクを分散
-                    if (followMode && idx < entries.length) await yieldToFrame();
+                    if (followMode && idx < entries.length)
+                        await yieldToFrame();
                 }
             };
 
@@ -955,7 +1065,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     };
 
     /** tileSizeForZoom: 指定zoomでのタイル実サイズを返す */
-    const tileSizeForZoom = (z: number): number => tileEdgeMeters(currentLat, z);
+    const tileSizeForZoom = (z: number): number =>
+        tileEdgeMeters(currentLat, z);
 
     /** メッシュにテクスチャを適用する（取得失敗時は低zoomへフォールバック）。
      *
@@ -982,8 +1093,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         textureFlushScheduled = false;
         textureBudgetUsed = 0;
         // キュー内に follow ジョブが1つでも残っていれば follow 扱いの制限を維持する
-        const hasFollowJob = textureJobQueue.some(entry => entry.follow);
-        const limit = (followModeLoading() || hasFollowJob) ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        const hasFollowJob = textureJobQueue.some((entry) => entry.follow);
+        const limit =
+            followModeLoading() || hasFollowJob
+                ? TEXTURE_PER_FRAME_FOLLOW
+                : TEXTURE_PER_FRAME_NORMAL;
         while (textureBudgetUsed < limit && textureJobQueue.length > 0) {
             const entry = textureJobQueue.shift();
             if (!entry) break;
@@ -1004,7 +1118,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const enqueueTextureJob = (job: () => void): void => {
         if (disposed) return;
         const isFollow = followModeLoading();
-        const limit = isFollow ? TEXTURE_PER_FRAME_FOLLOW : TEXTURE_PER_FRAME_NORMAL;
+        const limit = isFollow
+            ? TEXTURE_PER_FRAME_FOLLOW
+            : TEXTURE_PER_FRAME_NORMAL;
         if (textureBudgetUsed < limit) {
             textureBudgetUsed++;
             scheduleTextureFlush(); // 次フレームで budget をリセット
@@ -1015,7 +1131,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         scheduleTextureFlush();
     };
 
-    const applyTexture = (mesh: Mesh, coord: TileCoord, fallbackZoom?: number): void => {
+    const applyTexture = (
+        mesh: Mesh,
+        coord: TileCoord,
+        fallbackZoom?: number,
+    ): void => {
         const targetZoom = fallbackZoom ?? coord.zoom;
         const targetCoord = convertTileZoom(coord, targetZoom);
 
@@ -1024,14 +1144,21 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         enqueueTextureJob(() => {
             // キュー待ち中に別のリクエストで上書き / mesh 破棄されていたら即スキップ
-            if (textureRequestIds.get(mesh) !== texReqId
-                || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+            if (
+                textureRequestIds.get(mesh) !== texReqId ||
+                (typeof mesh.isDisposed === "function" && mesh.isDisposed())
+            ) {
                 return;
             }
 
             const mat = mesh.material as StandardMaterial;
             const prevTex = mat.diffuseTexture;
-            const url = textureUrl(currentMapType, targetCoord.zoom, targetCoord.x, targetCoord.y);
+            const url = textureUrl(
+                currentMapType,
+                targetCoord.zoom,
+                targetCoord.x,
+                targetCoord.y,
+            );
 
             pendingTextureCount++;
             const tex = new Texture(
@@ -1044,8 +1171,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     if (disposed) return;
                     pendingTextureCount--;
                     // 既に別タイル用へ差し替わっていれば自身を破棄
-                    if (textureRequestIds.get(mesh) !== texReqId
-                        || (typeof mesh.isDisposed === "function" && mesh.isDisposed())) {
+                    if (
+                        textureRequestIds.get(mesh) !== texReqId ||
+                        (typeof mesh.isDisposed === "function" &&
+                            mesh.isDisposed())
+                    ) {
                         tex.dispose();
                         return;
                     }
@@ -1083,11 +1213,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                         hiddenChildTiles.delete(tileKey);
                         mesh.setEnabled(true);
                     }
-                }
+                },
             );
 
             // UV補正（低zoomテクスチャ使用時）
-            const uv = computeTextureUvParams(coord.zoom, coord.x, coord.y, targetZoom);
+            const uv = computeTextureUvParams(
+                coord.zoom,
+                coord.x,
+                coord.y,
+                targetZoom,
+            );
             tex.uScale = uv.uScale;
             tex.vScale = uv.vScale;
             tex.uOffset = uv.uOffset;
@@ -1112,11 +1247,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * @param useFilled true なら filled（ステッチ＋NaN埋め済み）を優先して返す。
      *                  false なら raw elevation を返し、辺平均の対称性を保証する。
      */
-    const getNeighborElevations = (coord: TileCoord, useFilled = false): {
-        top?: Float32Array; bottom?: Float32Array;
-        left?: Float32Array; right?: Float32Array;
-        topLeft?: Float32Array; topRight?: Float32Array;
-        bottomLeft?: Float32Array; bottomRight?: Float32Array;
+    const getNeighborElevations = (
+        coord: TileCoord,
+        useFilled = false,
+    ): {
+        top?: Float32Array;
+        bottom?: Float32Array;
+        left?: Float32Array;
+        right?: Float32Array;
+        topLeft?: Float32Array;
+        topRight?: Float32Array;
+        bottomLeft?: Float32Array;
+        bottomRight?: Float32Array;
     } => {
         const { zoom: z, x, y } = coord;
         const get = (nx: number, ny: number): Float32Array | undefined => {
@@ -1153,13 +1295,21 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
      * 同 zoom の隣接タイルが存在する場合はその辺は対象外（同 zoom の縫い合わせに任せる）。
      */
     const getCoarseEdgeNeighbors = (coord: TileCoord): CoarseEdgeNeighbor[] => {
-        const isSameZoomVisible = (c: { zoom: number; x: number; y: number }): boolean => {
+        const isSameZoomVisible = (c: {
+            zoom: number;
+            x: number;
+            y: number;
+        }): boolean => {
             const k = toTileKey(c);
             // hiddenChildTiles に入っている同 zoom 隣接は実画面上は未描画 (親 pendingRelease を表示中)
             // のため、cross-level 探索を継続させる。
             return activeTiles.has(k) && !hiddenChildTiles.has(k);
         };
-        const lookupCoarse = (c: { zoom: number; x: number; y: number }): CoarseTileSource | undefined => {
+        const lookupCoarse = (c: {
+            zoom: number;
+            x: number;
+            y: number;
+        }): CoarseTileSource | undefined => {
             const k = toTileKey(c);
             // 優先: active な粗タイル（cache から elevation を取得）
             if (activeTiles.has(k)) {
@@ -1178,21 +1328,34 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (pending) {
                 const entry = cache.get(k);
                 return {
-                    elevation: entry?.filled ?? entry?.elevation ?? pending.filled ?? pending.elevation,
+                    elevation:
+                        entry?.filled ??
+                        entry?.elevation ??
+                        pending.filled ??
+                        pending.elevation,
                     wasAllNaN: entry?.wasAllNaN ?? pending.wasAllNaN,
                     unblocked: entry?.unblocked ?? pending.unblocked,
                 };
             }
             return undefined;
         };
-        return selectCoarseEdgeNeighbors(coord, minZoom, isSameZoomVisible, lookupCoarse);
+        return selectCoarseEdgeNeighbors(
+            coord,
+            minZoom,
+            isSameZoomVisible,
+            lookupCoarse,
+        );
     };
 
     /** Web Worker による標高 → 頂点 / 法線変換のオフロード用プール */
-    const elevationWorkerPool: ElevationWorkerPool = createElevationWorkerPool(2);
+    const elevationWorkerPool: ElevationWorkerPool =
+        createElevationWorkerPool(2);
 
     /** 補間済み標高データをメッシュ頂点・法線に反映する（Web Worker オフロード版） */
-    const applyElevationDataToMesh = async (mesh: Mesh, filled: Float32Array): Promise<void> => {
+    const applyElevationDataToMesh = async (
+        mesh: Mesh,
+        filled: Float32Array,
+    ): Promise<void> => {
         const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
         const idx = mesh.getIndices();
         if (!pos || !idx) return;
@@ -1201,7 +1364,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const typed = new Float32Array(pos);
         // indices を TypedArray にコピー（number[] / TypedArray いずれにも対応）
         let indices: Int32Array | Uint32Array | Uint16Array;
-        if (idx instanceof Int32Array || idx instanceof Uint32Array || idx instanceof Uint16Array) {
+        if (
+            idx instanceof Int32Array ||
+            idx instanceof Uint32Array ||
+            idx instanceof Uint16Array
+        ) {
             indices = new (idx.constructor as Int32ArrayConstructor)(idx);
         } else {
             indices = new Int32Array(idx as ArrayLike<number>);
@@ -1223,7 +1390,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         if (res.positions.length === 0) return;
         try {
             // mesh が disposed 済みの場合は何もしない（worker 待ち中に dispose されうる）
-            if (typeof mesh.isDisposed === "function" && mesh.isDisposed()) return;
+            if (typeof mesh.isDisposed === "function" && mesh.isDisposed())
+                return;
             mesh.updateVerticesData(VertexBuffer.PositionKind, res.positions);
             mesh.updateVerticesData(VertexBuffer.NormalKind, res.normals);
             mesh.refreshBoundingInfo();
@@ -1245,19 +1413,36 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         useFilled = false,
     ): { stitched: Float32Array; hasSeed: boolean } => {
         const stitched = new Float32Array(elevation);
-        stitchTileEdges(stitched, getNeighborElevations(coord, useFilled), TILE_SIZE);
+        stitchTileEdges(
+            stitched,
+            getNeighborElevations(coord, useFilled),
+            TILE_SIZE,
+        );
         if (crossLevel) {
             const coarse = getCoarseEdgeNeighbors(coord);
-            if (coarse.length > 0) stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
+            if (coarse.length > 0)
+                stitchTileEdgesCrossLevel(stitched, coarse, TILE_SIZE);
         }
 
         const last = TILE_SIZE - 1;
         let hasSeed = false;
         for (let i = 0; i < TILE_SIZE && !hasSeed; i++) {
-            if (!isInvalidElev(stitched[i])) { hasSeed = true; break; }
-            if (!isInvalidElev(stitched[last * TILE_SIZE + i])) { hasSeed = true; break; }
-            if (!isInvalidElev(stitched[i * TILE_SIZE])) { hasSeed = true; break; }
-            if (!isInvalidElev(stitched[i * TILE_SIZE + last])) { hasSeed = true; break; }
+            if (!isInvalidElev(stitched[i])) {
+                hasSeed = true;
+                break;
+            }
+            if (!isInvalidElev(stitched[last * TILE_SIZE + i])) {
+                hasSeed = true;
+                break;
+            }
+            if (!isInvalidElev(stitched[i * TILE_SIZE])) {
+                hasSeed = true;
+                break;
+            }
+            if (!isInvalidElev(stitched[i * TILE_SIZE + last])) {
+                hasSeed = true;
+                break;
+            }
         }
 
         return { stitched, hasSeed };
@@ -1279,7 +1464,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         //   stitchAndCheckSeed に常に crossLevel=true を渡し、近傍距離ゲートは撤廃する。
         // - all-NaN タイルは同 zoom 近傍からシードが得られない場合があるため、
         //   こちらも従来通り cross-level でシードを取りに行く（true なので包含）。
-        const { stitched, hasSeed } = stitchAndCheckSeed(elevation, coord, true);
+        const { stitched, hasSeed } = stitchAndCheckSeed(
+            elevation,
+            coord,
+            true,
+        );
 
         // NaN を埋める（BFS）
         // wasAllNaN でシードなしの場合、フロンティアが空で BFS は進まず
@@ -1297,9 +1486,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         // メッシュに適用:
         // - シードあり: 今回のステッチ結果を使用
         // - シードなし（wasAllNaN）: 旧 filled があれば維持（Y=0 凹み防止）
-        const meshData = (cacheEntryPre?.wasAllNaN && !hasSeed && cacheEntryPre.filled)
-            ? cacheEntryPre.filled
-            : stitched;
+        const meshData =
+            cacheEntryPre?.wasAllNaN && !hasSeed && cacheEntryPre.filled
+                ? cacheEntryPre.filled
+                : stitched;
         await applyElevationDataToMesh(mesh, meshData);
 
         // キャッシュ更新:
@@ -1333,7 +1523,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             const entry = cache.get(key);
             if (!entry) continue;
             promises.push(
-                applyStitchedElevation(neighborTile.mesh, entry.elevation, neighborTile.coord),
+                applyStitchedElevation(
+                    neighborTile.mesh,
+                    entry.elevation,
+                    neighborTile.coord,
+                ),
             );
         }
         pendingRestitch.clear();
@@ -1342,16 +1536,18 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             return;
         }
         restitchingCount++;
-        void Promise.all(promises).then(() => {
-            if (disposed) return;
-            restitchingCount--;
-            terrainUpdatedCallback?.();
-        }).catch(() => {
-            if (disposed) return;
-            restitchingCount--;
-            // Worker エラーや mesh dispose 時の reject は無視する。
-            // 再ステッチ失敗は致命的ではなく、次回のタイル更新で再試行される。
-        });
+        void Promise.all(promises)
+            .then(() => {
+                if (disposed) return;
+                restitchingCount--;
+                terrainUpdatedCallback?.();
+            })
+            .catch(() => {
+                if (disposed) return;
+                restitchingCount--;
+                // Worker エラーや mesh dispose 時の reject は無視する。
+                // 再ステッチ失敗は致命的ではなく、次回のタイル更新で再試行される。
+            });
     };
 
     /** 新タイルの隣接タイル（同zoom、アクティブなもの）を再ステッチキューに追加 */
@@ -1361,8 +1557,14 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         if (disposed) return;
         const { zoom: z, x, y } = coord;
         const deltas = [
-            [0, -1], [0, 1], [-1, 0], [1, 0],
-            [-1, -1], [1, -1], [-1, 1], [1, 1],
+            [0, -1],
+            [0, 1],
+            [-1, 0],
+            [1, 0],
+            [-1, -1],
+            [1, -1],
+            [-1, 1],
+            [1, 1],
         ];
         for (const [ddx, ddy] of deltas) {
             const neighborKey = toTileKey({ zoom: z, x: x + ddx, y: y + ddy });
@@ -1449,7 +1651,12 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
                 // wasAllNaN → 常に cross-level stitch を実行
                 // useFilled=true: 隣接 filled データからシードを取得しNaN領域を補間する
-                const { stitched, hasSeed } = stitchAndCheckSeed(entry.elevation, tile.coord, true, true);
+                const { stitched, hasSeed } = stitchAndCheckSeed(
+                    entry.elevation,
+                    tile.coord,
+                    true,
+                    true,
+                );
 
                 if (hasSeed) {
                     fillInvalidPixels(stitched, TILE_SIZE, TILE_SIZE);
@@ -1471,7 +1678,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             if (!resolvedInThisCall.has(key)) continue;
             const entry = cache.get(key);
             if (!entry?.filled) continue;
-            meshPromises.push(applyElevationDataToMesh(tile.mesh, entry.filled));
+            meshPromises.push(
+                applyElevationDataToMesh(tile.mesh, entry.filled),
+            );
             progressed = true;
         }
 
@@ -1479,7 +1688,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         const stillBlocked: Array<[TileKey, ActiveTile]> = [];
         for (const [key, tile] of allNanTiles) {
             const entry = cache.get(key);
-            if (entry?.wasAllNaN && !entry.unblocked) stillBlocked.push([key, tile]);
+            if (entry?.wasAllNaN && !entry.unblocked)
+                stillBlocked.push([key, tile]);
         }
         if (stillBlocked.length > 0) {
             // 解決済みタイルの代表標高（中央値近似: 平均）
@@ -1490,18 +1700,25 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                 if (!entry || (entry.wasAllNaN && !entry.unblocked)) continue;
                 const data = entry.filled ?? entry.elevation;
                 const v = data[(TILE_SIZE >> 1) * TILE_SIZE + (TILE_SIZE >> 1)];
-                if (!isInvalidElev(v)) { sum += v; count++; }
+                if (!isInvalidElev(v)) {
+                    sum += v;
+                    count++;
+                }
             }
             if (count > 0) {
                 const fallbackElev = sum / count;
                 for (const [, tile] of stillBlocked) {
                     const entry = cache.get(toTileKey(tile.coord));
                     if (!entry) continue;
-                    const filled = new Float32Array(TILE_SIZE * TILE_SIZE).fill(fallbackElev);
+                    const filled = new Float32Array(TILE_SIZE * TILE_SIZE).fill(
+                        fallbackElev,
+                    );
                     entry.filled = filled;
                     entry.unblocked = true;
                     entry.isRescue = true;
-                    meshPromises.push(applyElevationDataToMesh(tile.mesh, filled));
+                    meshPromises.push(
+                        applyElevationDataToMesh(tile.mesh, filled),
+                    );
                 }
                 progressed = true;
             }
@@ -1550,10 +1767,16 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // cache が LRU 退避済みの pendingRelease タイルは PendingReleaseTile に保持した
             // elevation/filled をフォールバックとして使う。
             const cacheEntry = cache.get(key);
-            const pendingEntry = cacheEntry ? undefined : pendingRelease.get(key);
+            const pendingEntry = cacheEntry
+                ? undefined
+                : pendingRelease.get(key);
             if (!cacheEntry && !pendingEntry) continue;
-            const wasAllNaN = cacheEntry ? cacheEntry.wasAllNaN : pendingEntry!.wasAllNaN;
-            const unblocked = cacheEntry ? cacheEntry.unblocked : pendingEntry!.unblocked;
+            const wasAllNaN = cacheEntry
+                ? cacheEntry.wasAllNaN
+                : pendingEntry!.wasAllNaN;
+            const unblocked = cacheEntry
+                ? cacheEntry.unblocked
+                : pendingEntry!.unblocked;
             // まだ解決できていない all-NaN タイルはスキップ
             if (wasAllNaN && !unblocked) continue;
             const data = cacheEntry
@@ -1602,7 +1825,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     /** 可視タイルを算出する共通ヘルパー */
     const computeVisible = (
         frustumPlanes: FrustumPlane[],
-        maxElevation: number
+        maxElevation: number,
     ): LodTileEntry[] => {
         if (!currentCenter) return [];
         const engine = scene.getEngine();
@@ -1635,7 +1858,9 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         /** true: Follow モード用スロットリング（低並列度 + フレーム yield） */
         followMode = false,
     ): Promise<void> => {
-        const visibleKeys = new Set(visibleEntries.map((e) => toTileKey(e.coord)));
+        const visibleKeys = new Set(
+            visibleEntries.map((e) => toTileKey(e.coord)),
+        );
         currentVisibleKeys = visibleKeys;
 
         // 可視タイルの全祖先キーを事前構築（hasZoomRelation の子孫判定を O(1) 化）
@@ -1643,11 +1868,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         for (const entry of visibleEntries) {
             for (let az = entry.coord.zoom - 1; az >= minZoom; az--) {
                 const diff = entry.coord.zoom - az;
-                visibleAncestorKeys.add(toTileKey({
-                    zoom: az,
-                    x: entry.coord.x >> diff,
-                    y: entry.coord.y >> diff,
-                }));
+                visibleAncestorKeys.add(
+                    toTileKey({
+                        zoom: az,
+                        x: entry.coord.x >> diff,
+                        y: entry.coord.y >> diff,
+                    }),
+                );
             }
         }
         currentVisibleAncestorKeys = visibleAncestorKeys;
@@ -1662,7 +1889,11 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // 祖先チェック: coord の祖先が visibleKeys に含まれるか
             for (let az = coord.zoom - 1; az >= minZoom; az--) {
                 const diff = coord.zoom - az;
-                const ak = toTileKey({ zoom: az, x: coord.x >> diff, y: coord.y >> diff });
+                const ak = toTileKey({
+                    zoom: az,
+                    x: coord.x >> diff,
+                    y: coord.y >> diff,
+                });
                 if (visibleKeys.has(ak)) return true;
             }
             // 子孫チェック: coord が可視タイルの祖先か（事前構築セットで O(1) 判定）
@@ -1707,7 +1938,10 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
                     }
                 } else {
                     // 横パン外 or hiddenChildTiles タイル: 即座にメッシュ解放
-                    textureRequestIds.set(tile.mesh, (textureRequestIds.get(tile.mesh) ?? 0) + 1);
+                    textureRequestIds.set(
+                        tile.mesh,
+                        (textureRequestIds.get(tile.mesh) ?? 0) + 1,
+                    );
                     meshPool.release(tile.mesh);
                 }
                 activeTiles.delete(key);
@@ -1748,7 +1982,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         // 新規タイルのみロード
         const toLoad = visibleEntries.filter(
-            (e) => !activeTiles.has(toTileKey(e.coord))
+            (e) => !activeTiles.has(toTileKey(e.coord)),
         );
 
         if (toLoad.length > 0) {
@@ -1775,7 +2009,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
     const refresh = async (
         lat: number,
         lon: number,
-        altitudeOffset: number
+        altitudeOffset: number,
     ): Promise<void> => {
         const rid = ++requestId;
 
@@ -1814,7 +2048,7 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
         async setCenter(
             lat: number,
             lon: number,
-            altitudeOffset = 0
+            altitudeOffset = 0,
         ): Promise<void> {
             await refresh(lat, lon, altitudeOffset);
         },
@@ -1830,7 +2064,8 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
             const center = toTileXY(lat, lon, zoom);
             // 中心タイルが変わった場合のみ reposition する
-            const needsReposition = !currentCenter ||
+            const needsReposition =
+                !currentCenter ||
                 currentCenter.x !== center.x ||
                 currentCenter.y !== center.y;
             currentCenter = { zoom, x: center.x, y: center.y };
@@ -1859,7 +2094,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // Follow パスでは中心タイルが変わっても各タイルの世界座標上の地形は
             // 不変なので、 elevation の再 apply はスキップして position/scaling
             // のみ更新する（フル再ステッチが毎秒走るとフラッシュ感の原因になる）。
-            await applyVisibleTiles(visibleEntries, rid, needsReposition, true, true);
+            await applyVisibleTiles(
+                visibleEntries,
+                rid,
+                needsReposition,
+                true,
+                true,
+            );
         },
 
         setMapType(mapType: MapType): void {
@@ -2002,13 +2243,15 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
 
         /** テスト用: タイルロード完了かつ debounce 待機なし かつ texture 適用完了 かつ 再ステッチ完了 */
         get isIdle(): boolean {
-            return loadingCount === 0
-                && debounceTimer === null
-                && textureJobQueue.length === 0
-                && pendingTextureCount === 0
-                && restitchRafId === null
-                && restitchTimerId === null
-                && restitchingCount === 0;
+            return (
+                loadingCount === 0 &&
+                debounceTimer === null &&
+                textureJobQueue.length === 0 &&
+                pendingTextureCount === 0 &&
+                restitchRafId === null &&
+                restitchTimerId === null &&
+                restitchingCount === 0
+            );
         },
 
         set onStatusChange(cb: ((status: string) => void) | null) {

@@ -15,9 +15,16 @@
  * 波状ステッチ（`stitchTileEdges` による反復補間）までは行わず、粗ズーム祖先への
  * 段階的フォールバックのみを簡略実装する。
  */
-import { TILE_SIZE, toTileXY, loadElevationTile, isAllNaN, fillInvalidPixels } from "../gsiTile";
-import { totalPixelsForZoom, latLonToPixel } from "../geo/mapping";
+
 import { sampleElevBilinear } from "../geo/elevSample";
+import { latLonToPixel, totalPixelsForZoom } from "../geo/mapping";
+import {
+    fillInvalidPixels,
+    isAllNaN,
+    loadElevationTile,
+    TILE_SIZE,
+    toTileXY,
+} from "../gsiTile";
 
 /** 標高取得対象の1点（lat/lon のみを要求。他フィールドは無視）。 */
 export interface DioramaElevationPoint {
@@ -101,7 +108,9 @@ const resolveTileElevation = async (
 /** ズームレベルが0以上の整数であることを検証する（非整数/負数はtoTileXY/totalPixelsForZoomを不正な計算に導くため）。 */
 const assertValidZoom = (zoom: number): void => {
     if (!(Number.isInteger(zoom) && zoom >= 0)) {
-        throw new RangeError(`zoom must be a non-negative integer (got ${zoom})`);
+        throw new RangeError(
+            `zoom must be a non-negative integer (got ${zoom})`,
+        );
     }
 };
 
@@ -113,7 +122,9 @@ const assertValidZoom = (zoom: number): void => {
 const assertFinitePoints = (points: readonly DioramaElevationPoint[]): void => {
     for (const p of points) {
         if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) {
-            throw new RangeError(`point.lat/lon must be finite (got lat=${p.lat}, lon=${p.lon})`);
+            throw new RangeError(
+                `point.lat/lon must be finite (got lat=${p.lat}, lon=${p.lon})`,
+            );
         }
     }
 };
@@ -157,11 +168,14 @@ export const fetchDioramaElevations = async (
         // 粗ズームへフォールバックした場合、対応するピクセル座標は元の要求ズームではなく
         // 実際に使用した resolved.zoom/x/y 側で計算する必要がある。
         const effectiveTotalPixels = totalPixelsForZoom(resolved.zoom);
-        const { px: globalPx, py: globalPy } = latLonToPixel(p.lat, p.lon, effectiveTotalPixels);
+        const { px: globalPx, py: globalPy } = latLonToPixel(
+            p.lat,
+            p.lon,
+            effectiveTotalPixels,
+        );
         const localPx = globalPx - resolved.x * TILE_SIZE;
         const localPy = globalPy - resolved.y * TILE_SIZE;
         elevations[i] = sampleElevBilinear(resolved.elev, localPx, localPy);
     }
     return elevations;
 };
-

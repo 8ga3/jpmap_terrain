@@ -60,8 +60,8 @@ const buildDemoPolygons = (): readonly DemoPolygonDef[] => [
             points: [
                 { lat: 35.6225, lon: 139.5066, altitude: 100 },
                 { lat: 35.6261, lon: 139.5066, altitude: 100 },
-                { lat: 35.6261, lon: 139.5110, altitude: 100 },
-                { lat: 35.6225, lon: 139.5110, altitude: 100 },
+                { lat: 35.6261, lon: 139.511, altitude: 100 },
+                { lat: 35.6225, lon: 139.511, altitude: 100 },
             ],
             altitudeMode: "terrain",
             labels: ["NW +100m", "NE +100m", "SE +100m", "SW +100m"],
@@ -246,10 +246,7 @@ const buildControls = (
             const handle = viewer.getPolygon(editTargetId);
             if (!handle) return;
             if (handle.points.length <= 2) return;
-            viewer.removePolygonPoint(
-                editTargetId,
-                handle.points.length - 1,
-            );
+            viewer.removePolygonPoint(editTargetId, handle.points.length - 1);
         }),
     );
     container.appendChild(
@@ -258,7 +255,7 @@ const buildControls = (
             const handle = viewer.getPolygon(editTargetId);
             if (!handle || handle.points.length === 0) return;
             updateCounter++;
-            const altitude = 500 + ((updateCounter % 4) * 80);
+            const altitude = 500 + (updateCounter % 4) * 80;
             viewer.updatePolygonPoint(editTargetId, 0, {
                 altitude,
                 label: `upd${updateCounter}`,
@@ -275,8 +272,8 @@ const buildControls = (
             const next = replaceToggle
                 ? [
                       { lat: 35.6235, lon: 139.5195, altitude },
-                      { lat: 35.6260, lon: 139.5195, altitude },
-                      { lat: 35.6260, lon: 139.5230, altitude },
+                      { lat: 35.626, lon: 139.5195, altitude },
+                      { lat: 35.626, lon: 139.523, altitude },
                   ]
                 : [
                       { lat: 35.6235, lon: 139.5195, altitude },
