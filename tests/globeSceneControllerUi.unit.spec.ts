@@ -41,7 +41,11 @@ const makeObservable = <T extends () => void>(): ObservableStub<T> => {
             cbs.add(cb);
             return cb;
         },
-        fire: () => cbs.forEach((cb) => cb()),
+        fire: () => {
+            cbs.forEach((cb) => {
+                cb();
+            });
+        },
     };
 };
 
@@ -141,8 +145,8 @@ describe("globe UI コントロールパネル配線", () => {
         const m = /rotate\((-?\d+(?:\.\d+)?)deg\)/.exec(
             compass.style.transform,
         );
-        expect(m).not.toBeNull();
-        const deg = Number(m![1]);
+        if (m === null) throw new Error("unreachable");
+        const deg = Number(m[1]);
         // 0.1 度刻みに丸められている（deg*10 が整数）。
         expect(Number.isInteger(Math.round(deg * 10))).toBe(true);
         expect(deg * 10).toBeCloseTo(Math.round(deg * 10), 9);
@@ -281,14 +285,19 @@ describe("globe UI コントロールパネル配線", () => {
         expect(locateMe).not.toBeNull();
         locateMe.dispatchEvent(new Event("click"));
         expect(successCb).not.toBeNull();
+        expect(errorCb).not.toBeNull();
+        // クロージャ内代入のため TS の control-flow narrowing が効かず、
+        // 明示的な型アサーションで非 null を保証する。
+        const success = successCb as unknown as (p: unknown) => void;
+        const error = errorCb as unknown as (e: unknown) => void;
 
         const centerBefore = { ...camera.center };
         c.dispose();
         // dispose 後に成功コールバックが返っても camera.center を更新しない。
-        successCb!({ coords: { latitude: 36, longitude: 140 } });
+        success({ coords: { latitude: 36, longitude: 140 } });
         expect(camera.center).toEqual(centerBefore);
         // error コールバックも例外なく早期 return する。
-        expect(() => errorCb!({ message: "denied" })).not.toThrow();
+        expect(() => error({ message: "denied" })).not.toThrow();
     });
 });
 

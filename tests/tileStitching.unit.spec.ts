@@ -491,9 +491,9 @@ describe("selectCoarseEdgeNeighbors", () => {
         expect(calls).toContainEqual({ zoom: 13, x: 7273, y: 3224 });
         // 少なくとも top 方向で粗タイルが見つかる
         const top = result.find((r) => r.direction === "top");
-        expect(top).toBeDefined();
-        expect(top!.elevation).toBe(coarseElev);
-        expect(top!.scale).toBe(2);
+        if (top === undefined) throw new Error("unreachable");
+        expect(top.elevation).toBe(coarseElev);
+        expect(top.scale).toBe(2);
     });
 
     it("pendingRelease 相当の粗タイルソースもクロスレベル候補として参照できる", () => {
@@ -512,8 +512,8 @@ describe("selectCoarseEdgeNeighbors", () => {
             },
         );
         const top = result.find((r) => r.direction === "top");
-        expect(top).toBeDefined();
-        expect(top!.elevation).toBe(pendingElev);
+        if (top === undefined) throw new Error("unreachable");
+        expect(top.elevation).toBe(pendingElev);
     });
 
     it("wasAllNaN && !unblocked の粗タイルは候補から除外される", () => {
@@ -550,8 +550,8 @@ describe("selectCoarseEdgeNeighbors", () => {
             },
         );
         const top = result.find((r) => r.direction === "top");
-        expect(top).toBeDefined();
-        expect(top!.elevation).toBe(elev);
+        if (top === undefined) throw new Error("unreachable");
+        expect(top.elevation).toBe(elev);
     });
 
     it("lookupCoarse が全て undefined なら結果は空", () => {

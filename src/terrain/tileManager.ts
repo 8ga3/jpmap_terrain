@@ -1767,21 +1767,13 @@ export const createTileManager = (opts: TileManagerOptions): TileManager => {
             // cache が LRU 退避済みの pendingRelease タイルは PendingReleaseTile に保持した
             // elevation/filled をフォールバックとして使う。
             const cacheEntry = cache.get(key);
-            const pendingEntry = cacheEntry
-                ? undefined
-                : pendingRelease.get(key);
-            if (!cacheEntry && !pendingEntry) continue;
-            const wasAllNaN = cacheEntry
-                ? cacheEntry.wasAllNaN
-                : pendingEntry!.wasAllNaN;
-            const unblocked = cacheEntry
-                ? cacheEntry.unblocked
-                : pendingEntry!.unblocked;
+            const entry = cacheEntry ?? pendingRelease.get(key);
+            if (!entry) continue;
+            const wasAllNaN = entry.wasAllNaN;
+            const unblocked = entry.unblocked;
             // まだ解決できていない all-NaN タイルはスキップ
             if (wasAllNaN && !unblocked) continue;
-            const data = cacheEntry
-                ? (cacheEntry.filled ?? cacheEntry.elevation)
-                : (pendingEntry!.filled ?? pendingEntry!.elevation);
+            const data = entry.filled ?? entry.elevation;
             const fx = tileXFloat - tileXInt;
             const fy = tileYFloat - tileYInt;
 

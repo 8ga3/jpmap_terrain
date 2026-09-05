@@ -321,7 +321,9 @@ export const trackControllerSticks = (
     return () => {
         xr.input.onControllerAddedObservable.remove(addedObserver);
         xr.input.onControllerRemovedObservable.remove(removedObserver);
-        controllerCleanups.forEach((cleanup) => cleanup());
+        controllerCleanups.forEach((cleanup) => {
+            cleanup();
+        });
         controllerCleanups.clear();
     };
 };
@@ -458,7 +460,9 @@ export const trackControllerButtonPresses = (
     return () => {
         xr.input.onControllerAddedObservable.remove(addedObserver);
         xr.input.onControllerRemovedObservable.remove(removedObserver);
-        controllerCleanups.forEach((cleanup) => cleanup());
+        controllerCleanups.forEach((cleanup) => {
+            cleanup();
+        });
         controllerCleanups.clear();
     };
 };

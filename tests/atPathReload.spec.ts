@@ -62,9 +62,9 @@ for (const target of targets) {
         await expect(canvas).toBeVisible({ timeout: 30000 });
 
         const box = await canvas.boundingBox();
-        expect(box).not.toBeNull();
-        expect(box!.width).toBeGreaterThan(0);
-        expect(box!.height).toBeGreaterThan(0);
+        if (box === null) throw new Error("unreachable");
+        expect(box.width).toBeGreaterThan(0);
+        expect(box.height).toBeGreaterThan(0);
 
         // シーン起動完了を待つ（`src/demos/{viewer,timelapse}/index.ts` で
         // NODE_ENV!=='production' 時に `window.scene` を公開している）。

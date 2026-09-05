@@ -25,7 +25,7 @@ const makeEngine = (): NullEngine =>
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
-    while (teardowns.length) teardowns.pop()!();
+    while (teardowns.length) teardowns.pop()?.();
 });
 
 describe("routeLine - ribbon の頂点カラーバッファ整合性", () => {
@@ -52,16 +52,16 @@ describe("routeLine - ribbon の頂点カラーバッファ整合性", () => {
         );
 
         const ribbon = scene.getMeshByName("flightRouteRibbon");
-        expect(ribbon).not.toBeNull();
+        if (ribbon === null) throw new Error("unreachable");
 
-        const totalVertices = ribbon!.getTotalVertices();
-        const colors = ribbon!.getVerticesData(VertexBuffer.ColorKind);
-        expect(colors).not.toBeNull();
+        const totalVertices = ribbon.getTotalVertices();
+        const colors = ribbon.getVerticesData(VertexBuffer.ColorKind);
+        if (colors === null) throw new Error("unreachable");
         // color は 1 頂点あたり 4 要素（RGBA）。総頂点数 × 4 と一致すること。
-        expect(colors!.length).toBe(totalVertices * 4);
+        expect(colors.length).toBe(totalVertices * 4);
 
         // 末尾付近の頂点にも色（アルファ含む）が書き込まれていること（未着色=全0でない）。
-        const tail = colors!.slice(colors!.length - 8);
+        const tail = colors.slice(colors.length - 8);
         expect(tail.some((v) => v !== 0)).toBe(true);
     });
 });

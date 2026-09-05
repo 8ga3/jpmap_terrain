@@ -25,7 +25,7 @@ const makeEngine = (): NullEngine =>
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
-    while (teardowns.length) teardowns.pop()!();
+    while (teardowns.length) teardowns.pop()?.();
 });
 
 const makeNode = (): { node: TransformNode; scene: Scene } => {

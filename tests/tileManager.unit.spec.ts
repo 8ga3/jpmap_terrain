@@ -3,6 +3,7 @@
  * Babylon.js 依存をモックし、TileManager のロジックを検証する。
  */
 
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import {
     afterEach,
     beforeEach,
@@ -253,7 +254,7 @@ const createMockCamera = () => {
             remove: vi.fn(),
         },
         _observers: observers,
-    } as never;
+    } as unknown as ArcRotateCamera;
 };
 
 /** scene モック。getEngine は getRenderHeight を返す。 */
@@ -328,15 +329,11 @@ describe("createTileManager", () => {
 
         // attachCamera でオブザーバが追加される
         tm.attachCamera();
-        expect(
-            (camera as any).onViewMatrixChangedObservable.add,
-        ).toHaveBeenCalled();
+        expect(camera.onViewMatrixChangedObservable.add).toHaveBeenCalled();
 
         // detachCamera でオブザーバが削除される
         tm.detachCamera();
-        expect(
-            (camera as any).onViewMatrixChangedObservable.remove,
-        ).toHaveBeenCalled();
+        expect(camera.onViewMatrixChangedObservable.remove).toHaveBeenCalled();
     });
 });
 
@@ -510,8 +507,9 @@ describe("LOD連携", () => {
 
     it("カメラ位置が近いと高 zoom タイルがロードされる", async () => {
         // カメラ近距離: position (0,500,0) vs target (0,0,0) → D ≈ 500
-        const cameraNear = createMockCamera();
-        (cameraNear as any).position = { x: 0, y: 500, z: 0 };
+        const cameraNear = Object.assign(createMockCamera(), {
+            position: { x: 0, y: 500, z: 0 },
+        });
 
         const tmNear = createTileManager({
             scene: createMockScene() as never,
@@ -537,8 +535,9 @@ describe("LOD連携", () => {
         // カメラ遠距離: y を十分大きく取り、zoom12 root で SSE が既定しきい値を下回るようにする。
         // zoom12 tileSize ≈ 10000m (Tokyo 緯度補正後)、viewportH 1080、FOV π/3 の場合
         // D ≈ 2_000_000 なら SSE ≈ 5（<<400）で root 採用となる。
-        const cameraFar = createMockCamera();
-        (cameraFar as any).position = { x: 0, y: 2_000_000, z: 0 };
+        const cameraFar = Object.assign(createMockCamera(), {
+            position: { x: 0, y: 2_000_000, z: 0 },
+        });
 
         const tmFar = createTileManager({
             scene: createMockScene() as never,
@@ -908,9 +907,10 @@ describe("queryElevationAtWorld", () => {
      */
     const createNearCamera = () => {
         const cam = createMockCamera();
-        (cam as any).radius = 500;
-        (cam as any).position = { x: 0, y: 500, z: 0 };
-        return cam;
+        return Object.assign(cam, {
+            radius: 500,
+            position: { x: 0, y: 500, z: 0 },
+        });
     };
 
     it("setCenter前はnullを返す", () => {
@@ -1308,10 +1308,11 @@ describe("queryElevationAtWorld", () => {
             return Promise.resolve(elevData);
         });
 
-        const camera = createNearCamera();
         // radius を小さくして zoom18 のタイルがロードされるようにする
-        (camera as any).radius = 50;
-        (camera as any).position = { x: 0, y: 50, z: 0 };
+        const camera = Object.assign(createNearCamera(), {
+            radius: 50,
+            position: { x: 0, y: 50, z: 0 },
+        });
         const tm = createTileManager({
             scene: createMockScene() as never,
             camera,
@@ -1358,9 +1359,10 @@ describe("Quadtree + SSE によるタイル選定", () => {
             Promise.resolve(highElev),
         );
 
-        const cameraHigh = createMockCamera();
-        (cameraHigh as any).radius = 8000;
-        (cameraHigh as any).beta = Math.PI / 3;
+        const cameraHigh = Object.assign(createMockCamera(), {
+            radius: 8000,
+            beta: Math.PI / 3,
+        });
 
         const tmHigh = createTileManager({
             scene: createMockScene() as never,
@@ -1387,9 +1389,10 @@ describe("Quadtree + SSE によるタイル選定", () => {
             Promise.resolve(new Float32Array(256 * 256)),
         );
 
-        const cameraLow = createMockCamera();
-        (cameraLow as any).radius = 8000;
-        (cameraLow as any).beta = Math.PI / 3;
+        const cameraLow = Object.assign(createMockCamera(), {
+            radius: 8000,
+            beta: Math.PI / 3,
+        });
 
         const tmLow = createTileManager({
             scene: createMockScene() as never,
@@ -1418,8 +1421,7 @@ describe("Quadtree + SSE によるタイル選定", () => {
     });
 
     it("標高データ未キャッシュでもタイルがロードされる", async () => {
-        const camera = createMockCamera();
-        (camera as any).radius = 4000;
+        const camera = Object.assign(createMockCamera(), { radius: 4000 });
 
         const tm = createTileManager({
             scene: createMockScene() as never,
@@ -1450,9 +1452,10 @@ describe("Quadtree + SSE によるタイル選定", () => {
             Promise.resolve(extremeElev),
         );
 
-        const camera = createMockCamera();
-        (camera as any).radius = 8000;
-        (camera as any).beta = Math.PI / 3;
+        const camera = Object.assign(createMockCamera(), {
+            radius: 8000,
+            beta: Math.PI / 3,
+        });
 
         const tm = createTileManager({
             scene: createMockScene() as never,
@@ -1484,9 +1487,10 @@ describe("Quadtree + SSE によるタイル選定", () => {
         );
 
         const runWithBeta = async (beta: number): Promise<number> => {
-            const camera = createMockCamera();
-            (camera as any).radius = 8000;
-            (camera as any).beta = beta;
+            const camera = Object.assign(createMockCamera(), {
+                radius: 8000,
+                beta,
+            });
             const tm = createTileManager({
                 scene: createMockScene() as never,
                 camera,
@@ -1793,16 +1797,16 @@ describe("同zoom タイル間ステッチの対称性", () => {
         const aRightEdge = tm.queryElevationAtWorld(499, -4);
         const bLeftEdge = tm.queryElevationAtWorld(500, -4);
 
-        expect(aRightEdge).not.toBeNull();
-        expect(bLeftEdge).not.toBeNull();
+        if (aRightEdge === null) throw new Error("unreachable");
+        if (bLeftEdge === null) throw new Error("unreachable");
         // バイリニア補間により、ステッチ値(150)と内部ピクセル(100/200)の加重平均となる。
         // ステッチが機能していれば境界付近の値は 100〜200 の間に収まる。
         // ステッチなしの場合: tile A 右辺 = 100, tile B 左辺 = 200（不連続）
         // ステッチありの場合: 両辺ともステッチ値150が含まれ 100〜200 の中間に近づく
-        expect(aRightEdge!).toBeGreaterThan(100); // 150 が混入して 100 より大きい
-        expect(aRightEdge!).toBeLessThanOrEqual(150);
-        expect(bLeftEdge!).toBeGreaterThanOrEqual(100);
-        expect(bLeftEdge!).toBeLessThan(200); // 150 が混入して 200 より小さい
+        expect(aRightEdge).toBeGreaterThan(100); // 150 が混入して 100 より大きい
+        expect(aRightEdge).toBeLessThanOrEqual(150);
+        expect(bLeftEdge).toBeGreaterThanOrEqual(100);
+        expect(bLeftEdge).toBeLessThan(200); // 150 が混入して 200 より小さい
 
         tm.dispose();
     });
@@ -1979,7 +1983,9 @@ describe("LOD遷移時の遅延解放", () => {
             // zoom=12 祖先タイルの Texture onLoad を手動発火
             // checkAndReleaseCoveredTiles が pendingRelease の zoom=14 タイル（子孫）を解放する
             const onLoadsToFire = [...capturedTextureOnLoads];
-            onLoadsToFire.forEach((cb) => cb());
+            onLoadsToFire.forEach((cb) => {
+                cb();
+            });
 
             expect(tm.pendingReleaseCount).toBe(0);
 

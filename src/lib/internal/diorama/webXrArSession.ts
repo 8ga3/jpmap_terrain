@@ -325,8 +325,8 @@ export const createDioramaArSessionController = (
     };
 
     const exit = (): Promise<void> => {
-        if (!isActive()) return Promise.resolve();
-        return xr!.baseExperience.exitXRAsync();
+        if (!isActive() || xr === null) return Promise.resolve();
+        return xr.baseExperience.exitXRAsync();
     };
 
     return {
