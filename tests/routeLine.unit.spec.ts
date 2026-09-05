@@ -52,10 +52,12 @@ describe("routeLine - ribbon の頂点カラーバッファ整合性", () => {
         );
 
         const ribbon = scene.getMeshByName("flightRouteRibbon");
+        expect(ribbon).not.toBeNull();
         if (ribbon === null) throw new Error("unreachable");
 
         const totalVertices = ribbon.getTotalVertices();
         const colors = ribbon.getVerticesData(VertexBuffer.ColorKind);
+        expect(colors).not.toBeNull();
         if (colors === null) throw new Error("unreachable");
         // color は 1 頂点あたり 4 要素（RGBA）。総頂点数 × 4 と一致すること。
         expect(colors.length).toBe(totalVertices * 4);

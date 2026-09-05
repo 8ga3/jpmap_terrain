@@ -491,7 +491,10 @@ describe("selectCoarseEdgeNeighbors", () => {
         expect(calls).toContainEqual({ zoom: 13, x: 7273, y: 3224 });
         // 少なくとも top 方向で粗タイルが見つかる
         const top = result.find((r) => r.direction === "top");
-        if (top === undefined) throw new Error("unreachable");
+        expect(top).toBeDefined();
+        if (top === undefined) {
+            throw new Error("top方向の粗タイルが見つからない");
+        }
         expect(top.elevation).toBe(coarseElev);
         expect(top.scale).toBe(2);
     });
@@ -512,7 +515,10 @@ describe("selectCoarseEdgeNeighbors", () => {
             },
         );
         const top = result.find((r) => r.direction === "top");
-        if (top === undefined) throw new Error("unreachable");
+        expect(top).toBeDefined();
+        if (top === undefined) {
+            throw new Error("top方向の粗タイルが見つからない");
+        }
         expect(top.elevation).toBe(pendingElev);
     });
 
@@ -550,7 +556,10 @@ describe("selectCoarseEdgeNeighbors", () => {
             },
         );
         const top = result.find((r) => r.direction === "top");
-        if (top === undefined) throw new Error("unreachable");
+        expect(top).toBeDefined();
+        if (top === undefined) {
+            throw new Error("top方向の粗タイルが見つからない");
+        }
         expect(top.elevation).toBe(elev);
     });
 

@@ -62,6 +62,7 @@ for (const target of targets) {
         await expect(canvas).toBeVisible({ timeout: 30000 });
 
         const box = await canvas.boundingBox();
+        expect(box).not.toBeNull();
         if (box === null) throw new Error("unreachable");
         expect(box.width).toBeGreaterThan(0);
         expect(box.height).toBeGreaterThan(0);

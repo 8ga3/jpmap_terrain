@@ -1471,6 +1471,7 @@ describe("JpmapTerrain (skeleton)", () => {
             await create(mount);
 
             const canvas = mount.querySelector("canvas");
+            expect(canvas).not.toBeNull();
             if (canvas === null) throw new Error("unreachable");
             expect(canvas.id).toBe("");
         });
@@ -1480,6 +1481,7 @@ describe("JpmapTerrain (skeleton)", () => {
             await create(mount);
 
             const canvas = mount.querySelector("canvas");
+            expect(canvas).not.toBeNull();
             if (canvas === null) throw new Error("unreachable");
             const ev = new Event("touchmove", {
                 bubbles: true,
@@ -1495,6 +1497,7 @@ describe("JpmapTerrain (skeleton)", () => {
             await create(mount);
 
             const canvas = mount.querySelector("canvas");
+            expect(canvas).not.toBeNull();
             if (canvas === null) throw new Error("unreachable");
             const pinch = new Event("wheel", {
                 bubbles: true,
@@ -2484,10 +2487,12 @@ describe("JpmapTerrain (skeleton)", () => {
                 });
                 const first = viewer.dateTime;
                 expect(first).toBeInstanceOf(Date);
+                expect(first).not.toBeNull();
                 if (first === null) throw new Error("unreachable");
                 vi.advanceTimersByTime(60_000);
                 const second = viewer.dateTime;
                 expect(second).toBeInstanceOf(Date);
+                expect(second).not.toBeNull();
                 if (second === null) throw new Error("unreachable");
                 expect(second.getTime()).toBeGreaterThanOrEqual(
                     first.getTime(),
