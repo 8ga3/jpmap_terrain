@@ -319,17 +319,11 @@ const start = async (): Promise<void> => {
     };
 
     // --- UI 要素取得 ---
-    const angleSlider = document.getElementById(
-        "angle-slider",
-    ) as HTMLInputElement;
+    const angleSlider = requireElement("angle-slider") as HTMLInputElement;
     const angleValue = requireElement("angle-value");
-    const headingSlider = document.getElementById(
-        "heading-slider",
-    ) as HTMLInputElement;
+    const headingSlider = requireElement("heading-slider") as HTMLInputElement;
     const headingValue = requireElement("heading-value");
-    const powderSlider = document.getElementById(
-        "powder-slider",
-    ) as HTMLInputElement;
+    const powderSlider = requireElement("powder-slider") as HTMLInputElement;
     const powderValue = requireElement("powder-value");
     const fireBtn = requireElement("fire-btn");
     const restartBtn = requireElement("restart-btn");
