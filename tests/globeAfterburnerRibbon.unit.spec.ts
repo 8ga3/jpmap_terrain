@@ -59,9 +59,11 @@ describe("globeAfterburner - トレイルの頂点カラーバッファ整合性
             "globe-afterburner-right",
         ]) {
             const mesh = scene.getMeshByName(name);
+            expect(mesh).not.toBeNull();
             if (mesh === null) throw new Error("unreachable");
             const totalVertices = mesh.getTotalVertices();
             const colors = mesh.getVerticesData(VertexBuffer.ColorKind);
+            expect(colors).not.toBeNull();
             if (colors === null) throw new Error("unreachable");
             expect(colors.length).toBe(totalVertices * 4);
             // 先端付近（バッファ末尾）に色が書き込まれていること。

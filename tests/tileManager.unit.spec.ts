@@ -1797,7 +1797,9 @@ describe("同zoom タイル間ステッチの対称性", () => {
         const aRightEdge = tm.queryElevationAtWorld(499, -4);
         const bLeftEdge = tm.queryElevationAtWorld(500, -4);
 
+        expect(aRightEdge).not.toBeNull();
         if (aRightEdge === null) throw new Error("unreachable");
+        expect(bLeftEdge).not.toBeNull();
         if (bLeftEdge === null) throw new Error("unreachable");
         // バイリニア補間により、ステッチ値(150)と内部ピクセル(100/200)の加重平均となる。
         // ステッチが機能していれば境界付近の値は 100〜200 の間に収まる。

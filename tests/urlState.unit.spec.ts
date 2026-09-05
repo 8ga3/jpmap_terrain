@@ -63,6 +63,7 @@ describe("urlState", () => {
 
         it("未指定（lib 既定 globe）では JAPAN_BOUNDS でクランプされない", () => {
             const result = parseLatLonFromUrl("http://localhost/@50.0,100.0");
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.lat).toBe(50.0);
             expect(result.lon).toBe(100.0);
@@ -70,6 +71,7 @@ describe("urlState", () => {
 
         it("WORLD_BOUNDS を超える緯度が ±90 にクランプされる", () => {
             const result = parseLatLonFromUrl("http://localhost/@120.0,139.0");
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.lat).toBe(90);
             expect(result.lon).toBe(139.0);
@@ -77,6 +79,7 @@ describe("urlState", () => {
 
         it("WORLD_BOUNDS を超える経度が ±180 にクランプされる", () => {
             const result = parseLatLonFromUrl("http://localhost/@35.0,200.0");
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.lon).toBe(180);
         });
@@ -407,18 +410,21 @@ describe("urlState", () => {
             const tooHigh = parseCameraStateFromUrl(
                 `http://localhost/@35.0,139.0,${CAMERA_URL_LIMITS.altitude.max + 1},0,45`,
             );
+            expect(tooHigh).not.toBeNull();
             if (tooHigh === null) throw new Error("unreachable");
             expect(tooHigh.altitude).toBe(CAMERA_URL_LIMITS.altitude.max);
 
             const tooLow = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,10,0,45",
             );
+            expect(tooLow).not.toBeNull();
             if (tooLow === null) throw new Error("unreachable");
             expect(tooLow.altitude).toBe(CAMERA_URL_LIMITS.altitude.min);
 
             const fractional = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,1234.7,0,45",
             );
+            expect(fractional).not.toBeNull();
             if (fractional === null) throw new Error("unreachable");
             expect(fractional.altitude).toBe(1235);
         });
@@ -427,12 +433,14 @@ describe("urlState", () => {
             const tooHigh = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,2000,0,90",
             );
+            expect(tooHigh).not.toBeNull();
             if (tooHigh === null) throw new Error("unreachable");
             expect(tooHigh.tilt).toBe(CAMERA_URL_LIMITS.tilt.max);
 
             const tooLow = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,2000,0,0",
             );
+            expect(tooLow).not.toBeNull();
             if (tooLow === null) throw new Error("unreachable");
             expect(tooLow.tilt).toBe(CAMERA_URL_LIMITS.tilt.min);
         });
@@ -441,12 +449,14 @@ describe("urlState", () => {
             const r720 = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,2000,720,45",
             );
+            expect(r720).not.toBeNull();
             if (r720 === null) throw new Error("unreachable");
             expect(r720.azimuth).toBe(0);
 
             const rNeg = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,2000,-90,45",
             );
+            expect(rNeg).not.toBeNull();
             if (rNeg === null) throw new Error("unreachable");
             expect(rNeg.azimuth).toBe(270);
         });
@@ -472,6 +482,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148,18396200,0.00,49.68",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.lat).toBeCloseTo(17.316969, 6);
             expect(result.lon).toBeCloseTo(38.639148, 6);
@@ -481,6 +492,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/viewer/@-120.0,200.0",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.lat).toBe(-90);
             expect(result.lon).toBe(180);
@@ -490,6 +502,7 @@ describe("urlState", () => {
             const noEngine = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148",
             );
+            expect(noEngine).not.toBeNull();
             if (noEngine === null) throw new Error("unreachable");
             expect(noEngine.lat).toBeCloseTo(17.316969, 6);
             expect(noEngine.lon).toBeCloseTo(38.639148, 6);
@@ -500,6 +513,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/viewer/@17.316969,38.639148?foo=bar",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.lat).toBeCloseTo(17.316969, 6);
             expect(result.lon).toBeCloseTo(38.639148, 6);
@@ -835,6 +849,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.681236,139.767125,14.50z",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.zoomLevel).toBeCloseTo(14.5, 2);
             expect(result.azimuth).toBe(CAMERA_URL_DEFAULTS.azimuth);
@@ -845,6 +860,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,12z",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.zoomLevel).toBe(12);
         });
@@ -853,6 +869,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,99z",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.zoomLevel).toBe(CAMERA_URL_LIMITS.zoomLevel.max);
         });
@@ -861,6 +878,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,1z",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.zoomLevel).toBe(CAMERA_URL_LIMITS.zoomLevel.min);
         });
@@ -869,6 +887,7 @@ describe("urlState", () => {
             const result = parseCameraStateFromUrl(
                 "http://localhost/@35.0,139.0,2000,0,45",
             );
+            expect(result).not.toBeNull();
             if (result === null) throw new Error("unreachable");
             expect(result.zoomLevel).toBeUndefined();
             expect(result.altitude).toBe(2000);

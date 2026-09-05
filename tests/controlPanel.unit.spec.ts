@@ -37,6 +37,7 @@ describe("createControlPanel locateMe ボタン", () => {
     it("locateMe が zoomIn の前に配置されている", () => {
         const panel = createControlPanel();
         const parent = panel.locateMe.parentElement;
+        expect(parent).not.toBeNull();
         if (parent === null) throw new Error("unreachable");
         const children = Array.from(parent.children);
         const locateIdx = children.indexOf(panel.locateMe);
@@ -91,6 +92,7 @@ describe("createControlPanel pointerEvents 透過", () => {
     it("ズームボタンのコンテナ div に pointerEvents: none が設定されている", () => {
         const panel = createControlPanel();
         const container = panel.zoomIn.parentElement;
+        expect(container).not.toBeNull();
         if (container === null) throw new Error("unreachable");
         expect(container.style.pointerEvents).toBe("none");
     });
@@ -117,6 +119,7 @@ describe("createControlPanel レスポンシブ対応", () => {
     it("coarse pointer 用のレスポンシブスタイルが head に注入される", () => {
         createControlPanel();
         const style = document.getElementById("cp-responsive-style");
+        expect(style).not.toBeNull();
         if (style === null) throw new Error("unreachable");
         expect(style.tagName).toBe("STYLE");
         expect(style.textContent).toContain("(pointer: coarse)");
@@ -149,6 +152,7 @@ describe("createControlPanel レスポンシブ対応", () => {
     it("ボタンに touch-action: manipulation が適用される（ダブルタップズーム抑止）", () => {
         createControlPanel();
         const style = document.getElementById("cp-focus-style");
+        expect(style).not.toBeNull();
         if (style === null) throw new Error("unreachable");
         expect(style.textContent).toContain("touch-action: manipulation");
     });
@@ -279,6 +283,7 @@ describe("showToast", () => {
     it("DOM にトースト要素が追加される", () => {
         showToast("テストメッセージ");
         const toast = document.querySelector("[role='status']");
+        expect(toast).not.toBeNull();
         if (toast === null) throw new Error("unreachable");
         expect(toast.textContent).toBe("テストメッセージ");
     });
@@ -286,6 +291,7 @@ describe("showToast", () => {
     it("aria-live=polite が設定されている", () => {
         showToast("テスト");
         const toast = document.querySelector("[role='status']");
+        expect(toast).not.toBeNull();
         if (toast === null) throw new Error("unreachable");
         expect(toast.getAttribute("aria-live")).toBe("polite");
     });

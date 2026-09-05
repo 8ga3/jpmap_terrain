@@ -145,6 +145,7 @@ describe("globe UI コントロールパネル配線", () => {
         const m = /rotate\((-?\d+(?:\.\d+)?)deg\)/.exec(
             compass.style.transform,
         );
+        expect(m).not.toBeNull();
         if (m === null) throw new Error("unreachable");
         const deg = Number(m[1]);
         // 0.1 度刻みに丸められている（deg*10 が整数）。
