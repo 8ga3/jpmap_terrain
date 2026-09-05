@@ -26,7 +26,6 @@ const getOverlay = (): HTMLElement | null => {
  * 引数 scene/position は API 互換のため受け取るが内部では使用しない
  * (3D 空間ではなく DOM オーバーレイで再生)。
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const createPassEffect = (_scene: Scene, _position: Vector3): void => {
     const el = getOverlay();
     if (!el) return;

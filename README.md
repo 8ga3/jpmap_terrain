@@ -261,7 +261,7 @@ npm start
 | `npm run build:lib` | ライブラリビルド（`dist/` に ESM + `.d.ts` 出力） |
 | `npm run clean:lib` | ライブラリビルド成果物（`dist/`）の削除 |
 | `npm run preview` | 本番ビルド成果物（`dist/`）のローカルプレビュー配信 |
-| `npm run lint` | ESLint 実行（Issue番号直書きチェックを含む） |
+| `npm run lint` | Biome 実行（Issue番号直書きチェックを含む） |
 | `npm run typecheck` | TypeScript 型チェック |
 | `npm run test:visuals` | Visual Regression Test 実行 |
 | `npm run test:visuals:update` | Visual テスト基準画像の強制更新（画面表示変更時のみ） |

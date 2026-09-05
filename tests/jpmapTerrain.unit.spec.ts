@@ -65,7 +65,6 @@ let lastEngineResize: Mock = vi.fn();
 // 関数本体では未使用だが、`createEngineMock.mock.calls[i][1]`（engine 種別）や
 // `[i][2]`（high precision matrix オプション）を検証する用途があるため、可変引数ではなく
 // 明示的なパラメータとして宣言する。
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const createEngineMock = vi.fn(
     async (
         _canvas: unknown,
