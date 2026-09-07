@@ -74,10 +74,10 @@
     "jscpd": "^5.0.14",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.2.0",
-    "tsdown": "^0.22.14",
+    "tsdown": "^0.23.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   },
   "peerDependencies": {
     "@babylonjs/core": "^9.0.0",
