@@ -45,5 +45,14 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      # ライブラリビルド（tsdown）は prepack 経由で npm publish 時にしか実行されず、
+      # publish.yml は `v*.*.*` タグのpush時のみ起動するため、このstepがないと
+      # ライブラリビルドの破壊をリリースタグを打つまで検知できない。
+      # tsdown（clean: true）と vite（emptyOutDir: true）はいずれも dist/ へ出力するため
+      # 後発が先発の成果物を削除するが、このjobは成果物を後続で利用しないため問題ない。
+      # tsdown の方が軽く早く失敗するため vite ビルドより前に配置する。
+      - name: Build library
+        run: npm run build:lib
+
       - name: Build project
         run: npm run build
