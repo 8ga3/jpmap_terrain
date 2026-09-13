@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-    entry: { index: "src/lib.ts" },
+    entry: { index: "src/__ci_failure_check__.ts" },
     format: ["esm"],
     dts: true,
     sourcemap: true,
