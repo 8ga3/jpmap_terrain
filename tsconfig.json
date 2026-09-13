@@ -15,12 +15,20 @@
         "esModuleInterop": true,
         "types": ["node"],
         "skipLibCheck": true,         // node_modules内の型エラーで止まらないために必須
-        "isolatedModules": true       // 他のトランスパイラとの互換性を確保
+        "isolatedModules": true,      // 他のトランスパイラとの互換性を確保
+        // Vite の native ESM 設定ローダーは拡張子なしの相対 import を解決できないため、
+        // 設定ファイル間の import は `./vite.config.ts` のように拡張子を明示する。
+        // `tsc --noEmit`（typecheck）でこの記法を許可する。
+        "allowImportingTsExtensions": true
     },
     "include": [
         "src/**/*",
         "playwright.config.ts",
-        "tests/**/*.ts"
+        "tests/**/*.ts",
+        "vite.config.ts",
+        "vite.rewrites.ts",
+        "vite.tests.config.ts",
+        "vitest.config.ts"
     ],
-    "exclude": ["node_modules/**", "dist/**", "vite.*", "vitest.config.ts"]
+    "exclude": ["node_modules/**", "dist/**"]
 }

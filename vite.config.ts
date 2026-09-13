@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig } from "vite";
-import { demoRewritePlugin } from "./vite.rewrites";
+import { demoRewritePlugin } from "./vite.rewrites.ts";
 
 /**
  * `package.json` の `version` をビルド時定数 `__APP_VERSION__` として埋め込むために読み込む。
  * TS の JSON module 解決設定を増やさないよう、`fs` 経由で読み込む。
  */
 const { version: APP_VERSION } = JSON.parse(
-    readFileSync(resolve(__dirname, "package.json"), "utf-8"),
+    readFileSync(resolve(import.meta.dirname, "package.json"), "utf-8"),
 ) as { version: string };
 
 /**
@@ -54,7 +54,7 @@ const HTML_ENTRIES = [
 const input = Object.fromEntries(
     HTML_ENTRIES.map((name) => [
         name,
-        resolve(__dirname, PAGES_DIR, `${name}.html`),
+        resolve(import.meta.dirname, PAGES_DIR, `${name}.html`),
     ]),
 );
 
@@ -85,7 +85,7 @@ export default defineConfig({
     // root が public/ のため、HTML の `<script src="/src/...">` を実 src へ解決する。
     resolve: {
         alias: {
-            "/src": resolve(__dirname, "src"),
+            "/src": resolve(import.meta.dirname, "src"),
         },
     },
     plugins: [demoRewritePlugin(), ...(IS_HTTPS_DEV ? [basicSsl()] : [])],
