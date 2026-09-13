@@ -83,15 +83,15 @@
  * （{@link setupDioramaArControls}、`enterXRAsync` 後に呼ぶ）を分離している。
  */
 
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { Scene } from "@babylonjs/core/scene";
-import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent";
-import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
-import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
-import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import type { Scene } from "@babylonjs/core/scene.js";
+import type { WebXRControllerComponent } from "@babylonjs/core/XR/motionController/webXRControllerComponent.js";
+import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience.js";
+import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager.js";
+import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource.js";
 // `xr-dom-overlay` feature をfeaturesManagerへ登録する副作用 import
 // （AR中もコントロールHUDを表示し続けるために使う）。
-import "@babylonjs/core/XR/features/WebXRDOMOverlay";
+import "@babylonjs/core/XR/features/WebXRDOMOverlay.js";
 
 import {
     createDioramaArControlHud,

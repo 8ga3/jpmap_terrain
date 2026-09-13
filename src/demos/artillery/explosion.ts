@@ -5,11 +5,11 @@
  * 重ねて、命中時に派手な爆発演出を行う。
  */
 
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
-import type { Scene } from "@babylonjs/core/scene";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture.js";
+import { Color4 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 /** 既定の丸いパーティクルテクスチャ（白い円・PNG base64）。 */
 const PARTICLE_TEXTURE_DATA =

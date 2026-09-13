@@ -21,8 +21,8 @@
  * - `?snap=off`（クロスレベル標高スナップを無効化。比較用）
  */
 
-import type { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera";
-import type { Scene } from "@babylonjs/core/scene";
+import type { GeospatialCamera } from "@babylonjs/core/Cameras/geospatialCamera.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 import humanGlbUrl from "../../../assets/human.glb";
 import { createBabylonEngine } from "../../lib/internal/engineFactory";

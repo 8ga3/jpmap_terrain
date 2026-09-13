@@ -14,12 +14,12 @@
  * - 半径・速度・高度のスライダー操作
  * - アニメーション開始/停止トグル
  */
-import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
-import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum.js";
+import { Plane } from "@babylonjs/core/Maths/math.plane.js";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import planeGlbUrl from "../../../assets/plane.glb";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";

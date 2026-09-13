@@ -13,7 +13,7 @@
  *   （地心法線とカメラ方向の内積）で裏側タイルを除外する。
  * - SSE 式 `tileSizeMeters * viewportHeight / (distance * 2 tan(fov/2))` は座標系非依存で流用。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 import {
     JAPAN_BOUNDS,

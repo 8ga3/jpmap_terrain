@@ -14,9 +14,9 @@
  * 破棄済みリソースへの参照やタイマーリークを防ぐ。
  */
 
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import type { Observer } from "@babylonjs/core/Misc/observable";
-import type { Scene } from "@babylonjs/core/scene";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine.js";
+import type { Observer } from "@babylonjs/core/Misc/observable.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 /** debounce のデフォルト値 (ms)。連続リサイズで refresh が頻発しない値。 */
 export const DEFAULT_RESIZE_REFRESH_DEBOUNCE_MS = 100;

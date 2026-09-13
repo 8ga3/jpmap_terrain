@@ -15,7 +15,7 @@
  * から視線（lookAt）を組む処理は Babylon の `ComputeLookAtFromYawPitchToRef` を呼ぶ
  * 呼び出し側（`scenes/globe.ts`）が担い、本モジュールには算出済みのベクトルを渡す。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 import { DEG2RAD, ecefToGeodeticToRef, type Geodetic, RAD2DEG } from "./ecef";
 

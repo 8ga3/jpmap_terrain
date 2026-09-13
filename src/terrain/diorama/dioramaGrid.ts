@@ -13,7 +13,7 @@
  * 変換は WGS84 楕円体の曲率半径に基づく局所平面近似（東西/南北の1度あたりメートル）で
  * 十分な精度を持つ（globe 地形が必要とする ECEF 全球規模の厳密性は不要）。
  */
-import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions.js";
 
 import { DEG2RAD } from "../geo/ecef";
 import { MERCATOR_MAX_LAT } from "../geo/mapping";

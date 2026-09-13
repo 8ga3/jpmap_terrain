@@ -9,17 +9,17 @@
  * アダプタが再生成へフォールバックする。
  */
 
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
-import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { Scene } from "@babylonjs/core/scene";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh.js";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder.js";
+import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder.js";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder.js";
+import { CreateTube } from "@babylonjs/core/Meshes/Builders/tubeBuilder.js";
+import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import {
     type AltitudeMode,
     POLYGON_DEFAULTS,

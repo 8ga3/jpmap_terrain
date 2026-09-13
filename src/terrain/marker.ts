@@ -6,13 +6,13 @@
  * `globeMarkerManager` がこれらを再利用してマーカーを表示する（座標系非依存）。
  */
 
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { Scene } from "@babylonjs/core/scene";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh.js";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 import {
     MARKER_DEFAULTS,

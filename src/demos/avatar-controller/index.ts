@@ -18,8 +18,8 @@
  *   自動スクロール追従はカメラ中心（viewer.lat/lon）駆動で行う
  */
 
-import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad";
-import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager";
+import type { GenericPad } from "@babylonjs/core/Gamepads/gamepad.js";
+import { GamepadManager } from "@babylonjs/core/Gamepads/gamepadManager.js";
 import humanWalkGlbUrl from "../../../assets/human_walk.glb";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, TerrainClickEvent } from "../../lib/types";

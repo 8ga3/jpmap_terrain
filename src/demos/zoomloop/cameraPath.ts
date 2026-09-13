@@ -13,7 +13,7 @@
  *   最短方向ではなく長い方向へ回転してしまう不具合が起きるため、回転として補間する
  *   Quaternion Slerp（最短回転経路を自動で選ぶ）を採用する。
  */
-import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 import { uiToYawPitch, yawPitchToUi } from "../../terrain/geo/cameraMapping";
 

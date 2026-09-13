@@ -11,7 +11,7 @@
  * （中心が原点にある正方形/正多角形等）であることが前提となる（下記
  * `buildDioramaSkirtGeometry` のコメントも参照）。
  */
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 
 /** 側面壁・底面のジオメトリ（Babylon `VertexData` へそのまま渡せる形）。 */
 export interface DioramaSkirtGeometry {

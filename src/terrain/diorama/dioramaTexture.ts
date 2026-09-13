@@ -27,9 +27,9 @@
  *    設計上排除している）。
  */
 
-import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import type { Scene } from "@babylonjs/core/scene";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture.js";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import { latLonToPixel, totalPixelsForZoom } from "../geo/mapping";
 import { type MapType, TILE_SIZE, textureUrl, toTileXY } from "../gsiTile";
 import { measureAsync } from "./dioramaPerfLog";

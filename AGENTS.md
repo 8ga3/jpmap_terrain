@@ -67,6 +67,15 @@ npm run test:unit
 - 先頭に `[module]` 形式のプレフィックスを付け、出力元を明示すること。
 - 対象は console 出力の文字列のみ。コード内コメントや画面表示（UI テキスト）は対象外（日本語可）。
 
+### 外部パッケージのimport記法
+
+- `@babylonjs/*` のサブパスを import する場合は、拡張子 `.js` を必ず付けること（例: `@babylonjs/core/Maths/math.vector.js`）。
+- ディレクトリを指す場合は `index.js` まで明示すること（例: `@babylonjs/loaders/glTF/index.js`）。
+- サブパスを持たないルートimport（例: `@babylonjs/havok`）は `main` / `exports` で解決されるため対象外。
+- 理由: `@babylonjs/core` は `"type": "module"` でありながら `exports` フィールドを持たない。この場合 Node.js はサブパスをファイルパスとして解決するため、拡張子のないimportは `ERR_MODULE_NOT_FOUND` になる。bundler（Vite / webpack）は拡張子を補うため、デモのビルドやUnit testが通っていても検知できない。
+- tsdown は peer dependency を外部化する際に `src` 側のimport文をそのまま `dist` へ残すため、拡張子なしのimportが1つ混ざるだけで Node.js ランタイムから直接importできない成果物になる。
+- 本ルールは instruction のみでは徹底されないため、`npm run check:dist-imports`（`scripts/checkDistImports.mjs`）で機械的に検知する。CI の `Build library` 直後と `prepack` から実行される。
+
 ### 正本とドリフト防止
 
 - ルールの実体は本ファイル（AGENTS.md）を**単一の正本（single source of truth）**とする。役割ごとの運用定義は [.github/agents/](.github/agents/) を正本とし、両者が衝突した場合は本ファイルを優先する。
@@ -84,6 +93,7 @@ npm run test:unit
    - TypeScript 前提で any の安易な導入を避けること。
    - TypeScript typecheck を通過すること。
    - 未使用import、未使用変数、デバッグログを残さないこと。
+   - `@babylonjs/*` のサブパスimportは拡張子を明示すること（「外部パッケージのimport記法」参照）。
    - `console.*` の出力メッセージは英語で記述すること（「ログ出力言語」参照）。
 
 3. 変更影響の明示

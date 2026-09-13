@@ -10,9 +10,9 @@
  * - dispose / resize の実体
  */
 
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import type { Observer } from "@babylonjs/core/Misc/observable";
-import type { Scene } from "@babylonjs/core/scene";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine.js";
+import type { Observer } from "@babylonjs/core/Misc/observable.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 import type { DefaultSceneController } from "../scenes/sceneContract";
 import type { CircleManager } from "../terrain/circleManager";

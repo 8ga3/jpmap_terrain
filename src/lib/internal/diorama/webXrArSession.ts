@@ -27,15 +27,15 @@
  * 略称としても使われているため、シンボル名には "WebXr" プレフィックスを用いる。
  */
 
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { Scene } from "@babylonjs/core/scene";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 // `scene.createDefaultXRExperienceAsync` を Scene プロトタイプへ追加する副作用 import。
-import "@babylonjs/core/Helpers/sceneHelpers";
-import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
-import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
-import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager";
-import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
+import "@babylonjs/core/Helpers/sceneHelpers.js";
+import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera.js";
+import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience.js";
+import { WebXRSessionManager } from "@babylonjs/core/XR/webXRSessionManager.js";
+import { WebXRState } from "@babylonjs/core/XR/webXRTypes.js";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
 import {
     createDioramaArControlHudForSession,

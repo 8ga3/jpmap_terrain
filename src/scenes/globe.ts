@@ -16,28 +16,28 @@
 // Ray の副作用モジュールに依存する（未 import だと初回クリックで "Ray needs to be imported before ..."
 // が throw される）。他モジュールの初期化が Ray 依存 API をパッチ適用前に触る順序を避けるため、
 // 他の import より前でこの副作用を登録する。ライブラリ利用側（各デモ）が個別に import しなくても動く。
-import "@babylonjs/core/Culling/ray";
+import "@babylonjs/core/Culling/ray.js";
 
-import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior";
-import { Camera } from "@babylonjs/core/Cameras/camera";
+import { GeospatialClippingBehavior } from "@babylonjs/core/Behaviors/Cameras/geospatialClippingBehavior.js";
+import { Camera } from "@babylonjs/core/Cameras/camera.js";
 import {
     ComputeLookAtFromYawPitchToRef,
     ComputeYawPitchFromLookAtToRef,
     GeospatialCamera,
-} from "@babylonjs/core/Cameras/geospatialCamera";
-import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
-import { Matrix, Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { Scene } from "@babylonjs/core/scene";
+} from "@babylonjs/core/Cameras/geospatialCamera.js";
+import { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo.js";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine.js";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight.js";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum.js";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions.js";
+import { Plane } from "@babylonjs/core/Maths/math.plane.js";
+import { Matrix, Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { Scene } from "@babylonjs/core/scene.js";
 import type { ViewMode } from "../lib/types";
 import {
     POLYGON_POINT_DRAG_THRESHOLD_PX,

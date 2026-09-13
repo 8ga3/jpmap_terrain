@@ -6,10 +6,10 @@
  * メッシュをプールとして再利用するため create/dispose のオーバーヘッドがない。
  */
 
-import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { Scene } from "@babylonjs/core/scene";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { surfaceOrientationToRef } from "../../terrain/geo/overlayPlacement";
 import { circularOrbitHeading, circularOrbitPosition } from "../avatar/orbit";

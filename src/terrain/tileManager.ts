@@ -1,15 +1,15 @@
 /** タイルのライフサイクルを統合管理する TileManager */
 
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import { Camera } from "@babylonjs/core/Cameras/camera";
-import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
-import { Matrix } from "@babylonjs/core/Maths/math.vector";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { Scene } from "@babylonjs/core/scene";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
+import { Camera } from "@babylonjs/core/Cameras/camera.js";
+import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture.js";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum.js";
+import { Plane } from "@babylonjs/core/Maths/math.plane.js";
+import { Matrix } from "@babylonjs/core/Maths/math.vector.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import {
     createElevationWorkerPool,
     type ElevationWorkerPool,

@@ -18,10 +18,10 @@
  * 揺らぎが顕著に現れる。真の ECEF 座標で直接配置すればこの機構の影響を受けず、
  * 絶対高度を厳密に一定に保てる。
  */
-import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Frustum } from "@babylonjs/core/Maths/math.frustum";
-import { Plane } from "@babylonjs/core/Maths/math.plane";
-import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera.js";
+import { Frustum } from "@babylonjs/core/Maths/math.frustum.js";
+import { Plane } from "@babylonjs/core/Maths/math.plane.js";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { EngineType, JpmapTerrainOptions } from "../../lib/types";

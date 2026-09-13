@@ -8,15 +8,15 @@
  * グリッド原点ジャンプの影響も受けない。
  */
 
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { Constants } from "@babylonjs/core/Engines/constants";
-import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { Scene } from "@babylonjs/core/scene";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
+import { Constants } from "@babylonjs/core/Engines/constants.js";
+import { GlowLayer } from "@babylonjs/core/Layers/glowLayer.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { CreateRibbon } from "@babylonjs/core/Meshes/Builders/ribbonBuilder.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import { geographicTangentBasisToRef } from "../../terrain/geo/cameraMapping";
 import { geodeticToEcefToRef } from "../../terrain/geo/ecef";
 import { circularOrbitHeading, circularOrbitPosition } from "../avatar/orbit";

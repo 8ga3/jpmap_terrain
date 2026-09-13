@@ -20,9 +20,9 @@
  * 鏡映ワールドを共有して自己整合するため、描画側の面反転補正は不要と判断した。
  */
 
-import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { Scene } from "@babylonjs/core/scene";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 import { buildEnuFrame, buildEnuWorldMatrix } from "../../terrain/geo/enu";
 import { DEMO_GRAVITY_Y } from "./physics";

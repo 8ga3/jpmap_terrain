@@ -54,5 +54,12 @@ jobs:
       - name: Build library
         run: npm run build:lib
 
+      # `@babylonjs/core` は `exports` を持たないため、拡張子なしのサブパス import が
+      # dist に残ると Node.js ランタイムから直接 import できない成果物になる。
+      # bundler 経由のビルド・テストでは解決されてしまい検知できないため、
+      # ライブラリビルドの直後に成果物を静的検査する。
+      - name: Check dist imports
+        run: npm run check:dist-imports
+
       - name: Build project
         run: npm run build

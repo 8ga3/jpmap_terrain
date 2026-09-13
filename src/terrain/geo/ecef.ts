@@ -12,12 +12,12 @@
  * - Z 軸 → 北極
  */
 
-import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial";
 import {
     EcefFromLatLonAltToRef,
     Wgs84Ellipsoid,
-} from "@babylonjs/core/Maths/math.geospatial.functions";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+} from "@babylonjs/core/Maths/math.geospatial.functions.js";
+import type { ILatLonAltLike } from "@babylonjs/core/Maths/math.geospatial.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 export const DEG2RAD = Math.PI / 180;
 export const RAD2DEG = 180 / Math.PI;

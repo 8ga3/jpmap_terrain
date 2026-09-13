@@ -9,7 +9,7 @@
  * - 戻り値は「地表→太陽」を指す ECEF 単位ベクトル。`DirectionalLight.direction` には
  *   その符号反転（太陽→地表）を渡すこと。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 const DEG2RAD = Math.PI / 180;
 

@@ -15,8 +15,8 @@
  * 「ユーザー位置↔箱庭中心＋箱庭の回転角」基準へ再設計され、本ヘルパーは使わなく
  * なった（`computeHorizontalDisplacement`/`rotateHorizontalUnitVector` 参照）。
  */
-import type { Camera } from "@babylonjs/core/Cameras/camera";
-import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Camera } from "@babylonjs/core/Cameras/camera.js";
+import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 import type { HorizontalUnitVector } from "./dioramaControllerMapping";
 

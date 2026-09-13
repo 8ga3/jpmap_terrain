@@ -8,8 +8,8 @@
  * 連射対応: アニメーション中に再発火された場合は再生をリセットする。
  */
 
-import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { Scene } from "@babylonjs/core/scene";
+import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 const OVERLAY_ID = "wp-shockwave";
 const FIRING_CLASS = "firing";

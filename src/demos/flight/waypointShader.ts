@@ -8,9 +8,9 @@
  * - パルス発光 + シアン/紫のグラデーション
  */
 
-import { Effect } from "@babylonjs/core/Materials/effect";
-import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
-import type { Scene } from "@babylonjs/core/scene";
+import { Effect } from "@babylonjs/core/Materials/effect.js";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 // ─── シェーダーソース ────────────────────────────────────
 

@@ -13,12 +13,12 @@
  * - animation の保持と play/stop
  */
 
-import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
-import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import type { Scene } from "@babylonjs/core/scene";
+import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup.js";
+import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader.js";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector.js";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 import { importLoaderForUrl } from "../modelManager";
 import { DEG2RAD, geodeticToEcefToRef } from "./ecef";
@@ -251,7 +251,7 @@ export const createGlobeModelManager = (
                       gltf: {
                           animationStartMode: (
                               await import(
-                                  "@babylonjs/loaders/glTF/glTFFileLoader"
+                                  "@babylonjs/loaders/glTF/glTFFileLoader.js"
                               )
                           ).GLTFLoaderAnimationStartMode.NONE,
                       },
