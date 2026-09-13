@@ -10,12 +10,12 @@
  * 正しくバウンドを計算する（斜面でも自然な反射）。
  */
 
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
-import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate";
-import type { Scene } from "@babylonjs/core/scene";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
+import { CreateGround } from "@babylonjs/core/Meshes/Builders/groundBuilder.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
+import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 export interface TerrainColliderOptions {
     /** プレイエリアの一辺の長さ (ワールド単位)。中心は原点 */

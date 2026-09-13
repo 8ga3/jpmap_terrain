@@ -62,9 +62,9 @@
  * （`dioramaArControls.ts`の`rotateHorizontalUnitVector`呼び出し）と同じ補正方式）。
  */
 
-import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { Scene } from "@babylonjs/core/scene";
+import type { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import type { DioramaArControlHud } from "./dioramaArControlHud";
 import {
     computePanAxesFromDirectionalInput,

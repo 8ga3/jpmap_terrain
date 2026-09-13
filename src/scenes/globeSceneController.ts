@@ -11,10 +11,10 @@
  * polygon point drag は globe 側の未整備機能を伴うため別途対応とし、ここでは安全な
  * no-op もしくは明確な未対応エラーとする。
  */
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { Scene } from "@babylonjs/core/scene";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine.js";
+import { Wgs84Ellipsoid } from "@babylonjs/core/Maths/math.geospatial.functions.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import type {
     AltitudeMode,
     CircleCenterOptions,

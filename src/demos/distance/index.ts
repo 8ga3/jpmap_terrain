@@ -16,7 +16,7 @@
  * 編集中はカメラ操作が API 側で抑制される。
  */
 // `scene.pick` は Ray の副作用モジュールに依存するため明示的に import する。
-import "@babylonjs/core/Culling/ray";
+import "@babylonjs/core/Culling/ray.js";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type {
     JpmapTerrainOptions,

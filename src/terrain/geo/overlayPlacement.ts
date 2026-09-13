@@ -7,7 +7,11 @@
  * とは独立（並行構築）で、`GeospatialCamera` を直接 import しない（Babylon の実行時
  * オブジェクトに依存させず、DOM/WebGL 環境が無くても実行できるようにするため）。
  */
-import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import {
+    Matrix,
+    Quaternion,
+    Vector3,
+} from "@babylonjs/core/Maths/math.vector.js";
 
 import { DEG2RAD, geodeticToEcefToRef } from "./ecef";
 

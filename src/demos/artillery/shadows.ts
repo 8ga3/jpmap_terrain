@@ -17,13 +17,13 @@
  * registerTerrainReceivers を呼んで随時 receiveShadows を設定する。
  * 砲弾メッシュはプールで遅延生成されるため、生成時に addCaster で登録する。
  */
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
-import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
-import type { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import type { Scene } from "@babylonjs/core/scene";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight.js";
+import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator.js";
+import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent.js";
+import type { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 
 import type { StageFrame } from "./stageFrame";
 

@@ -3,11 +3,11 @@
  *
  * Babylon.js v9 + @babylonjs/havok での物理エンジン初期化。
  */
-import "@babylonjs/core/Physics/joinedPhysicsEngineComponent";
-import "@babylonjs/core/Physics/v2/physicsEngineComponent";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin";
-import type { Scene } from "@babylonjs/core/scene";
+import "@babylonjs/core/Physics/joinedPhysicsEngineComponent.js";
+import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
+import type { Scene } from "@babylonjs/core/scene.js";
 import HavokPhysics from "@babylonjs/havok";
 
 /**

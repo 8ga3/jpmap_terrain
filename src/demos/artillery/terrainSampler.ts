@@ -16,7 +16,7 @@
  * planar バックエンド）の座標では `null` を返し、呼び出し側でレイキャストへ
  * フォールバックさせる。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 
 import {
     ecefToGeodeticToRef,

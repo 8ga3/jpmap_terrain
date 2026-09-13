@@ -9,9 +9,9 @@
  * - vitest 環境では `@babylonjs/core/Engines/*` をモックして本ファイル全体を差し替える前提。
  */
 
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import { Engine } from "@babylonjs/core/Engines/engine";
-import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine.js";
+import { Engine } from "@babylonjs/core/Engines/engine.js";
+import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine.js";
 
 import type { EngineType } from "../types";
 
@@ -73,7 +73,7 @@ export async function createBabylonEngine(
     if (preferred === "webgpu") {
         const supported = await WebGPUEngine.IsSupportedAsync;
         if (supported) {
-            await import("@babylonjs/core/Engines/WebGPU/Extensions/");
+            await import("@babylonjs/core/Engines/WebGPU/Extensions/index.js");
             const engine = new WebGPUEngine(canvas, {
                 adaptToDeviceRatio: true,
                 antialias: true,

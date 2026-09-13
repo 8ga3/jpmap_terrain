@@ -5,11 +5,11 @@
  * エンジン音ループとウェイポイント通過SEを管理する。
  */
 
-import type { AudioEngineV2 } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2";
-import { CreateSoundAsync } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2";
-import type { StaticSound } from "@babylonjs/core/AudioV2/abstractAudio/staticSound";
-import { SoundState } from "@babylonjs/core/AudioV2/soundState";
-import { CreateAudioEngineAsync } from "@babylonjs/core/AudioV2/webAudio/webAudioEngine";
+import type { AudioEngineV2 } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2.js";
+import { CreateSoundAsync } from "@babylonjs/core/AudioV2/abstractAudio/audioEngineV2.js";
+import type { StaticSound } from "@babylonjs/core/AudioV2/abstractAudio/staticSound.js";
+import { SoundState } from "@babylonjs/core/AudioV2/soundState.js";
+import { CreateAudioEngineAsync } from "@babylonjs/core/AudioV2/webAudio/webAudioEngine.js";
 
 import planeNoiseUrl from "../../../assets/plane-noise.mp3";
 import planeWpUrl from "../../../assets/plane-wp.mp3";

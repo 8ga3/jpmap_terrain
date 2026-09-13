@@ -16,8 +16,8 @@
  * （垂直フランジ）を付与する。隣接タイルの LOD を知らずに隙間を隠せる方式で、
  * Cesium / Google Earth 等のグローブ地形レンダラーで標準的に使われる。
  */
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 
 import { TILE_SIZE, tileEdgeMeters } from "../gsiTile";
 import { type CoarseEdge, snapEdgeElevation } from "./crossLevel";

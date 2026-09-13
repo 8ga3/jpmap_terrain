@@ -49,13 +49,13 @@ export const importLoaderForUrl = async (url: string): Promise<void> => {
     switch (ext) {
         case ".glb":
         case ".gltf":
-            await import("@babylonjs/loaders/glTF");
+            await import("@babylonjs/loaders/glTF/index.js");
             break;
         case ".obj":
-            await import("@babylonjs/loaders/OBJ");
+            await import("@babylonjs/loaders/OBJ/index.js");
             break;
         case ".stl":
-            await import("@babylonjs/loaders/STL");
+            await import("@babylonjs/loaders/STL/index.js");
             break;
         default:
             throw new Error(

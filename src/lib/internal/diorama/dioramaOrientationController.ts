@@ -30,7 +30,7 @@
  * 使うため、Y方向の平行移動とY軸回転は可換であり、両者を同一ノードに同居させても
  * 互いに干渉しない。
  */
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 
 import {
     clampDioramaHeightOffsetM,

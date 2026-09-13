@@ -12,15 +12,15 @@
  * - 砲弾飛行・地形バウンドは Havok 物理が担当
  */
 
-import type { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
-import { Ray } from "@babylonjs/core/Culling/ray";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo.js";
+import { Ray } from "@babylonjs/core/Culling/ray.js";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial.js";
+import { Color3 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh.js";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions } from "../../lib/types";
@@ -126,7 +126,7 @@ interface CannonGroup {
 
 /** 大砲メッシュ（ピボット + 砲身 + 台座）を作成 */
 const createCannonMesh = (
-    scene: import("@babylonjs/core/scene").Scene,
+    scene: import("@babylonjs/core/scene.js").Scene,
     team: Team,
 ): CannonGroup => {
     // ピボット: 砲身付け根（回転中心）

@@ -11,7 +11,7 @@
  * これにより planar の「中心点・中心ラベル・円周線・壁」パリティを保ちつつ、polygon の堅牢化
  * （dispose ガード・距離スケール・地形ドレープ）をそのまま享受する。
  */
-import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import type { AltitudeMode, PolygonStyleOptions } from "../../lib/types";
 import {
     createGlobePolygonManager,

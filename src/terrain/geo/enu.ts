@@ -13,7 +13,7 @@
  * ECEF 側の軸規約は `ecef.ts` / Babylon の `EcefFromLatLonAltToRef` と同一
  * （X→経度0, Y→東経90°, Z→北極）。
  */
-import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { DEG2RAD, geodeticToEcef } from "./ecef";
 
 /**

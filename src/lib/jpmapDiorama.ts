@@ -9,14 +9,14 @@
  * セッション統合）を、mount〜dispose・入力集約・AR統合を持つ1つのクラスへ組み上げる。
  */
 
-import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
-import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine";
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { Scene } from "@babylonjs/core/scene";
+import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera.js";
+import type { AbstractEngine } from "@babylonjs/core/Engines/abstractEngine.js";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight.js";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight.js";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color.js";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { Scene } from "@babylonjs/core/scene.js";
 import {
     createDioramaTerrain,
     type DioramaTerrain,
