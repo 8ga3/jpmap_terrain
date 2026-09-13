@@ -1,5 +1,5 @@
 import { defineConfig, mergeConfig } from "vitest/config";
-import baseConfig from "./vite.config";
+import baseConfig from "./vite.config.ts";
 
 /**
  * Vitest 設定。
@@ -13,7 +13,7 @@ import baseConfig from "./vite.config";
 export default mergeConfig(
     baseConfig,
     defineConfig({
-        root: __dirname,
+        root: import.meta.dirname,
         test: {
             include: ["tests/**/*.unit.spec.ts"],
             // 既定値は node。`@vitest-environment jsdom` pragma を付与した

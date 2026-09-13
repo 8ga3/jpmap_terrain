@@ -1,5 +1,5 @@
 import { mergeConfig } from "vite";
-import baseConfig from "./vite.config";
+import baseConfig from "./vite.config.ts";
 
 /**
  * E2E テスト（Playwright）用の Vite 設定。

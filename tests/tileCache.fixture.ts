@@ -15,7 +15,7 @@ import { test as base } from "@playwright/test";
 
 const GSI_TILE_PATTERN = /cyberjapandata\.gsi\.go\.jp\/xyz\//;
 
-const CACHE_DIR = path.join(__dirname, "..", ".tile-cache");
+const CACHE_DIR = path.join(import.meta.dirname, "..", ".tile-cache");
 
 interface CacheEntry {
     body: Buffer;
