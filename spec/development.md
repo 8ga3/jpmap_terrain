@@ -54,8 +54,9 @@
 
 `package-lock.json` を変更するPRでのみ起動し、`scripts/checkVisualsGuard.mjs` で以下を判定する。画像・レポートは一切アップロードしない。
 
-1. baseブランチとPRの `package-lock.json` を比較し、`@babylonjs/*` / `@playwright/test` / `playwright` / `playwright-core` の版に差分（追加・削除を含む）があるかを調べる。`playwright` / `playwright-core` は同梱ブラウザ（chromium-headless-shell）の版を決めるため対象に含める。
-2. 差分がある場合、PR本文に `npm run test:visuals` を含むチェック済みのチェックボックス（`- [x] ...`）が無ければ失敗させる。`npm run test:visuals:update` や `--update-snapshots` / `-u` 付きの行は、比較ではなく基準の上書きになるため実施確認とみなさない。
+1. baseとPRの `package-lock.json` を比較し、`@babylonjs/*` / `@playwright/test` / `playwright` / `playwright-core` の版に差分（追加・削除を含む）があるかを調べる。`playwright` / `playwright-core` は同梱ブラウザ（chromium-headless-shell）の版を決めるため対象に含める。
+   - 比較対象のbaseは、checkoutしたマージコミット（baseとPR headのマージ）の第1親とする。実行時点のbaseブランチ先端を使うと、待機中に別PRがマージされた場合に異なる時点のlockfile同士を比較し、対象の依存を変更していないPRまで誤って失敗するため。
+2. 差分がある場合、PR本文に「`npm run test:visuals` を実行し、全スクリーンショットの一致を確認した」で終わるチェック済みのチェックボックス（`- [x] ...`）が無ければ失敗させる。コマンド名を含むだけの行（「実行していない」などの否定を含む）は実施確認とみなさない。`npm run test:visuals:update` や `--update-snapshots` / `-u` 付きの行は、比較ではなく基準の上書きになるため実施確認とみなさない。
 
 PR本文の編集（`edited`）でも再判定されるため、ガードが失敗した場合は以下の手順で対応する。
 
