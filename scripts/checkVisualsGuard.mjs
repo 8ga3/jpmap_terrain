@@ -34,8 +34,13 @@ const GUARDED_PACKAGE_KEY =
  * PR テンプレートに存在する `npm run test:visuals:update` の行を誤って
  * 実施確認と扱わないよう、`test:visuals` の直後に `:` が続くものは除外する。
  */
-const CONFIRMATION_LINE =
-    /^\s*[-*]\s+\[[xX]\]\s+.*npm run test:visuals(?![:\w-])/m;
+const CONFIRMATION_LINE = /^\s*[-*]\s+\[[xX]\]\s+.*npm run test:visuals(?![:\w-])/;
+
+/**
+ * 基準画像を更新するオプション。`npm run test:visuals -- --update-snapshots` は
+ * 比較ではなく基準の上書きになり差分を検知できないため、実施確認とみなさない。
+ */
+const UPDATE_SNAPSHOTS_OPTION = /--update-snapshots\b|(?:^|\s)-u(?![\w-])/;
 
 /** PR 本文に追記してもらう行（エラーメッセージとテンプレートで共有する文言）。 */
 export const CONFIRMATION_TEMPLATE =
@@ -76,7 +81,13 @@ export function diffGuardedVersions(baseLockfile, headLockfile) {
 /** PR 本文にチェック済みの実施確認チェックボックスがあるかを判定する。 */
 export function hasVisualsConfirmation(body) {
     if (typeof body !== "string") return false;
-    return CONFIRMATION_LINE.test(body);
+    return body
+        .split(/\r?\n/)
+        .some(
+            (line) =>
+                CONFIRMATION_LINE.test(line) &&
+                !UPDATE_SNAPSHOTS_OPTION.test(line),
+        );
 }
 
 function formatChange({ key, before, after }) {
@@ -126,8 +137,8 @@ function main() {
     console.error(
         "[check-visuals-guard] run 'npm run test:visuals' locally (macOS) and add the following checked line to the PR body:",
     );
-    // PR 本文へそのまま貼り付けられるよう、この行のみプレフィックスを付けない。
-    console.error(CONFIRMATION_TEMPLATE);
+    // PR 本文へそのまま貼り付けられるよう、ログではなく生の出力としてプレフィックスを付けずに書き出す。
+    process.stderr.write(`${CONFIRMATION_TEMPLATE}\n`);
     process.exitCode = 1;
 }
 
