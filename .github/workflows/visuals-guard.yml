@@ -6,11 +6,12 @@ name: Visuals guard
 # 公開リポジトリの CI では比較基準を持てないため、比較自体はローカルで行う。
 # PR 本文の編集でも再判定する必要があるが、ci.yml に `edited` を足すと本文を
 # 編集するたびに全工程が再実行されるため、専用の workflow に分けている。
+# `paths` で絞り込むとスキップされた PR のチェックが Pending のまま残り、必須チェックに
+# 設定した場合に package-lock.json を変更しない PR がマージ不能になる。そのため全 PR で起動し、
+# 対象依存の差分が無い場合はスクリプト側で成功させる。
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
-    paths:
-      - package-lock.json
 
 permissions:
   contents: read
