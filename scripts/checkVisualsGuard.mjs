@@ -56,7 +56,14 @@ const ACCEPTED_CONFIRMATION_SENTENCES = new Set([
     TEMPLATE_CONFIRMATION_SENTENCE,
 ]);
 
-const CHECKED_CHECKBOX = /^\s*[-*]\s+\[[xX]\]\s+(.*?)\s*$/;
+/**
+ * 最上位の task list item として描画されるチェック済み行。
+ * 4 スペース以上のインデントはインデントコードブロック（または入れ子）になり得るため受理しない。
+ */
+const CHECKED_CHECKBOX = /^ {0,3}[-*+][ \t]+\[[xX]\][ \t]+(.*?)\s*$/;
+
+/** fenced code block の開始行（CommonMark: 3 個以上の ` または ~、インデント 3 スペースまで）。 */
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 
 /** 確認行の末尾に付ける、実施時点の対象依存の版を表す指紋。 */
 const FINGERPRINT_SUFFIX = /^(.*)（対象依存: ([0-9a-f]{12})）$/;
@@ -125,11 +132,47 @@ export function formatConfirmationLine(fingerprint) {
     return `- [x] ${CONFIRMATION_SENTENCE}（対象依存: ${fingerprint}）`;
 }
 
+/**
+ * PR 本文のうち、Markdown として描画される行を返す。
+ * HTML コメントや fenced code block 内に正規の確認行を書いても GitHub 上には
+ * チェックボックスとして表示されず、実施記録なしでガードを通過できてしまうため除外する。
+ * 閉じられていないコメント・コードブロックは、描画上も本文末まで続くため末尾まで除外する。
+ * コメントの開始・終了を含む行は、行全体が HTML ブロックとして扱われるため行ごと除外する。
+ */
+export function extractRenderedLines(body) {
+    const lines = [];
+    let fence = null;
+    let inComment = false;
+    for (const line of body.split(/\r?\n/)) {
+        if (fence !== null) {
+            const close = new RegExp(`^ {0,3}${fence.char}{${fence.length},}\\s*$`);
+            if (close.test(line)) fence = null;
+            continue;
+        }
+        if (inComment) {
+            if (line.includes("-->")) inComment = false;
+            continue;
+        }
+        const open = FENCE_OPEN.exec(line);
+        if (open) {
+            fence = { char: open[1][0] === "`" ? "`" : "~", length: open[1].length };
+            continue;
+        }
+        const commentStart = line.indexOf("<!--");
+        if (commentStart !== -1) {
+            inComment = !line.includes("-->", commentStart + 4);
+            continue;
+        }
+        lines.push(line);
+    }
+    return lines;
+}
+
 /** PR 本文のチェック済みの実施確認行から、記録された指紋を列挙する。 */
 export function findConfirmationFingerprints(body) {
     if (typeof body !== "string") return [];
     const fingerprints = [];
-    for (const line of body.split(/\r?\n/)) {
+    for (const line of extractRenderedLines(body)) {
         const text = CHECKED_CHECKBOX.exec(line)?.[1];
         if (text === undefined) continue;
         const match = FINGERPRINT_SUFFIX.exec(text);
