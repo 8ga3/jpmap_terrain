@@ -144,6 +144,23 @@ describe("checkVisualsGuard", () => {
             expect(hasVisualsConfirmation(body)).toBe(false);
         });
 
+        it("基準画像を更新するオプション付きの行は実施確認とみなさない", () => {
+            for (const command of [
+                "npm run test:visuals -- --update-snapshots",
+                "npm run test:visuals -- --update-snapshots=all",
+                "npm run test:visuals -- -u",
+            ]) {
+                expect(
+                    hasVisualsConfirmation(`- [x] \`${command}\` を実行した\n`),
+                ).toBe(false);
+            }
+        });
+
+        it("更新オプション付きの行があっても、別の実施確認行があれば true", () => {
+            const body = `- [x] \`npm run test:visuals -- -u\` で基準を作成した\n${CONFIRMATION_TEMPLATE}\n`;
+            expect(hasVisualsConfirmation(body)).toBe(true);
+        });
+
         it("チェックボックスでない文中の言及は実施確認とみなさない", () => {
             const body = "マージ前に npm run test:visuals を実行すること\n";
             expect(hasVisualsConfirmation(body)).toBe(false);

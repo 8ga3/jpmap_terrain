@@ -55,7 +55,7 @@
 `package-lock.json` を変更するPRでのみ起動し、`scripts/checkVisualsGuard.mjs` で以下を判定する。画像・レポートは一切アップロードしない。
 
 1. baseブランチとPRの `package-lock.json` を比較し、`@babylonjs/*` / `@playwright/test` / `playwright` / `playwright-core` の版に差分（追加・削除を含む）があるかを調べる。`playwright` / `playwright-core` は同梱ブラウザ（chromium-headless-shell）の版を決めるため対象に含める。
-2. 差分がある場合、PR本文に `npm run test:visuals` を含むチェック済みのチェックボックス（`- [x] ...`）が無ければ失敗させる。`npm run test:visuals:update` の行は実施確認とみなさない。
+2. 差分がある場合、PR本文に `npm run test:visuals` を含むチェック済みのチェックボックス（`- [x] ...`）が無ければ失敗させる。`npm run test:visuals:update` や `--update-snapshots` / `-u` 付きの行は、比較ではなく基準の上書きになるため実施確認とみなさない。
 
 PR本文の編集（`edited`）でも再判定されるため、ガードが失敗した場合は以下の手順で対応する。
 
