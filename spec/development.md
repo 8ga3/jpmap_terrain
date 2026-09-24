@@ -45,7 +45,28 @@
 
 **背景**: 以前は `.github/workflows/deploy.yml`（タグpush時のみ実行）以外にCIが存在せず、依存関係更新PRがマージされた時点で `package-lock.json` が壊れていても、次にリリースタグを打つまで誰も気づけなかった（詳細は #580 参照）。`ci.yml` により、PRの時点・`main` マージ直後に `npm ci` の整合性を含めて自動検証されるため、**手動での事前確認を毎回覚えておく必要はない**。
 
-- `npm run test:visuals`（Playwright Visual Regression Test）はスナップショットが `-darwin.png` 命名でmacOS専用のため、Linux上のCIには含めていない。引き続き開発者がローカル（macOS）で手動実行する。
+- `npm run test:visuals`（Playwright Visual Regression Test）はCIに含めていない。引き続き開発者がローカル（macOS）で手動実行する。理由は以下のとおり。
+  - スナップショット画像は地図データの利用規約違反に当たる可能性があるため `.gitignore` で除外しており、CI上に比較基準が存在しない（既存のスナップショットも `-darwin.png` 命名でmacOS専用）。
+  - 本リポジトリは公開リポジトリのため、失敗時の差分画像をActionsのartifactにアップロードすると第三者がダウンロード可能になり、リポジトリに置くのと同じ問題が生じる。
+- 代わりに、描画結果に影響し得る依存の更新でローカル実行が漏れないよう、`.github/workflows/visuals-guard.yml`（運用ガード）で実施記録を強制している。
+
+### 運用ガード（visuals-guard）
+
+`package-lock.json` を変更するPRでのみ起動し、`scripts/checkVisualsGuard.mjs` で以下を判定する。画像・レポートは一切アップロードしない。
+
+1. baseブランチとPRの `package-lock.json` を比較し、`@babylonjs/*` / `@playwright/test` / `playwright` / `playwright-core` の版に差分（追加・削除を含む）があるかを調べる。`playwright` / `playwright-core` は同梱ブラウザ（chromium-headless-shell）の版を決めるため対象に含める。
+2. 差分がある場合、PR本文に `npm run test:visuals` を含むチェック済みのチェックボックス（`- [x] ...`）が無ければ失敗させる。`npm run test:visuals:update` の行は実施確認とみなさない。
+
+PR本文の編集（`edited`）でも再判定されるため、ガードが失敗した場合は以下の手順で対応する。
+
+1. ローカル（macOS）で `npm run test:visuals` を実行し、全スクリーンショットの一致を確認する（差分がある場合は原因を調査し、意図した変更であれば基準を更新する）。
+2. PR本文の確認事項にある該当チェックボックスにチェックを入れ、結果（実行テスト数・所要時間・差分の有無など）を本文に記録する。
+
+Dependabot のPRはPRテンプレートを使わないため、チェックボックスが存在しない。ガードのエラーメッセージに出力される以下の行を本文に追記する。Dependabot がPRを再作成・リベースすると本文が書き換えられることがあるため、その場合は再度追記する。
+
+```markdown
+- [x] ローカル（macOS）で `npm run test:visuals` を実行し、全スクリーンショットの一致を確認した
+```
 
 ## リリース（Netlifyデプロイ & npm公開）
 

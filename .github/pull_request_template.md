@@ -29,3 +29,4 @@ Closes #<!-- issue番号 -->
 - [ ] Copilot レビューを日本語で実施し、指摘を修正した
 - [ ] `npm run test:visuals:update` は毎回実行していない
 - [ ] 画面表示の意図した変更がある場合のみ、開発者がスナップショットを更新した
+- [ ] `@babylonjs/*` / `@playwright/test` を更新した場合、ローカル（macOS）で `npm run test:visuals` を実行し、全スクリーンショットの一致を確認した

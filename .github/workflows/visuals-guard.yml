@@ -1,0 +1,52 @@
+name: Visuals guard
+
+# 描画結果に影響し得る依存（`@babylonjs/*` / Playwright）を更新する PR で、
+# ローカルでの `npm run test:visuals` 実施記録（PR 本文のチェックボックス）を強制する。
+# スナップショット画像は地図データの利用規約違反に当たる可能性があるためコミットしておらず、
+# 公開リポジトリの CI では比較基準を持てないため、比較自体はローカルで行う。
+# PR 本文の編集でも再判定する必要があるが、ci.yml に `edited` を足すと本文を
+# 編集するたびに全工程が再実行されるため、専用の workflow に分けている。
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    paths:
+      - package-lock.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visuals-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # チェックスクリプトは Node 組み込みモジュールのみを使うため npm ci は不要。
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.tool-versions'
+
+      # checkout は既定で浅いクローンのため、比較対象の base ブランチを明示的に取得する。
+      # base_ref は利用者が作成したブランチ名になり得るため、式展開を run に直接埋め込まず env 経由で渡す。
+      - name: Fetch base lockfile
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "refs/heads/${BASE_REF}"
+          git show FETCH_HEAD:package-lock.json > "${RUNNER_TEMP}/base-package-lock.json"
+
+      # PR 本文は信頼できない入力のため、式展開を run に直接埋め込まず env 経由で渡す。
+      - name: Check visuals confirmation
+        env:
+          BASE_LOCKFILE: ${{ runner.temp }}/base-package-lock.json
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/checkVisualsGuard.mjs
