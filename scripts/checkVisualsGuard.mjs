@@ -11,7 +11,9 @@
  *
  * base と head の `package-lock.json` を比較し、対象パッケージの版に差分がある場合に限り
  * チェック済みのチェックボックスを要求する（`.github/workflows/visuals-guard.yml` から実行される）。
+ * 実施記録は head 側の対象パッケージの版の指紋に紐付け、確認後の依存の再更新を検知する。
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,11 +35,8 @@ const GUARDED_PACKAGE_KEY =
 export const CONFIRMATION_PHRASE =
     "`npm run test:visuals` を実行し、全スクリーンショットの一致を確認した";
 
-/** エラーメッセージで PR 本文への追記を求める行の本文（チェックボックス記号を除く）。 */
+/** エラーメッセージで PR 本文への追記を求める行の本文（チェックボックス記号と指紋を除く）。 */
 const CONFIRMATION_SENTENCE = `ローカル（macOS）で ${CONFIRMATION_PHRASE}`;
-
-/** PR 本文に追記してもらう行（エラーメッセージで出力する）。 */
-export const CONFIRMATION_TEMPLATE = `- [x] ${CONFIRMATION_SENTENCE}`;
 
 /**
  * PR テンプレートの確認事項にある行の本文。適用条件を前置きしている。
@@ -59,6 +58,10 @@ const ACCEPTED_CONFIRMATION_SENTENCES = new Set([
 
 const CHECKED_CHECKBOX = /^\s*[-*]\s+\[[xX]\]\s+(.*?)\s*$/;
 
+/** 確認行の末尾に付ける、実施時点の対象依存の版を表す指紋。 */
+const FINGERPRINT_SUFFIX = /^(.*)（対象依存: ([0-9a-f]{12})）$/;
+
+const FINGERPRINT_LENGTH = 12;
 /**
  * lockfile（v2 以降の `packages` 形式）から対象パッケージの版を取り出す。
  * `packages` を持たない（v1 形式や空の）lockfile は対象なしとして扱う。
@@ -91,16 +94,45 @@ export function diffGuardedVersions(baseLockfile, headLockfile) {
     return changes;
 }
 
-/** PR 本文にチェック済みの実施確認チェックボックスがあるかを判定する。 */
-export function hasVisualsConfirmation(body) {
-    if (typeof body !== "string") return false;
-    return body.split(/\r?\n/).some((line) => {
-        const sentence = CHECKED_CHECKBOX.exec(line)?.[1];
-        return (
-            sentence !== undefined &&
-            ACCEPTED_CONFIRMATION_SENTENCES.has(sentence)
-        );
-    });
+/**
+ * lockfile 上の対象パッケージの版の組から指紋を計算する。
+ * 実施記録をこの指紋に紐付けることで、確認後に対象依存の版を再更新した場合は
+ * 記録が無効になり、対象依存と無関係なコミットの追加やリベースでは無効にならない。
+ */
+export function computeGuardedFingerprint(lockfile) {
+    const versions = extractGuardedVersions(lockfile);
+    const entries = [...versions.keys()]
+        .sort()
+        .map((key) => `${key}@${versions.get(key) ?? ""}`);
+    return createHash("sha256")
+        .update(entries.join("\n"))
+        .digest("hex")
+        .slice(0, FINGERPRINT_LENGTH);
+}
+
+/** PR 本文に追記してもらう行（エラーメッセージで出力する）。 */
+export function formatConfirmationLine(fingerprint) {
+    return `- [x] ${CONFIRMATION_SENTENCE}（対象依存: ${fingerprint}）`;
+}
+
+/** PR 本文のチェック済みの実施確認行から、記録された指紋を列挙する。 */
+export function findConfirmationFingerprints(body) {
+    if (typeof body !== "string") return [];
+    const fingerprints = [];
+    for (const line of body.split(/\r?\n/)) {
+        const text = CHECKED_CHECKBOX.exec(line)?.[1];
+        if (text === undefined) continue;
+        const match = FINGERPRINT_SUFFIX.exec(text);
+        if (match && ACCEPTED_CONFIRMATION_SENTENCES.has(match[1])) {
+            fingerprints.push(match[2]);
+        }
+    }
+    return fingerprints;
+}
+
+/** PR 本文に、指定した指紋に紐付くチェック済みの実施確認行があるかを判定する。 */
+export function hasVisualsConfirmation(body, fingerprint) {
+    return findConfirmationFingerprints(body).includes(fingerprint);
 }
 
 function formatChange({ key, before, after }) {
@@ -142,16 +174,25 @@ function main() {
         console.log(`[check-visuals-guard]   ${formatChange(change)}`);
     }
 
-    if (hasVisualsConfirmation(process.env.PR_BODY)) {
+    const fingerprint = computeGuardedFingerprint(headLockfile);
+    console.log(`[check-visuals-guard] guarded dependency fingerprint: ${fingerprint}`);
+
+    const recorded = findConfirmationFingerprints(process.env.PR_BODY);
+    if (recorded.includes(fingerprint)) {
         console.log("[check-visuals-guard] local 'npm run test:visuals' confirmation found in PR body");
         return;
     }
 
+    if (recorded.length > 0) {
+        console.error(
+            `[check-visuals-guard] confirmation in PR body was recorded for other dependency versions (${recorded.join(", ")}); re-run 'npm run test:visuals' for the current versions`,
+        );
+    }
     console.error(
         "[check-visuals-guard] run 'npm run test:visuals' locally (macOS) and add the following checked line to the PR body:",
     );
     // PR 本文へそのまま貼り付けられるよう、ログではなく生の出力としてプレフィックスを付けずに書き出す。
-    process.stderr.write(`${CONFIRMATION_TEMPLATE}\n`);
+    process.stderr.write(`${formatConfirmationLine(fingerprint)}\n`);
     process.exitCode = 1;
 }
 
