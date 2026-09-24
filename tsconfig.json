@@ -19,7 +19,10 @@
         // Vite の native ESM 設定ローダーは拡張子なしの相対 import を解決できないため、
         // 設定ファイル間の import は `./vite.config.ts` のように拡張子を明示する。
         // `tsc --noEmit`（typecheck）でこの記法を許可する。
-        "allowImportingTsExtensions": true
+        "allowImportingTsExtensions": true,
+        // allowImportingTsExtensions は noEmit 等が必須（TS5096）。エディタは CLI 引数を
+        // 使わず本ファイルを直接読むため、ここで明示する。JS の出力は Vite / tsdown が担う。
+        "noEmit": true
     },
     "include": [
         "src/**/*",
