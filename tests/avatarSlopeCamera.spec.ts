@@ -364,8 +364,9 @@ test("Camera altitude does not spike while avatar moves on sloped terrain with W
     expect(reachedCap).toBe(false);
     expect(finalDistance).toBeGreaterThan(MOVE_DISTANCE_M);
 
-    // 移動後、自動スクロールのイージングとタイル安定を待ってから停止状態を確定する。
-    await waitForFrames(page, 60);
+    // 移動後の描画に固定の猶予を与え、地形の状態を基準に停止状態を確定する。
+    // フレーム数で待つと、低速なソフトウェア WebGL 環境では待機時間が大幅に延びる。
+    await page.waitForTimeout(1000);
     await waitForTerrainStable(page);
 
     // 移動後（停止・安定後）のスクリーンショット。
