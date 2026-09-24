@@ -129,7 +129,7 @@ describe("checkVisualsGuard", () => {
         });
 
         it("大文字の X や * 箇条書き、CRLF 改行でも判定する", () => {
-            const body = `概要\r\n* [X] ${CONFIRMATION_PHRASE}  \r\n`;
+            const body = `概要\r\n${CONFIRMATION_TEMPLATE.replace("- [x]", "* [X]")}  \r\n`;
             expect(hasVisualsConfirmation(body)).toBe(true);
         });
 
@@ -139,6 +139,9 @@ describe("checkVisualsGuard", () => {
                 "- [x] `npm run test:visuals` は実行していない",
                 "- [x] ローカルで `npm run test:visuals` を実行した",
                 `- [x] ${CONFIRMATION_PHRASE}わけではない`,
+                `- [x] ${CONFIRMATION_PHRASE}`,
+                `- [x] 実行していないが、${CONFIRMATION_TEMPLATE.replace("- [x] ", "")}`,
+                `- [x] 未実施。${CONFIRMATION_TEMPLATE.replace("- [x] ", "")}`,
             ]) {
                 expect(hasVisualsConfirmation(`${line}\n`)).toBe(false);
             }
@@ -157,13 +160,16 @@ describe("checkVisualsGuard", () => {
 
         it("基準画像を更新するオプション付きの行は実施確認とみなさない", () => {
             for (const command of [
+                "npm run test:visuals:update",
                 "npm run test:visuals -- --update-snapshots",
                 "npm run test:visuals -- --update-snapshots=all",
                 "npm run test:visuals -- -u",
             ]) {
-                expect(
-                    hasVisualsConfirmation(`- [x] \`${command}\` を実行した\n`),
-                ).toBe(false);
+                const line = CONFIRMATION_TEMPLATE.replace(
+                    "npm run test:visuals",
+                    command,
+                );
+                expect(hasVisualsConfirmation(`${line}\n`)).toBe(false);
             }
         });
 

@@ -29,25 +29,35 @@ const HEAD_LOCKFILE_PATH = resolve(REPO_ROOT, "package-lock.json");
 const GUARDED_PACKAGE_KEY =
     /(?:^|\/)node_modules\/(?:@babylonjs\/[^/]+|@playwright\/test|playwright|playwright-core)$/;
 
-/**
- * 実施確認とみなす肯定形の記録。PR テンプレートとエラーメッセージの貼り付け用の行は
- * いずれもこの文言で終わる。コマンド名の有無だけで判定すると
- * `- [x] npm run test:visuals は実行していない` のような否定の行も通過してしまうため、
- * チェック済みの行がこの文言で終わる場合のみ実施確認とみなす。
- */
+/** 実施確認とみなす記録の中核となる肯定形の文言。 */
 export const CONFIRMATION_PHRASE =
     "`npm run test:visuals` を実行し、全スクリーンショットの一致を確認した";
 
-const CHECKED_CHECKBOX = /^\s*[-*]\s+\[[xX]\]\s+/;
+/** エラーメッセージで PR 本文への追記を求める行の本文（チェックボックス記号を除く）。 */
+const CONFIRMATION_SENTENCE = `ローカル（macOS）で ${CONFIRMATION_PHRASE}`;
+
+/** PR 本文に追記してもらう行（エラーメッセージで出力する）。 */
+export const CONFIRMATION_TEMPLATE = `- [x] ${CONFIRMATION_SENTENCE}`;
 
 /**
- * 基準画像を更新するオプション。`npm run test:visuals -- --update-snapshots` は
- * 比較ではなく基準の上書きになり差分を検知できないため、実施確認とみなさない。
+ * PR テンプレートの確認事項にある行の本文。適用条件を前置きしている。
+ * テンプレート側の文言を変えた場合は、Unit test のテンプレート整合チェックで検知される。
  */
-const UPDATE_SNAPSHOTS_OPTION = /--update-snapshots\b|(?:^|\s)-u(?![\w-])/;
+const TEMPLATE_CONFIRMATION_SENTENCE =
+    "`package-lock.json` 上で `@babylonjs/*` / `@playwright/test` / `playwright` / `playwright-core` の版が変わった場合、" +
+    CONFIRMATION_SENTENCE;
 
-/** PR 本文に追記してもらう行（エラーメッセージとテンプレートで共有する文言）。 */
-export const CONFIRMATION_TEMPLATE = `- [x] ローカル（macOS）で ${CONFIRMATION_PHRASE}`;
+/**
+ * 実施確認とみなすチェック済み行の本文。コマンド名や末尾の文言だけで判定すると、
+ * 否定を前置きした行や `npm run test:visuals:update`（基準の上書き）を書いた行まで
+ * 通過してしまうため、PR テンプレートとエラーメッセージの正規の行との完全一致に限定する。
+ */
+const ACCEPTED_CONFIRMATION_SENTENCES = new Set([
+    CONFIRMATION_SENTENCE,
+    TEMPLATE_CONFIRMATION_SENTENCE,
+]);
+
+const CHECKED_CHECKBOX = /^\s*[-*]\s+\[[xX]\]\s+(.*?)\s*$/;
 
 /**
  * lockfile（v2 以降の `packages` 形式）から対象パッケージの版を取り出す。
@@ -84,14 +94,13 @@ export function diffGuardedVersions(baseLockfile, headLockfile) {
 /** PR 本文にチェック済みの実施確認チェックボックスがあるかを判定する。 */
 export function hasVisualsConfirmation(body) {
     if (typeof body !== "string") return false;
-    return body
-        .split(/\r?\n/)
-        .some(
-            (line) =>
-                CHECKED_CHECKBOX.test(line) &&
-                line.trimEnd().endsWith(CONFIRMATION_PHRASE) &&
-                !UPDATE_SNAPSHOTS_OPTION.test(line),
+    return body.split(/\r?\n/).some((line) => {
+        const sentence = CHECKED_CHECKBOX.exec(line)?.[1];
+        return (
+            sentence !== undefined &&
+            ACCEPTED_CONFIRMATION_SENTENCES.has(sentence)
         );
+    });
 }
 
 function formatChange({ key, before, after }) {
