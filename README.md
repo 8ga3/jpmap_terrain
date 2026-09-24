@@ -108,14 +108,16 @@ npm start
 
 `http://localhost:8080` が自動的に開き、開発サーバーがホットリロード付きで起動します。
 
-> Node のバージョンはリポジトリ直下の `.tool-versions` で固定しています（[asdf](https://asdf-vm.com/) 利用時は自動で切り替わります。初回のみ `asdf install` を実行してください）。`package-lock.json` の生成結果は npm のバージョンに依存するため、依存関係を更新する際は必ずこのバージョンを使用してください（詳細は [`spec/development.md`](spec/development.md) を参照）。
+> Node のバージョンはリポジトリ直下の `.tool-versions` で固定しています（[asdf](https://asdf-vm.com/) 利用時は自動で切り替わります。初回のみ `asdf install` を実行してください）。
+>
+> `package-lock.json` の生成結果は npm のバージョンに依存するため、依存関係を更新する際は必ずこのバージョンを使用してください（詳細は [`spec/development.md`](spec/development.md) を参照）。
 
 ## デモポータル
 
 `http://localhost:8080/`（`/index.html`）はデモ一覧ポータルになっています。各デモへは以下から個別にもアクセスできます。
 
 | デモ | URL | 説明 |
-|---|---|---|
+| --- | --- | --- |
 | 3D 地形ビューア | `/viewer` | 既存の地理院タイル 3D ビューア。緯度経度・カメラ向き・地図種別を URL で指定可能。 |
 | タイムラプス | `/timelapse` | 24 時間を 1 分に圧縮し、太陽位置・陰影をアニメーション表示（アナログ時計オーバーレイ付き）。 |
 | ズームループ | `/zoomloop` | 指定した2地点間をカメラがクォータニオンで滑らかに往復ズームし続けるプロモーション用デモ。写真ボタン以外の画面操作は無効。 |
@@ -147,11 +149,13 @@ npm start
 
 ## URL フォーマット（緯度経度・エンジン・地図種類指定）
 
-3D ビューアデモ（`src/demos/viewer/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` / `mapType` クエリパラメータをサポートします。ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`、`MapType` は `"standard" | "photo"`）とは別です。
+3D ビューアデモ（`src/demos/viewer/index.ts`）は、Google Maps 互換のパス形式 `/@緯度,経度` と `engine` / `mapType` クエリパラメータをサポートします。
+
+ここで説明するのは開発デモ用 URL の仕様であり、npm パッケージの公開 API（`EngineType` は `"webgpu" | "webgl2"`、`MapType` は `"standard" | "photo"`）とは別です。
 
 ### パス形式（カメラ位置）
 
-**3D モード**
+#### 3D モード
 
 - 形式: `/@<lat>,<lon>,<altitude>,<azimuth>,<tilt>`
 - `altitude`: カメラの注視点（地表点）からの距離（m）。範囲 50〜25,512,548
@@ -160,11 +164,11 @@ npm start
 - `tilt`: 仰角（度）。範囲 約5.7〜89（上限はカメラの upperBetaLimit ≈ 89°）
 - 省略した場合は既定値（altitude=2000, azimuth=0, tilt=45）で補完されます
 
-```
+```text
 /@35.3606,138.7274,7411,0.00,45.00   ← 富士山山頂、注視点からの距離 7411m、真北向き
 ```
 
-**2D モード（平行投影）**
+#### 2D モード（平行投影）
 
 - 2D モードでは altitude（注視点からの距離）の代わりに **Google Maps 互換のズームレベル**（`z` サフィックス付き）を使用します
 - 形式: `/@<lat>,<lon>,<zoom>z`
@@ -172,7 +176,7 @@ npm start
 - azimuth / tilt は 2D では固定のため URL に含みません
 - ズームレベルは `canvasHeight × 156543 × cos(緯度) / (2^z × 2 × tan(fov/2))` で `camera.radius` に変換されます
 
-```
+```text
 /@35.3606,138.7274,14.50z            ← 富士山山頂、ズームレベル 14.5
 ```
 
@@ -292,8 +296,7 @@ docker compose up -d --build
 通常は `npm run test:visuals` のみを実行します。
 `npm run test:visuals:update` は毎回実行するものではなく、UIや描画結果に意図した変更が入ったときに、開発者が基準画像を更新するために実行します。
 
-
-**UIや描画結果に意図した変更が入ったときのみ実行**
+#### UIや描画結果に意図した変更が入ったときのみ実行
 
 ```shell
 npm run test:visuals:update
@@ -301,7 +304,7 @@ npm run test:visuals:update
 
 > **Note:** Playwright 1.59+ では `--update-snapshots` のデフォルトが `missing`（不足分のみ追加）に変更されました。既存スナップショットを上書きするには `--update-snapshots=all` が必要です。`test:visuals:update` スクリプトはこのオプションを使用します。
 
-**通常の実行**
+#### 通常の実行
 
 ```shell
 npm run test:visuals
@@ -340,6 +343,6 @@ Apache-2.0
 
 ## 参考
 
-- Babylon.js: https://doc.babylonjs.com/
-- 地理院地図: https://maps.gsi.go.jp/
-- Template: https://github.com/RaananW/babylonjs-webpack-es6
+- Babylon.js: <https://doc.babylonjs.com/>
+- 地理院地図: <https://maps.gsi.go.jp/>
+- Template: <https://github.com/RaananW/babylonjs-webpack-es6>

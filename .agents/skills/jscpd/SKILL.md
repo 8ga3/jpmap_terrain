@@ -24,7 +24,7 @@ npx jscpd --reporters ai --format "javascript,typescript" <path>
 
 The `ai` reporter produces compact, token-efficient output designed for agent consumption:
 
-```
+```text
 Clones:
 src/ foo.ts:10-25 ~ bar.ts:42-57
 src/utils/helpers.ts:100-120 ~ src/utils/other.ts:5-25
@@ -33,6 +33,7 @@ src/utils/helpers.ts:100-120 ~ src/utils/other.ts:5-25
 ```
 
 Each line represents one clone pair:
+
 - **Same file**: `path/file.ts 10-25 ~ 45-60` (shared path shown once)
 - **Same directory**: `shared/prefix/ file-a.ts:10-25 ~ file-b.ts:42-57` (common prefix factored out)
 - **Different paths**: `path/a.ts:10-25 ~ path/b.ts:42-57`
@@ -40,7 +41,7 @@ Each line represents one clone pair:
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--reporters ai` | Use the AI-optimized reporter (compact clone list for agents) |
 | `--reporters html` | Generate HTML report |
 | `--reporters json` | Output JSON report |
@@ -80,6 +81,7 @@ Create a `.jscpd.json` in your project root:
 Once you've detected clones, use the **dry-refactoring** skill for a guided workflow to eliminate them:
 
 → **dry-refactoring** — step-by-step refactoring strategies and workflow for removing duplication. Install with:
+
   ```bash
   npx skills add https://github.com/kucherenko/jscpd --skill dry-refactoring
   ```

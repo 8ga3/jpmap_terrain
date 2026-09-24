@@ -22,14 +22,16 @@
 - ローカル: [asdf](https://asdf-vm.com/) がカレントディレクトリの `.tool-versions` を自動的に参照する。初回のみ `asdf install` を実行する。
 - CI: `ci.yml` / `deploy.yml` の `actions/setup-node` が `node-version-file: '.tool-versions'` で同じバージョンを解決する。
 
-**なぜ固定が必要か**: `package-lock.json` の生成結果は **npm のバージョンによって変わる**。npm は optional な依存（`@rolldown/binding-wasm32-wasi` など）の peerDependencies をどこまで lock に記録するかがバージョンごとに異なる。そのため CI と異なる npm で `npm install` すると、CI 側の `npm ci` が `Missing: <pkg> from lock file` で失敗する。
+**なぜ固定が必要か**: `package-lock.json` の生成結果は **npm のバージョンによって変わる**。npm は optional な依存（`@rolldown/binding-wasm32-wasi` など）の peerDependencies をどこまで lock に記録するかがバージョンごとに異なる。
+そのため CI と異なる npm で `npm install` すると、CI 側の `npm ci` が `Missing: <pkg> from lock file` で失敗する。
 
 そのため以下を守ること。
 
 - 依存関係を更新して `package-lock.json` を再生成する際は、必ず `.tool-versions` で指定された Node / npm を使うこと。作業前に `node -v` / `npm -v` で確認する。
 - Node のバージョンを更新する場合は `.tool-versions` を変更し、同じコミットで `npm install` を実行して `package-lock.json` を再生成すること。
 - 上記は `scripts/checkToolVersions.mjs` により機械的に検知する（`npm run lint` および `package-lock.json` をステージした際の pre-commit フックから実行される）。
-- `.tool-versions` には **`nodejs` の1行のみを記述し、コメント行を追加しない**こと。`actions/setup-node` は正規表現 `^(?:node(js)?\s+)?v?(?<version>[^\s]+)$` で行を走査するため、空白を含まない単独トークンの行（例: `#memo`）があるとそれをバージョンとして誤解釈する。`nodejs` 以外のツールはローカルの `~/.tool-versions`（グローバル設定）側で管理する。
+- `.tool-versions` には **`nodejs` の1行のみを記述し、コメント行を追加しない**こと。`actions/setup-node` は正規表現 `^(?:node(js)?\s+)?v?(?<version>[^\s]+)$` で行を走査するため、空白を含まない単独トークンの行（例: `#memo`）があるとそれをバージョンとして誤解釈する。
+  `nodejs` 以外のツールはローカルの `~/.tool-versions`（グローバル設定）側で管理する。
 
 > 補足: 過去に「CIがx64・開発機がmacOS arm64」というCPUアーキテクチャの差が原因と推測していたが、実際にはアーキテクチャは無関係だった。同一の npm バージョンを使えば、macOS arm64 と Linux x64 で生成される `package-lock.json` はバイト単位で一致する。
 
@@ -82,7 +84,9 @@ Dependabot のPRはPRテンプレートを使わないため、チェックボ�
 タグpushをトリガーに、以下2つのワークフローが**独立して**実行される。
 
 - `.github/workflows/deploy.yml`: Netlify本番環境（デモサイト）へのデプロイ。**全タグ**が対象（`push.tags: ['**']` を使用。`'*'` では `/` を含むタグ（例: `release/v1`）にマッチしないため `'**'` を採用している）。認証情報はNetlifyの長期トークン（`secrets.NETLIFY_AUTH_TOKEN`）。
-- `.github/workflows/publish.yml`: npmレジストリへの公開。**`vX.Y.Z` 形式のタグのみ**が対象（`push.tags: ['v*.*.*']`）。npm公開はNetlifyデプロイより影響が大きい（一度公開すると原則取り消せない）ため、対象タグを限定している。ただし `v*.*.*` はglobのため `v1.2.3-alpha` 等の意図しないタグにもマッチし得る。そのため `publish.yml` 内の `validate-tag` job で `^v[0-9]+\.[0-9]+\.[0-9]+$` の正規表現による厳密な検証を行い、一致しない場合は（Environment承認を待たずに）早期に失敗させる。認証は npmの [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)（OIDC）方式を採用しており、長期トークンをGitHub Secretsに保持しない。
+- `.github/workflows/publish.yml`: npmレジストリへの公開。**`vX.Y.Z` 形式のタグのみ**が対象（`push.tags: ['v*.*.*']`）。npm公開はNetlifyデプロイより影響が大きい（一度公開すると原則取り消せない）ため、対象タグを限定している。
+  ただし `v*.*.*` はglobのため `v1.2.3-alpha` 等の意図しないタグにもマッチし得る。そのため `publish.yml` 内の `validate-tag` job で `^v[0-9]+\.[0-9]+\.[0-9]+$` の正規表現による厳密な検証を行い、一致しない場合は（Environment承認を待たずに）早期に失敗させる。
+  認証は npmの [Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)（OIDC）方式を採用しており、長期トークンをGitHub Secretsに保持しない。
 
 両ワークフローは同じタグpushイベントで並行してトリガーされ、互いに依存関係はない（一方が失敗してももう一方には影響しない）。
 
@@ -206,12 +210,13 @@ WebXR の AR モードは secure context（https、または `localhost`）を�
 `camera.position` / `camera.target` が、直後のフレームで古い値を返すケースが確認されている。
 
 **ワークアラウンド**:
+
 - `src/demos/viewer/index.ts` の `createUrlUpdater` の debounce を **1000ms** に設定している。
   500ms 以下では地図の場所によって再現することが確認されている。
 - pointerup 時に `onCameraInteractionEnd` コールバックで `_notifyIfChanged(force=true)` を
   呼び出すことで、epsilon 比較による取りこぼしを補完している（`jpmapTerrain.ts`）。
 
 **今後の対応**:
+
 - Babylon.js 側のバグである可能性がある。バージョンアップ後に 1000ms 未満で動作するか検証を推奨する。
 - `timelapse` などの他のデモで同様の問題が発生した場合は debounce を揃えて調整する。
-

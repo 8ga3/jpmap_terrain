@@ -6,7 +6,7 @@
 ## デモ一覧
 
 | デモ | URL | エントリ | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | デモポータル | `/` （`index.html`） | `src/demos/portal/index.ts` | デモ一覧へのリンク集 |
 | 3D 地形ビューア | `/viewer.html` | `src/demos/viewer/index.ts` | 既存の 3D 地形可視化（`/@lat,lon` URL ・カメラ・地図種別連動） |
 | タイムラプス | `/timelapse.html` | `src/demos/timelapse/index.ts` | 24 時間を 1 分に圧縮した太陽位置・陰影アニメ＋アナログ時計オーバーレイ |
@@ -36,7 +36,8 @@
 ## URL リライトと dist 配信時の注意
 
 - 上表の URL（`/viewer.html` 等）は `dist/` に実体として出力される静的ファイル名であり、常にこの形式でアクセスできる。
-- ポータルのカードや `createUrlUpdater`（`src/terrain/urlState.ts`）が生成する `/<name>` や `/<name>/@lat,lon,...` という拡張子なしの見た目の URL は、静的ファイルとしては存在しない。これらは `vite.rewrites.ts` の `demoRewritePlugin`（`demoAtPathRewrites`）が担うサーバー側リライトによって `/<name>.html` へ書き換えられて初めて解決する。
+- ポータルのカードや `createUrlUpdater`（`src/terrain/urlState.ts`）が生成する `/<name>` や `/<name>/@lat,lon,...` という拡張子なしの見た目の URL は、静的ファイルとしては存在しない。
+  これらは `vite.rewrites.ts` の `demoRewritePlugin`（`demoAtPathRewrites`）が担うサーバー側リライトによって `/<name>.html` へ書き換えられて初めて解決する。
 - このリライトは以下の場合のみ有効になる。
   - `npm run start` / `npm run start:test`（Vite dev サーバー、`configureServer` フック）
   - `npm run preview`（`vite preview`。`dist/` のビルド成果物を配信する際は必ずこちらを使う。`configurePreviewServer` フック）
@@ -45,7 +46,9 @@
 
 ### 静的 CDN へのデプロイ（サーバー実行環境なし）
 
-`npm run start` / `npm run preview` の Node ミドルウェアによるリライトは、サーバー実行環境を持たない静的 CDN（Netlify / Cloudflare Pages 等）にはそのまま持ち込めない。そのため `vite build` 時に `vite.rewrites.ts` の `demoRewritePlugin`（`generateBundle` フック）が **Netlify / Cloudflare Pages 共通書式の `dist/_redirects`** を自動生成し、`demoAtPathRewrites` と同じ「`/<name>` および `/<name>/*` → `/<name>.html`」の対応をビルド成果物に同梱する。
+`npm run start` / `npm run preview` の Node ミドルウェアによるリライトは、サーバー実行環境を持たない静的 CDN（Netlify / Cloudflare Pages 等）にはそのまま持ち込めない。
+そのため `vite build` 時に `vite.rewrites.ts` の `demoRewritePlugin`（`generateBundle` フック）が **Netlify / Cloudflare Pages 共通書式の `dist/_redirects`** を自動生成し、
+`demoAtPathRewrites` と同じ「`/<name>` および `/<name>/*` → `/<name>.html`」の対応をビルド成果物に同梱する。
 
 - 生成ロジック: `buildStaticRedirectsFile()`（`vite.rewrites.ts`）。`DEMO_NAMES` を単一の正本とし、dev/preview のリライトと内容が乖離しないようにしている。
 - **Netlify / Cloudflare Pages**: `dist/` をそのままデプロイするだけで `_redirects` が有効になる。追加設定不要。
@@ -58,7 +61,7 @@
 
 `vite.rewrites.ts` の `DEMO_NAMES` と対応させる。デモを追加/削除した場合は、この設定例も合わせて更新すること（静的設定ファイルのため自動生成されない）。
 
-```
+```text
 viewer, timelapse, polygon, distance, circle, plan, gpx, model,
 avatar, avatar-controller, boids, flight, artillery, geospatial,
 zoomloop, roiorbit, diorama
@@ -103,7 +106,8 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 
 ### レスポンシブ / タッチ操作対応
 
-- 全デモの HTML（`public/*.html`）に `<meta name="viewport" content="width=device-width, ...">` を付与し、モバイルでの等倍表示を保証する。すべてのページに `viewport-fit=cover` を付与し、Babylon.js を読み込むデモ（ポータル `index.html` 以外のすべて）にはさらに `maximum-scale=1` を付与する（ポータル `index.html` は軽量ページのため `maximum-scale=1` を付与せず、ページズームを許可する）。
+- 全デモの HTML（`public/*.html`）に `<meta name="viewport" content="width=device-width, ...">` を付与し、モバイルでの等倍表示を保証する。
+  すべてのページに `viewport-fit=cover` を付与し、Babylon.js を読み込むデモ（ポータル `index.html` 以外のすべて）にはさらに `maximum-scale=1` を付与する（ポータル `index.html` は軽量ページのため `maximum-scale=1` を付与せず、ページズームを許可する）。
   - **注意（アクセシビリティ）**: `maximum-scale=1` はユーザーのページズーム（ピンチズーム）を無効化するため、低視力ユーザー等のアクセシビリティに影響する。地図/3D キャンバス自体のピンチズーム（地形・モデルの拡大縮小）とブラウザのページズームが競合するのを避けるための意図的な指定だが、将来 UI 文字サイズの調整等で見直す際は、この制約（ページズーム不可）を踏まえて判断すること。
 - 操作 UI（`src/terrain/controlPanel.ts`）は固定 px で生成するが、`@media (pointer: coarse)` のスタイルを注入し、**タッチ端末でのみ** タップ領域（最小 44px）・文字サイズ・配置余白を拡大する。マウス/トラックパッド（fine pointer）では従来の見た目を維持するため、ビジュアル回帰テスト（`tests/validation.spec.ts`）への影響はない。
 - タッチパネルのパン（`src/scenes/globe.ts` の独自シングルタッチパン）は、接地中のタッチポインタ位置（`touchPoints`）で 2 本指以上を検出し、ピンチ中はシングルタッチパンを無効化する。これにより `GeospatialCamera` のピンチズームとシングルタッチパンの同時発火を防ぐ（マウス操作は従来どおり）。
@@ -114,11 +118,15 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
   - モードは最初の 2 本指 move 時に間隔で確定し、指を離す（2 本未満になる）まで維持する。途中で間隔がしきい値を跨いでもモードを切り替えない（誤切替防止）。
   - 感度・しきい値は `TWO_FINGER_TILT_SPREAD_PX` / `TWO_FINGER_TILT_SENS` / `TWO_FINGER_YAW_SENS` で調整可能。動作確認は iOS Safari / Android Chrome 実機で行う。
 - 残課題: タッチパッドの 2 本指スクロール→パンのマッピングは、マウスホイールズームとの判別がハードウェア依存のため未実装。実機（Mac トラックパッド）での挙動確認を経て方針決定する。
-- **ブラウザ既定ジェスチャの抑止**: 操作ボタン（`.cp-btn` / `.cp-compass`）に `touch-action: manipulation` を付与し、iOS Safari のダブルタップズームを抑止する（タップは従来どおり機能）。viewer ページ（`public/viewer.html`）の `html, body` に `touch-action: none; overscroll-behavior: none;` を付与する。さらに、`touch-action` だけでは Android Chrome 等のオーバースクロール（2 本指スワイプによる自動スクロール）や画面端スワイプの戻る/進むナビゲーションが残るため、地図キャンバスの `touchmove` を `{ passive: false }` で捕捉し `preventDefault()` する（`src/lib/jpmapTerrain.ts`。Babylon はポインタイベントで操作を処理するためジェスチャ実装には影響しない）。
+- **ブラウザ既定ジェスチャの抑止**: 操作ボタン（`.cp-btn` / `.cp-compass`）に `touch-action: manipulation` を付与し、iOS Safari のダブルタップズームを抑止する（タップは従来どおり機能）。
+  viewer ページ（`public/viewer.html`）の `html, body` に `touch-action: none; overscroll-behavior: none;` を付与する。
+  さらに、`touch-action` だけでは Android Chrome 等のオーバースクロール（2 本指スワイプによる自動スクロール）や画面端スワイプの戻る/進むナビゲーションが残るため、
+  地図キャンバスの `touchmove` を `{ passive: false }` で捕捉し `preventDefault()` する（`src/lib/jpmapTerrain.ts`。Babylon はポインタイベントで操作を処理するためジェスチャ実装には影響しない）。
 - **現在地（Geolocation）**: `navigator.geolocation.getCurrentPosition` はセキュアコンテキスト（HTTPS、または `localhost`）でのみ動作する。LAN の IP に対する `http://` の dev サーバではブラウザがブロックするため、スマホ実機では取得できない（本番/`localhost` では動作）。仕様であり実装上の不具合ではない。
-- **スケールバー幅の上限制御**: スケールバーは右下に右寄せ配置され、`snapScale` が常に切り上げるためバー幅が基準（100px）の最大 2.5 倍程度まで広がりうる。狭い画面ではバーが左へ伸びて左下の地図切替ボタン（写真/標準）へ被るため、`pickScaleWithin(metersPerPx, basePx, maxBarPx)`（`src/terrain/controlPanel.ts`）で画面幅から求めた `maxBarPx` を超えない範囲のきれいな値を選ぶ（超える場合は 1 段階小さいスケールへ下げる）。`maxBarPx` は「行の右端 − 地図切替ボタンの右端 − 安全マージン − バー以外の固定要素幅（地理院タイル＋ラベル＋gap）」として `src/scenes/globeSceneController.ts` で算出する。広い画面では従来の `snapScale` と同一値となり、デスクトップ表示は不変。
+- **スケールバー幅の上限制御**: スケールバーは右下に右寄せ配置され、`snapScale` が常に切り上げるためバー幅が基準（100px）の最大 2.5 倍程度まで広がりうる。
+  狭い画面ではバーが左へ伸びて左下の地図切替ボタン（写真/標準）へ被るため、`pickScaleWithin(metersPerPx, basePx, maxBarPx)`（`src/terrain/controlPanel.ts`）で画面幅から求めた `maxBarPx` を超えない範囲のきれいな値を選ぶ（超える場合は 1 段階小さいスケールへ下げる）。
+  `maxBarPx` は「行の右端 − 地図切替ボタンの右端 − 安全マージン − バー以外の固定要素幅（地理院タイル＋ラベル＋gap）」として `src/scenes/globeSceneController.ts` で算出する。広い画面では従来の `snapScale` と同一値となり、デスクトップ表示は不変。
 - **言語宣言**: 各デモの `<html lang="ja">` を宣言し、Chrome の自動翻訳プロンプトを抑止する（中身が日本語のため）。将来的な多言語切り替え（UI テキストの i18n / `locale` オプション）は別課題。
-
 
 ## URL 規約
 
@@ -135,7 +143,7 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 ### timelapse (`/timelapse.html`)
 
 | パラメータ | 型 | 既定値 | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `start` | ISO 8601 | 当日 0 時 UTC | シミュレーション開始時刻（UTC として扱う） |
 | `speed` | 数値（秒） | `60` | 24 時間ぶんを実時間で何秒に圧縮するか。0 以下/非数値は 60 にフォールバック |
 | `paused` | （無値）/ `true` | `false` | 一時停止（テスト用）。`paused=false` または `paused=0` は走行 |
@@ -151,7 +159,7 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 **デモ構成（3 サークル）:**
 
 | id | altitudeMode | 概要 |
-|---|---|---|
+| --- | --- | --- |
 | `yomiuri-terrain` | `terrain` | 地表追従円（半径 300m、altitude=50m、赤色） |
 | `yomiuri-absolute` | `absolute` | 絶対標高円（半径 200m、altitude=400m、青色） |
 | `yomiuri-custom` | `absolute` | カスタムセグメント円（半径 150m、altitude=300m、segments=16、黄色） |
@@ -169,7 +177,7 @@ RewriteRule ^(viewer|timelapse|polygon|distance|circle|plan|gpx|model|avatar|ava
 **操作モード（右上ツールバーで排他切替）:**
 
 | モード | 操作 | 効果 |
-|---|---|---|
+| --- | --- | --- |
 | `add`（既定） | 地形クリック | クリック地点に `altitude = 地表 + 100 m` の頂点を末尾追加。カーソルは矢印 + 「+」記号。 |
 | `remove` | 頂点クリック | 当該頂点を削除（残点 0/1 も許容）。頂点 hover 時のみ矢印 + 「−」記号カーソル。 |
 | `edit` | 頂点ドラッグ | 頂点の `lat/lon` を更新。`Shift+ドラッグ`で高度（`altitude`）を更新（地表より下にはクランプ）。頂点 hover 時のみ `move` / `ns-resize` カーソル。 |
@@ -246,7 +254,7 @@ GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップで
 **操作:**
 
 | 操作 | 効果 |
-|---|---|
+| --- | --- |
 | 地面クリック | クリック地点に 3D モデルを移動（カメラから 5km 以内、地面のみ） |
 | 方位スライダー | 3D モデルの Y 軸回転（0–360°） |
 | 「モデル位置へ移動」ボタン | カメラを 3D モデルの緯度・経度に `flyTo` |
@@ -293,7 +301,7 @@ GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップで
 **コントロール（右上パネル）:**
 
 | UI | 操作 |
-|---|---|
+| --- | --- |
 | 半径スライダー | 円軌道の半径 (m) を変更（既定 200m） |
 | 速度スライダー | 角速度 (°/秒) を変更（既定 20°/秒） |
 | 開始/停止ボタン | アニメーション再生のトグル |
@@ -321,7 +329,7 @@ GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップで
 **コントロール（右上パネル）:**
 
 | UI | 操作 |
-|---|---|
+| --- | --- |
 | 速度スライダー | 移動速度 (m/s) を変更（既定 10m/s、1–50m/s） |
 | 現在位置へ移動ボタン | カメラをアバターの緯度・経度に `flyTo` |
 
@@ -333,7 +341,8 @@ GPX (GPS eXchange Format) の `.gpx` ファイルをドラッグ&ドロップで
 
 **実装メモ:**
 
-- 純粋関数（`keyboardVector` / `applyDeadzone` / `combineInputs` / `stepPosition` / `movementHeading` / `rotateByAzimuth` / `moveVectorMagnitude`）を `movement.ts` に分離し、`tests/avatarController.unit.spec.ts` で網羅的にテスト。
+- 純粋関数（`keyboardVector` / `applyDeadzone` / `combineInputs` / `stepPosition` / `movementHeading` / `rotateByAzimuth` / `moveVectorMagnitude`）を `movement.ts` に分離し、
+  `tests/avatarController.unit.spec.ts` で網羅的にテスト。
 - 方位規約は本プロジェクト共通（北 = 0°・反時計回り正、ArcRotateCamera の alpha 由来）に従い、画面入力 `(vx, vy)` をワールド `(east, north)` に揃えるため `rotateByAzimuth` 内部で `-azimuthDeg` 回転する。
 - ウィンドウ blur 時にキーが押しっぱなしになるのを防ぐため、`window.blur` で `pressedKeys.clear()` を行う。
 
@@ -362,7 +371,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 **コントロール（右上パネル）:**
 
 | UI | 操作 |
-|---|---|
+| --- | --- |
 | アバター数スライダー | アバター数を動的に変更（1〜50 体、既定 20 体） |
 | 一時停止 / 再開ボタン | シミュレーションの一時停止 / 再開トグル |
 | リスタートボタン | アバターを初期位置にリセットし再スタート |
@@ -386,7 +395,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 **コントロール（右上パネル）:**
 
 | UI | 操作 |
-|---|---|
+| --- | --- |
 | 緯度・経度表示 | 現在の円軌道中心座標 |
 | 半径スライダー | 円軌道の半径 (m) を変更（既定 2000m、500–10000m） |
 | 速度スライダー | 飛行速度 (m/s) を変更（既定 100m/s、100–340m/s） |
@@ -400,7 +409,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 **Follow カメラ操作:**
 
 | 操作 | 効果 |
-|---|---|
+| --- | --- |
 | 左右ドラッグ | カメラの水平回転（飛行機を中心に周回） |
 | 上下ドラッグ | カメラの高度オフセット変更 |
 | マウスホイール | カメラの距離変更 |
@@ -429,7 +438,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 **コントロール（ボトムバー）:**
 
 | UI | 操作 |
-|---|---|
+| --- | --- |
 | スコア表示（トップ中央） | RED / BLUE のスコア。現在ターン側を強調表示 |
 | Angle スライダー | 仰角 5°–85°（既定 45°） |
 | Heading スライダー | 方位 ±45°（既定 0°、正面基準） |
@@ -454,9 +463,12 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 
 ### diorama (`/diorama.html`)
 
-地形を手元サイズの正方形「箱庭」として表示する WebXR (`immersive-ar`) 対応デモ。実寸大の geospatial 表現（`GlobeScene`。ECEF楕円体 + floating origin）は z-fighting・far clip 破綻等の課題があったため採用せず、`src/terrain/diorama/dioramaTerrain.ts` による独立実装（正方形グリッド + 実世界DEM/ラスタタイル取得 + 縮小スケール）にしている。そのため本デモは `JpmapTerrain` に依存しない。
+地形を手元サイズの正方形「箱庭」として表示する WebXR (`immersive-ar`) 対応デモ。
+実寸大の geospatial 表現（`GlobeScene`。ECEF楕円体 + floating origin）は z-fighting・far clip 破綻等の課題があったため採用せず、`src/terrain/diorama/dioramaTerrain.ts` による独立実装（正方形グリッド + 実世界DEM/ラスタタイル取得 + 縮小スケール）にしている。
+そのため本デモは `JpmapTerrain` に依存しない。
 
-本デモは公開API `JpmapDiorama`（`src/lib/jpmapDiorama.ts`。詳細は [`spec/diorama-api.md`](diorama-api.md)）を利用して構築されており、`src/demos/diorama/index.ts` は `JpmapDiorama.create()` 呼び出しと `#root` へのマウント・`?engine=` クエリ解決のみを担う薄いラッパーである。地形構築・入力コントロール（キーボード/タッチHUD/AR操作）・WebXR統合等の実装詳細は `JpmapDiorama` 側に集約されている。
+本デモは公開API `JpmapDiorama`（`src/lib/jpmapDiorama.ts`。詳細は [`spec/diorama-api.md`](diorama-api.md)）を利用して構築されており、`src/demos/diorama/index.ts` は `JpmapDiorama.create()` 呼び出しと `#root` へのマウント・`?engine=` クエリ解決のみを担う薄いラッパーである。
+地形構築・入力コントロール（キーボード/タッチHUD/AR操作）・WebXR統合等の実装詳細は `JpmapDiorama` 側に集約されている。
 
 **仕様:**
 
@@ -476,7 +488,7 @@ Boids アルゴリズム（Craig Reynolds, 1987）による群衆シミュレー
 物理XRコントローラー（Meta Quest 等）・タッチHUD（オンスクリーンGUI。ハンドヘルドAR/AR非対応環境で常時表示）・デスクトップキーボードの3系統に同じ操作を割り当てている。いずれの入力系統で操作しても状態（地図中心・フットプリント半径・回転・高さ・タイル種別）は共有され、入力経路を跨いで引き継がれる。
 
 | 操作 | 物理XRコントローラー | タッチHUD（GUI） | デスクトップキーボード |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 地図中心の移動（パン） | 左スティック | 仮想ジョイスティック（ドラッグ） | `W`/`A`/`S`/`D`（カメラの向き基準） |
 | 拡大縮小（フットプリント半径のズーム） | 右スティックY（前後） | 「＋」/「−」ボタン | `PageUp`・`R`（ズームイン） / `PageDown`・`F`（ズームアウト） |
 | 箱庭全体の回転 | 右スティックX（左右） | 「⟲」（反時計回り）/「⟳」（時計回り）ボタン | `Q`（負方向） / `E`（正方向） |
