@@ -288,6 +288,18 @@ describe("checkVisualsGuard", () => {
             ).toBe(false);
         });
 
+        it("親項目の下の入れ子の確認行は実施確認とみなさない", () => {
+            for (const indent of [" ", "  ", "   ", "\t"]) {
+                const body = `- 依存更新の確認\n${indent}${confirmation}\n`;
+                expect(hasVisualsConfirmation(body, fingerprint)).toBe(false);
+            }
+        });
+
+        it("入れ子の項目と並ぶ最上位の確認行は実施確認とみなす", () => {
+            const body = `- 依存更新の確認\n  - [x] メモ\n${confirmation}\n`;
+            expect(hasVisualsConfirmation(body, fingerprint)).toBe(true);
+        });
+
         it("閉じたコメント・コードブロックの後にある確認行は実施確認とみなす", () => {
             const body = `<!-- メモ -->\n\`\`\`\nnpm run test:visuals\n\`\`\`\n<!--\n複数行\n-->\n${confirmation}\n`;
             expect(hasVisualsConfirmation(body, fingerprint)).toBe(true);
