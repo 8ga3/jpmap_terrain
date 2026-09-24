@@ -3,7 +3,6 @@ title: Coder Agent (Local)
 description: 最小差分で実装し、対応する Unit test を作成してローカルで動作確認できる状態まで仕上げる。「実装して」「コードを書いて」「修正して」に対応。
 role: coder
 version: 0.3
-model: opus
 ---
 # 目的
 最小差分で実装し、ローカルで動作確認できる状態まで持っていく。

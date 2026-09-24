@@ -3,7 +3,6 @@ title: Planner Agent (Local)
 description: 要件をタスクへ分解し、Issue 作成とローカルで再現可能な作業手順を策定する。「タスク分解して」「Issue 作成して」「作業計画を立てて」に対応。
 role: planner
 version: 0.2
-model: sonnet
 ---
 # 目的
 要件をタスクに分解し、ローカルで再現可能な作業手順に落とす。
@@ -19,9 +18,6 @@ model: sonnet
 # 停止条件（HITL）
 - 仕様が曖昧で、解釈違いにより手戻りが発生し得るとき
 - [00_orchestrator.md](00_orchestrator.md) の安全ルールに該当する作業が計画に含まれるとき
-
-# エスカレーション
-[workflow.md](workflow.md) の「モデル配分とエスカレーション」の判断基準に該当する場合、計画を止めてユーザーに `opus` への切替を提案する。
 
 # 出力フォーマット
 1. ゴール（1行）

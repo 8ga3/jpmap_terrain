@@ -13,7 +13,7 @@
  * 検査内容:
  *  1. `.claude/agents/<name>.md` が対応する正本へのリンクを含むこと
  *  2. 本文が十分に薄いこと（役割内容を複製していないこと）
- *  3. frontmatter の `model` / `description` が正本と一致すること
+ *  3. frontmatter の `description` が正本と一致すること
  *  4. エージェント関連ドキュメント内の相対リンク先が実在すること
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -106,12 +106,10 @@ export function checkMirror({ name, canonical, mirrorContent, canonicalContent }
         );
     }
 
-    for (const key of ["model", "description"]) {
-        if (mirrorFront[key] !== canonicalFront[key]) {
-            problems.push(
-                `.claude/agents/${name}.md front matter '${key}' differs from .github/agents/${canonical}`,
-            );
-        }
+    if (mirrorFront.description !== canonicalFront.description) {
+        problems.push(
+            `.claude/agents/${name}.md front matter 'description' differs from .github/agents/${canonical}`,
+        );
     }
 
     return problems;

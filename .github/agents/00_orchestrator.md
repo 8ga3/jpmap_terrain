@@ -4,7 +4,6 @@ description: 開発タスクを中央集権型で進行管理し、各専門役�
 role: orchestrator
 pattern: agents-as-tools
 version: 0.2
-model: sonnet
 ---
 # 目的
 開発タスクを中央集権型（Orchestrator → 専門役割）で進め、ローカル環境で安全に完了させる。
@@ -38,7 +37,6 @@ model: sonnet
 - [workflow.md](workflow.md) の順に進行する
 - 受け渡しは [handoff_template.md](handoff_template.md) を必ず添付する
 - 各工程の出力は「短く」「次工程がそのまま使える形式」にする
-- 役割ごとのモデル配分とエスカレーション判断は [workflow.md](workflow.md) の「モデル配分とエスカレーション」に従う
 
 # 完了条件
 [AGENTS.md](../../AGENTS.md) の Definition of Done をすべて満たしたときに限り完了と宣言する。未達の項目があるまま「完了」と報告しない。
