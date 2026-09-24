@@ -55,6 +55,7 @@
 全PRで起動し、`scripts/checkVisualsGuard.mjs` で以下を判定する。対象依存の差分が無いPRは成功となる。画像・レポートは一切アップロードしない。`paths: package-lock.json` で起動対象を絞らないのは、スキップされたworkflowのチェックがPendingのまま残り、必須チェックに設定した場合にlockfileを変更しないPRがマージ不能になるため。
 
 1. baseとPRの `package-lock.json` を比較し、`@babylonjs/*` / `@playwright/test` / `playwright` / `playwright-core` の版に差分（追加・削除を含む）があるかを調べる。`playwright` / `playwright-core` は同梱ブラウザ（chromium-headless-shell）の版を決めるため対象に含める。
+   - baseまたはPRの `package-lock.json` が `packages` セクションを持たない形式（lockfile v1）の場合は、対象依存の更新を判定できないため失敗させる（判定できない形式を素通りさせない）。
    - 比較対象のbaseは、checkoutしたマージコミット（baseとPR headのマージ）の第1親とする。実行時点のbaseブランチ先端を使うと、待機中に別PRがマージされた場合に異なる時点のlockfile同士を比較し、対象の依存を変更していないPRまで誤って失敗するため。
 2. 差分がある場合、PR本文に、現在の対象依存に紐付くチェック済みの実施確認行が無ければ失敗させる。
    - 実施確認とみなすのは、チェックボックス記号（`- [x]`）を除いた本文が、PRテンプレートの確認事項の行、またはガードのエラーメッセージが出力する行と**完全に一致**する場合のみ。否定を前置きした行や、`npm run test:visuals:update` / `--update-snapshots` / `-u`（比較ではなく基準の上書き）を書いた行は実施確認とみなさない。

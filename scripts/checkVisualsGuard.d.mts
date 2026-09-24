@@ -8,6 +8,8 @@ export declare const CONFIRMATION_PHRASE: string;
 
 export declare function extractGuardedVersions(lockfile: unknown): Map<string, string | null>;
 
+export declare function isSupportedLockfile(lockfile: unknown): boolean;
+
 export declare function diffGuardedVersions(
     baseLockfile: unknown,
     headLockfile: unknown,

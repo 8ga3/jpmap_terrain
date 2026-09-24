@@ -8,6 +8,7 @@ import {
     findConfirmationFingerprints,
     formatConfirmationLine,
     hasVisualsConfirmation,
+    isSupportedLockfile,
 } from "../scripts/checkVisualsGuard.mjs";
 
 type Lockfile = {
@@ -70,6 +71,23 @@ describe("checkVisualsGuard", () => {
         it("packages を持たない lockfile は対象なしとして扱う", () => {
             expect(extractGuardedVersions({ lockfileVersion: 1 }).size).toBe(0);
             expect(extractGuardedVersions(null).size).toBe(0);
+        });
+    });
+
+    describe("isSupportedLockfile", () => {
+        it("packages を持つ lockfile（v2 以降）は判定可能とする", () => {
+            expect(isSupportedLockfile(lockfile({}))).toBe(true);
+        });
+
+        it("packages を持たない lockfile（v1 形式など）は判定不能とする", () => {
+            expect(
+                isSupportedLockfile({
+                    lockfileVersion: 1,
+                    dependencies: { "@babylonjs/core": { version: "9.27.0" } },
+                }),
+            ).toBe(false);
+            expect(isSupportedLockfile({ packages: null })).toBe(false);
+            expect(isSupportedLockfile(null)).toBe(false);
         });
     });
 
