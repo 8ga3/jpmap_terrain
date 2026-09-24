@@ -9,7 +9,7 @@
 
 - 目的: 標高タイルを使った地形可視化の実装と検証
 - 技術スタック: TypeScript / Babylon.js / Vite（デモ）/ tsdown（ライブラリ）/ Playwright / Vitest
-- バージョン: 0.3.4
+- バージョン: 0.3.5
 
 ## npm パッケージとしての利用
 
