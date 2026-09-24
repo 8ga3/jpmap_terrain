@@ -256,6 +256,43 @@ describe("checkVisualsGuard", () => {
             expect(hasVisualsConfirmation(body, fingerprint)).toBe(true);
         });
 
+        it("HTML コメント内の確認行は実施確認とみなさない", () => {
+            for (const body of [
+                `<!-- ${confirmation} -->`,
+                `<!--\n${confirmation}\n-->`,
+                `<!-- 以下は記入例\n${confirmation}`,
+            ]) {
+                expect(hasVisualsConfirmation(body, fingerprint)).toBe(false);
+            }
+        });
+
+        it("fenced code block 内の確認行は実施確認とみなさない", () => {
+            for (const body of [
+                `\`\`\`markdown\n${confirmation}\n\`\`\``,
+                `~~~\n${confirmation}\n~~~`,
+                // 内側の短いフェンスではブロックは閉じない。
+                `\`\`\`\`\n\`\`\`\n${confirmation}\n\`\`\`\`\n`,
+                // 閉じられていないブロックは本文末まで続く。
+                `\`\`\`\n${confirmation}`,
+            ]) {
+                expect(hasVisualsConfirmation(body, fingerprint)).toBe(false);
+            }
+        });
+
+        it("インデントコードブロックや引用内の確認行は実施確認とみなさない", () => {
+            expect(
+                hasVisualsConfirmation(`    ${confirmation}`, fingerprint),
+            ).toBe(false);
+            expect(
+                hasVisualsConfirmation(`> ${confirmation}`, fingerprint),
+            ).toBe(false);
+        });
+
+        it("閉じたコメント・コードブロックの後にある確認行は実施確認とみなす", () => {
+            const body = `<!-- メモ -->\n\`\`\`\nnpm run test:visuals\n\`\`\`\n<!--\n複数行\n-->\n${confirmation}\n`;
+            expect(hasVisualsConfirmation(body, fingerprint)).toBe(true);
+        });
+
         it("チェックボックスでない文中の言及は実施確認とみなさない", () => {
             const body = `マージ前に ${sentence} とすること\n`;
             expect(hasVisualsConfirmation(body, fingerprint)).toBe(false);

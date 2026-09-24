@@ -19,6 +19,8 @@ export declare function computeGuardedFingerprint(lockfile: unknown): string;
 
 export declare function formatConfirmationLine(fingerprint: string): string;
 
+export declare function extractRenderedLines(body: string): string[];
+
 export declare function findConfirmationFingerprints(body: unknown): string[];
 
 export declare function hasVisualsConfirmation(body: unknown, fingerprint: string): boolean;
