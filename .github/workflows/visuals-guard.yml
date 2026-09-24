@@ -24,10 +24,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 比較対象の base（マージコミットの第1親）を参照するため、親コミットまで取得する。
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 2
 
       # チェックスクリプトは Node 組み込みモジュールのみを使うため npm ci は不要。
       - name: Set up Node.js
@@ -35,14 +37,17 @@ jobs:
         with:
           node-version-file: '.tool-versions'
 
-      # checkout は既定で浅いクローンのため、比較対象の base ブランチを明示的に取得する。
-      # base_ref は利用者が作成したブランチ名になり得るため、式展開を run に直接埋め込まず env 経由で渡す。
-      - name: Fetch base lockfile
-        env:
-          BASE_REF: ${{ github.base_ref }}
+      # pull_request イベントで checkout されるのは base と PR head のマージコミットで、
+      # その第1親がマージ計算時点の base になる。実行時点の base ブランチ先端を取得すると、
+      # 待機中に別 PR がマージされた場合に異なる時点の lockfile 同士を比較してしまうため、
+      # checkout した内容と同じ時点の base を比較対象に固定する。
+      - name: Extract base lockfile
         run: |
-          git fetch --no-tags --depth=1 origin "refs/heads/${BASE_REF}"
-          git show FETCH_HEAD:package-lock.json > "${RUNNER_TEMP}/base-package-lock.json"
+          if ! git rev-parse --verify --quiet HEAD^2 > /dev/null; then
+            echo "[visuals-guard] checked out commit is not a pull request merge commit" >&2
+            exit 1
+          fi
+          git show HEAD^1:package-lock.json > "${RUNNER_TEMP}/base-package-lock.json"
 
       # PR 本文は信頼できない入力のため、式展開を run に直接埋め込まず env 経由で渡す。
       - name: Check visuals confirmation

@@ -4,6 +4,8 @@ export interface GuardedVersionChange {
     after: string | null;
 }
 
+export declare const CONFIRMATION_PHRASE: string;
+
 export declare const CONFIRMATION_TEMPLATE: string;
 
 export declare function extractGuardedVersions(lockfile: unknown): Map<string, string | null>;

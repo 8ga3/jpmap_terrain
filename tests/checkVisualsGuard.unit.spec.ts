@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+    CONFIRMATION_PHRASE,
     CONFIRMATION_TEMPLATE,
     diffGuardedVersions,
     extractGuardedVersions,
@@ -128,9 +129,19 @@ describe("checkVisualsGuard", () => {
         });
 
         it("大文字の X や * 箇条書き、CRLF 改行でも判定する", () => {
-            const body =
-                "概要\r\n* [X] ローカルで `npm run test:visuals` を実行した\r\n";
+            const body = `概要\r\n* [X] ${CONFIRMATION_PHRASE}  \r\n`;
             expect(hasVisualsConfirmation(body)).toBe(true);
+        });
+
+        it("否定・未完了の記録は実施確認とみなさない", () => {
+            for (const line of [
+                "- [x] npm run test:visuals は実行していない",
+                "- [x] `npm run test:visuals` は実行していない",
+                "- [x] ローカルで `npm run test:visuals` を実行した",
+                `- [x] ${CONFIRMATION_PHRASE}わけではない`,
+            ]) {
+                expect(hasVisualsConfirmation(`${line}\n`)).toBe(false);
+            }
         });
 
         it("未チェックの行は実施確認とみなさない", () => {

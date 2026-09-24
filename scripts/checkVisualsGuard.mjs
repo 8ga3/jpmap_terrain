@@ -30,11 +30,15 @@ const GUARDED_PACKAGE_KEY =
     /(?:^|\/)node_modules\/(?:@babylonjs\/[^/]+|@playwright\/test|playwright|playwright-core)$/;
 
 /**
- * PR 本文で実施確認とみなすチェックボックス。
- * PR テンプレートに存在する `npm run test:visuals:update` の行を誤って
- * 実施確認と扱わないよう、`test:visuals` の直後に `:` が続くものは除外する。
+ * 実施確認とみなす肯定形の記録。PR テンプレートとエラーメッセージの貼り付け用の行は
+ * いずれもこの文言で終わる。コマンド名の有無だけで判定すると
+ * `- [x] npm run test:visuals は実行していない` のような否定の行も通過してしまうため、
+ * チェック済みの行がこの文言で終わる場合のみ実施確認とみなす。
  */
-const CONFIRMATION_LINE = /^\s*[-*]\s+\[[xX]\]\s+.*npm run test:visuals(?![:\w-])/;
+export const CONFIRMATION_PHRASE =
+    "`npm run test:visuals` を実行し、全スクリーンショットの一致を確認した";
+
+const CHECKED_CHECKBOX = /^\s*[-*]\s+\[[xX]\]\s+/;
 
 /**
  * 基準画像を更新するオプション。`npm run test:visuals -- --update-snapshots` は
@@ -43,8 +47,7 @@ const CONFIRMATION_LINE = /^\s*[-*]\s+\[[xX]\]\s+.*npm run test:visuals(?![:\w-]
 const UPDATE_SNAPSHOTS_OPTION = /--update-snapshots\b|(?:^|\s)-u(?![\w-])/;
 
 /** PR 本文に追記してもらう行（エラーメッセージとテンプレートで共有する文言）。 */
-export const CONFIRMATION_TEMPLATE =
-    "- [x] ローカル（macOS）で `npm run test:visuals` を実行し、全スクリーンショットの一致を確認した";
+export const CONFIRMATION_TEMPLATE = `- [x] ローカル（macOS）で ${CONFIRMATION_PHRASE}`;
 
 /**
  * lockfile（v2 以降の `packages` 形式）から対象パッケージの版を取り出す。
@@ -85,7 +88,8 @@ export function hasVisualsConfirmation(body) {
         .split(/\r?\n/)
         .some(
             (line) =>
-                CONFIRMATION_LINE.test(line) &&
+                CHECKED_CHECKBOX.test(line) &&
+                line.trimEnd().endsWith(CONFIRMATION_PHRASE) &&
                 !UPDATE_SNAPSHOTS_OPTION.test(line),
         );
 }
