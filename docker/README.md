@@ -7,7 +7,7 @@
 ## ファイル構成
 
 | ファイル | 役割 |
-|---|---|
+| --- | --- |
 | [Dockerfile](Dockerfile) | `dist/` と `nginx.conf` を `nginx:alpine` に組み込むビルド定義 |
 | [nginx.conf](nginx.conf) | デモ識別子付きパスのリライト設定（`spec/demos.md` と同一） |
 | [compose.yaml](compose.yaml) | ビルド・起動用の Docker Compose 定義（ポート `8080`） |
@@ -55,10 +55,12 @@ docker compose down
    - Node.js 環境がある場合は Pi 上で `npm run build` を実行して `dist/` を作る。
    - ない場合は、開発機で `npm run build` した後の `dist/` フォルダだけを転送してもよい（`docker/` と同じ階層に配置すること）。
 2. Raspberry Pi 5 上で:
+
    ```shell
    cd docker
    docker compose up -d --build
    ```
+
 3. `http://<Raspberry PiのIP>:8080/` にアクセスして確認する。
 
 ### 方法B: 開発機（Mac）でビルドしたイメージを転送する

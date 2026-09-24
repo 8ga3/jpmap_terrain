@@ -12,14 +12,16 @@
 
 ## 2. 設計方針（3点）
 
-1. **地形コアは現状維持、状態保持者をlib層へ集約**: `src/terrain/diorama/*`（グリッド生成・DEMサンプリング・テクスチャ合成・地形メッシュ構築）はほぼそのまま再利用する。`src/demos/diorama/*` にある「共有状態保持者」（`DioramaViewController` / `DioramaOrientationController` / `DioramaTileModeController`）の責務を新規公開クラス `JpmapDiorama`（`src/lib/jpmapDiorama.ts`）へ集約し、mount〜dispose・入力集約・AR統合を1つの公開APIにまとめる。
-2. **内蔵コントロールと低レベルAPIの二層構成**: 既存デモの挙動（キーボード＋タッチHUD常時有効、AR中は専用HUD＋XRコントローラー）は `enableDefaultControls`（既定 `true`）でそのまま踏襲する。一方、host アプリが独自の入力・UIから操作したいケース（例: host側が独自のXR UIを持つ、ゲームパッドを直接扱いたい等）向けに、`feedPanZoomAxes` / `feedOrientationAxes` / `cycleTileMode` という低レベル連続入力APIを常に公開する。
+1. **地形コアは現状維持、状態保持者をlib層へ集約**: `src/terrain/diorama/*`（グリッド生成・DEMサンプリング・テクスチャ合成・地形メッシュ構築）はほぼそのまま再利用する。
+   `src/demos/diorama/*` にある「共有状態保持者」（`DioramaViewController` / `DioramaOrientationController` / `DioramaTileModeController`）の責務を新規公開クラス `JpmapDiorama`（`src/lib/jpmapDiorama.ts`）へ集約し、mount〜dispose・入力集約・AR統合を1つの公開APIにまとめる。
+2. **内蔵コントロールと低レベルAPIの二層構成**: 既存デモの挙動（キーボード＋タッチHUD常時有効、AR中は専用HUD＋XRコントローラー）は `enableDefaultControls`（既定 `true`）でそのまま踏襲する。
+   一方、host アプリが独自の入力・UIから操作したいケース（例: host側が独自のXR UIを持つ、ゲームパッドを直接扱いたい等）向けに、`feedPanZoomAxes` / `feedOrientationAxes` / `cycleTileMode` という低レベル連続入力APIを常に公開する。
 3. **段階移行・挙動不変**: 既存デモ（`src/demos/diorama/index.ts`）は新APIを呼ぶだけの薄いラッパーに置き換える。外部から見た挙動（見た目・操作感・URL）は変えず、Visual Regression Test（`npm run test:visuals`）とユーザー目視確認（HITL）で担保する。
 
 ## 3. 変更概要（実施済み）
 
 | 種別 | パス | 内容 |
-|---|---|---|
+| --- | --- | --- |
 | 新規 | `src/lib/jpmapDiorama.ts` | `JpmapDiorama` クラス本体（`JpmapTerrain.create()` と同様、`static async create()` で生成） |
 | 新規 | `src/lib/types.ts`（追記） | Diorama関連の公開型（Options/Event/Listener等）を追加 |
 | 移動 | `src/demos/diorama/dioramaViewController.ts` 他、状態保持者3ファイル | `src/lib/internal/diorama/` 配下へ移動し `JpmapDiorama` から利用（ロジック自体は変更していない） |
@@ -27,7 +29,9 @@
 | 変更 | `src/lib.ts` | `JpmapDiorama` と関連型のexportを追加 |
 | 新規 | `spec/diorama-api.md`（本ファイル） | 公開API仕様 |
 
-`src/demos/diorama/dioramaArControlHud.ts` / `dioramaArControls.ts` / `dioramaControllerMapping.ts` / `dioramaKeyboardControls.ts` / `dioramaTouchControls.ts` / `webXrArSession.ts` / `dioramaHorizontalDirection.ts` は、内蔵コントロール実装として同様に `src/lib/internal/diorama/` へ移動済み（`enableDefaultControls: true` 時にのみ `JpmapDiorama` 内部から生成される）。
+`src/demos/diorama/dioramaArControlHud.ts` / `dioramaArControls.ts` / `dioramaControllerMapping.ts` / `dioramaKeyboardControls.ts` /
+`dioramaTouchControls.ts` / `webXrArSession.ts` / `dioramaHorizontalDirection.ts` は、
+内蔵コントロール実装として同様に `src/lib/internal/diorama/` へ移動済み（`enableDefaultControls: true` 時にのみ `JpmapDiorama` 内部から生成される）。
 
 ## 4. 代替案（最大2）
 
@@ -55,7 +59,7 @@ const diorama = await JpmapDiorama.create(document.getElementById("diorama")!, {
 ### 5.2 初期パラメータ
 
 | パラメータ | 型 | デフォルト値 | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `center` | `{ lat: number; lon: number }` | （必須） | 実世界の中心（測地座標） |
 | `footprintHalfSizeM` | `number` | `800` | 実世界フットプリントの半辺長[m] |
 | `tableRadiusM` | `number` | `0.35` | 卓上表示半径[m]（手元サイズ） |

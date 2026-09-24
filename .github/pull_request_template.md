@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD041 -->
 <!-- Copilot Code Review: Follow .github/copilot-instructions.md. -->
 <!-- Copilot Code Review: Follow AGENTS.md. -->
 <!-- Copilot Code Review: Write all review comments in Japanese. -->

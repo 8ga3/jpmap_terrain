@@ -1,0 +1,13 @@
+{
+  "config": {
+    // 日本語の文章を 80 文字で折り返すと可読性が下がるため緩和する
+    "MD013": {
+      "line_length": 200,
+      "tables": false,
+      "code_blocks": false
+    }
+  },
+  "gitignore": true,
+  // LICENSE.md はライセンス原文のため整形しない
+  "ignores": ["LICENSE.md"]
+}

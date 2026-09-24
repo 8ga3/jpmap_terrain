@@ -22,7 +22,8 @@ AIエージェントと開発者が、このリポジトリで迷わず実装・
 
 ### 依存関係の更新
 
-`package-lock.json` の生成結果は npm のバージョンに依存する。CI と食い違うと `npm ci` が `Missing: <pkg> from lock file` で失敗するため、依存関係を更新する際は必ずリポジトリ直下の `.tool-versions` で固定した Node / npm を使うこと（手順の詳細は [spec/development.md](spec/development.md) を参照）。
+`package-lock.json` の生成結果は npm のバージョンに依存する。
+CI と食い違うと `npm ci` が `Missing: <pkg> from lock file` で失敗するため、依存関係を更新する際は必ずリポジトリ直下の `.tool-versions` で固定した Node / npm を使うこと（手順の詳細は [spec/development.md](spec/development.md) を参照）。
 
 ```shell
 node -v && npm -v   # .tool-versions と一致することを確認してから実行する
@@ -80,7 +81,9 @@ npm run test:unit
 
 - ルールの実体は本ファイル（AGENTS.md）を**単一の正本（single source of truth）**とする。役割ごとの運用定義は [.github/agents/](.github/agents/) を正本とし、両者が衝突した場合は本ファイルを優先する。
 - 各役割（planner / architect / coder / tester / reviewer / security）の定義は [.github/agents/](.github/agents/) 配下を**単一の正本**とする。`.claude/agents/` 配下は frontmatter と正本への参照のみを持ち、役割内容を複製しない。
-- 各ツールの入口ファイル（[.github/copilot-instructions.md](.github/copilot-instructions.md) / [CLAUDE.md](CLAUDE.md) / [.claude/agents/](.claude/agents/) / [.claude/skills/](.claude/skills/) 配下）はルールを複製せず、本ファイルおよび [.github/agents/](.github/agents/) を参照すること。これにより Copilot CLI と Claude Code の運用が一致する。
+- 各ツールの入口ファイル（[.github/copilot-instructions.md](.github/copilot-instructions.md) / [CLAUDE.md](CLAUDE.md) / [.claude/agents/](.claude/agents/) / [.claude/skills/](.claude/skills/) 配下）はルールを複製せず、
+  本ファイルおよび [.github/agents/](.github/agents/) を参照すること。
+  これにより Copilot CLI と Claude Code の運用が一致する。
 - 上記の複製禁止は instruction のみでは徹底されないため、`npm run check:agent-docs`（`npm run lint` に組み込み済み、`scripts/checkAgentDocs.mjs`）で機械的に検知する。
 
 ### レビュー時チェック観点

@@ -11,8 +11,8 @@
 ## 2. パッケージ基本情報
 
 | 項目 | 値 |
-|---|---|
-| パッケージ名 | `jpmap-terrain`（npm 公開時）|
+| --- | --- |
+| パッケージ名 | `jpmap-terrain`（npm 公開時） |
 | モジュール形式 | ESM のみ |
 | Babylon.js | `peerDependency`（利用側が別途インストール） |
 | 型定義 | 同梱（`.d.ts`） |
@@ -41,7 +41,7 @@ const viewer = await JpmapTerrain.create(document.getElementById("map")!, {
 ### 3.2 初期パラメータ
 
 | パラメータ | 型 | デフォルト値 | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `engine` | `"webgpu" \| "webgl2"` | `"webgpu"` | 描画エンジン。WebGPU 非対応時は自動で WebGL2 にフォールバック |
 | `lat` | `number` | `35.681236` | 緯度（Babylon.js Z 軸に対応） |
 | `lon` | `number` | `139.767125` | 経度（Babylon.js X 軸に対応） |
@@ -368,7 +368,8 @@ interface MarkerOptions {
 **仕様:**
 
 - `icon` と `text` は **少なくとも片方が必須**。両方指定時は **上=text、下=icon** の順で線の上にスタックする。
-- ビルボードは `BILLBOARDMODE_ALL` でカメラ常時追従。地形タイルと同じ `renderingGroupId = 0` で描画し、地形の深度バッファをそのまま共有する。これにより視線上の山などに正しくオクルードされる（自局所地表への埋没は「線の高さ」分のクリアランスで回避）。地形とマーカーの間に空でない中間 renderingGroup を挟むと、Babylon.js の既定動作（renderingGroup 間で深度バッファをクリアする）によりマーカー側が地形の深度を継承できなくなる点に注意（polygon/circle も同じ理由で全コンポーネントを renderingGroupId=0 に統一している。§3.3.8 参照）。
+- ビルボードは `BILLBOARDMODE_ALL` でカメラ常時追従。地形タイルと同じ `renderingGroupId = 0` で描画し、地形の深度バッファをそのまま共有する。これにより視線上の山などに正しくオクルードされる（自局所地表への埋没は「線の高さ」分のクリアランスで回避）。
+  地形とマーカーの間に空でない中間 renderingGroup を挟むと、Babylon.js の既定動作（renderingGroup 間で深度バッファをクリアする）によりマーカー側が地形の深度を継承できなくなる点に注意（polygon/circle も同じ理由で全コンポーネントを renderingGroupId=0 に統一している。§3.3.8 参照）。
 - 表示位置の高さは **「タイル表面の標高 + 線の高さ」**。線の高さはカメラ距離・仰角から
   動的に算出される値（`radius * 0.1 * clamp(sin(beta), 0.3, 1)` を 100m–10000m にクランプ）を採用し、
   カメラ距離が変わってもスクリーン上で安定した長さに見えるようにする。`line.height` は
@@ -504,14 +505,28 @@ interface PolygonOptions {
 
 - `points` の各点に対し、`altitudeMode === "absolute"` なら `altitude` をそのまま Y に採用する。`"terrain"` ならタイル標高 (m) を Y に採用し、`altitude` が指定されている場合は地表からのオフセットとして加算する。
 - `terrain` モードで 1 点でも標高未解決の間は **ポリゴン全体を hide** し、`onTerrainUpdated` 後に自動表示する（例外は投げない）。
-- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、地表メッシュと同じ `renderingGroupId = 0` で描画し地形に正しくオクルードされる）。スケールはカメラ距離に応じて screen-stable に動的更新されるが、ワールド直径は 100m を上限にクランプする（無制限に拡大すると遠距離で球が地形を貫通し手前側がはみ出て見えるため）。`PolygonOptions.pointsEnabled`（既定 true）を `false` にすると球体メッシュ自体を生成しない（大量頂点のポリライン表示でメッシュ数を削減する用途）。`JpmapTerrain.setPointsEnabled(id, enabled)` で表示切替が可能。
-- 隣接点間を **CreateTube**（`updatable: true`、半径 `style.lineWidth`）で結ぶ。`closed = true` のとき末尾→先頭も結ぶ。`style.lineWidthMode === "screen"` の場合は `radiusFunction` で頂点ごとにカメラ距離比例スケールを計算し、長い折れ線でもズーム位置によらず画面上の太さを一定に保つ（既定 `"world"` は全頂点の重心とカメラの距離から算出した単一スケールを一律適用する）。
+- 各点に直径 `style.pointDiameter` (m) の **球体メッシュ** を配置する（既定色 `#ff0000`、emissive、地表メッシュと同じ `renderingGroupId = 0` で描画し地形に正しくオクルードされる）。
+  スケールはカメラ距離に応じて screen-stable に動的更新されるが、ワールド直径は 100m を上限にクランプする（無制限に拡大すると遠距離で球が地形を貫通し手前側がはみ出て見えるため）。`PolygonOptions.pointsEnabled`（既定 true）を `false` にすると球体メッシュ自体を生成しない（大量頂点のポリライン表示でメッシュ数を削減する用途）。
+  `JpmapTerrain.setPointsEnabled(id, enabled)` で表示切替が可能。
+- 隣接点間を **CreateTube**（`updatable: true`、半径 `style.lineWidth`）で結ぶ。`closed = true` のとき末尾→先頭も結ぶ。
+  `style.lineWidthMode === "screen"` の場合は `radiusFunction` で頂点ごとにカメラ距離比例スケールを計算し、長い折れ線でもズーム位置によらず画面上の太さを一定に保つ（既定 `"world"` は全頂点の重心とカメラの距離から算出した単一スケールを一律適用する）。
 - JAPAN_BOUNDS 外の点・`points.length < 1`・`absolute` で `altitude` 未指定の場合は `addPolygon` で throw（範囲外の点 index をメッセージに含める）。`points.length === 1` のときは辺（線 / 壁 / 辺ラベル）は存在せず、点・垂線・点ラベルのみ描画される。
 - 同 id の重複追加は throw、`removePolygon` の未存在 id は `console.warn` + no-op。
 - `dispose()` で全ポリゴンリソース（Mesh / Material / TransformNode）を解放する。
-- **垂線・ラベルの仕様**: 各点から Y=0（グリッド原点面）まで伸びる垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画する。垂線は地表を貫通して下るため、高高度点の接地を常に可視化できる。`labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。`JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
-- **壁表示の仕様**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる。`closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。`style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。`JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。壁・垂線・球・ポリライン（アウトライン）・ラベルは全て地表メッシュと同じ `renderingGroupId=0` で描画し、地表の深度バッファに対する深度テストで地中部分・地形より奥の部分を自然にオクルードする（以前はポリライン・ラベルを別グループにして常に地表より手前にしていたが、山などに正しく隠れてほしいという要望により撤回し、地形と同じ深度で扱う方式に統一した）。
-- **辺ラベルの仕様**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。`closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。`labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。`insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。`PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
+- **垂線・ラベルの仕様**: 各点から Y=0（グリッド原点面）まで伸びる垂線を **CreateTube**（updatable、半径 `style.dropLineWidth`）で描画する。垂線は地表を貫通して下るため、高高度点の接地を常に可視化できる。
+  `labels[i]` が指定された点に DynamicTexture + ビルボード Plane でラベルを描画（`labelColor` / `labelBackgroundColor` / `labelFontSize` 反映）。
+  `JpmapTerrain.setVerticalsEnabled(id, enabled)` / `setLabelsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.verticalsEnabled` / `labelsEnabled`（既定 true）で初期表示制御。
+- **壁表示の仕様**: 隣接する点間を上 row=頂点位置、下 row=Y=0 の Ribbon として 1 枚の **CreateRibbon**（`updatable: true`, `sideOrientation: DOUBLESIDE`）で壁表示。下 row は垂線と同様に地表を貫通してグリッド原点面で接地させる。
+  `closed=true` のときは上/下 row とも末尾に先頭頂点を append して閉じる。
+  `style.wallColor` / `style.wallOpacity`（default `#ff0000` / `0.3`）を StandardMaterial の `emissiveColor` / `alpha` に反映し、半透明時は `needDepthPrePass=true` で z-fight を緩和する。
+  `JpmapTerrain.setWallsEnabled(id, enabled)` で表示切替が可能。`PolygonOptions.wallsEnabled`（既定 true）で初期表示制御。
+  壁・垂線・球・ポリライン（アウトライン）・ラベルは全て地表メッシュと同じ `renderingGroupId=0` で描画し、地表の深度バッファに対する深度テストで地中部分・地形より奥の部分を自然にオクルードする（以前はポリライン・ラベルを別グループにして常に地表より手前にしていたが、山などに正しく隠れてほしいという要望により撤回し、地形と同じ深度で扱う方式に統一した）。
+- **辺ラベルの仕様**: `PolygonOptions.edgeLabels[i]` が文字列のとき、`points[i]` → `points[i+1]` の中点に DynamicTexture + ビルボード Plane（`polygon-${id}-edge-label-${i}`）でラベルを描画する。
+  `closed === true` かつ `points.length >= 2` のとき配列長は `points.length` で末尾要素は `points[N-1]` → `points[0]` のラベル、
+  それ以外（`closed === false` または `points.length < 2`）のとき配列長は `Math.max(0, points.length - 1)`（つまり 1 点ポリゴンでは 0）。
+  `labels` と同じ `style.labelColor` / `labelBackgroundColor` / `labelFontSize` を共用し、`setLabelsEnabled(id, enabled)` の対象に含む。`distScale` 連動でビルボードがスクリーン安定する。
+  `insertPolygonPoint` / `removePolygonPoint` は対応 index を点ラベルと同じ規則でシフトする（open ポリゴンの末尾頂点削除時は末尾の辺ラベルを除去）。`replacePolygonPoints` 後は `edgeLabels` を全 `undefined` で再構成する。
+  `PolygonHandle.edgeLabels` は一度でも設定されていれば配列を返し、未指定のままなら `undefined`。
 - **点編集 API の後日実装予定**: `updatePolygon`、点単位編集 API（`insertPoint` / `removePoint` / `updatePoint` / `replacePoints`）、デモ拡張、視覚回帰テスト。
 
 ##### 3.3.8.2 ポリゴン点編集 API
@@ -544,7 +559,8 @@ interface JpmapTerrain {
 - 共通: dispose 後 / 未存在 id は throw。
 - `insertPolygonPoint`: `index` が `[0, points.length]` の範囲外なら `RangeError`。`lat/lon` が JAPAN_BOUNDS 外なら throw。`altitudeMode === "absolute"` で `altitude` 未指定なら throw。
 - `removePolygonPoint`: 削除後の点数が 1 点未満になる場合は throw。`index` が範囲外なら `RangeError`。
-- `updatePolygonPoint`: `index` が範囲外なら `RangeError`。`lat`/`lon` の partial が指定されたとき、現状値とのマージ結果に対し JAPAN_BOUNDS 検査を行う。`altitudeMode === "absolute"` のとき `altitude` を `undefined` にしても現状値は維持されるため throw しない（明示的に書き換える場合のみ partial に含める）。
+- `updatePolygonPoint`: `index` が範囲外なら `RangeError`。`lat`/`lon` の partial が指定されたとき、現状値とのマージ結果に対し JAPAN_BOUNDS 検査を行う。
+  `altitudeMode === "absolute"` のとき `altitude` を `undefined` にしても現状値は維持されるため throw しない（明示的に書き換える場合のみ partial に含める）。
 - `replacePolygonPoints`: `points.length < 1` は throw。各点の JAPAN_BOUNDS / `absolute` モードの altitude 必須は `addPolygon` と同じ規則で検査する。
 
 **差分更新の保証範囲:**
@@ -673,13 +689,14 @@ interface CircleHandle {
 - 円周点列は world 座標で `P_i = center + (radius × cos θ_i, 0, radius × sin θ_i)` として `segments` 等分に生成する（Mercator 楕円化回避）。
 - `terrain` モードでは中心点の地表標高のみ解決し、その値 + `center.altitude` を全円周点に均一適用する（平面円）。標高未解決の間は全体を非表示にし、`onTerrainUpdated` 後に自動表示する。
 - `absolute` モードでは `center.altitude` をそのまま Y に採用する。
-- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベル / 壁 Ribbon は全て `0`（地表と同グループで正しくオクルード）。`wallOpacity < 1`（半透明）の場合のみ `needDepthPrePass=true` で z-fight を緩和する。中心球はポリゴン頂点球と同じ実装（globePolygonManager 経由）のため、ワールド直径は 100m を上限にクランプする。
+- 各コンポーネントの `renderingGroupId`: 中心球 / 円周 Tube / 中心ラベル / 壁 Ribbon は全て `0`（地表と同グループで正しくオクルード）。`wallOpacity < 1`（半透明）の場合のみ `needDepthPrePass=true` で z-fight を緩和する。
+  中心球はポリゴン頂点球と同じ実装（globePolygonManager 経由）のため、ワールド直径は 100m を上限にクランプする。
 - `dispose()` で全 Circle リソース（Mesh / Material / TransformNode）を解放する。
 
 **差分更新の保証範囲（updateCircle）:**
 
 | 変更フィールド | 挙動 |
-|---|---|
+| --- | --- |
 | `center` のみ | TransformNode 位置更新、メッシュ再生成なし |
 | `radius` のみ | 円周点列再計算、Tube / Ribbon の path 差分更新 |
 | `segments` 変更 | CircleNode を dispose + 再生成（path 長が変わるため） |
@@ -807,7 +824,8 @@ interface JpmapTerrain {
 - 対象は `polygon-${id}-point-${i}` メッシュ。`scene.pick` で hit したときのみ各イベントを発火する。
 - **hover**: 頂点に入った瞬間および対象切替時に `PolygonPointPointerEvent` を、頂点から離れた瞬間に `null` を通知する。hover 中はキャンバスのカーソルを `pointer` に切り替え、hover 解除時に空文字へ戻す。リスナーが 1 件も無いときは hover 検出を行わずカーソル変更も発生しない。
 - **click**: `pointerdown` した頂点上で `pointerup` し、かつ `pointerdown` から `pointerup` までの移動量が **3 CSS px 未満** のとき発火する。`Ctrl` / `Cmd` 併用時は従来どおりカメラ操作扱いのため発火しない。
-- **dragStart / drag / dragEnd**: 頂点 `pointerdown` 後に 3 CSS px 以上移動した時点で `dragStart` を発火し、以降の `pointermove` ごとに `drag` を発火、`pointerup` または `pointercancel` / `lostpointercapture` で `dragEnd` を発火する。`drag` / `dragStart` / `dragEnd` の `lat` / `lon` / `groundAltitude` には現在のカーソル直下の地形交点を採用し、地形未ヒット時は `null`。
+- **dragStart / drag / dragEnd**: 頂点 `pointerdown` 後に 3 CSS px 以上移動した時点で `dragStart` を発火し、以降の `pointermove` ごとに `drag` を発火、`pointerup` または `pointercancel` / `lostpointercapture` で `dragEnd` を発火する。
+  `drag` / `dragStart` / `dragEnd` の `lat` / `lon` / `groundAltitude` には現在のカーソル直下の地形交点を採用し、地形未ヒット時は `null`。
 - 頂点ジェスチャ中は通常の地形クリックおよびカメラ操作は抑制される。
 - リスナー未登録時は頂点メッシュの hit 判定 / カーソル変更コストも発生しない。
 - 各リスナーが throw しても他リスナーへ伝播せず `console.error` で握りつぶす。
@@ -904,12 +922,13 @@ viewer.addPolygon("dist-line", {
 
 #### 3.3.13 3Dモデル
 
-Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / stl）を地形上にロードして配置・操作する API。ローダーはファイル拡張子に応じて `@babylonjs/loaders` の glTF / OBJ / STL プラグインを動的ロードし、`addModel` 呼び出し時にインポートする。Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
+Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / stl）を地形上にロードして配置・操作する API。ローダーはファイル拡張子に応じて `@babylonjs/loaders` の glTF / OBJ / STL プラグインを動的ロードし、`addModel` 呼び出し時にインポートする。
+Marker / Polygon / Circle と同パターンの Manager + Handle 構成。
 
 ##### 3.3.13.1 公開 API
 
 | メソッド | 戻り値 | 説明 |
-|---|---|---|
+| --- | --- | --- |
 | `addModel(id, options)` | `ModelHandle` | 3D モデルをロードして配置する。`id` 重複時は throw |
 | `getModel(id)` | `ModelHandle \| null` | 指定 id のモデル情報を取得。存在しなければ `null` |
 | `updateModel(id, partial)` | `ModelHandle` | 位置・回転・スケール等を部分更新 |
@@ -922,7 +941,7 @@ Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / s
 ##### 3.3.13.2 ModelOptions
 
 | パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `url` | `string` | (必須) | モデルファイルの URL（glb / gltf / obj / stl に対応） |
 | `lat` | `number` | (必須) | 緯度 (度) |
 | `lon` | `number` | (必須) | 経度 (度) |
@@ -936,7 +955,7 @@ Babylon.js がサポートする 3D モデルファイル（glb / gltf / obj / s
 ##### 3.3.13.3 ModelHandle
 
 | プロパティ | 型 | 説明 |
-|---|---|---|
+| --- | --- | --- |
 | `id` | `string` | モデル ID |
 | `url` | `string` | モデルファイル URL |
 | `lat` / `lon` | `number` | 緯度・経度 |
@@ -990,7 +1009,7 @@ Follow カメラなど Babylon.js の ArcRotateCamera 以外のカメラで地�
 ##### 3.3.14.1 公開 API
 
 | メソッド | 戻り値 | 説明 |
-|---|---|---|
+| --- | --- | --- |
 | `refreshTerrainWithExternalFrustum(lat, lon, frustumPlanes, cameraPosition, lodBias?)` | `Promise<void>` | 外部カメラの frustum に基づいてタイルを更新する。内蔵 terrain camera の監視を使わず、指定した視錐台内のタイルを LOD 判定して読み込む |
 | `detachTileCamera()` | `void` | 内蔵 terrain camera の自動タイル更新監視を停止する。Follow モードなど外部カメラ使用中に呼び出す |
 | `attachTileCamera()` | `void` | 内蔵 terrain camera の自動タイル更新監視を再開する |
@@ -999,7 +1018,7 @@ Follow カメラなど Babylon.js の ArcRotateCamera 以外のカメラで地�
 ##### 3.3.14.2 refreshTerrainWithExternalFrustum パラメータ
 
 | パラメータ | 型 | デフォルト | 説明 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `lat` | `number` | (必須) | タイル中心の緯度 (度) |
 | `lon` | `number` | (必須) | タイル中心の経度 (度) |
 | `frustumPlanes` | `{ normal: { x, y, z }; d: number }[]` | (必須) | 6 面の視錐台平面（Babylon.js の `Frustum.GetPlanesToRef` 形式）。**camera 相対**（原点 = `cameraPosition`、回転のみ・並進なし）で構築すること。外部カメラの実 view 行列（並進 ~6.4e6m の ECEF 絶対位置を含む）をそのまま projection と合成すると、Float32 演算の桁落ちで画面内の地物を視錐台外と誤判定する。必ず view 行列の並進行を 0 にしてから合成する（利用例参照） |
@@ -1136,7 +1155,7 @@ import type {
 ### 4.1 追加パラメータ
 
 | パラメータ | 型 | 説明 |
-|---|---|---|
+| --- | --- | --- |
 | `fov` | `number` | 視野角（度） |
 
 > `projection` は §3.2 の `viewMode` (`"3d"` / `"2d"`) として実装済み。
@@ -1169,7 +1188,7 @@ interface JpmapTerrain {
 
 ## 5. パッケージ構成
 
-```
+```text
 jpmap_terrain/
 ├── dist/                    # ビルド出力（npm publish 対象）
 │   ├── index.js             # ESM エントリ
@@ -1204,7 +1223,7 @@ jpmap_terrain/
 
 ## 6. WebGPU / WebGL2 フォールバック
 
-```
+```text
 WebGPU 指定 → WebGPU 対応チェック → 対応: WebGPU で起動
                                      → 非対応: WebGL2 で起動（コンソールに警告）
 WebGL2 指定 → WebGL2 で起動
@@ -1221,7 +1240,7 @@ WebGL2 指定 → WebGL2 で起動
 ## 8. 用語対応表
 
 | パッケージ API | Babylon.js 内部 | 説明 |
-|---|---|---|
+| --- | --- | --- |
 | `lat` | Z 軸 | 緯度 |
 | `lon` | X 軸 | 経度 |
 | `altitude` | Y 軸 / camera radius | 高度（メートル） |

@@ -8,6 +8,7 @@ description: セキュリティ・品質・パフォーマンス・ベストプ�
 このファイルは Claude Code 用の登録情報のみを持ち、ルールを複製しない。
 
 ## 手順
+
 1. `.github/agents/50_reviewer.md` を読み込む。
 2. 記載された目的・ルール・停止条件・完了条件・出力フォーマットに従って作業する。
 3. 共通の進行ルール（HITL・Git操作）は [.github/agents/workflow.md](../../.github/agents/workflow.md) に従う。
