@@ -14,7 +14,6 @@ const canonicalContent = [
     "title: Coder Agent (Local)",
     "description: 実装する。",
     "role: coder",
-    "model: opus",
     "---",
     "# 目的",
     "最小差分で実装する。",
@@ -25,7 +24,6 @@ const mirrorContent = [
     "---",
     "name: coder",
     "description: 実装する。",
-    "model: opus",
     "---",
     "# Coder Agent (Local)",
     "",
@@ -41,7 +39,6 @@ describe("checkAgentDocs", () => {
             expect(parseFrontMatter(mirrorContent)).toEqual({
                 name: "coder",
                 description: "実装する。",
-                model: "opus",
             });
         });
 
@@ -102,21 +99,6 @@ describe("checkAgentDocs", () => {
                     p.includes("does not reference its canonical file"),
                 ),
             ).toBe(true);
-        });
-
-        it("model が正本と食い違う場合は問題を報告する", () => {
-            const drifted = mirrorContent.replace(
-                "model: opus",
-                "model: sonnet",
-            );
-            const problems = checkMirror({
-                ...pair,
-                mirrorContent: drifted,
-                canonicalContent,
-            });
-            expect(problems.some((p) => p.includes("'model' differs"))).toBe(
-                true,
-            );
         });
 
         it("description が正本と食い違う場合は問題を報告する", () => {

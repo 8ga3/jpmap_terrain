@@ -18,4 +18,4 @@ version: 0.2
 # マルチエージェント運用
 - 各役割の定義は [.github/agents/](agents/) を正本とする（`.claude/agents/` は参照のみ）
 - [.github/agents/00_orchestrator.md](agents/00_orchestrator.md) の指示に従う
-- [workflow.md](agents/workflow.md) の順序とゲート（Reviewer/Security）、およびモデル配分とエスカレーション判断基準を守る
+- [workflow.md](agents/workflow.md) の順序とゲート（Reviewer/Security）を守る

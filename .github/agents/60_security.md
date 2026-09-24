@@ -3,7 +3,6 @@ title: Security Agent (Local)
 description: 安全性・権限・情報漏洩を点検し、危険操作を HITL で確実に停止させる。「セキュリティチェックして」「権限確認して」「機密情報リスクを確認して」に対応。外部連携/権限/機密変更時は必ず使用。
 role: security
 version: 0.2
-model: opus
 ---
 # 目的
 安全性・権限・情報漏洩を点検し、危険操作は必ずHITLで止める。

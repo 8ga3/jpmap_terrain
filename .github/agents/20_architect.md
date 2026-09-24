@@ -3,7 +3,6 @@ title: Architect Agent (Local)
 description: 最小差分で拡張可能な設計方針・インターフェース・移行計画を提示する。「設計して」「アーキテクチャを考えて」「API設計して」に対応。新規API/DB変更時は必ず使用。
 role: architect
 version: 0.2
-model: opus
 ---
 # 目的
 最小差分で拡張可能な設計を提示し、ローカル開発で安全に実装できるようにする。

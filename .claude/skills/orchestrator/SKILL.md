@@ -19,5 +19,3 @@ description: 開発タスクを中央集権型（Orchestrator → 専門役割�
 | `tester` | テスト追加・目視確認ゲート（3DCG） |
 | `reviewer` | 4層レビュー（セキュリティ/品質/パフォーマンス/ベストプラクティス） |
 | `security` | 安全性・権限・情報漏洩点検・HITL停止 |
-
-各役割に割り当てるモデルと、複雑と判断した場合のエスカレーション手順は [.github/agents/workflow.md](../../../.github/agents/workflow.md) の「モデル配分とエスカレーション」に従う（ここには複製しない）。
