@@ -6,8 +6,6 @@ export interface GuardedVersionChange {
 
 export declare const CONFIRMATION_PHRASE: string;
 
-export declare const CONFIRMATION_TEMPLATE: string;
-
 export declare function extractGuardedVersions(lockfile: unknown): Map<string, string | null>;
 
 export declare function diffGuardedVersions(
@@ -15,4 +13,10 @@ export declare function diffGuardedVersions(
     headLockfile: unknown,
 ): GuardedVersionChange[];
 
-export declare function hasVisualsConfirmation(body: unknown): boolean;
+export declare function computeGuardedFingerprint(lockfile: unknown): string;
+
+export declare function formatConfirmationLine(fingerprint: string): string;
+
+export declare function findConfirmationFingerprints(body: unknown): string[];
+
+export declare function hasVisualsConfirmation(body: unknown, fingerprint: string): boolean;
