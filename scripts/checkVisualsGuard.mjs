@@ -78,6 +78,16 @@ export function extractGuardedVersions(lockfile) {
 }
 
 /**
+ * 対象パッケージの版を判定できる lockfile（v2 以降の `packages` 形式）かを判定する。
+ * v1 形式は `packages` を持たず対象依存の更新を検出できないため、ガードを素通りさせないよう
+ * 呼び出し側で失敗として扱う。
+ */
+export function isSupportedLockfile(lockfile) {
+    const packages = lockfile?.packages;
+    return packages !== null && typeof packages === "object";
+}
+
+/**
  * base と head の lockfile を比較し、対象パッケージの追加・削除・版変更を列挙する。
  * 追加・削除の場合、存在しない側の版は null とする。
  */
@@ -161,6 +171,19 @@ function main() {
         console.error(`[check-visuals-guard] failed to read package-lock.json: ${reason}`);
         process.exitCode = 1;
         return;
+    }
+
+    for (const [side, lockfile] of [
+        ["base", baseLockfile],
+        ["head", headLockfile],
+    ]) {
+        if (!isSupportedLockfile(lockfile)) {
+            console.error(
+                `[check-visuals-guard] unsupported ${side} package-lock.json (lockfileVersion: ${lockfile?.lockfileVersion ?? "unknown"}): a 'packages' section (lockfileVersion 2+) is required`,
+            );
+            process.exitCode = 1;
+            return;
+        }
     }
 
     const changes = diffGuardedVersions(baseLockfile, headLockfile);
