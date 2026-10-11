@@ -9,6 +9,7 @@ export default defineConfig({
         "validation.spec.ts",
         "atPathReload.spec.ts",
         "timelapseBackLink.spec.ts",
+        "gpxInitialLoad.spec.ts",
         "avatarSlopeCamera.spec.ts",
         "elevationFarView.spec.ts",
     ],

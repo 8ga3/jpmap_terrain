@@ -11,3 +11,9 @@ declare module "*.stl";
 
 // Audio
 declare module "*.mp3";
+
+// GPX asset URL
+declare module "*.gpx?url" {
+    const assetUrl: string;
+    export default assetUrl;
+}
