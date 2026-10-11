@@ -16,6 +16,23 @@ const REPLACEMENT_GPX = `<?xml version="1.0" encoding="UTF-8"?>
   </trk>
 </gpx>`;
 
+/** サンプル GPX（剱岳）から離れた、URL で指定するカメラ初期位置。 */
+const URL_CAMERA = { lat: 35.3606, lon: 138.7274 };
+const URL_CAMERA_PATH = `/gpx/@${URL_CAMERA.lat},${URL_CAMERA.lon},3000,0,55`;
+/** 置き換え用 GPX のトラック始点。 */
+const REPLACEMENT_START = { lat: 35.0, lon: 139.0 };
+/** flyTo の既定アニメーション時間（800ms）に余裕を持たせた待機時間。 */
+const FLY_TO_SETTLE_MS = 1500;
+
+/** デモが公開する viewer の現在のカメラ位置を取得する。 */
+const getCameraLatLon = (page: Page): Promise<{ lat: number; lon: number }> =>
+    page.evaluate(() => {
+        const viewer = (
+            window as unknown as { viewer: { lat: number; lon: number } }
+        ).viewer;
+        return { lat: viewer.lat, lon: viewer.lon };
+    });
+
 /** 置き換え用 GPX をドラッグ&ドロップ操作として投入する。 */
 const dropReplacementGpx = async (page: Page): Promise<void> => {
     await page.evaluate((gpx) => {
@@ -122,5 +139,44 @@ test("GPX Viewer keeps a track dropped while the sample GPX is still loading", a
     await expect(status).toContainText(REPLACEMENT_TRACK_NAME);
     await expect(status).not.toContainText(SAMPLE_TRACK_NAME);
 
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("GPX Viewer keeps the camera position given by URL after loading the sample GPX", async ({
+    page,
+}) => {
+    await page.goto(URL_CAMERA_PATH);
+
+    const status = page.locator("#gpx-status");
+    await expect(status).toContainText(SAMPLE_TRACK_NAME, { timeout: 60000 });
+    // flyTo が呼ばれていればアニメーションが完了する時間を待ってから位置を確認する。
+    await page.waitForTimeout(FLY_TO_SETTLE_MS);
+
+    const camera = await getCameraLatLon(page);
+    expect(camera.lat).toBeCloseTo(URL_CAMERA.lat, 4);
+    expect(camera.lon).toBeCloseTo(URL_CAMERA.lon, 4);
+
+    // 終了時に残る地形タイル取得ルートのエラーを無視する
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("GPX Viewer flies to a dropped track even when the camera position is given by URL", async ({
+    page,
+}) => {
+    await page.goto(URL_CAMERA_PATH);
+
+    const status = page.locator("#gpx-status");
+    await expect(status).toContainText(SAMPLE_TRACK_NAME, { timeout: 60000 });
+
+    await dropReplacementGpx(page);
+    await expect(status).toContainText(REPLACEMENT_TRACK_NAME);
+
+    await expect
+        .poll(async () => (await getCameraLatLon(page)).lat)
+        .toBeCloseTo(REPLACEMENT_START.lat, 4);
+    const camera = await getCameraLatLon(page);
+    expect(camera.lon).toBeCloseTo(REPLACEMENT_START.lon, 4);
+
+    // 終了時に残る地形タイル取得ルートのエラーを無視する
     await page.unrouteAll({ behavior: "ignoreErrors" });
 });
