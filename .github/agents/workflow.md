@@ -54,7 +54,9 @@ gh pr create --base main --fill --assignee "@me" --reviewer "@copilot" --label "
 - 画像・動画の添付と stacked pull requests は [AGENTS.md](../../AGENTS.md) の「GitHub CLI」を参照する。
 
 ```shell
-gh issue create --title "<title>" --body-file <path> --assignee "@me" --label "<label>" [--parent <番号>]
+gh issue create --title "<title>" --body-file <path> --assignee "@me" --label "<label>"
+# 親 Issue がある場合
+gh issue create --title "<title>" --body-file <path> --assignee "@me" --label "<label>" --parent <番号>
 ```
 
 ## PR 作成後
