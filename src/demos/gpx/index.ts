@@ -19,6 +19,7 @@
  *   パネルの `bottom` オフセットは左下（写真ボタン）・右下（ズーム/スケールバー）の
  *   操作 UI と重ならないよう実測して動的に調整する。
  */
+import sampleGpxUrl from "../../../examples/mt_tsurugi.gpx?url";
 import { JpmapTerrain } from "../../lib/jpmapTerrain";
 import type { JpmapTerrainOptions, PolygonOptions } from "../../lib/types";
 import {
@@ -335,6 +336,7 @@ const start = async (): Promise<void> => {
 
     let currentIds: GpxIds = { ...EMPTY_GPX_IDS };
     let currentProfiles: ElevationProfileSeries[] = [];
+    let initialGpxLoadPending = true;
 
     /**
      * 標高-時間グラフパネルの位置・幅を、画面左下（写真ボタン）・右下（ズームボタン列・
@@ -556,6 +558,7 @@ const start = async (): Promise<void> => {
         const files = e.dataTransfer?.files;
         if (!files || files.length === 0) return;
 
+        initialGpxLoadPending = false;
         const file = files[0];
         const reader = new FileReader();
         reader.onload = () => {
@@ -571,6 +574,30 @@ const start = async (): Promise<void> => {
 
     updateStatus(statusEl, null);
     refreshButtons();
+
+    if (statusEl) statusEl.textContent = "サンプル GPX を読み込み中...";
+    void (async () => {
+        try {
+            const response = await fetch(sampleGpxUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const content = await response.text();
+            if (!initialGpxLoadPending) return;
+            initialGpxLoadPending = false;
+            loadGpx(content);
+        } catch (err) {
+            if (!initialGpxLoadPending) return;
+            initialGpxLoadPending = false;
+            const message =
+                err instanceof Error ? err.message : "Unknown error";
+            updateStatus(
+                statusEl,
+                null,
+                `サンプル GPX の読み込みに失敗しました: ${message}`,
+            );
+        }
+    })();
 
     if (process.env.NODE_ENV !== "production") {
         (window as unknown as { viewer: JpmapTerrain }).viewer = viewer;
