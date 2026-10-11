@@ -64,7 +64,7 @@ Issue・PR・コメントにスクリーンショットや動画を載せると�
 
 - 対象: `gh issue create` / `gh issue edit` / `gh issue comment` / `gh pr create` / `gh pr edit` / `gh pr comment`
 - 繰り返し指定で複数添付できる（1 コマンド最大 50 ファイル、同じファイルの重複指定は不可）。
-- alt text は `'<file>#<alt text>'` で指定する。省略するとファイル名になる。
+- 画像の alt text は `'<file>#<alt text>'` で指定する。省略するとファイル名になる。動画は alt text を持てないため `#...` を付けない。
 - 本文中で添付ファイルを Markdown の画像記法で参照している箇所は、アップロード先の URL に置き換わる。本文で参照していないファイルは本文末尾に追加される。
 - サイズ上限: 画像・GIF は 10 MB、動画は Free プラン 10 MB / 有料プラン 100 MB。
 - 地図画像を載せる場合は著作権表記を添える（[workflow.md](.github/agents/workflow.md) の「テストスナップショットの取り扱い」）。
@@ -92,7 +92,9 @@ gh skill install github/gh-stack       # エージェント用スキル（任意
 
 `gh stack` に数字を渡すと、まずスタック番号として扱われ、該当がなければ PR 番号として扱われる。別のスタックを操作しないよう、数字ではなく URL かブランチ名で指定する。
 
-スタックの PR は `gh pr merge` ではマージできないため `gh stack merge` を使う（スタック全体がまとめてマージされ、すべて成功するかどれもマージされないか）。履歴を一直線に保つため rebase マージにする。対象のスタックをチェックアウトしてから実行する。
+スタックの PR は `gh pr merge` ではマージできないため `gh stack merge` を使う。履歴を一直線に保つため rebase マージにする。対象のスタックをチェックアウトしてから実行する。
+マージ先が merge queue を使っていない場合、スタックはまとめてマージされる（すべて成功するか、どれもマージされないか）。
+merge queue を使っている場合はキューに追加され、マージ方式とまとめ方はキューの設定に従うため、途中までしかマージされないことがある。
 
 ```shell
 gh stack checkout https://github.com/<owner>/<repo>/pull/<番号>   # 一番上の PR
