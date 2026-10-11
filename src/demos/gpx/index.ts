@@ -498,7 +498,12 @@ const start = async (): Promise<void> => {
         return null;
     };
 
-    const loadGpx = (fileContent: string): void => {
+    /**
+     * GPX を読み込んで表示を置き換える。
+     *
+     * @param flyTo 描画後にトラック始点（無ければ最初のウェイポイント）へカメラを移動するか
+     */
+    const loadGpx = (fileContent: string, flyTo: boolean): void => {
         // 前回表示をクリア
         clearGpxDisplay(viewer, currentIds);
         currentIds = { ...EMPTY_GPX_IDS };
@@ -515,7 +520,7 @@ const start = async (): Promise<void> => {
             currentProfiles = buildElevationProfiles(gpx.tracks);
             redrawElevationChart();
 
-            const target = firstFlyToTarget(gpx);
+            const target = flyTo ? firstFlyToTarget(gpx) : null;
             if (target) void viewer.flyTo(target);
         } catch (e) {
             const msg = e instanceof Error ? e.message : "不明なエラー";
@@ -563,7 +568,7 @@ const start = async (): Promise<void> => {
         const reader = new FileReader();
         reader.onload = () => {
             if (typeof reader.result === "string") {
-                loadGpx(reader.result);
+                loadGpx(reader.result, true);
             }
         };
         reader.onerror = () => {
@@ -585,7 +590,8 @@ const start = async (): Promise<void> => {
             const content = await response.text();
             if (!initialGpxLoadPending) return;
             initialGpxLoadPending = false;
-            loadGpx(content);
+            // URL でカメラ初期位置を指定した場合は、その位置を優先して移動しない
+            loadGpx(content, cameraState === undefined);
         } catch (err) {
             if (!initialGpxLoadPending) return;
             initialGpxLoadPending = false;
