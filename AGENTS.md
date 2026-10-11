@@ -44,7 +44,8 @@ bundler は拡張子を補うのでデモのビルドや Unit test では気付�
 - ルールの正本は本ファイル。役割ごとの定義は [.github/agents/](.github/agents/) が正本で、衝突した場合は本ファイルを優先する。
 - 各ツールの入口ファイルはルールを複製せず、正本へのリンクだけを持つ。これにより Copilot CLI と Claude Code の運用が一致する。
   - 対象: [.github/copilot-instructions.md](.github/copilot-instructions.md) / [CLAUDE.md](CLAUDE.md) / [.claude/agents/](.claude/agents/) / [.claude/skills/orchestrator/](.claude/skills/orchestrator/)
-- ルールを変更するときは正本だけを編集する。複製は時間とともに片側だけ更新されてずれるため、`npm run check:agent-docs`（`npm run lint` に含まれる）で検知する。
+- ルールの本文を変更するときは正本だけを編集する。複製は時間とともに片側だけ更新されてずれるため、`npm run check:agent-docs`（`npm run lint` に含まれる）で検知する。
+- 例外として、frontmatter の `description` は各ツールが役割を選ぶときに使う登録情報のため、正本（`.github/agents/*.md`）と `.claude/agents/*.md` の両方に同じ値を書く。片方だけ変更すると `check:agent-docs` が失敗する。
 
 ### レビュー時チェック観点
 
