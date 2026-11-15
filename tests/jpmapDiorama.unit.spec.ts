@@ -275,7 +275,23 @@ describe("JpmapDiorama.create", () => {
 
     it("mountElementがposition:staticのままの場合、relativeを付与する（ARボタン/HUDの絶対配置基準を安定させるため）", async () => {
         const mount = document.createElement("div");
-        expect(getComputedStyle(mount).position).toBe("static");
+        document.body.appendChild(mount);
+        try {
+            expect(getComputedStyle(mount).position).toBe("static");
+
+            const instance = await JpmapDiorama.create(mount, {
+                center: DEFAULT_CENTER,
+            });
+            instances.push(instance);
+
+            expect(mount.style.position).toBe("relative");
+        } finally {
+            mount.remove();
+        }
+    });
+
+    it("DOM未接続のmountElementでもposition未指定ならrelativeを付与する（computed styleが空文字になるため）", async () => {
+        const mount = document.createElement("div");
 
         const instance = await JpmapDiorama.create(mount, {
             center: DEFAULT_CENTER,

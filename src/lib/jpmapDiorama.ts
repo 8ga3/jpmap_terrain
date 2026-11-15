@@ -165,7 +165,12 @@ export class JpmapDiorama {
         // のままだと、絶対配置の子要素はこの要素ではなく直近の position 指定祖先
         // （無ければビューポート）基準で配置されてしまうため、`static` の場合のみ
         // `relative` を付与する（ホスト側で既に position を指定済みなら上書きしない）。
-        if (getComputedStyle(this.mountElement).position === "static") {
+        // DOM に未接続の要素は computed style が空文字になるため、その場合はインライン
+        // 指定を見て、未指定なら `static` 相当として扱う。
+        const mountPosition =
+            getComputedStyle(this.mountElement).position ||
+            this.mountElement.style.position;
+        if (mountPosition === "" || mountPosition === "static") {
             this.mountElement.style.position = "relative";
         }
 
